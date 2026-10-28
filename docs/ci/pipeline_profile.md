@@ -131,7 +131,7 @@ Hit rate was not sampled across the window. These two are not a miss spike on on
 | Job | Cap | What happened |
 |---|---:|---|
 | Test full (macos-latest) | 60 | p95 60.2 min, one cancel at 60.6 min. See main table. |
-| Test (ubuntu, affected) | 60 | p95 duration 45.0 min in this window. #477 replaced that job with `Test (ubuntu, build archive)` (cap 60) and three partitions (cap 30). The comment in `ci.yml` records an older 45 min cancel after 27,057 passes. |
+| Test (ubuntu, affected) | 60 | p95 duration 45.0 min in this window. #477 replaced that job with `Test (ubuntu, build archive)` (cap 60) and three partitions (cap 30). The replacement comment cites [run 40235303264](https://github.com/lazyxeon/AstraWeave/actions/runs/40235303264): 24m 12s to compile the test profile and 6m 05s to run 31,672 tests. |
 | Test (windows, build archive) | 75 | p95 39.1 min on pull requests. Under the cap. |
 | Test full (windows, build archive) | 60 | p95 33.1 min. Under the cap. The partitions then fail for the reason in #467, not for this timeout. |
 | hash (windows-latest) in determinism-replay | 75 | duration p95 36.4 min. The comment records an older 45 min cancel (run 39839010318). |
