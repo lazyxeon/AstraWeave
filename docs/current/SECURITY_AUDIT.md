@@ -24,7 +24,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 |---|---|
 | SEC-SAVE-1 | Declared `.awsv` length above 4 MiB is rejected before the payload buffer is allocated. LZ4 output above 16 MiB is rejected before decompress. |
 | SEC-SAVE-2 | `decode_vitals` rejects more than 4,096 records. |
-| SEC-NET-3 | `decode_msg` rejects an LZ4 declared output above 4 MiB. |
+| SEC-NET-3 | `decode_msg` rejects an LZ4-declared output above 4 MiB. |
 | SEC-ASSET-1 | glTF file URIs and cell asset paths go through `safe_under`. |
 | SEC-MOD-4 | Script load and hot reload go through `safe_under`. |
 | SEC-LLM-1 | Model clients keep a loopback URL only. `loopback_http_client` sets `no_proxy`, follows a redirect only when the next hop is loopback, and pins `localhost` to `127.0.0.1`. `allowing_remote` is the explicit opt-in: it keeps the caller URL and uses reqwest's default client, which honors `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY` and follows redirects. `LOCAL_LLM_ALLOW_REMOTE=1` selects it in the integration example. |
@@ -41,18 +41,18 @@ Severity is impact if the reachable caller is given a hostile file or socket, no
 
 | ID | Sev | Where | Wired on `main`? | One-line |
 |---|---|---|---|---|
-| SEC-NET-1 | Critical | `aw-net-server` default config | Yes, `spawn_server` | Binds `127.0.0.1:8788` and `:8789` (`net/aw-net-server/src/lib.rs:155-156`). `spawn_server` refuses `PUBLISHED_DEV_KEY` outside debug and test (`:281-286`) |
-| SEC-NET-2 | High | `astraweave-net` `GameServer` | Yes, examples | Client picks its actor; the `"dev"` token is optional |
-| SEC-SAVE-1 | High | `aw-save` `read_any_version` | Yes, `aw_save_cli` | `data_len` above 4 MiB is rejected before allocation (`persistence/aw-save/src/lib.rs:367-371`). LZ4 output above 16 MiB is rejected before decompress (`:446-456`) |
-| SEC-NET-3 | High | `aw-net-proto` `decode_msg` | Yes, matchmaking server | An LZ4 declared output above 4 MiB is rejected before decompress (`net/aw-net-proto/src/lib.rs:296-300`; cap at `:10`) |
-| SEC-ASSET-1 | High | glTF URI + cell `load_asset` | Yes, editor and scene streaming | `../` is rejected by `safe_under` before the read (`astraweave-asset/src/lib.rs:837-838`, `cell_loader.rs:224-225`) |
-| SEC-MOD-1 | High | `astraweave-scripting` `script_system` | Examples only | Script path is an unsandboxed file read; host uses raw pointers |
-| SEC-LLM-1 | High | `LocalHttpClient` / Ollama constructors | Example + any `OLLAMA_URL` | A loopback URL is not enough: proxy env and redirects can still send the prompt. `loopback_http_client` closes that. `allowing_remote` is the explicit default-client opt-in |
+| SEC-NET-1 | Closed on main | `aw-net-server` default config | Yes, `spawn_server` | Binds `127.0.0.1:8788` and `:8789` (`net/aw-net-server/src/lib.rs:155-156`). Release `spawn_server` refuses `PUBLISHED_DEV_KEY` (`:281-286`). `ServerConfig::default` still holds `dev_default()` on every build (`:161`). `--ws-listen` and `--http-listen` can opt into non-loopback (`net/aw-net-server/src/main.rs:78-88`) |
+| SEC-NET-2 | Closed on main | `astraweave-net` `GameServer` | Yes, examples | `actor_id` is ignored (`astraweave-net/src/lib.rs:817`, `:851`). `hello_token_accepted` applies (`:920-936`) |
+| SEC-SAVE-1 | Closed on main | `aw-save` `read_any_version` | Yes, `aw_save_cli` | `data_len` above 4 MiB is rejected before allocation (`persistence/aw-save/src/lib.rs:367-371`). LZ4 output above 16 MiB is rejected before decompress (`:446-456`) |
+| SEC-NET-3 | Closed on main | `aw-net-proto` `decode_msg` | Yes, matchmaking server | An LZ4-declared output above 4 MiB is rejected before decompress (`net/aw-net-proto/src/lib.rs:296-300`; cap at `:10`) |
+| SEC-ASSET-1 | Closed on main | glTF URI + cell `load_asset` | Yes, editor and scene streaming | `../` is rejected by `safe_under` before the read (`astraweave-asset/src/lib.rs:837-838`, `cell_loader.rs:224-225`) |
+| SEC-MOD-1 | High | `astraweave-scripting` `script_system` | Examples only | The tick does not read `script_path` off disk (`astraweave-scripting/src/lib.rs:142-163`). The host still uses raw pointers (`api.rs:75-76`, `:95`) |
+| SEC-LLM-1 | Closed on main | `LocalHttpClient` / Ollama constructors | Example + any `OLLAMA_URL` | A loopback URL is not enough: proxy env and redirects can still send the prompt. `loopback_http_client` closes that. `allowing_remote` is the explicit default-client opt-in |
 | SEC-ASSET-2 | Medium | Pack Guard zip + `image` decode | `xtask` and glTF image path | Traversal is rejected; uncompressed size is not |
-| SEC-SAVE-2 | Medium | `decode_vitals` | Public API, tests only | More than 4,096 records are rejected (`astraweave-combat/src/save.rs:95`; cap at `:14`) |
+| SEC-SAVE-2 | Closed on main | `decode_vitals` | Public API, tests only | More than 4,096 records are rejected (`astraweave-combat/src/save.rs:95`; cap at `:14`) |
 | SEC-LLM-2 | Medium | Quest + world-event JSON | Compiled, no production caller | Model JSON is applied to in-memory world flags with no size cap |
 | SEC-LLM-3 | Medium | `sanitize_llm_prompt`, prompt logs | Dormant sanitizer; logs are live | S0-2 and S0-3 still match the code |
-| SEC-SUPPLY-1 | Medium | `security-audit.yml` | CI | Advisory and license failures are warnings |
+| SEC-SUPPLY-1 | Closed on main | `security-audit.yml` | CI | `set -e` runs bans, sources, advisories, and licenses (`.github/workflows/security-audit.yml:38-55`). A deny failure fails the job |
 | SEC-SAVE-3 | Medium on merge | Scar blob on PR #205 | Not on `main` | Postcard cell list has no count cap |
 | SEC-MOD-2 | Closed on main | `parse_template_toml` | Yes | Ids outside `u16` are rejected before `as u16` |
 | SEC-WEAVE-1 | Closed (#388, #295) | `queue_weave` on main | Yes | Origins outside ±2048 cells return `OutsideIsland`. The conversion is not saturated |
@@ -80,13 +80,13 @@ The scar blob beside it (`astraweave-veil/src/save_blob.rs:65-80` on the same co
 
 ### Findings
 
-**SEC-SAVE-1.** `read_any_version` (`persistence/aw-save/src/lib.rs:307-337`) does `let mut payload = vec![0u8; len];` with `len` taken from the header, then `read_exact`. A file whose header says 8 MiB and whose body is empty still enters that allocation. CRC is checked after the allocation. LZ4 then calls `lz4_flex::decompress_size_prepended`, which does `Vec::with_capacity(uncompressed_size)` from a `u32` prefix (`lz4_flex` 0.11.5 `block/decompress.rs:494-508`) before the stream is validated. Postcard after that will honor any `Vec` / `String` / `HashMap` length in the payload. `write_awsv` truncates `payload.len() as u32` (`:271`), so a legitimate save larger than 4 GiB would wrap; that is a separate integrity bug, not the hostile-input one.
+**SEC-SAVE-1.** `read_any_version` (`persistence/aw-save/src/lib.rs:362-376`) rejects a declared payload above 4 MiB before `vec![0u8; parsed.len]` (`:367-373`). `write_awsv` still casts `payload.len() as u32` (`:318`), so a legitimate save larger than 4 GiB would wrap; that is a separate integrity bug, not the hostile-input one. `decompress_lz4_capped` (`:446-456`) rejects an LZ4-declared uncompressed size above 16 MiB before `decompress_size_prepended`. Postcard after an accepted payload still honors lengths inside the blob.
 
-PoC `poc_awsv_rejects_oversized_declared_payload` fails with `declared payload length was not rejected by a size cap: failed to fill whole buffer`.
+PoC `poc_awsv_rejects_oversized_declared_payload` rejects an 8 MiB `data_len` at the 4 MiB compressed cap. It does not reach the 16 MiB uncompressed check.
 
-**SEC-SAVE-2.** `decode_vitals` (`astraweave-combat/src/save.rs:83-113`) accepts any count whose body matches. 4_097 records decode. There is no panic. `Vec::with_capacity(len)` is reached only after the length check, so this is a size bomb, not a panic. `encode_vitals` casts `records.len() as u32` (`:68`), which truncates a huge in-memory slice.
+**SEC-SAVE-2.** `decode_vitals` (`astraweave-combat/src/save.rs:85-97`) rejects `len > MAX_VITALS_RECORDS` (4,096 at `:14`) before `Vec::with_capacity`. 4,096 records that match the stride still decode. 4,097 do not. `encode_vitals` casts `records.len() as u32` (`:70`), which truncates a huge in-memory slice.
 
-PoC `poc_vitals_rejects_more_than_4096_records` fails with `decoded 4097 vitals records with no record cap`.
+PoC `poc_vitals_rejects_more_than_4096_records` is green.
 
 **SEC-SAVE-3 (PR #205 only).** Scar `from_postcard` has no cap on `wire.cells`. Fix it on that branch. Do not copy the parser onto `main`.
 
@@ -108,9 +108,9 @@ None in `aw-save`, `astraweave-persistence-ecs`, or `astraweave-combat`. `lz4_fl
 - expression depth 64
 - string, array, and map size 1_024
 
-There is no wall-clock timeout on `script_system`. There is no process RSS cap. `ScriptLoader::load` (`astraweave-scripting/src/loader.rs:16-30`) reads any path it is given. `script_system` hot-reloads `CScript.script_path` with `std::fs::read_to_string` (`astraweave-scripting/src/lib.rs:195-219`) and compares `metadata.modified()` to a cache. That read is a filesystem escape, and the modified-time check is a wall clock on the tick. Production callers of `ScriptingPlugin` are `examples/scripting_advanced_demo` and `examples/scripting_playground`, not the Aravath demo.
+There is no wall-clock timeout on `script_system`. There is no process RSS cap. `ScriptLoader::load` (`astraweave-scripting/src/loader.rs:27-30`) rejects an empty path, an absolute path, `..`, and a path that does not end in `.rhai`, then reads through `safe_under` (`:18-21`). `script_system` (`astraweave-scripting/src/lib.rs:194`) applies `ScriptReloadQueue` (`:142-163`) and does not stat the filesystem or read `script_path` off disk. Production callers of `ScriptingPlugin` are `examples/scripting_advanced_demo` and `examples/scripting_playground`, not the Aravath demo.
 
-The host API (`astraweave-scripting/src/api.rs:160-260`) is `log`, `spawn_prefab`, `despawn`, `set_position`, `apply_damage`, `play_sound`, `spawn_particle`, `raycast`, `find_path`. `play_sound` only prints the string (`astraweave-scripting/src/lib.rs:533-534`). It does not open the path. Prefab names outside `"enemy_grunt"` and `"crate"` still spawn an entity (`:121-132`). There is no template-id check on `main` because `queue_weave` is not on `main`.
+The host API registers `log`, `spawn_prefab`, `despawn`, `set_position`, `apply_damage`, `play_sound`, `spawn_particle`, `raycast`, and `find_path`. `play_sound` queues `ScriptCommand::PlaySound` (`astraweave-scripting/src/api.rs:51-54`). That function does not open the path. Prefab names outside `"enemy_grunt"` and `"crate"` still spawn an entity (`astraweave-scripting/src/lib.rs:111-123`). `queue_weave` is on main (`astraweave-weaving/src/mod_queue.rs:215`).
 
 `astraweave-security::execute_script_sandboxed` (`astraweave-security/src/lib.rs:372-405`) compiles and evals whatever source it is given. `allowed_functions` is never read. `max_memory_bytes` is stored and never passed to Rhai. The timeout is `tokio::time::timeout`, which is a wall clock and must not move onto a sim tick. `SecurityPlugin` is built only from tests. This is S0-3, still accurate. `astraweave-scripting` declares a dependency on `astraweave-security` and does not call it.
 
@@ -136,7 +136,7 @@ What it does not do:
 
 **SEC-MOD-2.** On #214 and #252, `parse_template_toml` cast the id with `as u16` and only then rejected engine ids, so a value such as `65544` became 8. On main, `mod_queue.rs:231-234` rejects `raw_id < 0` or `raw_id > u16::MAX` before the cast. Radius (`:276-279`) and node `a` (`:286-289`) use the same check-then-cast. `parse_rejects_engine_ids_and_accepts_modifier_data` locks `65536` and `-1`. `65535` stays id `65535`.
 
-**SEC-MOD-4 (live).** `ScriptLoader::load("../secret.rhai")` returns `Failed to read script file: ../secret.rhai: No such file or directory`, not a traversal error. PoC `poc_script_loader_rejects_parent_segments` fails on that message.
+**SEC-MOD-4.** `ScriptLoader::load` rejects `../` before the read (`astraweave-scripting/src/loader.rs:29-30`, `:68`). The error text is `path traversal rejected`. PoC `poc_script_loader_rejects_parent_segments` is green.
 
 ### Unsafe on this path
 
@@ -144,14 +144,14 @@ What it does not do:
 
 | Site | What |
 |---|---|
-| `astraweave-scripting/src/api.rs:73-74` | `unsafe impl Send/Sync for PhysicsProxy` |
-| `astraweave-scripting/src/api.rs:93` | `unsafe { &*self.ptr }` on the physics pointer |
-| `astraweave-scripting/src/api.rs:143-144` | `unsafe impl Send/Sync for NavMeshProxy` |
-| `astraweave-scripting/src/api.rs:154` | `unsafe { &*self.ptr }` on the nav pointer |
-| `astraweave-scripting/src/lib.rs:466`, `:487`, `:514` | `unsafe { Entity::from_raw(...) }` when applying commands |
+| `astraweave-scripting/src/api.rs:75-76` | `unsafe impl Send/Sync for PhysicsProxy` |
+| `astraweave-scripting/src/api.rs:95` | `unsafe { &*self.ptr }` on the physics pointer |
+| `astraweave-scripting/src/api.rs:145-146` | `unsafe impl Send/Sync for NavMeshProxy` |
+| `astraweave-scripting/src/api.rs:156` | `unsafe { &*self.ptr }` on the nav pointer |
+| `astraweave-scripting/src/lib.rs:455`, `:476`, `:503` | `unsafe { Entity::from_raw(...) }` when applying commands |
 | `astraweave-scripting/src/events.rs:33` | `unsafe { Entity::from_raw(id) }` |
 
-The pointer is taken while the resource is borrowed, the borrow is dropped, and the script runs (`astraweave-scripting/src/lib.rs:145-159`). Commands are queued and applied after the script, so a script cannot remove `PhysicsWorld` through the public command list during the raycast. The `unsafe` still aliases a resource the borrow checker cannot see. PR #214's sim host does not use these proxies for `queue_weave`. Leave the proxies unwired to mods.
+`script_system` does not place `PhysicsProxy` or `NavMeshProxy` in the script scope (`astraweave-scripting/src/lib.rs:193`). The `unsafe` impls remain in `api.rs`. PR #214's sim host does not use these proxies for `queue_weave`. Leave the proxies unwired to mods.
 
 Test-only `unsafe` in `astraweave-scripting/tests/mutation_resistant_comprehensive_tests.rs:29` is `Entity::from_raw` inside a test. It is not a runtime path.
 
@@ -233,17 +233,17 @@ Searched the LLM, quest, dialogue, memory, and coordination crates for `Command:
 
 `astraweave-asset` is `#![forbid(unsafe_code)]`. Default features include `gltf`.
 
-`gltf_loader::load_uri_bytes` (`astraweave-asset/src/lib.rs:793-806`) accepts a `data:` base64 URI or passes the string to `std::fs::read`. `load_from_gltf_json` calls that for every buffer (`:738-743`) and `decode_image_from_gltf` calls it for image URIs (`:824-826`). No size cap, no jail, no extension allowlist.
+`gltf_loader::load_uri_bytes` (`astraweave-asset/src/lib.rs:826-842`) accepts a `data:` base64 URI in memory. A file URI goes through `safe_under` against the process current directory, and the error text is `path traversal rejected` (`:837-838`), before `std::fs::read` (`:839`). `load_from_gltf_json` calls that for every buffer URI (`:775`). `decode_image_from_gltf` (`:844`) calls `safe_under` again for a non-data image URI (`:864-866`). There is no extension allowlist.
 
-`mesh_gltf::load_gltf` (`astraweave-render/src/mesh_gltf.rs:19-21`) calls `gltf::import(path)`. That loader resolves buffer and image URIs against the file's directory. The editor calls it from `tools/aw_editor/src/viewport/engine_adapter.rs:1299` (and `:1450`, `:2841`). A mesh the editor opens is a hostile file.
+`mesh_gltf::load_gltf` (`astraweave-render/src/mesh_gltf.rs:47-50`) calls `reject_escaping_gltf_uris` (`:30-49`) before `gltf::import`. The editor calls it from `tools/aw_editor/src/viewport/engine_adapter.rs:1345` (and `:1496`, `:2891`). A mesh the editor opens is a hostile file.
 
-Cell streaming: `load_cell_from_ron` reads the whole file and `ron::from_str`s it (`astraweave-asset/src/cell_loader.rs:161-171`). `load_asset` joins `assets_root` with `asset_ref.path` and reads it (`:223-230`). `validate_mesh_format` checks a GLB magic or the substrings `"meshes"` and `"accessors"` (`:272-285`). It does not stop `../`. `astraweave-scene/src/streaming.rs:263` and `:271` call these two functions. The streamer is used by the world-partition examples and the slice runtime.
+Cell streaming: `load_cell_from_ron` reads the whole file and `ron::from_str`s it (`astraweave-asset/src/cell_loader.rs:161-171`). `load_asset` calls `safe_under(assets_root, path)` and maps a failure to `path traversal rejected` (`:224-225`) before the read (`:229`). `validate_mesh_format` checks a GLB magic or the substrings `"meshes"` and `"accessors"` (`:273-285`). That helper does not itself reject `../`; `load_asset` already did. `astraweave-scene/src/streaming.rs:263` and `:271` call these two functions. The streamer is used by the world-partition examples and the slice runtime.
 
-`decode_image_bytes` uses `image::load_from_memory` (`astraweave-asset/src/lib.rs:831-832`). `image` 0.25.8 `Limits::default` sets `max_alloc` to 512 MiB and leaves width and height unlimited (`image-0.25.8/src/io/limits.rs:49-55`). That stops a multi-gigabyte decode and still allows a 512 MiB frame stall.
+`decode_image_bytes` calls `decode_limited_image` (`astraweave-asset/src/lib.rs:875-876`). That decoder sets `max_alloc` to 64 MiB and the longest edge to 4096 (`image_limits.rs:10-12`).
 
 Pack Guard is `tools/xtask/src/fetch_assets.rs`. `is_safe_relative` (`:1473-1486`) rejects empty paths, absolute paths, `..`, roots, and prefixes. `unpack_zip` (`:1624-1646`) bails on an unsafe member name and then `std::io::copy`s the member with no uncompressed budget and no entry-count cap. A zip-bomb member that stays inside the dest directory is extracted in full. This runs in the asset fetch tool, not in the frame loop. Tests in `tools/xtask/tests/fetch_assets.rs` already cover the traversal reject.
 
-`safe_under` (`astraweave-security/src/path.rs`) is the existing jail. It is wired at three tool sites (editor scene serialization, texture gen, demo builder) and nowhere in the asset or cell loaders. Extend it. Do not write a third path checker. `is_safe_relative` stays the zip-member check; it does not look at the filesystem.
+`safe_under` (`astraweave-security/src/path.rs`) is the jail for `load_uri_bytes`, `decode_image_from_gltf`, `load_asset`, and `mesh_gltf`, and for editor scene serialization, texture gen, and the demo builder. Do not write a third path checker. `is_safe_relative` stays the zip-member check; it does not look at the filesystem.
 
 Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around the `read_to_string` + `serde_json::from_str` helpers, and `regional_archetype_mask.rs:243-244`) also take a caller path with no size cap. They are the same class of hole as cell RON. PR #215 is the terrain streamer and should pick up the same jail rather than grow a new one.
 
@@ -251,7 +251,7 @@ Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around th
 
 **SEC-ASSET-1.** Both proofs reject `../` before the read. `load_uri_bytes` calls `safe_under` and maps the error to `path traversal rejected` (`astraweave-asset/src/lib.rs:837-838`). `load_asset` does the same (`cell_loader.rs:224-225`).
 
-**SEC-ASSET-2.** Pack unzip and persona-zip manifest reads have no uncompressed cap. Image decode relies on the crate default of 512 MiB and no dimension cap.
+**SEC-ASSET-2.** Pack unzip and persona-zip manifest reads have no uncompressed cap. Image decode uses `decode_limited_image`: 64 MiB and a 4096 edge (`astraweave-asset/src/image_limits.rs:10-12`).
 
 ### Unsafe on this path
 
@@ -265,19 +265,19 @@ None in `astraweave-asset`. `meshopt` is C++ and is why the asset test binary li
 
 `aw-net-proto` is `#![forbid(unsafe_code)]`. Client input frames are HMAC-SHA256, verified before state changes, with `SignatureFailurePolicy::Kick` by default. That remediation (2026-06) still holds. Deliberate gaps that remain: no replay nonce, server-to-client messages unsigned.
 
-**SEC-NET-1.** `ServerConfig::default` binds `127.0.0.1:8788` and `127.0.0.1:8789` (`net/aw-net-server/src/lib.rs:152-166`). `admin_token` is `None` (`:163`). `admin_authorized` returns false when that token is absent (`:66-68`), and `/healthz` and `/regions` answer 401 (`:52-55`, `:59-62`). Debug and test builds still install `SigningKey::dev_default`. The key bytes are `PUBLISHED_DEV_KEY` at `net/aw-net-proto/src/lib.rs:111`. `spawn_server` refuses that key outside debug and test (`net/aw-net-server/src/lib.rs:281-286`).
+**SEC-NET-1.** `ServerConfig::default` binds `127.0.0.1:8788` and `127.0.0.1:8789` (`net/aw-net-server/src/lib.rs:152-166`) and still holds `SigningKey::dev_default()` on every build (`:161`). `admin_token` is `None` (`:163`). `admin_authorized` returns false when that token is absent (`:66-68`), and `/healthz` and `/regions` answer 401 (`:52-55`, `:59-62`). The key bytes are `PUBLISHED_DEV_KEY` at `net/aw-net-proto/src/lib.rs:111`. Release `spawn_server` refuses that key (`net/aw-net-server/src/lib.rs:281-286`). `published_dev_key_allowed` is `cfg!(any(test, debug_assertions))` (`net/aw-net-proto/src/lib.rs:114-116`). The release CLI returns `Err` when `--shared-key-hex` is absent (`net/aw-net-server/src/main.rs:103-109`). There is no `--dev-key` flag. `--ws-listen` and `--http-listen` can opt into a non-loopback address (`:78-88`).
 
 **SEC-NET-3.** `decode_msg` for `Codec::PostcardLz4` (`net/aw-net-proto/src/lib.rs:296-300`) calls `decompress_lz4_capped`. A declared uncompressed size above `MAX_LZ4_DECLARED_OUTPUT` (4 MiB, the same bound as the bincode limit below) is rejected before decompression. The WebSocket layer's own cap is tungstenite 0.28's default `max_message_size` of 64 MiB (`tungstenite-0.28.0/src/protocol/mod.rs:101`). The server does not set a tighter `WebSocketConfig`.
 
 PoC `poc_postcard_lz4_rejects_oversized_declared_output` gets `declared uncompressed size exceeds cap (16777216 > 4194304)` from `decompress_lz4_capped`.
 
-`Codec::Bincode` (`net/aw-net-proto/src/lib.rs:301-309`) decodes with `standard().with_limit::<MAX_LZ4_DECLARED_OUTPUT>()`. The limit is 4 MiB, the same bound as the LZ4 declared size (#470).
+`Codec::Bincode` (`net/aw-net-proto/src/lib.rs:301-309`) decodes with `standard().with_limit::<MAX_LZ4_DECLARED_OUTPUT>()`. The limit is 4 MiB, the same bound as the LZ4-declared size (#470).
 
 ### In-engine `astraweave-net`
 
 `#![forbid(unsafe_code)]`. `GameServer::run_ws` binds whatever address the caller passes (`astraweave-net/src/lib.rs:533-535`). Examples use `127.0.0.1`. `handle_conn` accepts the tungstenite default and `serde_json::from_str`s the whole text (`:773-777`).
 
-**SEC-NET-2 (S0-1, still true).** `ClientHello` checks `token != "dev"` only when a token is present, and only prints (`:785-788`). The name `"enemy"` maps the viewer onto the enemy entity (`:791-796`). `ClientInput` and `ClientProposePlan` take `actor_id` from the message and call `validate_and_execute` (`:823-860`). The connection is not bound to an actor. `validate_and_execute` is a gameplay check (bounds `(0,0)-(19,9)` in this server), not an authentication check. There is no per-connection byte counter below the 64 MiB websocket default.
+**SEC-NET-2.** `ClientProposePlan` and `ClientInput` discard the client `actor_id` and execute `self.player_id` (`astraweave-net/src/lib.rs:817-824`, `:851-860`). The comment at `:792-793` says the client name does not select player, companion, or enemy. `hello_token_accepted` (`:920-936`) rejects a missing or empty token. The literal `dev` is accepted only when `cfg!(any(test, debug_assertions))` is set (`:927-928`). Every other build requires `AW_GAME_TOKEN` to be non-empty, different from `dev`, and equal to the presented token (`:930-936`). `validate_and_execute` remains a gameplay check (bounds `(0,0)-(19,9)` in this server). There is no per-connection byte counter below the 64 MiB websocket default.
 
 ### IPC
 
@@ -295,19 +295,17 @@ None in `aw-net-proto`, `astraweave-net`, or `astraweave-ipc`.
 
 `.github/workflows/security-audit.yml` runs on pushes and pull requests to `main` and `develop`, and on a Sunday cron. `contents: read`. Two jobs:
 
-- `cargo deny check bans` and `cargo deny check sources` fail the job.
-- `cargo deny check advisories` turns timeout and exit code 1 into warnings (`security-audit.yml:63-76`).
-- `cargo deny check licenses` turns failure into a warning (`:82-87`).
-- `cargo audit` ignores `RUSTSEC-2020-0071` and turns exit code 1 into a warning that then `exit 0` (`:121-132`).
+- `cargo deny check` runs bans, sources, advisories, and licenses. `set -e` fails the job on the first error (`security-audit.yml:38-55`).
+- `cargo audit` is `cargo audit` with no advisory ignore in the workflow (`:72`).
 
 `deny.toml`:
 
 - Licenses: an allow list that includes MIT, Apache-2.0, BSD, CC0-1.0, ISC, Zlib, MPL-2.0, Unicode, OFL-1.1, and several font/data licenses. Private workspace crates are ignored. Confidence 0.8.
 - Bans: `openssl` and `openssl-sys` are denied. `rand_core < 0.6` is denied. `multiple-versions` is `warn`. Wildcards are `allow`.
-- Sources: unknown registry and unknown git are `warn`, not `deny`. The only allowed registry is crates.io. `allow-git` is empty.
-- Advisories: RustSec DB, 90-day staleness, `git-fetch-with-cli`. Ignored IDs are unmaintained-crate notices (`RUSTSEC-2024-0388`, `0384`, `0436`, `2025-0052`, `2023-0089`, `2025-0057`), not known exploited RCE. The file's first line still names the retired product title. Rename that comment when the file is next edited. Do not treat the ignore list as a vulnerability exception.
+- Sources: `unknown-git` is `deny`. `unknown-registry` is `warn` (`deny.toml:74-77`). The only allowed registry is crates.io. `allow-git` is empty.
+- Advisories: RustSec DB, 90-day staleness, `git-fetch-with-cli`. The `ignore` array is not empty. The file's first line still names the retired product title. Rename that comment when the file is next edited. Do not add an ID to make a check pass.
 
-**SEC-SUPPLY-1.** A new advisory or a forbidden license does not fail this workflow. `unknown-git = "warn"` allows a git dependency to land with a warning.
+**SEC-SUPPLY-1.** Bans, sources, advisories, and licenses fail the job (`security-audit.yml:38-55`). `unknown-git` is `deny`. `unknown-registry` is `warn`.
 
 **Closed by #217:** [#219](https://github.com/lazyxeon/AstraWeave/issues/219) and [#256](https://github.com/lazyxeon/AstraWeave/issues/256). `cargo deny check bans` was failing while `native-tls` pulled `openssl`. On `a66304dc`, reqwest, the websocket client, and `hf-hub` use rustls, `ort` does not enable `download-binaries`, and `Cargo.lock` has no `openssl` package. `deny.toml` still bans `openssl` and `openssl-sys`. This audit does not change those bans.
 
@@ -331,22 +329,22 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ### Save
 
-1. In `read_any_version`, reject `data_len` above a constant (proposal: 16 MiB compressed) before the `vec![0u8; len]`. Reject the LZ4 uncompressed prefix above the same order of magnitude (proposal: 64 MiB) by reading the `u32` and returning `Err` before `decompress_size_prepended`. Keep CRC and the schema match as they are.
-2. In `decode_vitals`, reject `len > 4_096` after the stride check and before `Vec::with_capacity`. 4_096 is above every vitals fixture in `astraweave-combat` (the tests use one record). If a later demo save is larger, raise the constant above that save. Do not lower it onto a fixture.
+1. In `read_any_version`, reject `data_len` above a constant (proposal: 16 MiB compressed) before the `vec![0u8; len]`. Reject the LZ4 uncompressed prefix above the same order of magnitude (proposal: 64 MiB) by reading the `u32` and returning `Err` before `decompress_size_prepended`. Keep CRC and the schema match as they are. On main the compressed cap is 4 MiB and the uncompressed cap is 16 MiB (`persistence/aw-save/src/lib.rs:367-371`, `:446-456`).
+2. In `decode_vitals`, reject `len > 4_096` after the stride check and before `Vec::with_capacity`. 4_096 is above every vitals fixture in `astraweave-combat` (the tests use one record). If a later demo save is larger, raise the constant above that save. Do not lower it onto a fixture. On main that reject is `astraweave-combat/src/save.rs:95`.
 3. On PR #205, cap `wire.cells` in `from_postcard` the same way. Leave the edit-log caps already in `aravath_runtime/src/save.rs` alone.
 4. Point text sidecars (`index.json`, dialogue TOML, cell RON) at `parse_*_limited` or the same numbers. Do not write a new JSON limiter.
 
 ### Mods and weaves
 
 1. Do the sandbox work on PR #214. Do not add a third Rhai engine on `main`.
-2. Change `parse_template_toml` so the id is range-checked as `i64` before the `u16` cast: `1..=7` stays reserved, `8..=u16::MAX` is a mod id, anything else errors. In-range ids keep today's bytes.
-3. Reject `queue_weave` origins outside the island (the greybox checkpoint uses ±2_048; use that or the terrain streamer's chunk bounds, one constant). `push_ice` then only multiplies values that cannot overflow `i32`. Do not saturate.
+2. Change `parse_template_toml` so the id is range-checked as `i64` before the `u16` cast: `1..=7` stays reserved, `8..=u16::MAX` is a mod id, anything else errors. In-range ids keep today's bytes. On main that check is `mod_queue.rs:231-234`.
+3. Reject `queue_weave` origins outside the island (the greybox checkpoint uses ±2_048; use that or the terrain streamer's chunk bounds, one constant). `push_ice` then only multiplies values that cannot overflow `i32`. Do not saturate. On main `enqueue` returns `OutsideIsland` outside ±2048.
 4. Keep `timeout_ms = 0` and the operation budget. Document `advertised_memory_bytes` as a structural ceiling, not an RSS cap. A process RSS cap is a tool-side `setrlimit` around the editor, not a sim tick.
-5. Stop `script_system` on `main` from reading `script_path` off disk. Reloads go through the queued, hashed swap #214 already describes. Until #214 merges, `ScriptLoader::load` should refuse `..`, absolute paths, and prefixes using `safe_under` or `is_safe_relative`.
+5. Stop `script_system` on `main` from reading `script_path` off disk. Reloads go through the queued, hashed swap #214 already describes. Until #214 merges, `ScriptLoader::load` should refuse `..`, absolute paths, and prefixes using `safe_under` or `is_safe_relative`. On main `ScriptLoader::load` rejects those paths (`astraweave-scripting/src/loader.rs:27-30`) and `script_system` applies `ScriptReloadQueue` without reading the filesystem (`astraweave-scripting/src/lib.rs:142-163`).
 
 ### LLM
 
-1. Add one helper, `require_loopback_http_url`, and call it from `Qwen3Ollama::new`, `OllamaChatClient::new`, `Phi3Ollama::new`, `Hermes2ProOllama::new`, and `LocalHttpClient::new`. Allow `127.0.0.1`, `localhost`, and `[::1]` only. Reject `https://api.openai.com` and any other host. Apply the same check to `OLLAMA_URL` at the example boundary.
+1. Add one helper, `require_loopback_http_url`, and call it from `Qwen3Ollama::new`, `OllamaChatClient::new`, `Phi3Ollama::new`, `Hermes2ProOllama::new`, and `LocalHttpClient::new`. Allow `127.0.0.1`, `localhost`, and `[::1]` only. Reject `https://api.openai.com` and any other host. Apply the same check to `OLLAMA_URL` at the example boundary. On main the helpers are `require_kept_model_url` and `loopback_http_client`. `allowing_remote` is the explicit opt-in.
 2. Remove the bearer-key constructor from the path that the example uses, or make `with_api_key` return an error. No cloud provider.
 3. Leave `validation_script` unread by Rhai. Bound the JSON `complete()` return (proposal: 64 KiB) before `serde_json::from_str` in the quest and world-event parsers when those parsers are wired. They are not wired today; the cap can land with the wiring PR, not before.
 4. Stop logging full prompts (S0-2) in the same change as the URL check. That does not affect replay hashes. It does affect stderr.
@@ -354,16 +352,16 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ### Assets
 
-1. Resolve glTF buffer and image URIs with `safe_under` against the glTF file's directory. `data:` URIs stay in memory and get a byte cap (proposal: 16 MiB decoded).
-2. `load_asset` refuses a path that is not `safe_under(assets_root, relative)`.
+1. Resolve glTF buffer and image URIs with `safe_under` against the glTF file's directory. `data:` URIs stay in memory and get a byte cap (proposal: 16 MiB decoded). On main `load_uri_bytes` and `mesh_gltf::reject_escaping_gltf_uris` call `safe_under` before the read. The `data:` byte cap in that sentence is not the landed image cap.
+2. `load_asset` refuses a path that is not `safe_under(assets_root, relative)`. On main that refuse is `cell_loader.rs:224-225`.
 3. `unpack_zip` and `load_persona_zip` stop after a total uncompressed budget (proposal: 512 MiB) and an entry cap (proposal: 10_000). Traversal behavior stays `is_safe_relative`.
-4. Set `image::Limits` explicitly: `max_alloc` 64 MiB, and a width and height cap (proposal: 8192) on the glTF image decode. Editor loads of the current CC0 packs must be measured first; if a pack image is larger, raise the constant above that image rather than decoding it unbounded.
+4. Set `image::Limits` explicitly: `max_alloc` 64 MiB, and a width and height cap (proposal: 8192) on the glTF image decode. Editor loads of the current CC0 packs must be measured first; if a pack image is larger, raise the constant above that image rather than decoding it unbounded. On main `decode_limited_image` uses 64 MiB and a 4096 edge (`astraweave-asset/src/image_limits.rs:10-12`).
 
 ### Networking
 
-1. `ServerConfig::default` binds `127.0.0.1`. Starting on `0.0.0.0` requires an explicit flag. `SigningKey::dev_default` refuses to boot unless a `--dev-key` flag is set. Production loads the key from the environment or the secrets crate. This changes who can connect. It does not change the bytes of a signed frame produced with a real key.
-2. `decode_msg` uses the same uncompressed cap as `aw-save`.
-3. `GameServer::handle_conn` sets `WebSocketConfig.max_message_size` to 1 MiB, requires a real authenticator before any `ClientInput`, and ignores `actor_id` that is not the id bound at hello. The `"dev"` string check goes away.
+1. `ServerConfig::default` binds `127.0.0.1`. Starting on `0.0.0.0` requires an explicit flag. `SigningKey::dev_default` refuses to boot unless a `--dev-key` flag is set. Production loads the key from the environment or the secrets crate. This changes who can connect. It does not change the bytes of a signed frame produced with a real key. On main the default bind is loopback and release `spawn_server` refuses `dev_default()`. `ServerConfig::default` still holds that key on every build. There is no `--dev-key` flag. `--ws-listen` and `--http-listen` can opt into non-loopback.
+2. `decode_msg` uses the same uncompressed cap as `aw-save`. On main the message cap is 4 MiB. `aw-save`'s uncompressed cap stays 16 MiB.
+3. `GameServer::handle_conn` sets `WebSocketConfig.max_message_size` to 1 MiB, requires a real authenticator before any `ClientInput`, and ignores `actor_id` that is not the id bound at hello. The `"dev"` string check goes away. On main `actor_id` is ignored and `hello_token_accepted` applies. The 1 MiB message cap is not set.
 4. `astraweave-ipc::handle_conn` uses the same 1 MiB cap. It stays on loopback in the example.
 
 ### Supply chain
@@ -426,7 +424,7 @@ Open feature PRs that touch the same files, and the order to use:
 
 1. **Review this draft.** Open the issues in the table below. The user turns on secret scanning and push protection.
 2. **PR #217 / issue #219** merged as `a66304dc`. The openssl ban stayed. The lockfile no longer contains the package. A later security change can edit `deny.toml` without fighting that branch.
-3. **Small `main` PR: parsers that exist today.** `aw-save` length cap, `decode_vitals` count cap, `decode_msg` LZ4 cap, `safe_under` on glTF URIs and `load_asset`, `ScriptLoader` path reject, loopback check on the LLM clients, `GameServer` message cap. No sandbox rewrite. Re-run replay fixtures.
+3. **Small `main` PR: parsers that exist today.** `aw-save` length cap, `decode_vitals` count cap, `decode_msg` LZ4 cap, `safe_under` on glTF URIs and `load_asset`, `ScriptLoader` path reject, loopback check on the LLM clients, `GameServer` message cap. No sandbox rewrite. Re-run replay fixtures. Those caps are on main except the `GameServer` 1 MiB message cap.
 4. **PR #214 before any new sandbox work.** Fix SEC-MOD-2 (id cast) and keep the old `script_system` from reading the disk, on that branch. It already has the fuel limit, the allowlist, and `timeout_ms = 0`.
 5. **PR #252 rebases onto #214** if both are still open, because both carry `astraweave-weaving/src/mod_queue.rs`. Fix SEC-WEAVE-1 (origin range) once, on the branch that owns `push_ice` after the rebase. Do not fork `parse_template_toml`.
 6. **PR #205 rebases onto step 3** so the greybox checkpoint inherits the container cap. Its edit-log parser is already bounded. Add the scar-cell cap (SEC-SAVE-3) on #205, not on `main`. Child branches of #205 (#275, #264, #263, #244) rebase after #205 does.
@@ -455,8 +453,8 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 | SEC-LLM-3 | Full prompts are logged; sanitizer prefixes `SAFE:` | `@lazyxeon` | Delete the prompt dump. Leave the sanitizer dormant or make it actually reject. Drop `openai.com` and `anthropic.com` from the default domain list. | S0-2 |
 | SEC-ASSET-1 | glTF and cell paths accept `..` | `@lazyxeon` | `safe_under` for URIs and `load_asset`. Turn both asset PoCs green. | Yes. The proof is green. |
 | SEC-ASSET-2 | Zip and image bombs have no tight budget | `@lazyxeon` | Uncompressed and entry caps on `unpack_zip` and persona zips. Explicit `image::Limits` after measuring CC0 pack sizes. | No |
-| SEC-NET-1 | Server default is `0.0.0.0` plus the published dev key | `@lazyxeon` | Loopback unless flagged. Refuse `dev_default` unless `--dev-key`. | Extends the 2025 plan's admin-port note |
-| SEC-NET-2 | In-engine server trusts the client | `@lazyxeon` | Authenticate, bind `actor_id`, 1 MiB message cap. Remove the `"dev"` print. | S0-1 |
+| SEC-NET-1 | Server default is `0.0.0.0` plus the published dev key | `@lazyxeon` | Default binds loopback. Release `spawn_server` refuses `dev_default()`. `--ws-listen` and `--http-listen` can opt into non-loopback. There is no `--dev-key` flag. | Yes. `ServerConfig::default` still holds `dev_default()` on every build (`net/aw-net-server/src/lib.rs:161`). |
+| SEC-NET-2 | In-engine server trusts the client | `@lazyxeon` | Ignore client `actor_id`. `hello_token_accepted` requires `AW_GAME_TOKEN` outside debug and test. | Yes for actor ids and the hello token. No per-connection byte counter below the 64 MiB websocket default. |
 | SEC-NET-3 | `decode_msg` honors the attacker's LZ4 size | `@lazyxeon` | The proof is green at 4 MiB. `aw-save`'s uncompressed cap stays 16 MiB. | Yes. The proof is green. |
 | SEC-SUPPLY-1 | Advisory and license `cargo deny` failures were warnings | `@lazyxeon` | `security-audit.yml` fails the job on bans, sources, advisories, and licenses. `unknown-git` is `deny`. `unknown-registry` is `warn`. #219 is closed. | #219 covered the openssl ban failure |
 | SEC-SUPPLY-2 | Secret scanning and push protection | `@lazyxeon` | Enabled on the repository. No code change. Do not refile. | Done |
