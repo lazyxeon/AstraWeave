@@ -57,9 +57,21 @@ jobs:
         continue-on-error: true
       
       - name: Install PowerShell
+        # ubuntu-latest already has pwsh on PATH (7.6.6 in
+        # /opt/microsoft/powershell/7). apt has no `powershell` package on
+        # 26.04, which is why run 40438097478 failed. Do not extract a
+        # tarball over that prefix: it downgrades the image binary and
+        # leaves the newer files in place.
         run: |
+          set -euo pipefail
+          if command -v pwsh >/dev/null; then
+            pwsh -NoLogo -Command '$PSVersionTable.PSVersion.ToString()'
+            exit 0
+          fi
           sudo apt-get update
           sudo apt-get install -y powershell
+          command -v pwsh
+          pwsh -NoLogo -Command '$PSVersionTable.PSVersion.ToString()'
       
       - name: Export Benchmark JSONL
         run: |
