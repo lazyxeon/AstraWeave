@@ -2259,6 +2259,27 @@ In progress
     }
 
     #[test]
+    fn br_alt_is_a_frame_figure() {
+        for prose in [
+            "<br alt=\"3.117 ms\">",
+            "<div>\n<br alt=\"3.117 ms\">\n</div>",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(rendered.contains("3.117 ms"), "{prose}: {rendered:?}");
+            assert!(
+                !rendered.contains("alt="),
+                "the attribute is parsed, not copied: {prose}: {rendered:?}"
+            );
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
     fn slash_or_ascii_whitespace_starts_an_alt_attribute() {
         for gap in ["/", " ", "\t", "\n", "\r", "\u{000c}"] {
             let prose = format!("<div>\n<img{gap}alt=\"3.117 ms\">\n</div>");

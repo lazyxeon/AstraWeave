@@ -19,7 +19,8 @@
 //! unclosed `<!--` consumes the rest of that HTML chunk. A block comment's
 //! chunk runs through EOF, including a blank line. A `br` tag becomes
 //! U+2028, which splits the word around it and still leaves the surrounding
-//! sentence on one `str::lines` line. Link labels are the link's own text.
+//! sentence on one `str::lines` line. Its alt text stays. A `/` before `alt`
+//! on that tag does not. Link labels are the link's own text.
 //! Reference definitions are not events. Footnotes are on: a referenced
 //! definition is included, an unreferenced one is omitted, and a defined
 //! reference writes its digits as superscripts (or U+00B9 when the label has
@@ -317,9 +318,11 @@ fn push_html_visible(out: &mut String, html: &str) {
             if let Some(end) = tag_end(bytes, i) {
                 let tag = &html[i..end];
                 if is_br_tag(tag) {
+                    // A slash before `alt` stays deferred. Whitespace does not.
+                    push_alts(out, tag, false);
                     out.push(LINE_BREAK);
                 } else {
-                    push_alts(out, tag);
+                    push_alts(out, tag, true);
                 }
                 i = end;
                 continue;
@@ -403,14 +406,14 @@ fn is_br_tag(tag: &str) -> bool {
         .is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':'))
 }
 
-fn push_alts(out: &mut String, tag: &str) {
+fn push_alts(out: &mut String, tag: &str, slash_boundary: bool) {
     let bytes = tag.as_bytes();
     if bytes.get(1) == Some(&b'/') {
         return;
     }
     let mut j = 1;
     while j < bytes.len() {
-        if let Some((start, end)) = alt_at(bytes, j) {
+        if let Some((start, end)) = alt_at(bytes, j, slash_boundary) {
             if start < end {
                 out.push(' ');
                 push_decoded_text(out, &tag[start..end]);
@@ -423,8 +426,8 @@ fn push_alts(out: &mut String, tag: &str) {
     }
 }
 
-fn alt_at(bytes: &[u8], j: usize) -> Option<(usize, usize)> {
-    if !is_attr_name(bytes, j, b"alt") {
+fn alt_at(bytes: &[u8], j: usize, slash_boundary: bool) -> Option<(usize, usize)> {
+    if !is_attr_name(bytes, j, b"alt", slash_boundary) {
         return None;
     }
     let mut p = j + 3;
@@ -465,10 +468,11 @@ fn alt_at(bytes: &[u8], j: usize) -> Option<(usize, usize)> {
     Some((start, end))
 }
 
-/// `name` starts at `j`. The byte before it is `/` or ASCII whitespace
-/// (tab, line feed, form feed, carriage return, or space).
-fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
-    if j == 0 || !is_attr_boundary(bytes[j - 1]) {
+/// `name` starts at `j`. The byte before it is ASCII whitespace, or `/`
+/// when `slash_boundary` is set. Whitespace is tab, line feed, form feed,
+/// carriage return, or space.
+fn is_attr_name(bytes: &[u8], j: usize, name: &[u8], slash_boundary: bool) -> bool {
+    if j == 0 || !is_attr_boundary(bytes[j - 1], slash_boundary) {
         return false;
     }
     let end = j + name.len();
@@ -484,8 +488,8 @@ fn is_attr_name(bytes: &[u8], j: usize, name: &[u8]) -> bool {
     }
 }
 
-fn is_attr_boundary(b: u8) -> bool {
-    b == b'/' || b.is_ascii_whitespace()
+fn is_attr_boundary(b: u8, slash_boundary: bool) -> bool {
+    b.is_ascii_whitespace() || (slash_boundary && b == b'/')
 }
 
 fn push_decoded_text(out: &mut String, raw: &str) {
