@@ -82,7 +82,7 @@ The scar blob beside it (`astraweave-veil/src/save_blob.rs:65-80` on the same co
 
 **SEC-SAVE-1.** `read_any_version` (`persistence/aw-save/src/lib.rs:362-376`) rejects a declared payload above 4 MiB before `vec![0u8; parsed.len]` (`:367-373`). `write_awsv` still casts `payload.len() as u32` (`:318`), so a legitimate save larger than 4 GiB would wrap; that is a separate integrity bug, not the hostile-input one. `decompress_lz4_capped` (`:446-456`) rejects an LZ4-declared uncompressed size above 16 MiB before `decompress_size_prepended`. Postcard after an accepted payload still honors lengths inside the blob.
 
-PoC `poc_awsv_rejects_oversized_declared_payload` rejects an 8 MiB `data_len` at the 4 MiB compressed cap. It does not reach the 16 MiB uncompressed check.
+PoC `poc_awsv_rejects_oversized_declared_payload` rejects an 8 MiB `data_len` at the 4 MiB compressed cap. `declared_uncompressed_size_above_the_cap_is_rejected_before_lz4_allocates` in `persistence/aw-save/tests/uncompressed_cap.rs` locks the 16 MiB uncompressed reject in `decompress_lz4_capped`.
 
 **SEC-SAVE-2.** `decode_vitals` (`astraweave-combat/src/save.rs:85-97`) rejects `len > MAX_VITALS_RECORDS` (4,096 at `:14`) before `Vec::with_capacity`. 4,096 records that match the stride still decode. 4,097 do not. `encode_vitals` casts `records.len() as u32` (`:70`), which truncates a huge in-memory slice.
 
@@ -441,7 +441,7 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 
 | ID | Title to open | Owner | Plan | Already tracked? |
 |---|---|---|---|---|
-| SEC-SAVE-1 | Cap `.awsv` declared length and LZ4 output | `@lazyxeon` | Reject `data_len` and the LZ4 `u32` before allocation. Schema stays 2. Turn `poc_awsv_rejects_oversized_declared_payload` green. | Yes for the 4 MiB compressed cap. The 16 MiB uncompressed cap is implemented in `decompress_lz4_capped` (`persistence/aw-save/src/lib.rs:446-456`) and no fixture exercises it yet. |
+| SEC-SAVE-1 | Cap `.awsv` declared length and LZ4 output | `@lazyxeon` | Reject `data_len` and the LZ4 `u32` before allocation. Schema stays 2. Turn `poc_awsv_rejects_oversized_declared_payload` green. | Yes for the 4 MiB compressed cap. The 16 MiB uncompressed cap is implemented in `decompress_lz4_capped` (`persistence/aw-save/src/lib.rs:446-456`). Its regression guard is `declared_uncompressed_size_above_the_cap_is_rejected_before_lz4_allocates` in `persistence/aw-save/tests/uncompressed_cap.rs`. |
 | SEC-SAVE-2 | Cap `combat_vitals` record count at 4_096 | `@lazyxeon` | Reject in `decode_vitals` after the stride check. Raise the constant only if a real fixture is larger. Turn `poc_vitals_rejects_more_than_4096_records` green. | Yes. The proof is green. |
 | SEC-SAVE-3 | Cap scar-field cells on PR #205 | `@lazyxeon` | Cap `wire.cells` in `from_postcard` on the greybox branch. Do not copy the parser to `main`. | No |
 | SEC-MOD-1 | Script path read and raw host pointers | `@lazyxeon` | On #214, keep fuel and `timeout_ms = 0`. Stop the old `script_system` from reading `script_path`. Leave `PhysicsProxy` off the mod tick. | S0-3 is the dormant allowlist; this row is the live scripting crate |
