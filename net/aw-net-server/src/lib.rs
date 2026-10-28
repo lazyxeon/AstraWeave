@@ -124,9 +124,9 @@ impl FromStr for SignatureFailurePolicy {
 
 /// Full server configuration. `Default` listens on loopback (`127.0.0.1:8788`
 /// and `127.0.0.1:8789`), with TLS on, the dev cert paths, sled at
-/// `aw_net_server_db`, and `SignatureFailurePolicy::Kick`. Debug and test
-/// builds still install [`SigningKey::dev_default`]. A release build that
-/// reaches [`spawn_server`] with that key is refused.
+/// `aw_net_server_db`, and `SignatureFailurePolicy::Kick`, and assigns
+/// [`SigningKey::dev_default`] on every build. Release [`spawn_server`]
+/// refuses that key.
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
     /// WebSocket listen address.
