@@ -4,13 +4,15 @@
 //! emitted it, so a comment or a character reference inside a code span or a
 //! fence stays. A fenced or indented code block is `Text` inside `CodeBlock`,
 //! and those characters stay too. Other `Text` decodes a numeric character
-//! reference, including any run of leading zeros, and leaves a named
-//! reference as pulldown emitted it.
+//! reference that ends in `;`, including any run of leading zeros, and
+//! leaves a named reference as pulldown emitted it.
 //! A named reference pulldown already decoded is not decoded again. HTML
-//! events are the only place a comment is removed. There a semicolon form is
-//! decoded, and so is an HTML5 legacy name with no semicolon. Alt text uses
-//! that legacy set too, except when the next byte is `=` or an ASCII
-//! alphanumeric. `<!-->` and `<!--->` are empty closed comments, and an
+//! events are the only place a comment is removed. There a numeric reference
+//! follows the HTML tokenizer: the semicolon is optional, 0 is U+FFFD, and
+//! 0x80–0x9F use the Windows-1252 row. A semicolon name is decoded, and so
+//! is an HTML5 legacy name with no semicolon. Alt text uses that numeric
+//! rule and that legacy set, except a legacy name is not consumed when the
+//! next byte is `=` or an ASCII alphanumeric. `<!-->` and `<!--->` are empty closed comments, and an
 //! unclosed `<!--` consumes the rest of that HTML chunk. A block comment's
 //! chunk runs through EOF, including a blank line. A `br` tag becomes
 //! U+2028, which splits the word around it and still leaves the surrounding
@@ -30,8 +32,10 @@ pub(crate) fn render_visible(input: &str) -> String {
     drive(input, false).body
 }
 
-/// Visible text from the rendered `in progress` heading through the next
-/// rendered h2. A `## ` line inside a fence or a comment is not that heading.
+/// Visible text from the rendered h2 whose folded text is exactly
+/// `in progress` through the next rendered h2. Setext and ATX both count.
+/// A heading that only contains those words does not open the section. A
+/// `## ` line inside a fence or a comment is not a heading.
 pub(crate) fn in_progress_section(input: &str) -> Option<String> {
     let walked = drive(input, true);
     walked.found.then_some(walked.body)
@@ -154,7 +158,7 @@ impl Walk {
         }
         if self.track && ended_h2 && matches!(self.sink, Sink::Heading) {
             let folded = crate::fold_visible_text(&self.heading);
-            if folded.to_ascii_lowercase().contains("in progress") {
+            if folded.trim().eq_ignore_ascii_case("in progress") {
                 self.body.push_str(&self.heading);
                 self.sink = Sink::Body;
                 self.found = true;
@@ -478,10 +482,15 @@ fn push_decoded_text(out: &mut String, raw: &str) {
     }
 }
 
-/// A semicolon form, or an HTML5 legacy name with no semicolon.
-/// In an attribute, a legacy name is not consumed when the next byte is
-/// `=` or an ASCII alphanumeric.
+/// An HTML numeric reference (semicolon optional), a semicolon name, or an
+/// HTML5 legacy name with no semicolon. In an attribute, a legacy name is
+/// not consumed when the next byte is `=` or an ASCII alphanumeric.
 fn push_char_ref(out: &mut String, bytes: &[u8], i: usize, in_attribute: bool) -> Option<usize> {
+    if bytes.get(i + 1) == Some(&b'#') {
+        let (text, next) = decode_html_numeric_ref(bytes, i)?;
+        out.push_str(&text);
+        return Some(next);
+    }
     if let Some((text, next)) = decode_char_ref(bytes, i) {
         out.push_str(&text);
         return Some(next);
@@ -495,14 +504,10 @@ fn push_char_ref(out: &mut String, bytes: &[u8], i: usize, in_attribute: bool) -
     Some(i + 1 + len)
 }
 
-/// A numeric or HTML5 named character reference that ends in `;`.
-/// Leading zeros do not count toward the six hex or seven decimal digits.
+/// An HTML5 named character reference that ends in `;`.
 fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') {
         return None;
-    }
-    if bytes.get(i + 1) == Some(&b'#') {
-        return decode_numeric_ref(bytes, i);
     }
     let rest = &bytes[i + 1..];
     if !rest.first().is_some_and(|b| b.is_ascii_alphabetic()) {
@@ -523,6 +528,79 @@ fn decode_char_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     Some((expanded.to_string(), i + 1 + len + 1))
 }
 
+/// HTML numeric character reference. The semicolon is optional. Zero and a
+/// value that is not a scalar become U+FFFD. 0x80–0x9F use the Windows-1252
+/// row from the HTML numeric end state.
+fn decode_html_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
+    if bytes.get(i) != Some(&b'&') || bytes.get(i + 1) != Some(&b'#') {
+        return None;
+    }
+    let rest = &bytes[i + 1..];
+    let hex = matches!(rest.get(1), Some(b'x' | b'X'));
+    let digits_at = if hex { 2 } else { 1 };
+    let base: u32 = if hex { 16 } else { 10 };
+    let mut n: u32 = 0;
+    let mut seen = 0usize;
+    let mut overflow = false;
+    for &b in rest.get(digits_at..)? {
+        let dig = if hex {
+            match b {
+                b'0'..=b'9' => b - b'0',
+                b'a'..=b'f' => b - b'a' + 10,
+                b'A'..=b'F' => b - b'A' + 10,
+                _ => break,
+            }
+        } else if b.is_ascii_digit() {
+            b - b'0'
+        } else {
+            break;
+        };
+        seen += 1;
+        if overflow {
+            continue;
+        }
+        match n
+            .checked_mul(base)
+            .and_then(|value| value.checked_add(u32::from(dig)))
+        {
+            Some(next) if next <= 0x10_FFFF => n = next,
+            _ => overflow = true,
+        }
+    }
+    if seen == 0 {
+        return None;
+    }
+    let mut end = i + 1 + digits_at + seen;
+    if bytes.get(end) == Some(&b';') {
+        end += 1;
+    }
+    let ch = if overflow {
+        '\u{FFFD}'
+    } else {
+        html_numeric_char(n)
+    };
+    Some((ch.to_string(), end))
+}
+
+fn html_numeric_char(n: u32) -> char {
+    const WINDOWS_1252: [char; 32] = [
+        '\u{20AC}', '\u{0081}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}',
+        '\u{2021}', '\u{02C6}', '\u{2030}', '\u{0160}', '\u{2039}', '\u{0152}', '\u{008D}',
+        '\u{017D}', '\u{008F}', '\u{0090}', '\u{2018}', '\u{2019}', '\u{201C}', '\u{201D}',
+        '\u{2022}', '\u{2013}', '\u{2014}', '\u{02DC}', '\u{2122}', '\u{0161}', '\u{203A}',
+        '\u{0153}', '\u{009D}', '\u{017E}', '\u{0178}',
+    ];
+    if n == 0 || (0xD800..=0xDFFF).contains(&n) {
+        return '\u{FFFD}';
+    }
+    if (0x80..=0x9F).contains(&n) {
+        return WINDOWS_1252[(n - 0x80) as usize];
+    }
+    char::from_u32(n).unwrap_or('\u{FFFD}')
+}
+
+/// Markdown `Text`. A semicolon is required. Leading zeros do not count
+/// toward the six hex or seven decimal digits.
 fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') || bytes.get(i + 1) != Some(&b'#') {
         return None;

@@ -62,15 +62,17 @@
 //! `README.md` must list open pulls as in progress and must not contain a
 //! frame figure: a number followed by `ms`, `msec`, `millisecond`, or
 //! `milliseconds`, including the fullwidth block U+FF01–U+FF5E. The same
-//! render supplies that scan. The in-progress section ends at the next
-//! rendered h2, and its issue numbers are read from that render. The
+//! render supplies that scan. The in-progress section is the rendered h2
+//! whose folded text is exactly `in progress`, setext or ATX, and it ends
+//! at the next rendered h2. Its issue numbers are read from that section
+//! after the same fold. The
 //! in-progress words and the retired title are read from that render after
 //! the fold. Quoted and unquoted `alt` text stays. A
 //! non-comment `<` that never reaches `>` is text. A backslash immediately
-//! before a newline is a hard break. In raw HTML and in alt text, numeric
-//! character references allow any run of leading zeros, up to six significant
-//! hexadecimal digits or seven significant decimal digits, and they require
-//! a semicolon. Named references are the HTML5 table in `html_entities`, and
+//! before a newline is a hard break. In raw HTML and in alt text, a numeric
+//! character reference follows the HTML tokenizer: the semicolon is
+//! optional, leading zeros do not count, 0 is U+FFFD, and 0x80–0x9F use the
+//! Windows-1252 row. Named references are the HTML5 table in `html_entities`, and
 //! the 106 legacy names in `html_legacy` need no semicolon. Markdown text
 //! keeps that semicolon rule for names.
 //! Invisible characters are the
@@ -520,7 +522,8 @@ fn front_door_errors(
     match in_progress_body(readme) {
         None => errors.push(format!("{README_REL}: missing a '## In progress' section")),
         Some(body) => {
-            let found = issue_numbers(&body);
+            let visible_body = fold_visible_text(&body);
+            let found = issue_numbers(&visible_body);
             for issue in IN_PROGRESS_ISSUES {
                 if !found.iter().any(|token| token == issue) {
                     errors.push(format!("{README_REL}: in-progress section missing {issue}"));
@@ -533,7 +536,6 @@ fn front_door_errors(
                     ));
                 }
             }
-            let visible_body = fold_visible_text(&body);
             for word in ["shipped", "landed", "merged"] {
                 if has_bare_word(&visible_body, word) {
                     errors.push(format!(
@@ -2098,5 +2100,156 @@ mod tests {
 ";
         let errors = front_door_errors(readme, &sample_status(), &sample_workflow(), &[]);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn in_progress_heading_is_exact_on_setext_and_atx() {
+        for readme in [
+            "\
+Not in progress
+---
+#334 are in progress. #366 are in progress. #383 are in progress.
+
+## In progress
+#999 this shipped
+",
+            "\
+## Not in progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+
+## In progress
+#999 this shipped
+",
+        ] {
+            let errors = front_door_errors(readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("#999")),
+                "{readme}: {errors:?}"
+            );
+            assert!(
+                errors.iter().any(|error| error.contains("shipped")),
+                "{readme}: {errors:?}"
+            );
+        }
+        let setext = "\
+In progress
+---
+#334 are in progress. #366 are in progress. #383 are in progress.
+## Docs
+";
+        let errors = front_door_errors(setext, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| {
+                error.contains("missing") || error.contains("#999") || error.contains("shipped")
+            }),
+            "{errors:?}"
+        );
+        for readme in [
+            "\
+In progress
+===
+#334 are in progress. #366 are in progress. #383 are in progress.
+",
+            "\
+### In progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+",
+        ] {
+            let errors = front_door_errors(readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("missing")),
+                "{readme}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn html_numeric_refs_follow_the_tokenizer() {
+        for prose in [
+            "<div>\n3.117&#x20ms\n</div>",
+            "<div>\n3.117&#xa0ms\n</div>",
+            "<div>\n3.117&#x00000020ms\n</div>",
+            "<div>\n3.117&#00000032ms\n</div>",
+            "<img alt=\"3.117&#xa0ms\">",
+            "<img alt=\"3.117&#32ms\">",
+        ] {
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+        // `&#32ms` left literal is the figure `32ms`, because `#` is not a
+        // word byte. The render check locks the semicolon rule for that spelling.
+        for prose in [
+            "The frame is 3.117&#32ms.",
+            "The frame is 3.117&#x20ms.",
+            "The frame is 3.117&#x00000020ms.",
+            "The frame is `3.117&#32ms`.",
+            "```\n3.117&#32ms\n```",
+        ] {
+            let entity = if prose.contains("&#x00000020") {
+                "&#x00000020"
+            } else if prose.contains("&#x20") {
+                "&#x20"
+            } else {
+                "&#32"
+            };
+            let rendered = rendered::render_visible(prose);
+            assert!(
+                rendered.contains(entity),
+                "markdown text and code keep {entity} when it has no semicolon: {rendered:?}"
+            );
+        }
+        for prose in [
+            "The frame is 3.117&#x20ms.",
+            "The frame is 3.117&#x00000020ms.",
+            "The frame is `3.117&#x20ms`.",
+            "```\n3.117&#x20ms\n```",
+            "```\n<div>3.117&#x20ms</div>\n```",
+            "<div>\n3.117&#0;ms\n</div>",
+            "<div>\n3.117&#x0;ms\n</div>",
+            "<div>\n3.117&#x85;ms\n</div>",
+            "<div>\n3.117&#x85ms\n</div>",
+        ] {
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                !errors.iter().any(|error| error.contains("frame figure")),
+                "{prose}: {errors:?}"
+            );
+        }
+        for entity in ["&#x92", "&#146"] {
+            let status = sample_status().replace(
+                "A later sample is 3.117 ms.",
+                &format!("\n<div>The median GPU frame isn{entity}t 3.117 ms.</div>"),
+            );
+            let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("3.117 ms")),
+                "{entity}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn folded_issue_numbers_count_hidden_marks() {
+        for spelling in [
+            "#&#x200b;999",
+            "#&shy;999",
+            "#&zwj;999",
+            "\u{FF03}999",
+            "#\u{FF19}\u{FF19}\u{FF19}",
+        ] {
+            let readme = format!(
+                "## In progress\n#334 are in progress. #366 are in progress. #383 are in progress.\n{spelling}\n## Docs\n"
+            );
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("#999")),
+                "{spelling}: {errors:?}"
+            );
+        }
     }
 }

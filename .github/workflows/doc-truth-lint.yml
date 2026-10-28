@@ -17,9 +17,11 @@ name: Doc-Truth Lint
 # phrases, CC0, GTX 1660 Ti, and Aravath. Inline tags and emphasis are stripped
 # before the word scan. Replay names are read from the pulldown-cmark render.
 # Code stays as that parser emitted it. A numeric character reference in
-# text is decoded, including any run of leading zeros. A named reference in
-# markdown text still needs a semicolon. Raw HTML and alt text also accept
-# an HTML5 legacy name with no semicolon. Footnotes are on: a referenced
+# text is decoded when it ends in a semicolon, including any run of leading
+# zeros. A named reference in markdown text still needs a semicolon. Raw HTML
+# and alt text decode a numeric reference with an optional semicolon: 0 is
+# U+FFFD, and 0x80-0x9F use the Windows-1252 row. They also accept an HTML5
+# legacy name with no semicolon. Footnotes are on: a referenced
 # definition is scanned, an unreferenced one is omitted, and a defined
 # reference writes a superscript digit. An
 # unclosed <!-- hides through EOF, including a blank line. A comment inside
@@ -32,8 +34,9 @@ name: Doc-Truth Lint
 # unicode_categories 0.1.1, and the Unicode 15 Cf and Mn gaps that crate misses.
 # A non-comment < that never reaches > stays text. A backslash before a newline
 # is a hard break. A single tilde and an underscore between word characters
-# stay. The in-progress section ends at the next rendered heading. Its issue
-# numbers are read from that render. The in-progress words and the retired
+# stay. The in-progress heading is the rendered h2 whose folded text is
+# exactly "in progress", setext or ATX. Its issue numbers are read from that
+# section after the same fold. The in-progress words and the retired
 # game title are read from that render after the same fold as the frame gate,
 # including U+200B, U+200D, U+00AD, and fullwidth forms.
 # Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
