@@ -57,7 +57,7 @@ Join our Discord server for real-time chat:
 | Detailed technical questions | GitHub Discussions |
 | Bug reports | GitHub Issues |
 | Feature requests | GitHub Issues or Discussions |
-| Security issues | security@astraweave.dev (private) |
+| Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 
 ### How to Ask Good Questions
 
@@ -268,7 +268,7 @@ Thank you to our sponsors! Interested in sponsoring AstraWeave? Contact sponsors
 | Purpose | Contact |
 |---------|---------|
 | General inquiries | hello@astraweave.dev |
-| Security issues | security@astraweave.dev |
+| Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 | Sponsorship | sponsorship@astraweave.dev |
 | Press | press@astraweave.dev |
 

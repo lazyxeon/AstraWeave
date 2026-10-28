@@ -1256,7 +1256,7 @@ trustworthy. No evidence of malicious use has been found.
 - 2025-11-15 08:00 UTC: All assets re-signed
 
 ## Contact
-security@astraweave.dev
+https://github.com/lazyxeon/AstraWeave/security/advisories/new
 ```
 
 ---
