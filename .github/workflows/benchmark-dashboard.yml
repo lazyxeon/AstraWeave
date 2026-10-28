@@ -45,7 +45,10 @@ jobs:
       - name: Run Benchmarks (Subset)
         run: |
           # Run core benchmarks (limit to 30 min)
-          cargo bench -p astraweave-core --bench ecs_benchmarks || true
+          # core_benchmarks is the astraweave-core target. ecs_benchmarks
+          # lives on astraweave-ecs and is not this package, so the old
+          # invocation wrote no world_creation row.
+          cargo bench -p astraweave-core --bench core_benchmarks || true
           cargo bench -p astraweave-ai --bench ai_core_loop || true
           cargo bench -p astraweave-behavior --bench goap_planning || true
           cargo bench -p astraweave-behavior --bench behavior_tree || true
