@@ -765,6 +765,18 @@ mod ndjson_scan_tests {
     }
 
     #[test]
+    fn header_wait_uses_the_lifetime_when_idle_is_longer() {
+        let idle = std::time::Duration::from_secs(400);
+        let lifetime_left = std::time::Duration::from_secs(300);
+        assert_eq!(header_wait(idle, lifetime_left), lifetime_left);
+        assert_eq!(
+            header_wait(std::time::Duration::from_secs(1), lifetime_left),
+            std::time::Duration::from_secs(1)
+        );
+        assert!(header_wait(idle, std::time::Duration::ZERO).is_zero());
+    }
+
+    #[test]
     fn budgets_keep_exactly_the_cap() {
         let mut seen = 0usize;
         assert!(note_stream_bytes(&mut seen, MAX_MODEL_STREAM_BYTES).is_ok());
@@ -976,7 +988,8 @@ pub fn stream_read_idle() -> std::time::Duration {
 /// Wait `idle` for response headers. The body is not covered.
 ///
 /// `RequestBuilder::timeout` would also cancel a chunked body. Callers that
-/// stream after the headers use [`with_read_idle`] for each read.
+/// stream after the headers use [`bytes_within_deadline`]. A call that has
+/// a stream lifetime passes [`header_wait`] so this wait cannot outlive it.
 #[cfg(feature = "ollama")]
 pub async fn send_for_headers(
     idle: std::time::Duration,
@@ -989,38 +1002,57 @@ pub async fn send_for_headers(
     }
 }
 
-/// Stop a chunked body on the first read error or on `idle` of silence.
-///
-/// One error is yielded, then the stream ends, so a caller can keep bytes
-/// already produced. This is not a total deadline: chunks that keep arriving
-/// are not cut off.
+/// Header wait: the idle limit, or the time still left in the stream
+/// lifetime, whichever is shorter.
 #[cfg(feature = "ollama")]
-pub fn with_read_idle<S, T, E>(
-    inner: S,
+pub fn header_wait(
     idle: std::time::Duration,
-) -> impl futures_util::Stream<Item = Result<T>>
-where
-    S: futures_util::Stream<Item = Result<T, E>> + Unpin,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    use futures_util::StreamExt;
-    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| {
-        let idle = idle;
-        async move {
-            if stop {
-                return None;
-            }
-            match tokio::time::timeout(idle, inner.next()).await {
-                Ok(Some(Ok(item))) => Some((Ok(item), (inner, false))),
-                Ok(Some(Err(err))) => Some((
-                    Err(anyhow::Error::new(err).context("stream body error")),
-                    (inner, true),
-                )),
-                Ok(None) => None,
-                Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
-            }
+    lifetime_left: std::time::Duration,
+) -> std::time::Duration {
+    idle.min(lifetime_left)
+}
+
+/// `default`, or a shorter `OLLAMA_STREAM_LIFETIME_MS`.
+///
+/// A missing, zero, non-numeric, or longer value keeps `default`. The
+/// variable cannot extend the call.
+#[cfg(feature = "ollama")]
+pub fn stream_call_lifetime(default: std::time::Duration) -> std::time::Duration {
+    let Ok(raw) = std::env::var("OLLAMA_STREAM_LIFETIME_MS") else {
+        return default;
+    };
+    let Ok(ms) = raw.parse::<u64>() else {
+        return default;
+    };
+    let requested = std::time::Duration::from_millis(ms);
+    if requested.is_zero() || requested >= default {
+        default
+    } else {
+        requested
+    }
+}
+
+/// Wait for headers, stopping at `lifetime_left` when that is shorter
+/// than `idle`.
+///
+/// A timeout caused by the lifetime is `streaming lifetime deadline`.
+/// A timeout caused by `idle` stays `model headers idle timeout`.
+#[cfg(feature = "ollama")]
+pub async fn send_headers_for_call(
+    idle: std::time::Duration,
+    lifetime_left: std::time::Duration,
+    send: impl std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+) -> Result<reqwest::Response> {
+    let wait = header_wait(idle, lifetime_left);
+    if wait.is_zero() {
+        bail!("streaming lifetime deadline");
+    }
+    match send_for_headers(wait, send).await {
+        Err(err) if wait < idle && err.to_string().contains("model headers idle timeout") => {
+            Err(err.context("streaming lifetime deadline"))
         }
-    })
+        other => other,
+    }
 }
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
@@ -1573,13 +1605,16 @@ impl LlmClient for OllamaChatClient {
             }
 
             // The stored client set `connect_timeout` in `build_model_client`.
-            // Header wait is a separate deadline. The body lifetime starts here.
+            // Header waits and the body share this instant. Each header wait
+            // is the idle limit or the time still left, whichever is shorter.
             let start = std::time::Instant::now();
+            let lifetime = stream_call_lifetime(DEFAULT_STREAM_LIFETIME);
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
             println!("[ollama] initiating streaming POST to {}", stream_url);
-            let resp = send_for_headers(
+            let resp = send_headers_for_call(
                 idle,
+                lifetime.saturating_sub(start.elapsed()),
                 client
                     .post(&stream_url)
                     .header("Accept", "application/json")
@@ -1606,8 +1641,9 @@ impl LlmClient for OllamaChatClient {
                         status
                     );
                     let gen_url = format!("{}/api/generate", self.url.trim_end_matches('/'));
-                    let gen_resp = send_for_headers(
+                    let gen_resp = send_headers_for_call(
                         idle,
+                        lifetime.saturating_sub(start.elapsed()),
                         client
                             .post(&gen_url)
                             .header("Accept", "application/json")
@@ -1662,8 +1698,8 @@ impl LlmClient for OllamaChatClient {
             // gap, and when it is longer than `idle` the wait is `idle`.
             // A non-empty chunk starts a new gap, so late macOS wakes whose
             // gaps stay inside the idle window are kept. An empty chunk does
-            // not. `DEFAULT_STREAM_LIFETIME` is measured from `start` and is
-            // not reset, so a one-byte drip stops there instead of at 1 MiB.
+            // not. `lifetime` is measured from `start` and is not reset, so
+            // a one-byte drip stops there instead of at 1 MiB.
             let overall = idle.saturating_mul(2);
             let mut gap_started = std::time::Instant::now();
 
@@ -1678,7 +1714,7 @@ impl LlmClient for OllamaChatClient {
                     idle,
                     overall,
                     gap_started,
-                    DEFAULT_STREAM_LIFETIME,
+                    lifetime,
                     start,
                     "streaming read idle timeout",
                 ) {
@@ -1810,6 +1846,10 @@ impl LlmClient for OllamaChatClient {
                     break;
                 }
             }
+            // A lifetime deadline or an idle timeout after at least one token
+            // returns those tokens. The error is returned only when the
+            // stream produced none. A UTF-8 or cap error follows the same
+            // rule: tokens already stored stay.
             if text.trim().is_empty() && assistant_acc.trim().is_empty() {
                 if let Some(err) = body_error {
                     return Err(err);

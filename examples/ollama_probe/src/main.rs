@@ -60,8 +60,11 @@ Return ONLY JSON with no commentary.
     });
     let idle = astraweave_llm::stream_read_idle();
     let requested = std::time::Instant::now();
-    let resp = astraweave_llm::send_for_headers(
+    let lifetime_total =
+        astraweave_llm::stream_call_lifetime(astraweave_llm::DEFAULT_STREAM_LIFETIME);
+    let resp = astraweave_llm::send_headers_for_call(
         idle,
+        lifetime_total.saturating_sub(requested.elapsed()),
         client
             .post(format!("{}/api/chat", url.trim_end_matches('/')))
             .json(&body)
@@ -70,7 +73,7 @@ Return ONLY JSON with no commentary.
     .await?;
     println!("status {}", resp.status());
     let overall = idle.saturating_mul(2);
-    let lifetime = astraweave_llm::DEFAULT_STREAM_LIFETIME.saturating_sub(requested.elapsed());
+    let lifetime = lifetime_total.saturating_sub(requested.elapsed());
     let mut stream = Box::pin(astraweave_llm::bytes_within_deadline(
         Box::pin(resp.bytes_stream()),
         idle,
