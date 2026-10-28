@@ -1,0 +1,13 @@
+# Binaries the Linux nextest archive contains, and the partition jobs skip.
+# Profile ci-pr-linux-archive adds these on top of scripts/ci/deferred_pr_tests.txt.
+# The Windows GPU skips in scripts/ci/archive_only_skips.txt are not in this
+# list: Linux passed them, and the partition profile still runs them.
+#
+# These integration tests spawn env!("CARGO_BIN_EXE_…"). That path is the
+# archive build runner's target directory. Partition runners only have the
+# extracted archive, so the spawn cannot find the exe. The archive build job
+# runs the targets on the build machine.
+binary aw-net-client family1_client_binary
+binary aw-net-client family3_client_binary_wrong_key
+binary astraweave-llm loopback_http_proxy
+binary astraweave-llm ollama_chat_probe
