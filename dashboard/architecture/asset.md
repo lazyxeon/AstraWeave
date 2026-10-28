@@ -8,8 +8,8 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.7"
-last_verified_commit: d0539b08
+doc_version: "1.8"
+last_verified_commit: 99382af7
 ---
 
 # Architecture Trace: Asset System
@@ -20,8 +20,8 @@ last_verified_commit: d0539b08
 |---|---|
 | **System name** | Asset System (loading, cell loader, Nanite preprocess, asset pipeline) |
 | **Primary crates** | `astraweave-asset`, `astraweave-asset-pipeline` |
-| **Document version** | 1.7 |
-| **Last verified against commit** | `d0539b08` |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `99382af7` (parent of the short GLB header guard; that parent calls `Glb::from_slice` when the declared length is below 12 bytes, and gltf 1.4.1 panics on the subtract). Prior `d0539b08` |
 | **Last verified date** | 2026-10-21 |
 | **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` was individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense over-claim at `lib.rs:4` over an ISLAND crate (no live caller). **R-series M2/E4 relabel-and-defer (2026-06-30):** E4 **resolved by relabel** — the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) was dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 **cook path is NOT a v1.0 blocker** — the v1.0 render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path, so cooking is a deferrable optimization **deferred to a post-v1.0 engine/compression-pipeline owner**. See `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
@@ -37,7 +37,7 @@ Provides CPU-side asset ingestion for the engine — parsing glTF/GLB into mesh/
 Decouples raw on-disk asset formats from runtime consumers (render, scene streaming, gameplay), giving each a typed in-memory representation plus a deterministic GUID identity for caching and hot-reload.
 
 **Where it primarily lives:**
-- `astraweave-asset/src/lib.rs` (3790 LoC) — glTF loaders (`gltf_loader`), `AssetDatabase` + `AssetWatcher` hot-reload, `AssetCache`, deterministic GUIDs, optional `blend_import`/`blend_asset_integration`, `import_pipelines`.
+- `astraweave-asset/src/lib.rs` — glTF loaders (`gltf_loader`). `read_glb` refuses a declared length below 12 bytes before `Glb::from_slice`. Also `AssetDatabase` + `AssetWatcher` hot-reload, `AssetCache`, deterministic GUIDs, optional `blend_import`/`blend_asset_integration`, `import_pipelines`.
 - `astraweave-asset/src/cell_loader.rs` (841 LoC) — World-Partition cell RON (de)serialization + per-asset byte loading.
 - `astraweave-asset/src/nanite_preprocess.rs` (941 LoC) — meshlet clustering + QEM LOD hierarchy (CPU preprocess).
 - `astraweave-asset-pipeline/src/{lib,texture,mesh,validator}.rs` — separate crate of offline transforms (BC7/ASTC, vertex-cache/overdraw optimization, CI validation).
@@ -134,7 +134,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 **Role:** Pure-CPU glTF/GLB decode behind the default-on `gltf` feature.
 **Inputs:** Raw `&[u8]` (GLB binary or `.gltf` JSON, including `data:` URI buffers).
 **Outputs:** `MeshData` (positions/normals/tangents/texcoords/indices, lib.rs:330-336), `MaterialData` (full PBR factor set + KHR_materials_transmission/ior/emissive_strength/clearcoat fields, lib.rs:357-415), `ImageData`, `SkinnedMeshData`/`Skeleton`/`AnimationClip` (lib.rs:857-941).
-**Notes:** `decode_limited_image` (`image_limits.rs`) caps a decode at a 4096-pixel edge and 64 MiB once the bytes are already in memory. `read_limited_image_bytes` stops a file read at 64 MiB before that decode. `open_limited_image` and a non-`data:` glTF image URI in `decode_image_from_gltf` use that read, jailed to the process working directory. A `data:` image URI still calls `load_uri_bytes`, which base64-decodes the whole payload before the decode cap. External buffer URIs in that function are an uncapped `std::fs::read`, and an image buffer view is a slice of that buffer. The editor path `mesh_gltf::load_gltf` uses `gltf::import` and image `Limits::default` (no edge cap, `max_alloc` 512 MiB). `load_rgba8` is `image::open`. `cell_loader::load_asset` for a texture is an uncapped `tokio::fs::read`. KTX2 `pixel_width` and `pixel_height` can size a pixel buffer with no `MAX_IMAGE_EDGE` check after the 64 MiB file stop. Those remaining reads are #408. `load_gltf_bytes` (lib.rs:303) is a Phase-0 header-only validator that does not decode. Real decode entrypoints are `load_first_mesh_from_glb_bytes` (lib.rs:419), `load_all_meshes_merged` (lib.rs:487), `load_first_mesh_and_material` (lib.rs:574), and the skinned variants `load_skinned_mesh_complete` (lib.rs:1276) / `load_first_skinned_mesh_and_idle` (lib.rs:1475). Material defaults follow glTF spec defaults (e.g. `metallic_factor: 1.0`, `ior: 1.5`, lib.rs:392-415).
+**Notes:** `read_glb` returns an error when a `glTF` header's declared length is below 12 bytes. gltf 1.4.1 panics on that subtract. `decode_limited_image` (`image_limits.rs`) caps a decode at a 4096-pixel edge and 64 MiB once the bytes are already in memory. `read_limited_image_bytes` stops a file read at 64 MiB before that decode. `open_limited_image` and a non-`data:` glTF image URI in `decode_image_from_gltf` use that read, jailed to the process working directory. A `data:` image URI still calls `load_uri_bytes`, which base64-decodes the whole payload before the decode cap. External buffer URIs in that function are an uncapped `std::fs::read`, and an image buffer view is a slice of that buffer. The editor path `mesh_gltf::load_gltf` uses `gltf::import` and image `Limits::default` (no edge cap, `max_alloc` 512 MiB). `load_rgba8` is `image::open`. `cell_loader::load_asset` for a texture is an uncapped `tokio::fs::read`. KTX2 `pixel_width` and `pixel_height` can size a pixel buffer with no `MAX_IMAGE_EDGE` check after the 64 MiB file stop. Those remaining reads are #408. `load_gltf_bytes` (lib.rs:303) is a Phase-0 header-only validator that does not decode. Real decode entrypoints are `load_first_mesh_from_glb_bytes` (lib.rs:419), `load_all_meshes_merged` (lib.rs:487), `load_first_mesh_and_material` (lib.rs:574), and the skinned variants `load_skinned_mesh_complete` (lib.rs:1276) / `load_first_skinned_mesh_and_idle` (lib.rs:1475). Material defaults follow glTF spec defaults (e.g. `metallic_factor: 1.0`, `ior: 1.5`, lib.rs:392-415).
 
 #### Stage B1: Cell RON deserialize
 **File:** `astraweave-asset/src/cell_loader.rs:104-220`.
