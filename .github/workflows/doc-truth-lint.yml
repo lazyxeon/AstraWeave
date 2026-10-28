@@ -10,20 +10,21 @@ name: Doc-Truth Lint
 # nonzero: replay cases and the measured frame phrases on ENGINE_STATUS.md.
 # `3.117 ms` and `3.688 ms` must be their own tokens on a sentence with
 # whole-word median or measured, or sample with is or was. `11 ms` is its
-# own token and is not negation-aware. capture is not a measurement. not, no,
-# nobody, nothing, never, cannot, neither, nor, and an n't contraction (ASCII,
-# U+2018, U+2019, U+02BC, U+FF07, or a character reference that decodes to one
-# of those) keep that sentence off the set. CC0, GTX 1660 Ti, and Aravath have
-# to sit on a sentence that is not negated. A closed HTML comment, an unclosed
-# <!--, and a script or style element do not supply a phrase. The root README
-# rejects a frame figure as CLOSED_VOCABULARY_LINT.md defines it: ms, msec,
-# millisecond, or milliseconds, including the fullwidth block U+FF01–U+FF5E,
-# after paired emphasis, alt text, autolink text, character references, and
-# every Cf and Mn character are decoded. A non-comment < that never reaches >
-# stays text. An unclosed comment and a script or style element hide through
-# their end. A backslash before a newline is a hard break. A single tilde and
-# an underscore between word characters stay. Also the in-progress list and
-# the retired game title.
+# own token. capture is not a measurement. not, no, none, nobody, nothing,
+# never, cannot, neither, nor, and an n't contraction (ASCII, U+2018, U+2019,
+# U+02BC, U+FF07, or a character reference that decodes to one of those) keep
+# that sentence off the set. That negation also covers `11 ms`, the two prose
+# phrases, CC0, GTX 1660 Ti, and Aravath. Inline tags and emphasis are stripped
+# before the word scan. Replay names are read from the visible text. Only a
+# closed HTML comment is hidden. A script or style body stays, and an unclosed
+# <!-- stays in the text. The root README rejects a frame figure as
+# CLOSED_VOCABULARY_LINT.md defines it: ms, msec, millisecond, or milliseconds,
+# including the fullwidth block U+FF01–U+FF5E, after paired emphasis, alt text,
+# autolink text, character references, unicode_categories 0.1.1, and the
+# Unicode 15 Cf and Mn gaps that crate misses. A non-comment < that never
+# reaches > stays text. A backslash before a newline is a hard break. A single
+# tilde and an underscore between word characters stay. Also the in-progress
+# list and the retired game title.
 # Baseline at the 2026-06 wiring: K=0 un-allowlisted vocabulary hits.
 #
 # Complementary to trace-sync.yml: that gate owns the CLAUDE.md trace table +
@@ -48,7 +49,7 @@ on:
 
 # Per pull-request ref. Another PR does not cancel this run. Run 39793896957
 # was cancelled at the 20-minute job timeout while rust-ci-setup was still
-# restoring the shared crate cache. aw_doc_lint is anyhow + clap.
+# restoring the shared crate cache. aw_doc_lint is anyhow, clap, and unicode_categories.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
