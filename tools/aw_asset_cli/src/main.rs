@@ -380,6 +380,7 @@ fn jail_gltf_uri(base: &Path, uri: &str) -> Result<()> {
 }
 
 fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
+    astraweave_asset::gltf_loader::reject_short_glb_file(path)?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = gltf::Gltf::open(path)?;
     for buffer in doc.buffers() {
@@ -705,6 +706,24 @@ mod gltf_jail_tests {
             msg.contains("traversal") || msg.contains("rejected"),
             "{msg}"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cli_short_glb_declared_length_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-short-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        let src = dir.join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        fs::write(&src, &bytes).expect("write");
+        let err = process_model(&src, dir.to_str().unwrap(), false).expect_err("short header");
+        let msg = err.to_string();
+        assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
         let _ = fs::remove_dir_all(&dir);
     }
 }
