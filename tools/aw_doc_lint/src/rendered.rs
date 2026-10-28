@@ -5,7 +5,10 @@
 //! fence stays. A fenced or indented code block is `Text` inside `CodeBlock`,
 //! and those characters stay too. Other `Text` decodes a numeric character
 //! reference that ends in `;`, including any run of leading zeros. A value
-//! in 0x80–0x9F becomes U+FFFD. A named reference stays as pulldown emitted
+//! in 0x80–0x9F becomes U+FFFD. C0 controls other than tab, line feed, and
+//! carriage return, and DEL, also become U+FFFD, whether this pass decoded
+//! the reference or the parser already emitted the scalar. The fold keeps
+//! that U+FFFD. A named reference stays as pulldown emitted
 //! it.
 //! A named reference pulldown already decoded is not decoded again. HTML
 //! events are the only place a comment is removed. There a numeric reference
@@ -243,8 +246,9 @@ fn push_text_numeric(out: &mut String, raw: &str) {
         let Some(ch) = raw[i..].chars().next() else {
             break;
         };
-        // pulldown-cmark already decoded a short numeric reference. 0x80–0x9F
-        // is a C1 control there. CommonMark replaces that reference with U+FFFD.
+        // pulldown-cmark already decoded a short numeric reference. A C1
+        // control, a C0 control other than tab, line feed, and carriage
+        // return, and DEL are U+FFFD there. The fold keeps that scalar.
         out.push(markdown_text_char(ch));
         i += ch.len_utf8();
     }
@@ -630,7 +634,8 @@ fn html_numeric_char(n: u32) -> char {
 }
 
 /// Markdown `Text`. A semicolon is required. Leading zeros do not count
-/// toward the six hex or seven decimal digits. 0x80–0x9F become U+FFFD.
+/// toward the six hex or seven decimal digits. 0x80–0x9F, C0 other than tab,
+/// line feed, and carriage return, and DEL become U+FFFD.
 fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     if bytes.get(i) != Some(&b'&') || bytes.get(i + 1) != Some(&b'#') {
         return None;
@@ -676,10 +681,13 @@ fn decode_numeric_ref(bytes: &[u8], i: usize) -> Option<(String, usize)> {
     Some((markdown_text_char(char::from_u32(n)?).to_string(), end + 1))
 }
 
-/// Markdown text. A C1 control, including one a numeric reference decoded to,
-/// is U+FFFD. Other scalars stay.
+/// Markdown text. C1, C0 other than tab, line feed, and carriage return, and
+/// DEL are U+FFFD. That covers a decoded reference and a raw scalar. Tab,
+/// line feed, and carriage return stay. The fold keeps U+FFFD, so U+000B does
+/// not become a space.
 fn markdown_text_char(ch: char) -> char {
-    if (0x80..=0x9F).contains(&u32::from(ch)) {
+    let n = u32::from(ch);
+    if (0x80..=0x9F).contains(&n) || n == 0x7F || (n < 0x20 && !matches!(ch, '\t' | '\n' | '\r')) {
         '\u{FFFD}'
     } else {
         ch
