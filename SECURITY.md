@@ -9,7 +9,9 @@ Security fixes are applied on the `main` branch. The supported line is workspace
 | `0.4.0` on `main` | Yes |
 | `0.3.0`, `0.2.0`, and `0.1.0` | No |
 
-`CHANGELOG.md` records 0.4.0, 0.3.0, 0.2.0, and 0.1.0. This repository has no `v0.4.0`, `v0.3.0`, `v0.2.0`, or `v0.1.0` tag. `[workspace.package] publish` is `false`, so the crates are not published to crates.io. The older changelog entries are not supported releases.
+`CHANGELOG.md` records 0.4.0, 0.3.0, 0.2.0, and 0.1.0. This repository has no `v0.4.0`, `v0.3.0`, `v0.2.0`, or `v0.1.0` tag. The older changelog entries are not supported releases.
+
+The root `Cargo.toml` sets `[workspace.package] publish = false`. A member inherits that only when its own manifest sets `publish.workspace = true` (for example `astraweave-veil`; `astraweave-core` writes the same field as `publish = { workspace = true }`) or sets `publish = false` itself (for example `tools/xtask`). Members that omit `publish`, including `astraweave-sdk` and `astraweave-render`, do not inherit it. An omitted `publish` key leaves Cargo's default, which allows publishing.
 
 Most crates still declare `version = "0.1.0"` in their own `Cargo.toml`. That number is not a separate supported release. Support follows current `main`, at workspace version 0.4.0. `astraweave-sdk` declares `0.4.0`. Crates with `version.workspace = true` inherit `0.4.0`.
 
@@ -44,7 +46,7 @@ We request a 72-hour window before public disclosure to coordinate fixes and rel
 1. Confirm and reproduce the report in a secure environment.
 2. Prioritize remediation based on severity using CVSS.
 3. Develop patches and add regression tests when applicable.
-4. Coordinate release notes in `CHANGELOG.md`, and publish the GitHub security advisory when the fix is ready.
+4. Coordinate release notes in `CHANGELOG.md`, and publish the GitHub security advisory when the fix is ready. A code-of-conduct report submitted through the form above is not a vulnerability advisory. Conduct reports filed this way are kept as drafts, never published, and closed privately.
 5. Notify the reporter once the fix is released.
 
 ## Scope
