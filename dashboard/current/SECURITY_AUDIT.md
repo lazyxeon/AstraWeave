@@ -274,7 +274,7 @@ None in `astraweave-asset`. `meshopt` is C++ and is why the asset test binary li
 
 PoC `poc_postcard_lz4_rejects_oversized_declared_output` fails with `decode error: lz4: expected another byte, found none`. The library noticed the stream was short. It did not notice that the claimed output was 16 MiB.
 
-`Codec::Bincode` (`:268-274`) uses `bincode` 2's standard config, which does not apply an application byte budget either.
+`Codec::Bincode` (`net/aw-net-proto/src/lib.rs:301-309`) decodes with `standard().with_limit::<MAX_LZ4_DECLARED_OUTPUT>()`. The limit is 4 MiB, the same bound as the LZ4 declared size (#470).
 
 ### In-engine `astraweave-net`
 
