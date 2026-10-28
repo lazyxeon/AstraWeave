@@ -2932,6 +2932,18 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.skip_or_panic_without_depth_texture_load.html</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.depth_texture_load_gate.html</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.depth_texture_load_supported.html</loc>
     <lastmod>2026-10-28</lastmod>
     <changefreq>weekly</changefreq>
@@ -2957,6 +2969,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/fn.skip_without_depth_texture_load.html</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/gpu_fault/enum.DepthTextureLoadGate.html</loc>
     <lastmod>2026-10-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -3263,6 +3281,12 @@
   </url>
   <url>
     <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/renderer/struct.Renderer.html</loc>
+    <lastmod>2026-10-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://lazyxeon.github.io/AstraWeave/api/astraweave_render/renderer/fn.record_gpu_skip_for_tests.html</loc>
     <lastmod>2026-10-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>

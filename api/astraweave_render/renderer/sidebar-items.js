@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"constant":["SHOWCASE_HDRI_FALLBACK","SHOWCASE_HDRI_PRIMARY"],"enum":["FarCascadePolicy","PresentationQuality"],"struct":["CascadeFit","ModelSurfaceMaps","RenderModel","RenderModelPrimitive","Renderer","TerrainChunkGpu","TerrainForwardRenderer"]};
+window.SIDEBAR_ITEMS = {"constant":["SHOWCASE_HDRI_FALLBACK","SHOWCASE_HDRI_PRIMARY"],"enum":["FarCascadePolicy","PresentationQuality"],"fn":["record_gpu_skip_for_tests"],"struct":["CascadeFit","ModelSurfaceMaps","RenderModel","RenderModelPrimitive","Renderer","TerrainChunkGpu","TerrainForwardRenderer"]};

@@ -707,29 +707,30 @@
 <a href=#707 id=707 data-nosnippet>707</a>            force_fallback_adapter: <span class="bool-val">false</span>,
 <a href=#708 id=708 data-nosnippet>708</a>        }));
 <a href=#709 id=709 data-nosnippet>709</a>        <span class="kw">let </span>adapter = <span class="kw">match </span>adapter {
-<a href=#710 id=710 data-nosnippet>710</a>            <span class="prelude-val">Ok</span>(a) =&gt; a,
-<a href=#711 id=711 data-nosnippet>711</a>            <span class="prelude-val">Err</span>(<span class="kw">_</span>) =&gt; {
-<a href=#712 id=712 data-nosnippet>712</a>                <span class="macro">eprintln!</span>(<span class="string">"skipping GPU test — no adapter"</span>);
-<a href=#713 id=713 data-nosnippet>713</a>                <span class="kw">return</span>;
-<a href=#714 id=714 data-nosnippet>714</a>            }
-<a href=#715 id=715 data-nosnippet>715</a>        };
-<a href=#716 id=716 data-nosnippet>716</a>        <span class="kw">let </span>(device, _queue) =
-<a href=#717 id=717 data-nosnippet>717</a>            <span class="kw">match </span>pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor {
-<a href=#718 id=718 data-nosnippet>718</a>                label: <span class="prelude-val">Some</span>(<span class="string">"upscale_test"</span>),
-<a href=#719 id=719 data-nosnippet>719</a>                ..Default::default()
-<a href=#720 id=720 data-nosnippet>720</a>            })) {
-<a href=#721 id=721 data-nosnippet>721</a>                <span class="prelude-val">Ok</span>(pair) =&gt; pair,
-<a href=#722 id=722 data-nosnippet>722</a>                <span class="prelude-val">Err</span>(<span class="kw">_</span>) =&gt; {
-<a href=#723 id=723 data-nosnippet>723</a>                    <span class="macro">eprintln!</span>(<span class="string">"skipping GPU test — no device"</span>);
-<a href=#724 id=724 data-nosnippet>724</a>                    <span class="kw">return</span>;
-<a href=#725 id=725 data-nosnippet>725</a>                }
-<a href=#726 id=726 data-nosnippet>726</a>            };
-<a href=#727 id=727 data-nosnippet>727</a>        <span class="kw">if </span><span class="kw">crate</span>::gpu_fault::skip_without_depth_texture_load(<span class="kw-2">&amp;</span>device, <span class="string">"upscale_pass_creation"</span>) {
-<a href=#728 id=728 data-nosnippet>728</a>            <span class="kw">return</span>;
-<a href=#729 id=729 data-nosnippet>729</a>        }
-<a href=#730 id=730 data-nosnippet>730</a>
-<a href=#731 id=731 data-nosnippet>731</a>        <span class="kw">let </span>cfg = UpscaleConfig::from_quality(UpscaleQuality::Balanced);
-<a href=#732 id=732 data-nosnippet>732</a>        <span class="kw">let </span>_pass = TemporalUpscalePass::new(<span class="kw-2">&amp;</span>device, <span class="number">1920</span>, <span class="number">1080</span>, <span class="kw-2">&amp;</span>cfg);
-<a href=#733 id=733 data-nosnippet>733</a>        <span class="comment">// Construction succeeded → pipelines compiled, textures created
-<a href=#734 id=734 data-nosnippet>734</a>    </span>}
-<a href=#735 id=735 data-nosnippet>735</a>}</code></pre></div></section></main></body></html>
+<a href=#710 id=710 data-nosnippet>710</a>            <span class="prelude-val">Ok</span>(adapter) =&gt; adapter,
+<a href=#711 id=711 data-nosnippet>711</a>            <span class="prelude-val">Err</span>(err) =&gt; {
+<a href=#712 id=712 data-nosnippet>712</a>                <span class="kw">let </span>reason = <span class="macro">format!</span>(<span class="string">"upscale_pass_creation: {err}"</span>);
+<a href=#713 id=713 data-nosnippet>713</a>                <span class="kw">crate</span>::gpu_capability::skip_missing_adapter(<span class="kw-2">&amp;</span>err, <span class="kw-2">&amp;</span>reason);
+<a href=#714 id=714 data-nosnippet>714</a>                <span class="kw">return</span>;
+<a href=#715 id=715 data-nosnippet>715</a>            }
+<a href=#716 id=716 data-nosnippet>716</a>        };
+<a href=#717 id=717 data-nosnippet>717</a>        <span class="kw">let </span>(device, _queue) =
+<a href=#718 id=718 data-nosnippet>718</a>            pollster::block_on(adapter.request_device(<span class="kw-2">&amp;</span>wgpu::DeviceDescriptor {
+<a href=#719 id=719 data-nosnippet>719</a>                label: <span class="prelude-val">Some</span>(<span class="string">"upscale_test"</span>),
+<a href=#720 id=720 data-nosnippet>720</a>                ..Default::default()
+<a href=#721 id=721 data-nosnippet>721</a>            }))
+<a href=#722 id=722 data-nosnippet>722</a>            .unwrap_or_else(|err| {
+<a href=#723 id=723 data-nosnippet>723</a>                <span class="macro">panic!</span>(<span class="string">"upscale_pass_creation: adapter refused the device: {err}"</span>)
+<a href=#724 id=724 data-nosnippet>724</a>            });
+<a href=#725 id=725 data-nosnippet>725</a>        <span class="kw">if </span><span class="kw">crate</span>::gpu_fault::skip_or_panic_without_depth_texture_load(
+<a href=#726 id=726 data-nosnippet>726</a>            <span class="kw-2">&amp;</span>device,
+<a href=#727 id=727 data-nosnippet>727</a>            <span class="string">"upscale_pass_creation"</span>,
+<a href=#728 id=728 data-nosnippet>728</a>        ) {
+<a href=#729 id=729 data-nosnippet>729</a>            <span class="kw">return</span>;
+<a href=#730 id=730 data-nosnippet>730</a>        }
+<a href=#731 id=731 data-nosnippet>731</a>
+<a href=#732 id=732 data-nosnippet>732</a>        <span class="kw">let </span>cfg = UpscaleConfig::from_quality(UpscaleQuality::Balanced);
+<a href=#733 id=733 data-nosnippet>733</a>        <span class="kw">let </span>_pass = TemporalUpscalePass::new(<span class="kw-2">&amp;</span>device, <span class="number">1920</span>, <span class="number">1080</span>, <span class="kw-2">&amp;</span>cfg);
+<a href=#734 id=734 data-nosnippet>734</a>        <span class="comment">// Construction succeeded → pipelines compiled, textures created
+<a href=#735 id=735 data-nosnippet>735</a>    </span>}
+<a href=#736 id=736 data-nosnippet>736</a>}</code></pre></div></section></main></body></html>
