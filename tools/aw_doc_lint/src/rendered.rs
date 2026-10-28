@@ -22,13 +22,14 @@
 //! rule and that legacy set, except a legacy name is not consumed when the
 //! next byte is `=` or an ASCII alphanumeric. A `/` or any ASCII whitespace
 //! before `alt` starts that attribute. A `title` attribute is scanned the
-//! same way. `<!-->`, `<!--->`, and `--!>` close a comment, and an
+//! same way, then written on its own line at the end of the enclosing block.
+//! `<!-->`, `<!--->`, and `--!>` close a comment, and an
 //! unclosed `<!--` consumes the rest of that HTML chunk. A block comment's
 //! chunk runs through EOF, including a blank line. A `br` tag becomes
 //! U+2028, which splits the word around it and still leaves the surrounding
 //! sentence on one `str::lines` line. Its alt text stays. A `/` before `alt`
 //! on that tag does not. Link labels are the link's own text. A link or
-//! image title is scanned with that text.
+//! image title is scanned on its own line at the end of that same block.
 //! Reference definitions are not events. Footnotes are on: a referenced
 //! definition is included, an unreferenced one is omitted, and a defined
 //! reference writes its digits as superscripts (or U+00B9 when the label has
@@ -81,6 +82,7 @@ fn drive(input: &str, track: bool) -> Walk {
         done: false,
         hold_end: false,
         track,
+        title_stack: Vec::new(),
     };
     for event in events {
         walk.feed(event);
@@ -109,6 +111,9 @@ struct Walk {
     /// The h2 now being collected is a candidate end, not the opener.
     hold_end: bool,
     track: bool,
+    /// Titles for the open blocks, innermost last. Each block end writes its
+    /// own line so a title does not sit between the words around the link or tag.
+    title_stack: Vec<String>,
 }
 
 impl Walk {
@@ -121,6 +126,59 @@ impl Walk {
             Sink::Heading => &mut self.heading,
             Sink::Body => &mut self.body,
         }
+    }
+
+    fn title_slot(&mut self) -> &mut String {
+        if self.title_stack.is_empty() {
+            self.title_stack.push(String::new());
+        }
+        self.title_stack.last_mut().unwrap()
+    }
+
+    fn append_titles(&mut self, titles: &str) {
+        if titles.is_empty() {
+            return;
+        }
+        let slot = self.title_slot();
+        if !slot.is_empty() && !slot.ends_with('\n') {
+            slot.push('\n');
+        }
+        slot.push_str(titles.trim_end_matches('\n'));
+    }
+
+    fn note_markdown_title(&mut self, title: &str) {
+        if title.is_empty() {
+            return;
+        }
+        let mut decoded = String::new();
+        push_text_numeric(&mut decoded, title);
+        self.append_titles(&decoded);
+    }
+
+    /// Pop the current block's titles and write them after that block's prose.
+    fn flush_titles(&mut self) {
+        let Some(titles) = self.title_stack.pop() else {
+            return;
+        };
+        if titles.is_empty() {
+            return;
+        }
+        let buf = self.buf();
+        if !buf.ends_with('\n') {
+            buf.push('\n');
+        }
+        buf.push_str(&titles);
+        if !buf.ends_with('\n') {
+            buf.push('\n');
+        }
+    }
+
+    fn close_html_block(&mut self) {
+        let chunk = self.html_block.take().unwrap_or_default();
+        let mut titles = String::new();
+        push_html_visible(self.buf(), &mut titles, &chunk);
+        self.append_titles(&titles);
+        self.flush_titles();
     }
 
     fn feed(&mut self, event: Event<'_>) {
@@ -158,13 +216,9 @@ impl Walk {
                 Event::Html(html) => {
                     self.html_block.as_mut().unwrap().push_str(&html);
                 }
-                Event::End(TagEnd::HtmlBlock) => {
-                    let chunk = self.html_block.take().unwrap_or_default();
-                    push_html_visible(self.buf(), &chunk);
-                }
+                Event::End(TagEnd::HtmlBlock) => self.close_html_block(),
                 other => {
-                    let chunk = self.html_block.take().unwrap_or_default();
-                    push_html_visible(self.buf(), &chunk);
+                    self.close_html_block();
                     self.push_event(other);
                 }
             }
@@ -198,8 +252,11 @@ impl Walk {
         if self.done {
             return;
         }
-        if let Some(chunk) = self.html_block.take() {
-            push_html_visible(self.buf(), &chunk);
+        if self.html_block.is_some() {
+            self.close_html_block();
+        }
+        while !self.title_stack.is_empty() {
+            self.flush_titles();
         }
     }
 
@@ -208,6 +265,7 @@ impl Walk {
             Event::Start(Tag::HtmlBlock) => {
                 self.buf().push('\n');
                 self.html_block = Some(String::new());
+                self.title_stack.push(String::new());
             }
             Event::Start(Tag::CodeBlock(_)) => {
                 self.code_depth += 1;
@@ -216,9 +274,13 @@ impl Walk {
             Event::End(TagEnd::CodeBlock) => {
                 self.code_depth = self.code_depth.saturating_sub(1);
             }
-            Event::Start(tag) if block_start(&tag) => self.buf().push('\n'),
+            Event::Start(tag) if block_start(&tag) => {
+                self.buf().push('\n');
+                self.title_stack.push(String::new());
+            }
+            Event::End(tag) if block_end(&tag) => self.flush_titles(),
             Event::Start(Tag::Link { title, .. } | Tag::Image { title, .. }) => {
-                push_link_title(self.buf(), &title);
+                self.note_markdown_title(&title);
             }
             Event::Start(_) | Event::End(_) => {}
             Event::Text(text) => {
@@ -231,7 +293,11 @@ impl Walk {
             Event::Code(text) | Event::InlineMath(text) | Event::DisplayMath(text) => {
                 self.buf().push_str(&text);
             }
-            Event::Html(html) | Event::InlineHtml(html) => push_html_visible(self.buf(), &html),
+            Event::Html(html) | Event::InlineHtml(html) => {
+                let mut titles = String::new();
+                push_html_visible(self.buf(), &mut titles, &html);
+                self.append_titles(&titles);
+            }
             Event::SoftBreak | Event::HardBreak => self.buf().push('\n'),
             Event::Rule => self.buf().push('\n'),
             Event::TaskListMarker(_) => {}
@@ -292,6 +358,26 @@ fn superscript_digit(ch: char) -> Option<char> {
     })
 }
 
+fn block_end(tag: &TagEnd) -> bool {
+    matches!(
+        tag,
+        TagEnd::Paragraph
+            | TagEnd::Heading(_)
+            | TagEnd::BlockQuote(_)
+            | TagEnd::List(_)
+            | TagEnd::Item
+            | TagEnd::FootnoteDefinition
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition
+            | TagEnd::Table
+            | TagEnd::TableHead
+            | TagEnd::TableRow
+            | TagEnd::TableCell
+            | TagEnd::MetadataBlock(_)
+    )
+}
+
 fn block_start(tag: &Tag<'_>) -> bool {
     matches!(
         tag,
@@ -313,7 +399,7 @@ fn block_start(tag: &Tag<'_>) -> bool {
     )
 }
 
-fn push_html_visible(out: &mut String, html: &str) {
+fn push_html_visible(out: &mut String, titles: &mut String, html: &str) {
     let bytes = html.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -333,9 +419,11 @@ fn push_html_visible(out: &mut String, html: &str) {
                 if is_br_tag(tag) {
                     // A slash before `alt` stays deferred. Whitespace does not.
                     push_alts(out, tag, false);
+                    push_html_titles(titles, tag, false);
                     out.push(LINE_BREAK);
                 } else {
                     push_alts(out, tag, true);
+                    push_html_titles(titles, tag, true);
                 }
                 i = end;
                 continue;
@@ -428,15 +516,6 @@ fn is_br_tag(tag: &str) -> bool {
         .is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':'))
 }
 
-fn push_link_title(out: &mut String, title: &str) {
-    if title.is_empty() {
-        return;
-    }
-    out.push('\n');
-    push_text_numeric(out, title);
-    out.push('\n');
-}
-
 fn push_alts(out: &mut String, tag: &str, slash_boundary: bool) {
     let bytes = tag.as_bytes();
     if bytes.get(1) == Some(&b'/') {
@@ -444,13 +523,33 @@ fn push_alts(out: &mut String, tag: &str, slash_boundary: bool) {
     }
     let mut j = 1;
     while j < bytes.len() {
-        let value = attr_value_at(bytes, j, b"alt", slash_boundary)
-            .or_else(|| attr_value_at(bytes, j, b"title", slash_boundary));
-        if let Some((start, end)) = value {
+        if let Some((start, end)) = attr_value_at(bytes, j, b"alt", slash_boundary) {
             if start < end {
                 out.push(' ');
                 push_decoded_text(out, &tag[start..end]);
                 out.push(' ');
+            }
+            j = end.max(j + 1);
+            continue;
+        }
+        j += 1;
+    }
+}
+
+/// `title` is kept for the end of the enclosing block. It does not sit in `out`.
+fn push_html_titles(titles: &mut String, tag: &str, slash_boundary: bool) {
+    let bytes = tag.as_bytes();
+    if bytes.get(1) == Some(&b'/') {
+        return;
+    }
+    let mut j = 1;
+    while j < bytes.len() {
+        if let Some((start, end)) = attr_value_at(bytes, j, b"title", slash_boundary) {
+            if start < end {
+                if !titles.is_empty() && !titles.ends_with('\n') {
+                    titles.push('\n');
+                }
+                push_decoded_text(titles, &tag[start..end]);
             }
             j = end.max(j + 1);
             continue;

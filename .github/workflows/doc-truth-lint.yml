@@ -28,7 +28,8 @@ name: Doc-Truth Lint
 # unclosed <!-- hides through EOF, including a blank line. A comment inside
 # a code span or a fence stays. <!-->, <!--->, and --!> close the comment. Link labels
 # join the surrounding letters. A link or image title, and an HTML title
-# attribute, are scanned. Reference definitions are omitted. Autolink
+# attribute, are scanned on their own line at the end of the enclosing
+# block. Reference definitions are omitted. Autolink
 # text stays. A br tag is a break. U+1734 is Mc and is not dropped. The root
 # README rejects a frame figure as CLOSED_VOCABULARY_LINT.md defines it: ms,
 # msec, millisecond, or milliseconds, including the fullwidth block

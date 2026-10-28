@@ -71,7 +71,8 @@
 //! that section after the same fold. The
 //! in-progress words and the retired title are read from that render after
 //! the fold. Quoted and unquoted `alt` text stays. A link or image title, and
-//! an HTML `title` attribute, are scanned. A
+//! an HTML `title` attribute, are scanned on their own line at the end of the
+//! enclosing block. A
 //! non-comment `<` that never reaches `>` is text. A backslash immediately
 //! before a newline is a hard break. In raw HTML and in alt text, a numeric
 //! character reference follows the HTML tokenizer: the semicolon is
@@ -2724,6 +2725,58 @@ In progress
                 .any(|error| error.contains("retired game title")),
             "{errors:?}"
         );
+    }
+
+    #[test]
+    fn titles_land_at_the_end_of_the_block() {
+        for prose in [
+            "Frame 3 <abbr title=\"x\">ms</abbr>",
+            "Frame 3 [ms](https://a.b \"x\")",
+            "Frame 3 ![ms](x.png \"x\")",
+        ] {
+            let folded = fold_visible_text(&rendered::render_visible(prose));
+            assert!(
+                folded.lines().any(|line| line.contains("Frame 3 ms")),
+                "{prose:?}: {folded:?}"
+            );
+            assert!(
+                folded.lines().any(|line| line.trim() == "x"),
+                "{prose:?}: {folded:?}"
+            );
+            assert!(
+                !folded
+                    .lines()
+                    .any(|line| line.contains("Frame 3") && line.contains('x')),
+                "{prose:?}: {folded:?}"
+            );
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose:?}: {errors:?}"
+            );
+        }
+        let sentence = "The median GPU frame is [3.117 ms](https://a.b \"capture log\").";
+        let folded = fold_visible_text(&rendered::render_visible(sentence));
+        assert!(
+            folded
+                .lines()
+                .any(|line| line.contains("The median GPU frame is 3.117 ms.")),
+            "{folded:?}"
+        );
+        assert!(
+            folded.lines().any(|line| line.trim() == "capture log"),
+            "{folded:?}"
+        );
+        assert!(
+            !folded
+                .lines()
+                .any(|line| line.contains("3.117 ms") && line.contains("capture")),
+            "{folded:?}"
+        );
+        let status = sample_status().replace("A later sample is 3.117 ms.", sentence);
+        let errors = front_door_errors(&sample_readme(), &status, &sample_workflow(), &[]);
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
