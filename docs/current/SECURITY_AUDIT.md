@@ -41,15 +41,15 @@ Severity is impact if the reachable caller is given a hostile file or socket, no
 
 | ID | Sev | Where | Wired on `main`? | One-line |
 |---|---|---|---|---|
-| SEC-NET-1 | Critical | `aw-net-server` default config | Yes, `spawn_server` | Listens on `0.0.0.0` with a signing key published in source |
+| SEC-NET-1 | Critical | `aw-net-server` default config | Yes, `spawn_server` | Binds `127.0.0.1:8788` and `:8789` (`net/aw-net-server/src/lib.rs:155-156`). `spawn_server` refuses `PUBLISHED_DEV_KEY` outside debug and test (`:281-286`) |
 | SEC-NET-2 | High | `astraweave-net` `GameServer` | Yes, examples | Client picks its actor; the `"dev"` token is optional |
-| SEC-SAVE-1 | High | `aw-save` `read_any_version` | Yes, `aw_save_cli` | Header `data_len` is allocated before the file is checked |
-| SEC-NET-3 | High | `aw-net-proto` `decode_msg` | Yes, matchmaking server | LZ4 output size is the attacker's `u32` |
-| SEC-ASSET-1 | High | glTF URI + cell `load_asset` | Yes, editor and scene streaming | `../` is opened as a filesystem path |
+| SEC-SAVE-1 | High | `aw-save` `read_any_version` | Yes, `aw_save_cli` | `data_len` above 4 MiB is rejected before allocation (`persistence/aw-save/src/lib.rs:367-371`). LZ4 output above 16 MiB is rejected before decompress (`:446-456`) |
+| SEC-NET-3 | High | `aw-net-proto` `decode_msg` | Yes, matchmaking server | An LZ4 declared output above 4 MiB is rejected before decompress (`net/aw-net-proto/src/lib.rs:296-300`; cap at `:10`) |
+| SEC-ASSET-1 | High | glTF URI + cell `load_asset` | Yes, editor and scene streaming | `../` is rejected by `safe_under` before the read (`astraweave-asset/src/lib.rs:837-838`, `cell_loader.rs:224-225`) |
 | SEC-MOD-1 | High | `astraweave-scripting` `script_system` | Examples only | Script path is an unsandboxed file read; host uses raw pointers |
 | SEC-LLM-1 | High | `LocalHttpClient` / Ollama constructors | Example + any `OLLAMA_URL` | A loopback URL is not enough: proxy env and redirects can still send the prompt. `loopback_http_client` closes that. `allowing_remote` is the explicit default-client opt-in |
 | SEC-ASSET-2 | Medium | Pack Guard zip + `image` decode | `xtask` and glTF image path | Traversal is rejected; uncompressed size is not |
-| SEC-SAVE-2 | Medium | `decode_vitals` | Public API, tests only | Record count is trusted up to the size of the string |
+| SEC-SAVE-2 | Medium | `decode_vitals` | Public API, tests only | More than 4,096 records are rejected (`astraweave-combat/src/save.rs:95`; cap at `:14`) |
 | SEC-LLM-2 | Medium | Quest + world-event JSON | Compiled, no production caller | Model JSON is applied to in-memory world flags with no size cap |
 | SEC-LLM-3 | Medium | `sanitize_llm_prompt`, prompt logs | Dormant sanitizer; logs are live | S0-2 and S0-3 still match the code |
 | SEC-SUPPLY-1 | Medium | `security-audit.yml` | CI | Advisory and license failures are warnings |
@@ -249,10 +249,7 @@ Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around th
 
 ### Findings
 
-**SEC-ASSET-1.** Both PoCs fail:
-
-- `poc_gltf_buffer_uri_rejects_parent_segments`: `Read uri ../secret.bin: No such file or directory (os error 2)`
-- `poc_cell_asset_path_rejects_parent_segments`: `Failed to load mesh: /tmp/.../../outside.bin: No such file or directory (os error 2)`
+**SEC-ASSET-1.** Both proofs reject `../` before the read. `load_uri_bytes` calls `safe_under` and maps the error to `path traversal rejected` (`astraweave-asset/src/lib.rs:837-838`). `load_asset` does the same (`cell_loader.rs:224-225`).
 
 **SEC-ASSET-2.** Pack unzip and persona-zip manifest reads have no uncompressed cap. Image decode relies on the crate default of 512 MiB and no dimension cap.
 
@@ -268,7 +265,7 @@ None in `astraweave-asset`. `meshopt` is C++ and is why the asset test binary li
 
 `aw-net-proto` is `#![forbid(unsafe_code)]`. Client input frames are HMAC-SHA256, verified before state changes, with `SignatureFailurePolicy::Kick` by default. That remediation (2026-06) still holds. Deliberate gaps that remain: no replay nonce, server-to-client messages unsigned.
 
-**SEC-NET-1.** `ServerConfig::default` listens on `0.0.0.0:8788` and `0.0.0.0:8789` and uses `SigningKey::dev_default` (`net/aw-net-server/src/lib.rs:68-103`). The key is the ASCII constant `ASTRAWEAVE-DEV-KEY-NOT-FOR-PROD!` (`net/aw-net-proto/src/lib.rs:90-92`). The comment says it is not for production. The `Default` impl still installs it, and `spawn_server` is the real server entry. A peer who can reach the port can produce a valid tag. HTTP admin on `:8789` is still unauthenticated (the 2025 plan's P0 item 5).
+**SEC-NET-1.** `ServerConfig::default` binds `127.0.0.1:8788` and `127.0.0.1:8789` (`net/aw-net-server/src/lib.rs:152-166`). `admin_token` is `None` (`:163`). `admin_authorized` returns false when that token is absent (`:66-68`), and `/healthz` and `/regions` answer 401 (`:52-55`, `:59-62`). Debug and test builds still install `SigningKey::dev_default`. The key bytes are `PUBLISHED_DEV_KEY` at `net/aw-net-proto/src/lib.rs:111`. `spawn_server` refuses that key outside debug and test (`net/aw-net-server/src/lib.rs:281-286`).
 
 **SEC-NET-3.** `decode_msg` for `Codec::PostcardLz4` (`net/aw-net-proto/src/lib.rs:296-300`) calls `decompress_lz4_capped`. A declared uncompressed size above `MAX_LZ4_DECLARED_OUTPUT` (4 MiB, the same bound as the bincode limit below) is rejected before decompression. The WebSocket layer's own cap is tungstenite 0.28's default `max_message_size` of 64 MiB (`tungstenite-0.28.0/src/protocol/mod.rs:101`). The server does not set a tighter `WebSocketConfig`.
 
@@ -446,7 +443,7 @@ Not opened by this change. Label `deferred-failure`. Owner is `@lazyxeon` (repos
 
 | ID | Title to open | Owner | Plan | Already tracked? |
 |---|---|---|---|---|
-| SEC-SAVE-1 | Cap `.awsv` declared length and LZ4 output | `@lazyxeon` | Reject `data_len` and the LZ4 `u32` before allocation. Schema stays 2. Turn `poc_awsv_rejects_oversized_declared_payload` green. | Yes. The proof is green. |
+| SEC-SAVE-1 | Cap `.awsv` declared length and LZ4 output | `@lazyxeon` | Reject `data_len` and the LZ4 `u32` before allocation. Schema stays 2. Turn `poc_awsv_rejects_oversized_declared_payload` green. | Yes for the 4 MiB compressed cap. The 16 MiB uncompressed cap is implemented in `decompress_lz4_capped` (`persistence/aw-save/src/lib.rs:446-456`) and no fixture exercises it yet. |
 | SEC-SAVE-2 | Cap `combat_vitals` record count at 4_096 | `@lazyxeon` | Reject in `decode_vitals` after the stride check. Raise the constant only if a real fixture is larger. Turn `poc_vitals_rejects_more_than_4096_records` green. | Yes. The proof is green. |
 | SEC-SAVE-3 | Cap scar-field cells on PR #205 | `@lazyxeon` | Cap `wire.cells` in `from_postcard` on the greybox branch. Do not copy the parser to `main`. | No |
 | SEC-MOD-1 | Script path read and raw host pointers | `@lazyxeon` | On #214, keep fuel and `timeout_ms = 0`. Stop the old `script_system` from reading `script_path`. Leave `PhysicsProxy` off the mod tick. | S0-3 is the dormant allowlist; this row is the live scripting crate |
