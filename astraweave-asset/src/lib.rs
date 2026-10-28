@@ -425,7 +425,7 @@ pub mod gltf_loader {
         use gltf::buffer::Data as BufferData;
 
         // Parse GLB container
-        let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+        let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
         let doc = Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
@@ -493,7 +493,7 @@ pub mod gltf_loader {
         use gltf::buffer::Data as BufferData;
 
         // Parse GLB container
-        let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+        let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
         let doc = Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
@@ -584,6 +584,22 @@ pub mod gltf_loader {
         }
     }
 
+    #[cfg(test)]
+    mod short_glb_tests {
+        use super::*;
+
+        #[test]
+        fn short_glb_declared_length_is_an_error() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&8u32.to_le_bytes());
+            let err =
+                load_first_mesh_and_material(&bytes).expect_err("short header must not panic");
+            let msg = err.to_string();
+            assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
+        }
+    }
+
     /// Extract extended PBR material properties from a glTF material.
     /// This reads core PBR, emissive, occlusion, alpha, and KHR extensions.
     fn extract_extended_material<F>(
@@ -668,9 +684,21 @@ pub mod gltf_loader {
         Ok(mat)
     }
 
+    /// gltf 1.4.1 subtracts the 12-byte header from the declared length and
+    /// panics when that length is smaller. Refuse that header before the call.
+    fn read_glb(bytes: &[u8]) -> Result<gltf::binary::Glb<'_>> {
+        if bytes.len() >= 12 && bytes.starts_with(b"glTF") {
+            let declared = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+            if (declared as usize) < 12 {
+                bail!("GLB declared length {declared} is shorter than the 12-byte header");
+            }
+        }
+        gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")
+    }
+
     fn load_from_glb(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
         use gltf::buffer::Data as BufferData;
-        let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+        let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
         let doc = Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
@@ -981,7 +1009,7 @@ pub mod gltf_loader {
     pub fn load_skeleton(bytes: &[u8]) -> Result<Skeleton> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             // GLB path
-            let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+            let glb = read_glb(bytes)?;
             let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
             Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
         } else {
@@ -998,7 +1026,7 @@ pub mod gltf_loader {
         // Gather buffer data
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = gltf::binary::Glb::from_slice(bytes)?;
+            let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
             for b in doc.buffers() {
                 match b.source() {
@@ -1129,7 +1157,7 @@ pub mod gltf_loader {
     /// Load all animation clips from glTF/GLB
     pub fn load_animations(bytes: &[u8], _skeleton: &Skeleton) -> Result<Vec<AnimationClip>> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+            let glb = read_glb(bytes)?;
             let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
             Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
         } else {
@@ -1139,7 +1167,7 @@ pub mod gltf_loader {
         // Gather buffer data
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = gltf::binary::Glb::from_slice(bytes)?;
+            let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
             for b in doc.buffers() {
                 match b.source() {
@@ -1329,7 +1357,7 @@ pub mod gltf_loader {
         // Load mesh data (positions, normals, tangents, joints, weights, indices, material)
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             // GLB path
-            let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+            let glb = read_glb(bytes)?;
             let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
             Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
         } else {
@@ -1340,7 +1368,7 @@ pub mod gltf_loader {
         // Gather buffer data (support GLB BIN or .gltf data: URIs)
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+            let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
             for b in doc.buffers() {
                 match b.source() {
@@ -1516,7 +1544,7 @@ pub mod gltf_loader {
     ) -> Result<(SkinnedMeshData, Option<AnimationClip>, Option<MaterialData>)> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             // GLB path
-            let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+            let glb = read_glb(bytes)?;
             let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
             Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
         } else {
@@ -1527,7 +1555,7 @@ pub mod gltf_loader {
         // Gather buffer data (support GLB BIN or .gltf data: URIs)
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")?;
+            let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
             for b in doc.buffers() {
                 match b.source() {
