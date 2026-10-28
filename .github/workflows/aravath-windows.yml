@@ -81,7 +81,7 @@ jobs:
       - name: Install audit tools
         # Same versions as the old `cargo install` lines (audit 0.22.2,
         # deny 0.20.2, cyclonedx 0.5.9). Prebuilt musl binaries; the script
-        # checks sha256. cargo-cyclonedx still needs the toolchain below
+        # checks sha256. cargo-cyclonedx still needs the toolchain above
         # because `cargo cyclonedx` invokes cargo.
         run: |
           bash .github/scripts/install-prebuilt-cargo-tool.sh cargo-audit

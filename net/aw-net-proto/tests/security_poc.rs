@@ -16,11 +16,14 @@ fn poc_postcard_lz4_rejects_oversized_declared_output() {
     );
 }
 
+/// Both callers must return `LimitExceeded`. A `String` length prefix is
+/// refused before that buffer is filled. A `Vec<u8>` decode reaches 4,194,304
+/// bytes and then returns `LimitExceeded`.
 fn assert_limit_exceeded(err: aw_net_proto::WireError) {
     let msg = err.to_string();
     assert!(
         msg.contains("LimitExceeded"),
-        "cap must refuse before the buffer is used: {msg}"
+        "expected LimitExceeded from the 4 MiB cap: {msg}"
     );
 }
 
