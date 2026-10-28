@@ -141,12 +141,27 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("retries = 0", nextest)
         self.assertIn("[profile.ci-pr]", nextest)
         self.assertIn("[profile.ci-pr-archive]", nextest)
+        self.assertIn("[profile.ci-pr-linux-archive]", nextest)
         self.assertIn("default-filter", nextest)
         self.assertIn("family1_client_binary", text)
         self.assertIn("ci-pr-archive", text)
+        self.assertIn("ci-pr-linux-archive", text)
         self.assertIn("timeout-minutes: 75", text)
         self.assertIn("Test (windows, build archive)", text)
+        self.assertIn("Test (ubuntu, build archive)", text)
         self.assertIn("needs: [changes, gate, test-windows-build]", text)
+        self.assertIn("needs: [changes, gate, test-linux-build]", text)
+        linux = nextest.split("[profile.ci-pr-linux-archive]", 1)[1].split("\n[", 1)[0]
+        self.assertNotIn("test_renderer_bake_environment_wave16", linux)
+        self.assertNotIn("gpu_containment_invariant_120_frames", linux)
+        self.assertNotIn("gpu_settling_envelope_300_frames", linux)
+        for line in (ROOT / "scripts" / "ci" / "linux_archive_skips.txt").read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            _kind, package, binary = stripped.split(" ", 2)
+            self.assertIn(f"package(={package})", linux)
+            self.assertIn(f"binary(={binary})", linux)
 
     def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
         listed = []

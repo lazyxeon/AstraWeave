@@ -12,7 +12,7 @@ retries = 0
 slow-timeout = { period = "300s", terminate-after = 1 }
 
 # aw_headless forbids unsafe, so it cannot link the render .init_array.
-# `ci-pr` and `ci-pr-archive` inherit this override. `max-threads` is the
+# `ci-pr`, `ci-pr-archive`, and `ci-pr-linux-archive` inherit this override. `max-threads` is the
 # nextest slot count for the group (one aw_headless test process at a time).
 # `threads` is not an override field. Nextest warns and ignores it, so that
 # line did not limit anything.
@@ -28,6 +28,8 @@ test-group = 'aw-headless-serial'
 # (issue #254, owner PR #217). Nightly and main stay on profile ci, which has
 # no default-filter, so those tests still run. Replay hashes are unaffected:
 # determinism-replay.yml does not call nextest.
+# ci-pr-linux-archive copies this filter and adds the four CARGO_BIN_EXE
+# binaries. It does not copy the Windows GPU skips.
 [profile.ci-pr]
 inherits = "ci"
 default-filter = """
@@ -77,6 +79,37 @@ not (
   |   (package(=astraweave-render) & binary(=coverage_booster_render) & test(=test_renderer_bake_environment_wave16))
   |   (package(=astraweave-fluids) & binary(=gpu_execution_tests) & test(=gpu_containment_invariant_120_frames))
   |   (package(=astraweave-fluids) & binary(=gpu_execution_tests) & test(=gpu_settling_envelope_300_frames))
+  |   (package(=aw-net-client) & binary(=family1_client_binary))
+  |   (package(=aw-net-client) & binary(=family3_client_binary_wrong_key))
+  |   (package(=astraweave-llm) & binary(=loopback_http_proxy))
+  |   (package(=astraweave-llm) & binary(=ollama_chat_probe))
+)
+"""
+
+# Linux partition runs. Same exclusions as ci-pr, plus the four binaries in
+# scripts/ci/linux_archive_skips.txt. Those spawn CARGO_BIN_EXE paths that
+# exist only on the archive build machine. The Windows GPU skips stay on
+# ci-pr-archive: Linux still runs them.
+[profile.ci-pr-linux-archive]
+inherits = "ci"
+default-filter = """
+not (
+  (package(=astraweave-fluids) & binary(=gpu_execution_tests) & test(=gpu_render_accents_smoke))
+  |   (package(=astraweave-fluids) & binary(=gpu_execution_tests) & test(=gpu_renderer_smoke))
+  |   (package(=astraweave-fluids) & binary(=gpu_execution_tests) & test(=gpu_visible_state_advances_every_frame))
+  |   (package(=astraweave-llm) & binary(=advanced_features_test) & test(=test_qwen3_variants))
+  |   (package(=astraweave-render) & binary(=astraweave_render) & test(=god_rays::tests::god_ray_pass_creation))
+  |   (package(=astraweave-render) & binary(=astraweave_render) & test(=gtao::tests::gtao_pass_creation))
+  |   (package(=astraweave-render) & binary(=astraweave_render) & test(=gtao::tests::gtao_pass_resize))
+  |   (package(=astraweave-render) & binary(=astraweave_render) & test(=renderer_tests::tests::test_renderer_water_initialization))
+  |   (package(=astraweave-render) & binary(=astraweave_render) & test(=water::tests::test_water_renderer_new_and_update))
+  |   (package(=astraweave-render) & binary(=coverage_booster_render) & test(=test_deferred_gbuffer_formats))
+  |   (package(=astraweave-render) & binary(=coverage_booster_render) & test(=test_deferred_renderer_comprehensive))
+  |   (package(=astraweave-render) & binary(=coverage_booster_render) & test(=test_deferred_renderer_more_coverage))
+  |   (package(=astraweave-render) & binary(=coverage_booster_render) & test(=test_render_extra_systems))
+  |   (package(=astraweave-render) & binary(=coverage_booster_render) & test(=test_renderer_full_pipeline))
+  |   (package(=astraweave-render) & binary(=gpu_resource_leak_detection) & test(=test_buffer_lifecycle_no_leaks))
+  |   (package(=astraweave-render) & binary(=gpu_resource_leak_detection) & test(=test_renderer_lifecycle_stress_test))
   |   (package(=aw-net-client) & binary(=family1_client_binary))
   |   (package(=aw-net-client) & binary(=family3_client_binary_wrong_key))
   |   (package(=astraweave-llm) & binary(=loopback_http_proxy))
