@@ -21,12 +21,14 @@
 //! is an HTML5 legacy name with no semicolon. Alt text uses that numeric
 //! rule and that legacy set, except a legacy name is not consumed when the
 //! next byte is `=` or an ASCII alphanumeric. A `/` or any ASCII whitespace
-//! before `alt` starts that attribute. `<!-->` and `<!--->` are empty closed comments, and an
+//! before `alt` starts that attribute. A `title` attribute is scanned the
+//! same way. `<!-->`, `<!--->`, and `--!>` close a comment, and an
 //! unclosed `<!--` consumes the rest of that HTML chunk. A block comment's
 //! chunk runs through EOF, including a blank line. A `br` tag becomes
 //! U+2028, which splits the word around it and still leaves the surrounding
 //! sentence on one `str::lines` line. Its alt text stays. A `/` before `alt`
-//! on that tag does not. Link labels are the link's own text.
+//! on that tag does not. Link labels are the link's own text. A link or
+//! image title is scanned with that text.
 //! Reference definitions are not events. Footnotes are on: a referenced
 //! definition is included, an unreferenced one is omitted, and a defined
 //! reference writes its digits as superscripts (or U+00B9 when the label has
@@ -215,6 +217,9 @@ impl Walk {
                 self.code_depth = self.code_depth.saturating_sub(1);
             }
             Event::Start(tag) if block_start(&tag) => self.buf().push('\n'),
+            Event::Start(Tag::Link { title, .. } | Tag::Image { title, .. }) => {
+                push_link_title(self.buf(), &title);
+            }
             Event::Start(_) | Event::End(_) => {}
             Event::Text(text) => {
                 if self.code_depth > 0 {
@@ -350,7 +355,8 @@ fn push_html_visible(out: &mut String, html: &str) {
     }
 }
 
-/// Index just past a comment. An unclosed comment ends at the chunk's end.
+/// Index just past a comment. `-->`, `--!>`, `<!-->`, and `<!--->` close it.
+/// An unclosed comment ends at the chunk's end.
 fn comment_end(bytes: &[u8], i: usize) -> usize {
     if bytes.get(i + 4) == Some(&b'>') {
         return i + 5;
@@ -359,9 +365,14 @@ fn comment_end(bytes: &[u8], i: usize) -> usize {
         return i + 6;
     }
     let mut j = i + 4;
-    while j + 2 < bytes.len() {
-        if bytes[j] == b'-' && bytes[j + 1] == b'-' && bytes[j + 2] == b'>' {
-            return j + 3;
+    while j < bytes.len() {
+        if bytes[j] == b'-' && bytes.get(j + 1) == Some(&b'-') {
+            if bytes.get(j + 2) == Some(&b'>') {
+                return j + 3;
+            }
+            if bytes.get(j + 2) == Some(&b'!') && bytes.get(j + 3) == Some(&b'>') {
+                return j + 4;
+            }
         }
         j += 1;
     }
@@ -417,6 +428,15 @@ fn is_br_tag(tag: &str) -> bool {
         .is_some_and(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b':'))
 }
 
+fn push_link_title(out: &mut String, title: &str) {
+    if title.is_empty() {
+        return;
+    }
+    out.push('\n');
+    push_text_numeric(out, title);
+    out.push('\n');
+}
+
 fn push_alts(out: &mut String, tag: &str, slash_boundary: bool) {
     let bytes = tag.as_bytes();
     if bytes.get(1) == Some(&b'/') {
@@ -424,7 +444,9 @@ fn push_alts(out: &mut String, tag: &str, slash_boundary: bool) {
     }
     let mut j = 1;
     while j < bytes.len() {
-        if let Some((start, end)) = alt_at(bytes, j, slash_boundary) {
+        let value = attr_value_at(bytes, j, b"alt", slash_boundary)
+            .or_else(|| attr_value_at(bytes, j, b"title", slash_boundary));
+        if let Some((start, end)) = value {
             if start < end {
                 out.push(' ');
                 push_decoded_text(out, &tag[start..end]);
@@ -437,11 +459,16 @@ fn push_alts(out: &mut String, tag: &str, slash_boundary: bool) {
     }
 }
 
-fn alt_at(bytes: &[u8], j: usize, slash_boundary: bool) -> Option<(usize, usize)> {
-    if !is_attr_name(bytes, j, b"alt", slash_boundary) {
+fn attr_value_at(
+    bytes: &[u8],
+    j: usize,
+    name: &[u8],
+    slash_boundary: bool,
+) -> Option<(usize, usize)> {
+    if !is_attr_name(bytes, j, name, slash_boundary) {
         return None;
     }
-    let mut p = j + 3;
+    let mut p = j + name.len();
     while p < bytes.len() && bytes[p].is_ascii_whitespace() {
         p += 1;
     }

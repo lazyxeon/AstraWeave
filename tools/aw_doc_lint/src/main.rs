@@ -54,7 +54,7 @@
 //! and U+115F, U+1160, U+3164, and U+FFA0. U+1734 stays: Unicode 15 classifies
 //! it as Mc, and the crate calls it Mn. An HTML comment is hidden. An unclosed
 //! `<!--` hides through the end of that block, including a blank line.
-//! `<!-->` and `<!--->` close the comment. A comment inside a code span or a
+//! `<!-->`, `<!--->`, and `--!>` close the comment. A comment inside a code span or a
 //! fence stays. A `script` or `style` body stays. A `br` tag inserts a break.
 //! A referenced footnote definition is scanned. An unreferenced one is
 //! omitted. A defined footnote reference writes its digits as superscripts,
@@ -70,7 +70,8 @@
 //! and trimmed, is `in progress` or empty. Its issue numbers are read from
 //! that section after the same fold. The
 //! in-progress words and the retired title are read from that render after
-//! the fold. Quoted and unquoted `alt` text stays. A
+//! the fold. Quoted and unquoted `alt` text stays. A link or image title, and
+//! an HTML `title` attribute, are scanned. A
 //! non-comment `<` that never reaches `>` is text. A backslash immediately
 //! before a newline is a hard break. In raw HTML and in alt text, a numeric
 //! character reference follows the HTML tokenizer: the semicolon is
@@ -2637,6 +2638,92 @@ In progress
                 "{prose:?}: {errors:?}"
             );
         }
+    }
+
+    #[test]
+    fn bang_comment_close_keeps_the_following_text() {
+        for prose in [
+            "<!-- hidden --!>\n\nThe frame is 3.117 ms.",
+            "<!-- hidden --!> The frame is 3.117 ms.",
+            "<div><!-- hidden --!> The frame is 3.117 ms.</div>",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(rendered.contains("3.117 ms"), "{prose:?}: {rendered:?}");
+            assert!(!rendered.contains("hidden"), "{prose:?}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose:?}: {errors:?}"
+            );
+        }
+        let kept = sample_status().replace(
+            "A later sample is 3.117 ms.",
+            "<!-- aside --!>\nA later sample is 3.117 ms.",
+        );
+        let errors = front_door_errors(&sample_readme(), &kept, &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("3.117 ms")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn link_image_and_html_titles_are_scanned() {
+        for prose in [
+            "[bench](http://example.com \"3.117 ms\")",
+            "![bench](http://example.com '3.117 ms')",
+            "[bench](http://example.com (3.117 ms))",
+            "<a title=\"3.117 ms\">bench</a>",
+            "<img title=\"3.117 ms\">",
+            "<div title='3.117 ms'></div>",
+            "[bench][id]\n\n[id]: http://example.com \"3.117 ms\"",
+        ] {
+            let rendered = rendered::render_visible(prose);
+            assert!(rendered.contains("3.117 ms"), "{prose:?}: {rendered:?}");
+            let readme = format!("{}\n{prose}\n", sample_readme());
+            let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+            assert!(
+                errors.iter().any(|error| error.contains("frame figure")),
+                "{prose:?}: {errors:?}"
+            );
+        }
+        let unused = "[id]: http://example.com \"3.117 ms\"";
+        let rendered = rendered::render_visible(unused);
+        assert!(
+            !rendered.contains("3.117"),
+            "an unused reference definition stays omitted: {rendered:?}"
+        );
+        let readme = format!("{}\n{unused}\n", sample_readme());
+        let errors = front_door_errors(&readme, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            !errors.iter().any(|error| error.contains("frame figure")),
+            "{errors:?}"
+        );
+        let titled = "\
+## In progress
+#334 are in progress. #366 are in progress. #383 are in progress.
+[pulls](http://example.com \"shipped\")
+## Docs
+";
+        let errors = front_door_errors(titled, &sample_status(), &sample_workflow(), &[]);
+        assert!(
+            errors.iter().any(|error| error.contains("shipped")),
+            "{errors:?}"
+        );
+        let guide = "[x](http://example.com \"The Veilweaver game\")";
+        let errors = front_door_errors(
+            &sample_readme(),
+            &sample_status(),
+            &sample_workflow(),
+            &[("docs/guides/x.md".to_string(), guide.to_string())],
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("retired game title")),
+            "{errors:?}"
+        );
     }
 
     #[test]
