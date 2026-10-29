@@ -280,6 +280,17 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertNotIn("--scope", replay)
         self.assertNotIn("Affected scope", replay)
 
+    def test_detect_checks_out_merge_parents_only(self) -> None:
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        changes = text.split("name: Detect affected crates", 1)[1].split("\n  gate:", 1)[0]
+        self.assertIn("fetch-depth: 2", changes)
+        self.assertNotIn("fetch-depth: 0", changes)
+        self.assertIn("fetch-tags: false", changes)
+        self.assertNotIn("git fetch", changes)
+        self.assertIn('--base "HEAD^1"', changes)
+        self.assertIn("--head HEAD", changes)
+        self.assertIn("reason=missing-merge-parent", changes)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)

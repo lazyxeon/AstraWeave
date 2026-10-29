@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -107,6 +108,85 @@ class AffectedCratesTest(unittest.TestCase):
         excluded = {text[i + 1] for i in exclude_at}
         self.assertIn("hello_companion", excluded)
         self.assertIn("aw_editor", excluded)
+
+    def test_merge_parent_matches_a_base_that_moved_forward(self) -> None:
+        # GitHub's pull_request checkout is a merge commit. Its first parent
+        # is the base commit that was merged. Three-dot against that parent
+        # stays the pull request diff when the base branch later gains
+        # commits. Depth 2 is enough to see that parent.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, ["init", "-q", "-b", "main"])
+            self._git(repo, ["config", "user.email", "detect@example.com"])
+            self._git(repo, ["config", "user.name", "detect"])
+            (repo / "README.md").write_text("base\n", encoding="utf-8")
+            self._git(repo, ["add", "README.md"])
+            self._git(repo, ["commit", "-qm", "base"])
+            base = self._rev(repo, "HEAD")
+            self._git(repo, ["checkout", "-q", "-b", "feature"])
+            crate = repo / "astraweave-math" / "src"
+            crate.mkdir(parents=True)
+            (crate / "lib.rs").write_text("fn feature() {}\n", encoding="utf-8")
+            self._git(repo, ["add", "astraweave-math/src/lib.rs"])
+            self._git(repo, ["commit", "-qm", "feature"])
+            feature = self._rev(repo, "HEAD")
+            self._git(repo, ["checkout", "-q", "main"])
+            (repo / "docs" / "later.md").parent.mkdir()
+            (repo / "docs" / "later.md").write_text("later\n", encoding="utf-8")
+            self._git(repo, ["add", "docs/later.md"])
+            self._git(repo, ["commit", "-qm", "main moves"])
+            moved = self._rev(repo, "HEAD")
+            tree = self._rev(repo, f"{feature}^{{tree}}")
+            merge = subprocess.check_output(
+                ["git", "commit-tree", tree, "-p", base, "-p", feature, "-m", "merge"],
+                cwd=repo,
+                text=True,
+            ).strip()
+            self._git(repo, ["update-ref", "refs/pull/1/merge", merge])
+
+            parent_files = self._names(repo, f"{merge}^1...{merge}")
+            moved_files = self._names(repo, f"{moved}...{merge}")
+            self.assertEqual(parent_files, ["astraweave-math/src/lib.rs"])
+            self.assertEqual(parent_files, moved_files)
+            self.assertEqual(
+                run_files(",".join(parent_files)),
+                run_files(",".join(moved_files)),
+            )
+            classified = run_files(",".join(parent_files))
+            self.assertEqual(classified["full"], "false")
+            self.assertEqual(classified["docs_only"], "false")
+            self.assertIn("astraweave-math", classified["packages"].split(","))
+
+            shallow = Path(tmp) / "shallow"
+            shallow.mkdir()
+            self._git(shallow, ["init", "-q"])
+            self._git(
+                shallow,
+                ["fetch", "-q", "--depth=2", "--no-tags", str(repo), "refs/pull/1/merge"],
+            )
+            self._git(shallow, ["checkout", "-q", "--detach", "FETCH_HEAD"])
+            self.assertEqual(self._rev(shallow, "HEAD"), merge)
+            self.assertEqual(self._rev(shallow, "HEAD^1"), base)
+            self.assertEqual(self._names(shallow, "HEAD^1...HEAD"), parent_files)
+            self.assertEqual(self._names(shallow, ["HEAD^1", "HEAD"]), parent_files)
+
+    def _git(self, cwd: Path, args: list[str]) -> None:
+        subprocess.check_call(["git", *args], cwd=cwd, stdout=subprocess.DEVNULL)
+
+    def _rev(self, cwd: Path, rev: str) -> str:
+        return subprocess.check_output(
+            ["git", "rev-parse", rev], cwd=cwd, text=True
+        ).strip()
+
+    def _names(self, cwd: Path, spec: str | list[str]) -> list[str]:
+        args = ["git", "diff", "--name-only"]
+        if isinstance(spec, list):
+            args.extend(spec)
+        else:
+            args.append(spec)
+        out = subprocess.check_output(args, cwd=cwd, text=True)
+        return [line for line in out.splitlines() if line.strip()]
 
 
 class AffectedScopeTest(unittest.TestCase):
