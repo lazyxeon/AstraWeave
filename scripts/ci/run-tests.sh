@@ -4,9 +4,9 @@
 # under profile.ci (and is inherited by profile ci-pr).
 # Pass --retries 0 as well when the caller sets AW_CI_RETRIES=0.
 #
-# Windows and Linux pull requests build one archive (AW_CI_ARCHIVE_OUT) and the
-# partition jobs run it (AW_CI_ARCHIVE_RUN) so each partition does not compile
-# the workspace.
+# Windows and Linux pull requests, and nightly Windows and macOS Test full,
+# build one archive (AW_CI_ARCHIVE_OUT). Partition jobs run it
+# (AW_CI_ARCHIVE_RUN) so each partition does not compile the workspace.
 set -euo pipefail
 
 full="${AW_CI_FULL:-false}"
