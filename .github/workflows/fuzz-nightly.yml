@@ -1,8 +1,11 @@
 # Nightly parser fuzzing. Not on pull requests.
 # The matrix is every [[bin]] in a fuzz/Cargo.toml (scripts/ci/fuzz_targets.py).
 # Each target is capped at 120 seconds. The corpus is a workflow artifact
-# named fuzz-corpus-<target>, restored from the newest previous run.
-# Crash reproducers are uploaded. The token is contents: read and actions: read.
+# named fuzz-corpus-<target>, restored from the newest successful run of
+# this workflow on the default branch of this repository.
+# Crash reproducers are uploaded. The workflow token is contents: read and
+# actions: read. The fuzz job adds actions: write so upload-artifact can
+# save the corpus and the crash files.
 
 name: Fuzz nightly
 
@@ -46,6 +49,11 @@ jobs:
     needs: targets
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # upload-artifact rejects a token that only has actions: read.
+    # Write stays on this job. The list job above stays contents: read.
+    permissions:
+      contents: read
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -71,18 +79,30 @@ jobs:
           FUZZ_TARGET: ${{ matrix.target }}
           GH_TOKEN: ${{ github.token }}
           THIS_RUN: ${{ github.run_id }}
+          CORPUS_BRANCH: ${{ github.event.repository.default_branch }}
+          CORPUS_REPOSITORY: ${{ github.repository }}
         run: |
           mkdir -p "$FUZZ_DIR/corpus/$FUZZ_TARGET"
           case "$FUZZ_TARGET" in
             *[!A-Za-z0-9_]*) echo "refusing target name" >&2; exit 1 ;;
           esac
+          if [ -z "$CORPUS_BRANCH" ] || [ -z "$CORPUS_REPOSITORY" ]; then
+            echo "refusing corpus restore without a default branch and repository" >&2
+            exit 1
+          fi
           name="fuzz-corpus-${FUZZ_TARGET}"
+          runs_payload="$(mktemp)"
           payload="$(mktemp)"
-          if ! gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100&name=${name}" >"$payload"; then
+          branch_q="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["CORPUS_BRANCH"], safe=""))')"
+          if ! gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/workflows/fuzz-nightly.yml/runs?per_page=100&status=success&branch=${branch_q}&exclude_pull_requests=true" >"$runs_payload"; then
+            echo "Workflow run list failed; starting with an empty corpus."
+            exit 0
+          fi
+          if ! gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/artifacts?per_page=100&name=${name}" >"$payload"; then
             echo "Artifact list failed; starting with an empty corpus."
             exit 0
           fi
-          run_id="$(python3 scripts/ci/fuzz_corpus_artifact.py "$THIS_RUN" <"$payload")"
+          run_id="$(python3 scripts/ci/fuzz_corpus_artifact.py "$THIS_RUN" "$CORPUS_BRANCH" "$CORPUS_REPOSITORY" "$runs_payload" <"$payload")"
           if [ -z "$run_id" ]; then
             echo "No previous corpus artifact; starting empty."
             exit 0

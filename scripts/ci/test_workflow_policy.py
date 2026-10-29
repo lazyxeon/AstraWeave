@@ -7,6 +7,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -321,14 +322,25 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertNotIn("actions/checkout@v5", text)
         self.assertNotIn("actions/cache", text)
-        self.assertNotIn("actions: write", text)
-        top, _, _ = text.partition("\njobs:")
-        self.assertIn("contents: read", top)
-        self.assertIn("actions: read", top)
-        self.assertNotIn("actions: write", top)
         self.assertIn("artifacts/**", text)
         self.assertNotIn("continue-on-error", text)
         self.assertNotIn("pull_request:", text)
+        top, _, jobs = text.partition("\njobs:")
+        _, _, perms = top.partition("permissions:")
+        self.assertIn("contents: read", perms)
+        self.assertIn("actions: read", perms)
+        self.assertNotIn("actions: write", perms)
+        self.assertIn(
+            "permissions:\n      contents: read\n    outputs:",
+            jobs,
+        )
+        self.assertIn(
+            "permissions:\n      contents: read\n      actions: write",
+            jobs,
+        )
+        self.assertIn("exclude_pull_requests=true", text)
+        self.assertIn("github.event.repository.default_branch", text)
+        self.assertEqual(jobs.count("actions: write"), 1)
 
         spec = importlib.util.spec_from_file_location(
             "fuzz_targets", ROOT / "scripts" / "ci" / "fuzz_targets.py"
@@ -369,85 +381,145 @@ class WorkflowPolicyTest(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
+        repo = "lazyxeon/AstraWeave"
+        branch = "main"
+
+        def run(run_id: int, **overrides: object) -> dict:
+            body = {
+                "id": run_id,
+                "conclusion": "success",
+                "status": "completed",
+                "head_branch": branch,
+                "path": ".github/workflows/fuzz-nightly.yml",
+                "event": "schedule",
+                "head_repository": {"full_name": repo},
+                "repository": {"full_name": repo},
+            }
+            body.update(overrides)
+            return body
+
+        def art(
+            run_id: int,
+            created: str,
+            *,
+            expired: bool = False,
+            head_branch: str = branch,
+            repository_id: int = 1,
+            head_repository_id: int = 1,
+        ) -> dict:
+            return {
+                "expired": expired,
+                "created_at": created,
+                "workflow_run": {
+                    "id": run_id,
+                    "head_branch": head_branch,
+                    "repository_id": repository_id,
+                    "head_repository_id": head_repository_id,
+                },
+            }
+
+        runs = {
+            "workflow_runs": [
+                run(2),
+                run(3),
+                run(4),
+                run(5),
+                run(7),
+                run(8),
+                run(11),
+                run(12),
+                run(20, conclusion="failure"),
+                run(21, head_branch="topic"),
+                run(22, path=".github/workflows/ci.yml"),
+                run(23, head_repository={"full_name": "fork/AstraWeave"}),
+                run(24, event="pull_request"),
+            ]
+        }
         payload = {
             "artifacts": [
-                {
-                    "expired": True,
-                    "created_at": "2026-10-28T03:00:00Z",
-                    "workflow_run": {"id": 9},
-                },
-                {
-                    "expired": False,
-                    "created_at": "2026-10-27T00:00:00Z",
-                    "workflow_run": {"id": 3},
-                },
-                {
-                    "expired": False,
-                    "created_at": "2026-10-28T01:00:00Z",
-                    "workflow_run": {"id": 5},
-                },
-                {
-                    "expired": False,
-                    "created_at": "2026-10-28T02:00:00Z",
-                    "workflow_run": {"id": 7},
-                },
+                art(9, "2026-10-28T03:00:00Z", expired=True),
+                art(3, "2026-10-27T00:00:00Z"),
+                art(5, "2026-10-28T01:00:00Z"),
+                art(7, "2026-10-28T02:00:00Z"),
                 {
                     "created_at": "2026-10-28T04:00:00Z",
                     "workflow_run": {"id": "not-a-run"},
                 },
+                art(23, "2026-10-28T05:00:00Z", head_repository_id=99),
+                art(20, "2026-10-28T06:00:00Z"),
             ]
         }
-        self.assertEqual(module.select_corpus_run([payload], "7"), "5")
-        self.assertIsNone(module.select_corpus_run([{"artifacts": []}], "1"))
+        kwargs = {
+            "branch": branch,
+            "repository": repo,
+            "run_pages": [runs],
+        }
+        self.assertEqual(module.select_corpus_run([payload], "7", **kwargs), "5")
+        self.assertIsNone(
+            module.select_corpus_run([{"artifacts": []}], "1", **kwargs)
+        )
         self.assertIsNone(
             module.select_corpus_run(
-                [
-                    {
-                        "artifacts": [
-                            {
-                                "created_at": "2026-10-28T00:00:00Z",
-                                "workflow_run": {"id": 4},
-                            }
-                        ]
-                    }
-                ],
+                [{"artifacts": [art(4, "2026-10-28T00:00:00Z")]}],
                 "4",
+                **kwargs,
             )
         )
         tied = {
             "artifacts": [
-                {"created_at": "2026-10-28T00:00:00Z", "workflow_run": {"id": 2}},
-                {"created_at": "2026-10-28T00:00:00Z", "workflow_run": {"id": 8}},
+                art(2, "2026-10-28T00:00:00Z"),
+                art(8, "2026-10-28T00:00:00Z"),
             ]
         }
-        self.assertEqual(module.select_corpus_run([tied], "1"), "8")
+        self.assertEqual(module.select_corpus_run([tied], "1", **kwargs), "8")
+        poisoned = {
+            "artifacts": [
+                art(5, "2026-10-28T01:00:00Z"),
+                art(23, "2026-10-29T00:00:00Z", head_repository_id=99),
+                art(21, "2026-10-29T01:00:00Z", head_branch="topic"),
+                art(22, "2026-10-29T02:00:00Z"),
+                art(20, "2026-10-29T03:00:00Z"),
+                art(24, "2026-10-29T04:00:00Z"),
+            ]
+        }
+        self.assertEqual(
+            module.select_corpus_run([poisoned], "1", **kwargs), "5"
+        )
+        self.assertIsNone(
+            module.select_corpus_run(
+                [poisoned], "1", branch="", repository=repo, run_pages=[runs]
+            )
+        )
 
-        older = {
-            "artifacts": [
-                {"created_at": "2026-10-01T00:00:00Z", "workflow_run": {"id": 11}}
-            ]
-        }
-        newer = {
-            "artifacts": [
-                {"created_at": "2026-10-02T00:00:00Z", "workflow_run": {"id": 12}}
-            ]
-        }
-        proc = subprocess.run(
-            [sys.executable, str(script), "12"],
-            input=json.dumps(older) + "\n" + json.dumps(newer),
-            text=True,
-            capture_output=True,
-            check=True,
-        )
-        self.assertEqual(proc.stdout, "11\n")
-        empty = subprocess.run(
-            [sys.executable, str(script), "1"],
-            input='{"artifacts":[]}',
-            text=True,
-            capture_output=True,
-            check=True,
-        )
-        self.assertEqual(empty.stdout, "")
+        older = {"artifacts": [art(11, "2026-10-01T00:00:00Z")]}
+        newer = {"artifacts": [art(12, "2026-10-02T00:00:00Z")]}
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as runs_file:
+            json.dump(runs, runs_file)
+            runs_file.flush()
+            proc = subprocess.run(
+                [sys.executable, str(script), "12", branch, repo, runs_file.name],
+                input=json.dumps(older) + "\n" + json.dumps(newer),
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(proc.stdout, "11\n")
+            empty = subprocess.run(
+                [sys.executable, str(script), "1", branch, repo, runs_file.name],
+                input='{"artifacts":[]}',
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(empty.stdout, "")
+            bad = subprocess.run(
+                [sys.executable, str(script), "1"],
+                input="{}",
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(bad.returncode, 2)
 
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
