@@ -33,7 +33,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 
 The compressed save cap is 4 MiB, not the 16 MiB sketch below, because the proof claims 8 MiB and must fail closed. The LZ4 message cap is 4 MiB for the same reason (the proof claims 16 MiB).
 
-Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Every cargo-fuzz `[[bin]]` runs for 120 seconds. Each target's corpus is restored from the newest successful `fuzz-corpus-<target>` artifact of this workflow on the default branch of this repository, and uploaded again. Crash files under that target's `artifacts/` directory are uploaded. The workflow token is `contents: read` and `actions: read`. The fuzz job adds `actions: write` for the uploads.
+Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Every cargo-fuzz `[[bin]]` runs for 120 seconds. Each target's corpus is restored from the newest successful `fuzz-corpus-<target>` artifact of this workflow on the default branch of this repository, and uploaded again. Crash files under that target's `artifacts/` directory are uploaded. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`.
 
 ## Findings, ranked
 
@@ -372,7 +372,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ## Fuzzing plan
 
-This section is the original proposal. The nightly workflow has landed; the current description is the paragraph under "Landed on main". `.github/workflows/fuzz-nightly.yml` runs on `schedule` (`30 7 * * *`) and `workflow_dispatch`, not on pull requests. Each of the 28 `[[bin]]` targets runs for 120 seconds. The corpus is a `fuzz-corpus-<target>` artifact from a successful run of this workflow on the default branch of this repository, not an `actions/cache` entry. The workflow token is `contents: read` and `actions: read`. The fuzz job adds `actions: write` for the uploads. The list job times out at 5 minutes and the fuzz job at 45 minutes. Pull-request CI still does not run fuzzing.
+This section is the original proposal. The nightly workflow has landed; the current description is the paragraph under "Landed on main". `.github/workflows/fuzz-nightly.yml` runs on `schedule` (`30 7 * * *`) and `workflow_dispatch`, not on pull requests. Each of the 28 `[[bin]]` targets runs for 120 seconds. The corpus is a `fuzz-corpus-<target>` artifact from a successful run of this workflow on the default branch of this repository, not an `actions/cache` entry. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`. The list job times out at 5 minutes and the fuzz job at 45 minutes. Pull-request CI still does not run fuzzing.
 
 Original proposal:
 
