@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["apply_chat_format","batch_format_schema","insert_schema_format","plan_format_for_request","plan_format_schema","schema_format_rejected","take_schema_format"]};
