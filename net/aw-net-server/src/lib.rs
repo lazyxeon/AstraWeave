@@ -410,246 +410,45 @@ async fn accept_loop_plain(state: AppState, listener: TcpListener) -> Result<()>
     }
 }
 
-async fn handle_socket_tls(
-    app: AppState,
-    mut ws: tokio_tungstenite::WebSocketStream<
-        tokio_rustls::server::TlsStream<tokio::net::TcpStream>,
-    >,
-) -> Result<()> {
-    // Handshake
-    let hello = recv_tls::<ClientToServer>(&app, &mut ws).await?;
-    match hello {
-        ClientToServer::Hello { protocol } if protocol == PROTOCOL_VERSION => {
-            send_tls(&app, &mut ws, &ServerToClient::HelloAck { protocol }).await?;
-        }
-        ClientToServer::Hello { protocol } => {
-            send_tls(
-                &app,
-                &mut ws,
-                &ServerToClient::ProtocolError {
-                    msg: format!("protocol mismatch: client={protocol}, server={PROTOCOL_VERSION}"),
-                },
-            )
-            .await?;
-            return Ok(());
-        }
-        _ => {
-            send_tls(
-                &app,
-                &mut ws,
-                &ServerToClient::ProtocolError {
-                    msg: "expected Hello".into(),
-                },
-            )
-            .await?;
-            return Ok(());
-        }
-    }
-
-    // Matchmaking or direct join
-    let mut room_id: Option<RoomId> = None;
-    let player_id = uuid::Uuid::new_v4().to_string();
-    let mut tick_hz = 30u32;
-
-    if let Ok(msg) = recv_tls::<ClientToServer>(&app, &mut ws).await {
-        match msg {
-            ClientToServer::FindOrCreate {
-                region, game_mode, ..
-            } => {
-                let mut rooms = app.rooms.lock();
-                if let Some((rid, _)) = rooms.iter().find(|(_, r)| {
-                    r.region == region && r.game_mode == game_mode && r.players.len() < 4
-                }) {
-                    room_id = Some(rid.clone());
-                } else {
-                    let rid = new_room_id();
-                    let r = Room {
-                        id: rid.clone(),
-                        region,
-                        game_mode,
-                        tick_hz,
-                        players: HashMap::new(),
-                        tick: 0,
-                        snap_id: 0,
-                    };
-                    rooms.insert(rid.clone(), r);
-                    room_id = Some(rid.clone());
-                }
-            }
-            ClientToServer::JoinRoom {
-                room_id: rid,
-                display_name: _,
-            } => {
-                room_id = Some(rid);
-            }
-            _other => {
-                warn!("unexpected message before join: {_other:?}");
-            }
-        }
-    }
-
-    let rid = match room_id {
-        Some(x) => x,
-        None => {
-            send_tls(
-                &app,
-                &mut ws,
-                &ServerToClient::ProtocolError {
-                    msg: "no room selected".into(),
-                },
-            )
-            .await?;
-            return Ok(());
-        }
-    };
-
-    // allocate player into room. The room can be missing here for two
-    // reasons: (a) a hostile/buggy `JoinRoom` carried a room id that never
-    // existed, or (b) a FindOrCreate race — the matched room's last player
-    // disconnected and cleanup dropped the room between releasing and
-    // re-taking the lock. Neither may panic the connection task: report a
-    // best-effort ProtocolError and end the connection cleanly. No state is
-    // leaked — the player is only inserted when the room exists.
-    // MUST stay semantically identical to the non-TLS path in handle_socket.
-    let room_exists = {
-        let mut rooms = app.rooms.lock();
-        match rooms.get_mut(&rid) {
-            Some(room) => {
-                room.players.insert(
-                    player_id.clone(),
-                    Player {
-                        id: player_id.clone(),
-                        display: "player".into(),
-                        last_input_seq: 0,
-                        last_seen: tokio::time::Instant::now(),
-                        tokens: 30.0,
-                        last_refill: tokio::time::Instant::now(),
-                    },
-                );
-                tick_hz = room.tick_hz;
-                true
-            }
-            None => false,
-        }
-    };
-    if !room_exists {
-        warn!("join refused: room {rid} does not exist");
-        if let Err(e) = send_tls(
-            &app,
-            &mut ws,
-            &ServerToClient::ProtocolError {
-                msg: format!("room {rid} does not exist"),
-            },
-        )
-        .await
-        {
-            warn!("failed to send ProtocolError for missing room {rid}: {e}");
-        }
-        return Ok(());
-    }
-
-    send_tls(
-        &app,
-        &mut ws,
-        &ServerToClient::MatchResult {
-            room_id: rid.clone(),
-        },
-    )
-    .await?;
-    send_tls(
-        &app,
-        &mut ws,
-        &ServerToClient::JoinAccepted {
-            room_id: rid.clone(),
-            player_id: player_id.clone(),
-            tick_hz,
-        },
-    )
-    .await?;
-
-    // Per-connection game loop
-    let tick_dt = Duration::from_millis((1000 / tick_hz.max(1)) as u64);
-    let mut _last_snap = 0u32;
-
-    loop {
-        tokio::select! {
-            biased;
-
-            // Receive client messages
-            msg = ws.next() => {
-                match msg {
-                    Some(Ok(Message::Binary(bytes))) => {
-                        if let Ok(m) = aw_net_proto::decode_msg::<ClientToServer>(app.codec, &bytes) {
-                            match on_client_msg_tls(&app, &rid, &player_id, &mut ws, m).await {
-                                Ok(MsgOutcome::Continue) => {}
-                                Ok(MsgOutcome::Kick(reason)) => {
-                                    // Best-effort policy-violation close (1008), then break so
-                                    // the shared cleanup block below runs (player removal,
-                                    // empty-room drop).
-                                    let close = Message::Close(Some(CloseFrame {
-                                        code: CloseCode::Policy,
-                                        reason: reason.into(),
-                                    }));
-                                    if let Err(e) = ws.send(close).await {
-                                        warn!("failed to send close frame to pid={player_id}: {e}");
-                                    }
-                                    break;
-                                }
-                                Err(e) => {
-                                    warn!("client msg error: {e:?}");
-                                }
-                            }
-                        }
-                    }
-                    Some(Ok(Message::Ping(p))) => { let _ = ws.send(Message::Pong(p)).await; }
-                    Some(Ok(_)) => {}
-                    Some(Err(e)) => { warn!("ws recv: {e}"); break; }
-                    None => break,
-                }
-            }
-
-            // Send authoritative snapshot periodically. Failures (snapshot
-            // build or send to a vanished client) must NOT `?`-return out of
-            // the handler — that would skip the shared cleanup block below
-            // and permanently leak the player entry (ghost player; the room
-            // would never empty). warn + break so cleanup always runs.
-            _ = tokio::time::sleep(tick_dt) => {
-                match build_snapshot(&app, &rid) {
-                    Ok((snap, sid)) => {
-                        _last_snap = sid;
-                        if let Err(e) = send_tls(&app, &mut ws, &snap).await {
-                            warn!("snapshot send failed for pid={player_id}: {e}; closing");
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        warn!("snapshot build failed for room {rid}: {e}; closing");
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // Cleanup
-    {
-        let mut rooms = app.rooms.lock();
-        if let Some(room) = rooms.get_mut(&rid) {
-            room.players.remove(&player_id);
-            if room.players.is_empty() {
-                rooms.remove(&rid);
-            }
-        }
-    }
-    Ok(())
+/// Removes this player when the connection task leaves, including `?` and panic.
+struct PlayerMembership {
+    rooms: Arc<Mutex<HashMap<RoomId, Room>>>,
+    rid: RoomId,
+    pid: PlayerId,
 }
 
-async fn handle_socket(
+impl Drop for PlayerMembership {
+    fn drop(&mut self) {
+        let mut rooms = self.rooms.lock();
+        if let Some(room) = rooms.get_mut(&self.rid) {
+            room.players.remove(&self.pid);
+            if room.players.is_empty() {
+                rooms.remove(&self.rid);
+            }
+        }
+    }
+}
+
+async fn handle_socket_tls<S>(
     app: AppState,
-    mut ws: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
-) -> Result<()> {
+    ws: tokio_tungstenite::WebSocketStream<S>,
+) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    // Plain and TLS sessions share one handler, including player cleanup.
+    handle_socket(app, ws).await
+}
+
+async fn handle_socket<S>(
+    app: AppState,
+    mut ws: tokio_tungstenite::WebSocketStream<S>,
+) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     // Handshake
-    let hello = recv::<ClientToServer>(&app, &mut ws).await?;
+    let hello = recv(&app, &mut ws).await?;
     match hello {
         ClientToServer::Hello { protocol } if protocol == PROTOCOL_VERSION => {
             send(&app, &mut ws, &ServerToClient::HelloAck { protocol }).await?;
@@ -683,7 +482,7 @@ async fn handle_socket(
     let player_id = uuid::Uuid::new_v4().to_string();
     let mut tick_hz = 30u32;
 
-    if let Ok(msg) = recv::<ClientToServer>(&app, &mut ws).await {
+    if let Ok(msg) = recv(&app, &mut ws).await {
         match msg {
             ClientToServer::FindOrCreate {
                 region, game_mode, ..
@@ -735,15 +534,16 @@ async fn handle_socket(
         }
     };
 
-    // allocate player into room. The room can be missing here for two
+    // Allocate the player into the room. The room can be missing here for two
     // reasons: (a) a hostile/buggy `JoinRoom` carried a room id that never
     // existed, or (b) a FindOrCreate race — the matched room's last player
-    // disconnected and cleanup dropped the room between releasing and
-    // re-taking the lock. Neither may panic the connection task: report a
-    // best-effort ProtocolError and end the connection cleanly. No state is
-    // leaked — the player is only inserted when the room exists.
-    // MUST stay semantically identical to the TLS path in handle_socket_tls.
-    let room_exists = {
+    // disconnected and its membership guard dropped the room between releasing
+    // and re-taking the lock. Neither may panic the connection task: report a
+    // best-effort ProtocolError and end the connection cleanly. The player is
+    // inserted only when the room exists. `_membership` stays live until this
+    // function returns, so a failed MatchResult or JoinAccepted send still
+    // removes the player and an empty room.
+    let membership = {
         let mut rooms = app.rooms.lock();
         match rooms.get_mut(&rid) {
             Some(room) => {
@@ -759,26 +559,33 @@ async fn handle_socket(
                     },
                 );
                 tick_hz = room.tick_hz;
-                true
+                Some(PlayerMembership {
+                    rooms: Arc::clone(&app.rooms),
+                    rid: rid.clone(),
+                    pid: player_id.clone(),
+                })
             }
-            None => false,
+            None => None,
         }
     };
-    if !room_exists {
-        warn!("join refused: room {rid} does not exist");
-        if let Err(e) = send(
-            &app,
-            &mut ws,
-            &ServerToClient::ProtocolError {
-                msg: format!("room {rid} does not exist"),
-            },
-        )
-        .await
-        {
-            warn!("failed to send ProtocolError for missing room {rid}: {e}");
+    let _membership = match membership {
+        Some(membership) => membership,
+        None => {
+            warn!("join refused: room {rid} does not exist");
+            if let Err(e) = send(
+                &app,
+                &mut ws,
+                &ServerToClient::ProtocolError {
+                    msg: format!("room {rid} does not exist"),
+                },
+            )
+            .await
+            {
+                warn!("failed to send ProtocolError for missing room {rid}: {e}");
+            }
+            return Ok(());
         }
-        return Ok(());
-    }
+    };
 
     send(
         &app,
@@ -815,9 +622,8 @@ async fn handle_socket(
                             match on_client_msg(&app, &rid, &player_id, &mut ws, m).await {
                                 Ok(MsgOutcome::Continue) => {}
                                 Ok(MsgOutcome::Kick(reason)) => {
-                                    // Best-effort policy-violation close (1008), then break so
-                                    // the shared cleanup block below runs (player removal,
-                                    // empty-room drop).
+                                    // Best-effort policy-violation close (1008), then break.
+                                    // `_membership` removes the player and an empty room.
                                     let close = Message::Close(Some(CloseFrame {
                                         code: CloseCode::Policy,
                                         reason: reason.into(),
@@ -840,11 +646,10 @@ async fn handle_socket(
                 }
             }
 
-            // Send authoritative snapshot periodically. Failures (snapshot
-            // build or send to a vanished client) must NOT `?`-return out of
-            // the handler — that would skip the shared cleanup block below
-            // and permanently leak the player entry (ghost player; the room
-            // would never empty). warn + break so cleanup always runs.
+            // Send authoritative snapshot periodically. A build or send failure
+            // must not `?` out of the handler: the accept loop would log it as
+            // a session error. warn + break. `_membership` still removes the
+            // player if this arm returns early.
             _ = tokio::time::sleep(tick_dt) => {
                 match build_snapshot(&app, &rid) {
                     Ok((snap, sid)) => {
@@ -863,16 +668,6 @@ async fn handle_socket(
         }
     }
 
-    // Cleanup
-    {
-        let mut rooms = app.rooms.lock();
-        if let Some(room) = rooms.get_mut(&rid) {
-            room.players.remove(&player_id);
-            if room.players.is_empty() {
-                rooms.remove(&rid);
-            }
-        }
-    }
     Ok(())
 }
 
@@ -910,13 +705,16 @@ fn build_snapshot(app: &AppState, rid: &str) -> Result<(ServerToClient, u32)> {
     Ok((msg, sid))
 }
 
-async fn on_client_msg(
+async fn on_client_msg<S>(
     app: &AppState,
     rid: &str,
     pid: &str,
-    ws: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    ws: &mut tokio_tungstenite::WebSocketStream<S>,
     msg: ClientToServer,
-) -> Result<MsgOutcome> {
+) -> Result<MsgOutcome>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     match msg {
         ClientToServer::InputFrame {
             seq,
@@ -990,19 +788,23 @@ async fn on_client_msg(
 }
 
 // Helpers
-async fn send(
+async fn send<S>(
     app: &AppState,
-    ws: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    ws: &mut tokio_tungstenite::WebSocketStream<S>,
     msg: &ServerToClient,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     let bytes = aw_net_proto::encode_msg(app.codec, msg);
     ws.send(Message::Binary(bytes.into())).await?;
     Ok(())
 }
-async fn recv<T: for<'de> serde::Deserialize<'de>>(
-    app: &AppState,
-    ws: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
-) -> Result<T> {
+async fn recv<T, S>(app: &AppState, ws: &mut tokio_tungstenite::WebSocketStream<S>) -> Result<T>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    T: for<'de> serde::Deserialize<'de>,
+{
     let msg = ws
         .next()
         .await
@@ -1014,121 +816,6 @@ async fn recv<T: for<'de> serde::Deserialize<'de>>(
         }
         _ => Err(anyhow::anyhow!("unexpected ws message")),
     }
-}
-
-// TLS versions of helper functions
-async fn send_tls(
-    app: &AppState,
-    ws: &mut tokio_tungstenite::WebSocketStream<
-        tokio_rustls::server::TlsStream<tokio::net::TcpStream>,
-    >,
-    msg: &ServerToClient,
-) -> Result<()> {
-    let bytes = aw_net_proto::encode_msg(app.codec, msg);
-    ws.send(Message::Binary(bytes.into())).await?;
-    Ok(())
-}
-
-async fn recv_tls<T: for<'de> serde::Deserialize<'de>>(
-    app: &AppState,
-    ws: &mut tokio_tungstenite::WebSocketStream<
-        tokio_rustls::server::TlsStream<tokio::net::TcpStream>,
-    >,
-) -> Result<T> {
-    let msg = ws
-        .next()
-        .await
-        .ok_or_else(|| anyhow::anyhow!("ws closed"))??;
-    match msg {
-        Message::Binary(b) => {
-            let t = aw_net_proto::decode_msg::<T>(app.codec, &b)?;
-            Ok(t)
-        }
-        _ => Err(anyhow::anyhow!("unexpected ws message")),
-    }
-}
-
-async fn on_client_msg_tls(
-    app: &AppState,
-    rid: &str,
-    pid: &str,
-    ws: &mut tokio_tungstenite::WebSocketStream<
-        tokio_rustls::server::TlsStream<tokio::net::TcpStream>,
-    >,
-    msg: ClientToServer,
-) -> Result<MsgOutcome> {
-    match msg {
-        ClientToServer::InputFrame {
-            seq,
-            tick_ms,
-            input_blob,
-            sig,
-            ..
-        } => {
-            // Verify the signature FIRST — before last_input_seq/last_seen
-            // updates and before rate-limit token deduction. An
-            // unauthenticated packet must not influence server state.
-            // MUST stay semantically identical to the non-TLS handler in
-            // on_client_msg — a skippable path on either is a security bug.
-            let payload = aw_net_proto::input_frame_sig_payload(seq, tick_ms, &input_blob);
-            if !aw_net_proto::verify(&app.signing_key, &payload, &sig) {
-                match app.sig_failure_policy {
-                    SignatureFailurePolicy::Kick => {
-                        warn!("HMAC signature verification failed for pid={pid}; kicking (policy: kick)");
-                        return Ok(MsgOutcome::Kick(
-                            "input frame signature verification failed",
-                        ));
-                    }
-                    SignatureFailurePolicy::Warn => {
-                        // Legacy behavior: log and process the packet anyway.
-                        warn!("HMAC signature verification failed for pid={pid} (policy: warn)");
-                    }
-                }
-            }
-
-            // token bucket rate limit
-            let mut kick = false;
-            {
-                let mut rooms = app.rooms.lock();
-                if let Some(room) = rooms.get_mut(rid) {
-                    if let Some(p) = room.players.get_mut(pid) {
-                        let now = tokio::time::Instant::now();
-                        let elapsed = now.duration_since(p.last_refill).as_secs_f32();
-
-                        // Refill tokens based on elapsed time (8 tokens/sec)
-                        const REFILL_RATE: f32 = 8.0;
-                        const BUCKET_SIZE: f32 = 60.0;
-                        const COST_PER_MESSAGE: f32 = 1.0;
-
-                        p.tokens += REFILL_RATE * elapsed;
-                        if p.tokens > BUCKET_SIZE {
-                            p.tokens = BUCKET_SIZE;
-                        }
-                        p.last_refill = now;
-
-                        // Deduct cost
-                        p.tokens -= COST_PER_MESSAGE;
-
-                        if p.tokens < 0.0 {
-                            kick = true;
-                        } else {
-                            p.last_input_seq = seq;
-                            p.last_seen = now;
-                        }
-                    }
-                }
-            }
-            if kick {
-                send_tls(app, ws, &ServerToClient::RateLimited).await?;
-            }
-        }
-        ClientToServer::Ping { nano } => {
-            send_tls(app, ws, &ServerToClient::Pong { nano }).await?;
-        }
-        ClientToServer::Ack { .. } => { /* optional: track delivery / deltas */ }
-        _ => { /* ignore other in-session messages */ }
-    }
-    Ok(MsgOutcome::Continue)
 }
 
 #[cfg(test)]
@@ -1163,5 +850,160 @@ mod admin_auth_tests {
             status(Some("s3cret"), Some("Bearer s3cret")).await,
             StatusCode::OK
         );
+    }
+}
+
+#[cfg(test)]
+mod ghost_player_tests {
+    use std::collections::HashMap;
+    use std::io::{self, ErrorKind};
+    use std::pin::Pin;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::task::{Context, Poll};
+
+    use aw_net_proto::{ClientToServer, Codec, ServerToClient, SigningKey, PROTOCOL_VERSION};
+    use futures::{SinkExt, StreamExt};
+    use parking_lot::Mutex;
+    use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+    use tokio_tungstenite::tungstenite::Message;
+
+    use super::SignatureFailurePolicy;
+
+    /// Server writes succeed until the test flips `fail_writes`. Reads stay open
+    /// so `FindOrCreate` still reaches the handler after `HelloAck`.
+    struct WriteGate<T> {
+        inner: T,
+        fail_writes: Arc<AtomicBool>,
+    }
+
+    impl<T: AsyncRead + Unpin> AsyncRead for WriteGate<T> {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_read(cx, buf)
+        }
+    }
+
+    impl<T: AsyncWrite + Unpin> AsyncWrite for WriteGate<T> {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            if self.fail_writes.load(Ordering::SeqCst) {
+                return Poll::Ready(Err(io::Error::new(
+                    ErrorKind::BrokenPipe,
+                    "peer gone before join ack",
+                )));
+            }
+            Pin::new(&mut self.inner).poll_write(cx, buf)
+        }
+
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            if self.fail_writes.load(Ordering::SeqCst) {
+                return Poll::Ready(Err(io::Error::new(
+                    ErrorKind::BrokenPipe,
+                    "peer gone before join ack",
+                )));
+            }
+            Pin::new(&mut self.inner).poll_flush(cx)
+        }
+
+        fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+            Pin::new(&mut self.inner).poll_shutdown(cx)
+        }
+    }
+
+    async fn failed_join_send(tls_entry: bool) {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let app = super::AppState {
+            rooms: Arc::new(Mutex::new(HashMap::new())),
+            db: sled::open(dir.path()).expect("sled"),
+            codec: Codec::PostcardLz4,
+            signing_key: SigningKey::dev_default(),
+            sig_failure_policy: SignatureFailurePolicy::Kick,
+        };
+        let observed = Arc::clone(&app.rooms);
+        let fail_writes = Arc::new(AtomicBool::new(false));
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let gated = WriteGate {
+            inner: server_io,
+            fail_writes: Arc::clone(&fail_writes),
+        };
+        let server = tokio::spawn(async move {
+            let ws = tokio_tungstenite::accept_async(gated)
+                .await
+                .expect("handshake");
+            if tls_entry {
+                super::handle_socket_tls(app, ws).await
+            } else {
+                super::handle_socket(app, ws).await
+            }
+        });
+
+        let (mut client, _) = tokio_tungstenite::client_async("ws://127.0.0.1/ws", client_io)
+            .await
+            .expect("client handshake");
+        let hello = aw_net_proto::encode_msg(
+            Codec::PostcardLz4,
+            &ClientToServer::Hello {
+                protocol: PROTOCOL_VERSION,
+            },
+        );
+        client
+            .send(Message::Binary(hello.into()))
+            .await
+            .expect("hello");
+        let ack = client.next().await.expect("ack frame").expect("ack ok");
+        let Message::Binary(bytes) = ack else {
+            panic!("expected HelloAck bytes, got {ack:?}");
+        };
+        match aw_net_proto::decode_msg::<ServerToClient>(Codec::PostcardLz4, &bytes)
+            .expect("decode HelloAck")
+        {
+            ServerToClient::HelloAck { protocol } => assert_eq!(protocol, PROTOCOL_VERSION),
+            other => panic!("expected HelloAck, got {other:?}"),
+        }
+
+        // MatchResult is the next server write. Fail it before FindOrCreate is readable.
+        fail_writes.store(true, Ordering::SeqCst);
+        let find = aw_net_proto::encode_msg(
+            Codec::PostcardLz4,
+            &ClientToServer::FindOrCreate {
+                region: "us-east".into(),
+                game_mode: "duel".into(),
+                party_size: 1,
+            },
+        );
+        client
+            .send(Message::Binary(find.into()))
+            .await
+            .expect("find");
+
+        let result = server.await.expect("handler task");
+        assert!(
+            result.is_err(),
+            "MatchResult write must fail, got {result:?}"
+        );
+        let rooms = observed.lock();
+        let leaked: usize = rooms.values().map(|room| room.players.len()).sum();
+        assert_eq!(leaked, 0, "player remained after the join send failed");
+        assert!(
+            rooms.is_empty(),
+            "empty room remained after the join send failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_join_send_removes_the_player() {
+        failed_join_send(false).await;
+    }
+
+    #[tokio::test]
+    async fn failed_join_send_removes_the_player_on_the_tls_entry() {
+        failed_join_send(true).await;
     }
 }
