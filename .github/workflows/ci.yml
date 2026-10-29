@@ -275,6 +275,9 @@ jobs:
           AW_CI_PARTITION: count:${{ matrix.partition }}/3
           AW_CI_PROFILE: ci-pr-linux-archive
           AW_AUDIO_PROBE_BIN: ${{ github.workspace }}/target/aw_audio_probe
+          # Nav stress ceilings in astraweave-nav. About 10× the old debug
+          # bounds, so a hang fails and the 12.2 ms sample does not. #575.
+          AW_PERF_ASSERTS: "1"
         run: bash scripts/ci/run-tests.sh
 
   test-windows-build:
@@ -389,6 +392,8 @@ jobs:
           AW_CI_ARCHIVE_RUN: target/nextest-archive.tar.zst
           AW_CI_PARTITION: count:${{ matrix.partition }}/3
           AW_CI_PROFILE: ci-pr-archive
+          # Same nav ceilings as the Linux partitions. #575.
+          AW_PERF_ASSERTS: "1"
         run: bash scripts/ci/run-tests.sh
 
   msrv:

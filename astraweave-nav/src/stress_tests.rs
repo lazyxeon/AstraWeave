@@ -1,7 +1,39 @@
 // Week 2 Day 2: Stress Tests for astraweave-nav
-// Tests large navmeshes, complex graphs, and long paths for performance/robustness validation
+// Tests large navmeshes, complex graphs, and long paths for correctness.
+// Latency is measured by `benches/navmesh_benchmarks.rs` (group `stress_latency`,
+// plus the existing bake benches). A hard wall-clock assert here flakes: debug
+// `cargo test --lib` on the shared macOS runner measured 12.2 ms for
+// `test_long_path_100_hops` and failed `< 10` (run 40879883808, job 123468260052).
 
 use super::*;
+
+/// Catastrophic ceiling. Not a performance SLA.
+///
+/// `ci.yml` sets `AW_PERF_ASSERTS=1` on the pull-request nextest partitions
+/// (Linux `ci-pr-linux-archive` and Windows `ci-pr-archive`). Each ceiling is
+/// about 10× the old debug bound: a hang fails, and the 12.2 ms sample that
+/// failed `< 10` (run 40879883808) stays under 100 ms. Criterion records the
+/// same calls in release.
+fn assert_perf_ceiling(elapsed: std::time::Duration, ceiling_ms: u128, what: &str) {
+    if std::env::var_os("AW_PERF_ASSERTS").is_none() {
+        return;
+    }
+    assert!(
+        elapsed.as_millis() < ceiling_ms,
+        "{what} exceeded {ceiling_ms} ms catastrophic ceiling (debug build, parallel tests, shared runners; not a performance SLA), took {elapsed:?}"
+    );
+}
+
+// About 10× the former debug SLAs. See `assert_perf_ceiling`.
+const PERF_BAKE_100_MS: u128 = 1_000;
+const PERF_PATH_100_TRI_MS: u128 = 100;
+const PERF_BAKE_1K_MS: u128 = 20_000;
+const PERF_PATH_1K_MS: u128 = 1_000;
+const PERF_BAKE_10K_MS: u128 = 100_000;
+const PERF_PATH_10K_MS: u128 = 1_000;
+const PERF_PATH_50_HOP_MS: u128 = 500;
+const PERF_PATH_100_HOP_MS: u128 = 100;
+const PERF_QUERIES_100_MS: u128 = 10_000;
 
 // ===== Helper Functions for Stress Test Setup =====
 
@@ -83,11 +115,8 @@ fn test_large_navmesh_100_triangles_baking() {
         100,
         "All triangles should be flat and included"
     );
-    assert!(
-        elapsed.as_millis() < 100,
-        "Baking 100 triangles should take <100ms, took {:?}",
-        elapsed
-    );
+    // `bake_100_triangles` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(elapsed, PERF_BAKE_100_MS, "Baking 100 triangles");
 }
 
 #[test]
@@ -104,11 +133,8 @@ fn test_large_navmesh_100_triangles_pathfinding() {
     let elapsed = path_start.elapsed();
 
     assert!(path.len() >= 2, "Path should exist across grid");
-    assert!(
-        elapsed.as_millis() < 10,
-        "Pathfinding in 100-tri mesh should take <10ms (coverage overhead), took {:?}",
-        elapsed
-    );
+    // `pathfind_stress_100_tri_grid` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(elapsed, PERF_PATH_100_TRI_MS, "Pathfinding in 100-tri mesh");
 
     // Verify path goes from start to goal approximately
     assert!(
@@ -132,12 +158,8 @@ fn test_large_navmesh_1000_triangles_baking() {
     let elapsed = start.elapsed();
 
     assert_eq!(nav.tris.len(), 992);
-    // Relaxed timing for coverage builds (instrumentation adds overhead)
-    assert!(
-        elapsed.as_millis() < 2000,
-        "Baking ~1000 triangles should take <2s (coverage overhead), took {:?}",
-        elapsed
-    );
+    // `bake_1k_triangles` in navmesh_benchmarks.rs (1024 tris, same bake).
+    assert_perf_ceiling(elapsed, PERF_BAKE_1K_MS, "Baking ~1000 triangles");
 
     // Verify adjacency is built (spot check first triangle has neighbors)
     assert!(
@@ -160,11 +182,8 @@ fn test_large_navmesh_1000_triangles_pathfinding() {
     let elapsed = path_start.elapsed();
 
     assert!(path.len() >= 2);
-    assert!(
-        elapsed.as_millis() < 100,
-        "Pathfinding in 1000-tri mesh should take <100ms (coverage overhead), took {:?}",
-        elapsed
-    );
+    // `pathfind_stress_1k_diagonal` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(elapsed, PERF_PATH_1K_MS, "Pathfinding in 1000-tri mesh");
 }
 
 #[test]
@@ -179,11 +198,8 @@ fn test_large_navmesh_10000_triangles_stress() {
     let bake_elapsed = bake_start.elapsed();
 
     assert_eq!(nav.tris.len(), 10000);
-    assert!(
-        bake_elapsed.as_secs() < 10,
-        "Baking 10k triangles should take <10s, took {:?}",
-        bake_elapsed
-    );
+    // `bake_10k_triangles` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(bake_elapsed, PERF_BAKE_10K_MS, "Baking 10k triangles");
 
     // Pathfinding across the entire grid
     let start = Vec3::new(1.0, 0.0, 1.0);
@@ -194,11 +210,8 @@ fn test_large_navmesh_10000_triangles_stress() {
     let path_elapsed = path_start.elapsed();
 
     assert!(path.len() >= 2);
-    assert!(
-        path_elapsed.as_millis() < 100,
-        "100-hop path should take <100ms (coverage overhead), took {:?}",
-        path_elapsed
-    );
+    // `pathfind_stress_10k_grid` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(path_elapsed, PERF_PATH_10K_MS, "Path across a 10k-tri grid");
 }
 
 // ===== Complex Graph Tests =====
@@ -324,11 +337,8 @@ fn test_long_path_50_hops() {
     let elapsed = path_start.elapsed();
 
     assert!(path.len() >= 2);
-    assert!(
-        elapsed.as_millis() < 50,
-        "50-hop path should take <50ms (coverage overhead), took {:?}",
-        elapsed
-    );
+    // `pathfind_stress_50_hop` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(elapsed, PERF_PATH_50_HOP_MS, "50-hop path");
 }
 
 #[test]
@@ -345,11 +355,9 @@ fn test_long_path_100_hops() {
     let elapsed = path_start.elapsed();
 
     assert!(path.len() >= 2);
-    assert!(
-        elapsed.as_millis() < 10,
-        "100-hop path should take <10ms, took {:?}",
-        elapsed
-    );
+    // `pathfind_stress_100_hop` in navmesh_benchmarks.rs. The old `< 10` ms
+    // bound is the flake in #575.
+    assert_perf_ceiling(elapsed, PERF_PATH_100_HOP_MS, "100-hop path");
 
     // Verify smoothing worked (path should have fewer waypoints than 100+2)
     assert!(
@@ -382,12 +390,8 @@ fn test_multiple_sequential_queries() {
     }
     let elapsed = start_time.elapsed();
 
-    // 100 queries with coverage overhead
-    assert!(
-        elapsed.as_millis() < 1000,
-        "100 queries should take <1s (coverage overhead), took {:?}",
-        elapsed
-    );
+    // `sequential_100_queries` in navmesh_benchmarks.rs.
+    assert_perf_ceiling(elapsed, PERF_QUERIES_100_MS, "100 sequential queries");
 }
 
 #[test]
