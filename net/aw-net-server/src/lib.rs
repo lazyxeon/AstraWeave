@@ -220,6 +220,9 @@ struct Room {
     tick: u64,
     // last snapshot id
     snap_id: u32,
+    /// Latest snapshot for this room. One tick owner sends; every connection
+    /// subscribes. Dropping the room drops the sender.
+    snap_tx: tokio::sync::watch::Sender<Option<ServerToClient>>,
 }
 
 #[derive(Clone)]
@@ -487,24 +490,33 @@ where
             ClientToServer::FindOrCreate {
                 region, game_mode, ..
             } => {
-                let mut rooms = app.rooms.lock();
-                if let Some((rid, _)) = rooms.iter().find(|(_, r)| {
-                    r.region == region && r.game_mode == game_mode && r.players.len() < 4
-                }) {
-                    room_id = Some(rid.clone());
-                } else {
-                    let rid = new_room_id();
-                    let r = Room {
-                        id: rid.clone(),
-                        region,
-                        game_mode,
-                        tick_hz,
-                        players: HashMap::new(),
-                        tick: 0,
-                        snap_id: 0,
-                    };
-                    rooms.insert(rid.clone(), r);
-                    room_id = Some(rid.clone());
+                let created = {
+                    let mut rooms = app.rooms.lock();
+                    if let Some((rid, _)) = rooms.iter().find(|(_, r)| {
+                        r.region == region && r.game_mode == game_mode && r.players.len() < 4
+                    }) {
+                        room_id = Some(rid.clone());
+                        None
+                    } else {
+                        let rid = new_room_id();
+                        let (snap_tx, _snap_rx) = tokio::sync::watch::channel(None);
+                        let r = Room {
+                            id: rid.clone(),
+                            region,
+                            game_mode,
+                            tick_hz,
+                            players: HashMap::new(),
+                            tick: 0,
+                            snap_id: 0,
+                            snap_tx,
+                        };
+                        rooms.insert(rid.clone(), r);
+                        room_id = Some(rid.clone());
+                        Some(rid)
+                    }
+                };
+                if let Some(rid) = created {
+                    spawn_room_tick(app.clone(), rid, tick_hz);
                 }
             }
             ClientToServer::JoinRoom {
@@ -606,13 +618,36 @@ where
     )
     .await?;
 
-    // Per-connection game loop
-    let tick_dt = Duration::from_millis((1000 / tick_hz.max(1)) as u64);
-    let mut _last_snap = 0u32;
+    // The room owner publishes snapshots. This arm is first under `biased`
+    // so a socket that always has a frame ready cannot skip the tick.
+    let mut snaps = {
+        let rooms = app.rooms.lock();
+        match rooms.get(&rid) {
+            Some(room) => room.snap_tx.subscribe(),
+            None => {
+                warn!("room {rid} disappeared before the snapshot subscribe");
+                return Ok(());
+            }
+        }
+    };
 
     loop {
         tokio::select! {
             biased;
+
+            changed = snaps.changed() => {
+                if changed.is_err() {
+                    warn!("room {rid} tick owner ended; closing pid={player_id}");
+                    break;
+                }
+                let snap = snaps.borrow().clone();
+                if let Some(snap) = snap {
+                    if let Err(e) = send(&app, &mut ws, &snap).await {
+                        warn!("snapshot send failed for pid={player_id}: {e}; closing");
+                        break;
+                    }
+                }
+            }
 
             // Receive client messages
             msg = ws.next() => {
@@ -645,30 +680,35 @@ where
                     None => break,
                 }
             }
-
-            // Send authoritative snapshot periodically. A build or send failure
-            // must not `?` out of the handler: the accept loop would log it as
-            // a session error. warn + break. `_membership` still removes the
-            // player if this arm returns early.
-            _ = tokio::time::sleep(tick_dt) => {
-                match build_snapshot(&app, &rid) {
-                    Ok((snap, sid)) => {
-                        _last_snap = sid;
-                        if let Err(e) = send(&app, &mut ws, &snap).await {
-                            warn!("snapshot send failed for pid={player_id}: {e}; closing");
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        warn!("snapshot build failed for room {rid}: {e}; closing");
-                        break;
-                    }
-                }
-            }
         }
     }
 
     Ok(())
+}
+
+/// One task per room. `Interval::tick` is cancellation-safe and does not
+/// reset its deadline. `Skip` drops a period the owner was late for instead
+/// of bursting. The first tick completes immediately; consuming it keeps the
+/// old one-period wait before the first snapshot.
+fn spawn_room_tick(app: AppState, rid: RoomId, tick_hz: u32) {
+    tokio::spawn(async move {
+        let tick_dt = Duration::from_millis((1000 / tick_hz.max(1)) as u64);
+        let mut interval = tokio::time::interval(tick_dt);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            let snap = match build_snapshot(&app, &rid) {
+                Ok((snap, _sid)) => snap,
+                Err(_) => break,
+            };
+            let rooms = app.rooms.lock();
+            let Some(room) = rooms.get(&rid) else {
+                break;
+            };
+            let _ = room.snap_tx.send(Some(snap));
+        }
+    });
 }
 
 fn build_snapshot(app: &AppState, rid: &str) -> Result<(ServerToClient, u32)> {
