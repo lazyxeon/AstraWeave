@@ -259,32 +259,12 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const { parseBenchmarkReport, issueTitle, issueBullets } = require('./scripts/ci/benchmark_issue_title.js');
             const reportPath = 'target/benchmark-data/regression-report.txt';
             const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : '';
-            const over = [];
-            const missing = [];
-            for (const raw of report.split(/\r?\n/)) {
-              const line = raw.replace(/^(?:Write-Error|Exception|NativeCommandError):\s*/, '');
-              const failed = line.match(/^([A-Za-z0-9_./:-]+): .+OVER LIMIT/);
-              if (failed) over.push(failed[1]);
-              const absent = line.match(/No benchmark result for threshold '([^']+)'/);
-              if (absent) missing.push(absent[1]);
-            }
-            let title;
-            if (over.length > 0) {
-              const shown = over.slice(0, 4).join(', ');
-              const more = over.length > 4 ? ` +${over.length - 4} more` : '';
-              title = `Benchmark regression: ${shown}${more}`.slice(0, 240);
-            } else if (missing.length > 0) {
-              title = 'Benchmark results missing threshold keys';
-            } else if (report.includes('Benchmark results not found')) {
-              title = 'Benchmark results missing';
-            } else {
-              title = `Benchmark check failed ${context.sha.slice(0, 7)}`;
-            }
-            const named = over.length
-              ? over.map((name) => `- ${name}`).join('\n')
-              : missing.map((name) => `- missing \`${name}\``).join('\n');
+            const parsed = parseBenchmarkReport(report);
+            const title = issueTitle(parsed, context.sha);
+            const named = issueBullets(parsed);
             const excerpt = report.length > 6000 ? report.slice(0, 6000) + '\n…' : report;
             const body = `## Automated benchmark check
 

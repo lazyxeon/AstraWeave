@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "generated": "2025-10-09T00:00:00Z",
-  "description": "Baseline performance thresholds. Keys are the benchmark_name values scripts/export_benchmark_jsonl.ps1 writes (Criterion ids). benchmark.yml prefixes package:: ; the checker strips that prefix.",
+  "description": "Baseline performance thresholds. Keys are the benchmark_name values scripts/export_benchmark_jsonl.ps1 writes (Criterion ids). benchmark.yml prefixes package:: ; the checker strips that prefix. The old ids ecs_benchmarks/entity_spawn, ecs_benchmarks/entity_tick_empty, ecs_performance/stress_10k_entities, and input_benchmarks/full_input_set_processing are not rows the runner writes. entity_spawning and world_tick are the core_benchmarks ids.",
   "policy": {
     "default_max_regression": "50%",
     "default_warn_threshold": "25%",
@@ -17,6 +17,24 @@
       "description": "ECS World creation on ubuntu-latest. The 25.8 ns laptop figure is not this runner. Three healthy aggregates on 2026-10-28 were 41.47, 42.62, and 42.87 ns. Cap is 1.5x the slowest of those.",
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
+    },
+    "entity_spawning": {
+      "baseline": 30830.93,
+      "max_allowed": 46246.4,
+      "warn_threshold": 38538.66,
+      "unit": "ns",
+      "description": "Spawn 100 entities (core_benchmarks). ubuntu-latest means from runs 40756735213 (30830.93 ns), 40742663481 (30805.26 ns), 40647488491 (17653.34 ns), and 40637628179 (30493.92 ns). Cap is 1.5x the slowest, rounded to 0.01 ns.",
+      "created": "2026-10-29T00:00:00Z",
+      "last_updated": "2026-10-29T00:00:00Z"
+    },
+    "world_tick": {
+      "baseline": 48.49,
+      "max_allowed": 72.74,
+      "warn_threshold": 60.61,
+      "unit": "ns",
+      "description": "One tick of 50 entities (core_benchmarks). ubuntu-latest means from the same four runs: 45.82, 48.39, 24.38, and 48.49 ns. Cap is 1.5x the slowest, rounded to 0.01 ns.",
+      "created": "2026-10-29T00:00:00Z",
+      "last_updated": "2026-10-29T00:00:00Z"
     },
     "goap_planning_simple": {
       "baseline": 6050,
@@ -258,7 +276,7 @@
     "character_full_tick"
   ],
   "metadata": {
-    "total_benchmarks": 26,
+    "total_benchmarks": 28,
     "baseline_source": "Week 2-3 completion reports",
     "optimization_actions": [
       "Week 2 Action 2: ECS Performance Baseline",
