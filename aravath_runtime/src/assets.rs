@@ -213,8 +213,22 @@ pub fn import_model(
     Vec<gltf::image::Data>,
 )> {
     let path = confine_existing(&asset_dir(), path)?;
-    validate_model_file(&path)?;
-    gltf::import(&path).with_context(|| format!("import {}", path.display()))
+    import_validated_model(&path)
+}
+
+fn import_validated_model(
+    path: &Path,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    validate_model_file(path)?;
+    // `validate_model_file` reads the JSON chunk and ignores the total length
+    // at bytes 8..12. `gltf::import` then calls `Glb::from_reader`, which
+    // allocates `declared - 12` before it knows the file is shorter.
+    astraweave_asset::gltf_loader::reject_short_glb_file(path)?;
+    gltf::import(path).with_context(|| format!("import {}", path.display()))
 }
 
 pub fn validate_model_file(path: &Path) -> Result<()> {
@@ -574,6 +588,53 @@ mod tests {
             validate_model_file(&path).is_ok(),
             "{}",
             validate_model_file(&path).unwrap_err()
+        );
+    }
+
+    #[test]
+    fn padded_short_glb_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("shorter than the 12-byte header"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn oversized_declared_length_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the 22 bytes available"),
+            "{err}"
         );
     }
 
