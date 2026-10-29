@@ -24,9 +24,8 @@
 
 ---
 
-> **Status**: Production Ready  
 > **Crate**: `astraweave-cinematics`  
-> **Coverage**: ~85%
+> **Status**: the warning above this heading is the status. Coverage is not restated.
 
 The cinematics system provides a timeline-based sequencer for creating cutscenes, scripted events, and cinematic sequences with synchronized camera, animation, audio, and visual effects tracks.
 
@@ -540,7 +539,7 @@ impl BranchingCutscene {
 
 ## See Also
 
-- [API Reference: Cinematics](../api/cinematics.md)
+- [API Reference: Cinematics](../api/index.md)
 - [Audio System](./audio.md) - Audio integration
-- [Animation System](./animation.md) - Character animation
-- [Camera System](./camera.md) - Camera controls
+- [Animation System](./rendering.md) - Character animation
+- [Camera System](./rendering.md) - Camera controls

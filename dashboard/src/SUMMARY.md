@@ -24,7 +24,7 @@
   - [Planning Layer](./core-systems/ai/planning.md)
   - [Tool Sandbox](./core-systems/ai/tools.md)
   - [Behavior Trees](./core-systems/ai/behavior-trees.md)
-  - [AI Arbiter (Hybrid GOAP+LLM)](./core-systems/ai/arbiter.md)
+  - [AI Arbiter (off the sim tick)](./core-systems/ai/arbiter.md)
 - [Physics](./core-systems/physics.md)
 - [Rendering](./core-systems/rendering.md)
 - [Audio](./core-systems/audio.md)
@@ -56,7 +56,7 @@
 - [Navmesh Demo](./examples/navmesh-demo.md)
 - [Audio Spatial](./examples/audio-spatial.md)
 - [Fluids Demo](./examples/fluids-demo.md)
-- [Unified Showcase](./examples/unified-showcase.md)
+- [Rendering Showcase](./examples/unified-showcase.md)
 - [Troubleshooting Examples](./examples/troubleshooting.md)
 
 # Performance

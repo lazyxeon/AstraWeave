@@ -1,6 +1,6 @@
 # Crate Reference
 
-AstraWeave is organized as a workspace of interconnected crates, each providing focused functionality. This reference documents the crate hierarchy, dependencies, and public APIs.
+The workspace member set is the `members` array in the root `Cargo.toml`. On this tree that array has 140 unique paths (`astraweave-destruction` is listed twice). Diagrams below are not a complete inventory and were not rechecked crate by crate in this pass. Measured status is on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page.
 
 ## Workspace Overview
 
