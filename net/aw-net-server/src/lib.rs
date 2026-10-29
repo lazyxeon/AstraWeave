@@ -41,6 +41,41 @@ use aw_net_proto::{
 type PlayerId = String;
 type RoomId = String;
 
+/// FindOrCreate and JoinRoom both stop at this many seated players.
+const MAX_PLAYERS_PER_ROOM: usize = 4;
+
+fn new_player(player_id: &str) -> Player {
+    let now = tokio::time::Instant::now();
+    Player {
+        id: player_id.to_string(),
+        display: "player".into(),
+        last_input_seq: 0,
+        last_seen: now,
+        accepted_inputs: 0,
+        dropped_inputs: 0,
+        tokens: BUCKET_SIZE,
+        last_refill: now,
+        drop_times: VecDeque::new(),
+    }
+}
+
+/// Outcome of seating one player. `Full` is JoinRoom past the cap.
+enum Seat {
+    Seated(PlayerMembership),
+    Missing,
+    Full,
+}
+
+/// Cap check and insert. Caller holds `app.rooms`.
+fn try_seat(room: &mut Room, player_id: &str) -> bool {
+    if room.players.len() >= MAX_PLAYERS_PER_ROOM {
+        return false;
+    }
+    room.players
+        .insert(player_id.to_string(), new_player(player_id));
+    true
+}
+
 /// `/healthz` and `/regions` accept only this bearer token.
 pub fn admin_router(admin_token: Option<String>) -> Router {
     Router::new()
@@ -510,19 +545,28 @@ where
     let mut room_id: Option<RoomId> = None;
     let player_id = uuid::Uuid::new_v4().to_string();
     let mut tick_hz = 30u32;
+    // FindOrCreate seats under the lock that chooses or opens the room.
+    let mut seated = false;
 
     if let Ok(msg) = recv(&app, &mut ws).await {
         match msg {
             ClientToServer::FindOrCreate {
                 region, game_mode, ..
             } => {
+                // Seat before the guard drops, then start the tick owner only
+                // for a room this call opened. The owner locks `rooms` itself.
                 let created = {
                     let mut rooms = app.rooms.lock();
-                    if let Some((rid, _)) = rooms.iter().find(|(_, r)| {
-                        r.region == region && r.game_mode == game_mode && r.players.len() < 4
-                    }) {
-                        room_id = Some(rid.clone());
-                        None
+                    let existing = rooms
+                        .iter()
+                        .find(|(_, r)| {
+                            r.region == region
+                                && r.game_mode == game_mode
+                                && r.players.len() < MAX_PLAYERS_PER_ROOM
+                        })
+                        .map(|(rid, _)| rid.clone());
+                    let (rid, is_new) = if let Some(rid) = existing {
+                        (rid, false)
                     } else {
                         let rid = new_room_id();
                         let (snap_tx, _snap_rx) = tokio::sync::watch::channel(None);
@@ -537,8 +581,22 @@ where
                             snap_tx,
                         };
                         rooms.insert(rid.clone(), r);
-                        room_id = Some(rid.clone());
+                        (rid, true)
+                    };
+                    let room = rooms
+                        .get_mut(&rid)
+                        .expect("room was found or opened under this lock");
+                    assert!(
+                        try_seat(room, &player_id),
+                        "room selected under this lock had a free seat"
+                    );
+                    tick_hz = room.tick_hz;
+                    room_id = Some(rid.clone());
+                    seated = true;
+                    if is_new {
                         Some(rid)
+                    } else {
+                        None
                     }
                 };
                 if let Some(rid) = created {
@@ -572,46 +630,39 @@ where
         }
     };
 
-    // Allocate the player into the room. The room can be missing here for two
-    // reasons: (a) a hostile/buggy `JoinRoom` carried a room id that never
-    // existed, or (b) a FindOrCreate race — the matched room's last player
-    // disconnected and its membership guard dropped the room between releasing
-    // and re-taking the lock. Neither may panic the connection task: report a
-    // best-effort ProtocolError and end the connection cleanly. The player is
-    // inserted only when the room exists. `_membership` stays live until this
-    // function returns, so a failed MatchResult or JoinAccepted send still
-    // removes the player and an empty room.
-    let membership = {
+    // JoinRoom seats here, under the same lock as the cap check.
+    // FindOrCreate already seated under the lock that chose the room.
+    // A missing room is a bad JoinRoom id, or a room that emptied before
+    // this lock. A full room is ProtocolError. Neither may panic the task.
+    // `_membership` stays live until this function returns, so a failed
+    // MatchResult or JoinAccepted send still removes the player and an empty room.
+    let seat = if seated {
+        Seat::Seated(PlayerMembership {
+            rooms: Arc::clone(&app.rooms),
+            rid: rid.clone(),
+            pid: player_id.clone(),
+        })
+    } else {
         let mut rooms = app.rooms.lock();
         match rooms.get_mut(&rid) {
             Some(room) => {
-                room.players.insert(
-                    player_id.clone(),
-                    Player {
-                        id: player_id.clone(),
-                        display: "player".into(),
-                        last_input_seq: 0,
-                        last_seen: tokio::time::Instant::now(),
-                        accepted_inputs: 0,
-                        dropped_inputs: 0,
-                        tokens: BUCKET_SIZE,
-                        last_refill: tokio::time::Instant::now(),
-                        drop_times: VecDeque::new(),
-                    },
-                );
-                tick_hz = room.tick_hz;
-                Some(PlayerMembership {
-                    rooms: Arc::clone(&app.rooms),
-                    rid: rid.clone(),
-                    pid: player_id.clone(),
-                })
+                if try_seat(room, &player_id) {
+                    tick_hz = room.tick_hz;
+                    Seat::Seated(PlayerMembership {
+                        rooms: Arc::clone(&app.rooms),
+                        rid: rid.clone(),
+                        pid: player_id.clone(),
+                    })
+                } else {
+                    Seat::Full
+                }
             }
-            None => None,
+            None => Seat::Missing,
         }
     };
-    let _membership = match membership {
-        Some(membership) => membership,
-        None => {
+    let _membership = match seat {
+        Seat::Seated(membership) => membership,
+        Seat::Missing => {
             warn!("join refused: room {rid} does not exist");
             if let Err(e) = send(
                 &app,
@@ -623,6 +674,21 @@ where
             .await
             {
                 warn!("failed to send ProtocolError for missing room {rid}: {e}");
+            }
+            return Ok(());
+        }
+        Seat::Full => {
+            warn!("join refused: room {rid} is full");
+            if let Err(e) = send(
+                &app,
+                &mut ws,
+                &ServerToClient::ProtocolError {
+                    msg: "room full".into(),
+                },
+            )
+            .await
+            {
+                warn!("failed to send ProtocolError for full room {rid}: {e}");
             }
             return Ok(());
         }
