@@ -4,7 +4,9 @@ on:
   push:
     branches: [ main ]
   schedule:
-    # Six toolchains, nightly. MSRV stays on pull requests inside ci.yml.
+    # Nightly runs stable, 1.88.0, beta, and nightly. A main push runs
+    # the pinned 1.89.0 validation only. MSRV stays on pull requests
+    # inside ci.yml, and this workflow still checks MSRV on main.
     - cron: "40 5 * * *"
   workflow_dispatch:
     inputs:
@@ -42,31 +44,164 @@ jobs:
     name: Toolchain Validation (${{ matrix.toolchain }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # The pinned compiler on every main push. stable, 1.88.0, beta, and
+    # nightly are toolchain-validation-extra, which is not a push job.
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        toolchain: 
-          - stable
-          - "1.89.0"  # Pinned version
-          - "1.88.0"  # Previous stable for compatibility
-          - beta
+        toolchain: ["1.89.0"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          # #205 stores the CC0 Aravath models in Git LFS and records each
+          # blob's sha256 in ASSET_MANIFEST.tsv. Without LFS the working
+          # tree is the pointer, so asset_manifest_is_sorted_and_hashes_match
+          # hashes that pointer instead of AnimationLibrary_Godot_Standard.bin.
+          lfs: true
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ github.event.inputs.toolchain_version || matrix.toolchain }}
+          components: rustfmt, clippy, rust-src, rust-analyzer
+
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential pkg-config cmake ninja-build \
+            libx11-dev libxi-dev libxcursor-dev libxrandr-dev \
+            libasound2-dev libudev-dev \
+            mesa-vulkan-drivers libvulkan1 vulkan-tools
+
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: brew install pkg-config cmake
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Configure sccache
+        run: |
+          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+
+      - name: Validate toolchain configuration
+        run: |
+          echo "=== Rust Toolchain Information ==="
+          rustc --version
+          cargo --version
+          rustup show
+          
+          echo "=== Cargo Configuration ==="
+          cat .cargo/config.toml
+          
+          echo "=== Toolchain Configuration ==="
+          cat rust-toolchain.toml
+
+      - name: Set up toolchain-specific cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ runner.os }}-astraweave
+          cache-targets: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check workspace compatibility
+        run: |
+          # Test basic compilation with this toolchain
+          cargo check --locked --workspace ${{ env.EXCLUDED_PACKAGES }}
+
+      - name: macOS runners have no wgpu software adapter
+        if: matrix.os == 'macos-latest'
+        run: echo "AW_GPU_SKIP_IF_UNAVAILABLE=1" >> "$GITHUB_ENV"
+
+      - name: Run minimal test suite (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # astraweave-render's Linux tests set RUST_TEST_THREADS=1 in
+          # .init_array (serialize_lib_tests.rs). libvulkan 1.4.341 SIGSEGVs
+          # in vkSetDebugUtilsObjectNameEXT when several threads load every
+          # Mesa ICD (Vulkan-Loader #1863). Tag v1.4.344 does not contain
+          # the fix; v1.4.345 does. Do not drop that default until the
+          # runner's libvulkan1 is new enough (#434).
+          # aw_headless also builds InstanceDescriptor::default() and forbids
+          # unsafe, so it cannot include that constructor. Its lib tests run
+          # below with RUST_TEST_THREADS=1. aw_editor is in EXCLUDED_PACKAGES;
+          # editor-ci.yml still runs its tests with continue-on-error, so this
+          # hook is not workspace-wide.
+          # runner.os, not `uname`: windows-latest runs this file under
+          # PowerShell, which does not evaluate a bash `if`.
+          cargo test --locked --workspace --lib ${{ env.EXCLUDED_PACKAGES }} --exclude aw_headless
+          RUST_TEST_THREADS=1 cargo test --locked -p aw_headless --lib
+
+      - name: Run minimal test suite
+        if: runner.os != 'Linux'
+        run: cargo test --locked --workspace --lib ${{ env.EXCLUDED_PACKAGES }}
+
+      - name: Report GPU skips
+        if: always()
+        shell: bash
+        run: |
+          log="target/gpu-skip-reasons.txt"
+          if [ -s "$log" ]; then
+            {
+              echo "## GPU tests skipped"
+              echo
+              echo "These tests did not execute. A line here is a skip, not a pass."
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              echo "- ${line}" >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning title=GPU test skipped::$line"
+              echo "$line"
+            done < "$log"
+          fi
+
+      - name: Check code formatting compatibility
+        if: matrix.toolchain != 'nightly'  # Nightly may have different formatting rules
+        shell: bash
+        run: bash .github/scripts/fmt-check.sh
+
+      - name: Run clippy with toolchain
+        run: |
+          cargo clippy --locked --workspace ${{ env.EXCLUDED_PACKAGES }} -- -D warnings
+
+      - name: Test nightly features (if nightly)
+        if: matrix.toolchain == 'nightly'
+        run: |
+          # Test unstable features that might be beneficial
+          echo 'Testing nightly-specific features...'
+          # Add any nightly feature tests here
+          cargo check --all-features || true
+
+  toolchain-validation-extra:
+    name: Toolchain Validation (${{ matrix.toolchain }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    # Schedule and dispatch only. A failure still fails this workflow.
+    # A main push does not start these runners.
+    if: github.event_name != 'push'
+    strategy:
+      fail-fast: false
+      matrix:
         include:
-          # Test nightly features if requested
+          - os: ubuntu-latest
+            toolchain: stable
+          - os: windows-latest
+            toolchain: stable
+          - os: macos-latest
+            toolchain: stable
+          - os: ubuntu-latest
+            toolchain: "1.88.0"
+          - os: ubuntu-latest
+            toolchain: beta
           - os: ubuntu-latest
             toolchain: nightly
             experimental: true
-        exclude:
-          # Skip beta/older versions on Windows/macOS to reduce CI time and cost
-          - os: windows-latest
-            toolchain: beta
-          - os: windows-latest  
-            toolchain: "1.88.0"
-          - os: macos-latest
-            toolchain: "1.88.0"
-          - os: macos-latest
-            toolchain: beta
-
     continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
@@ -245,7 +380,9 @@ jobs:
     name: Toolchain Performance Comparison
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event.inputs.test_mode == 'performance' || github.event_name == 'push'
+    # Compile timings are not a correctness gate. They run with the
+    # nightly toolchain matrix and when a dispatch asks for performance.
+    if: github.event.inputs.test_mode == 'performance' || github.event_name == 'schedule'
     
     strategy:
       matrix:
@@ -319,7 +456,7 @@ jobs:
     name: Generate Toolchain Report
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [toolchain-validation, msrv-check]
+    needs: [toolchain-validation, toolchain-validation-extra, msrv-check]
     if: always()
     
     steps:
