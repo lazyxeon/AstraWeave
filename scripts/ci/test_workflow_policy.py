@@ -159,6 +159,14 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("Test (ubuntu, build archive)", text)
         self.assertIn("needs: [changes, gate, test-windows-build]", text)
         self.assertIn("needs: [changes, gate, test-linux-build]", text)
+        # Nav stress ceilings run with the PR partitions. An unset
+        # AW_PERF_ASSERTS skips them, which drops the old wall-clock gate.
+        linux_job = text.split("\n  test-linux:\n", 1)[1].split("\n  test-windows-build:\n", 1)[0]
+        windows_job = text.split("\n  test-windows:\n", 1)[1].split("\n  msrv:\n", 1)[0]
+        self.assertIn("github.event_name == 'pull_request'", linux_job)
+        self.assertIn("github.event_name == 'pull_request'", windows_job)
+        self.assertIn('AW_PERF_ASSERTS: "1"', linux_job)
+        self.assertIn('AW_PERF_ASSERTS: "1"', windows_job)
         linux = nextest.split("[profile.ci-pr-linux-archive]", 1)[1].split("\n[", 1)[0]
         self.assertNotIn("test_renderer_bake_environment_wave16", linux)
         self.assertNotIn("gpu_containment_invariant_120_frames", linux)

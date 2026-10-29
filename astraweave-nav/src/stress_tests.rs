@@ -7,11 +7,12 @@
 
 use super::*;
 
-/// Catastrophic ceiling checked only when `AW_PERF_ASSERTS` is set.
+/// Catastrophic ceiling. Not a performance SLA.
 ///
-/// Not a performance SLA. The old bounds sat inside scheduler noise on a debug
-/// build with parallel lib tests. Each ceiling below is about 10× that old
-/// bound so a hang still fails when someone opts in. Criterion tracks the
+/// `ci.yml` sets `AW_PERF_ASSERTS=1` on the pull-request nextest partitions
+/// (Linux `ci-pr-linux-archive` and Windows `ci-pr-archive`). Each ceiling is
+/// about 10× the old debug bound: a hang fails, and the 12.2 ms sample that
+/// failed `< 10` (run 40879883808) stays under 100 ms. Criterion records the
 /// same calls in release.
 fn assert_perf_ceiling(elapsed: std::time::Duration, ceiling_ms: u128, what: &str) {
     if std::env::var_os("AW_PERF_ASSERTS").is_none() {
