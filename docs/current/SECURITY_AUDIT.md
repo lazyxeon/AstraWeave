@@ -318,7 +318,7 @@ GitHub secret scanning and push protection are enabled on this repository. No wo
 
 ### Fuzz targets that already exist
 
-`cargo-fuzz` targets already live under `astraweave-asset/fuzz`, `astraweave-llm/fuzz`, `astraweave-net/fuzz`, `astraweave-ecs/fuzz`, and `crates/astraweave-blend/fuzz`. No workflow invokes them. They do not cover `aw-save`, combat vitals, mod manifests, or weave TOML.
+`cargo-fuzz` targets already live under `astraweave-asset/fuzz`, `astraweave-llm/fuzz`, `astraweave-net/fuzz`, `astraweave-ecs/fuzz`, and `crates/astraweave-blend/fuzz`. `.github/workflows/fuzz-nightly.yml` runs every `[[bin]]` in these crates and in `persistence/aw-save/fuzz`, `astraweave-combat/fuzz`, and `net/aw-net-proto/fuzz`. Mod manifests and weave TOML have no target.
 
 ---
 
@@ -372,9 +372,9 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ## Fuzzing plan
 
-PR CI does not run fuzzing today, and it should stay that way. The existing `fuzz/` crates are not referenced by any workflow. Adding them to `pull_request` would add a non-deterministic, open-ended job to every review.
+This section is the original proposal. The nightly workflow has landed; the current description is the paragraph under "Landed on main". `.github/workflows/fuzz-nightly.yml` runs on `schedule` (`30 7 * * *`) and `workflow_dispatch`, not on pull requests. Each of the 28 `[[bin]]` targets runs for 120 seconds. The corpus is a `fuzz-corpus-<target>` artifact, not an `actions/cache` entry. The token is `contents: read` and `actions: read`. The list job times out at 5 minutes and the fuzz job at 45 minutes. Pull-request CI still does not run fuzzing.
 
-Add `.github/workflows/fuzz-nightly.yml` only:
+Original proposal:
 
 - Triggers: `schedule` (nightly) and `workflow_dispatch`. Not `pull_request`, not `push`.
 - One job, `ubuntu-latest`, `timeout-minutes: 30`.
