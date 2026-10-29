@@ -8,8 +8,8 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-asset, astraweave-asset-pipeline]
-doc_version: "1.11"
-last_verified_commit: 40374e98
+doc_version: "1.12"
+last_verified_commit: cd910720
 ---
 
 # Architecture Trace: Asset System
@@ -20,9 +20,9 @@ last_verified_commit: 40374e98
 |---|---|
 | **System name** | Asset System (loading, cell loader, Nanite preprocess, asset pipeline) |
 | **Primary crates** | `astraweave-asset`, `astraweave-asset-pipeline` |
-| **Document version** | 1.11 |
-| **Last verified against commit** | `40374e98` (parent of the short-read header fill; that parent calls `Read::read` once, so a 12-byte header that arrives a byte at a time skips both length checks and `Glb::from_reader` still allocates `declared - 12`). Prior `a9e434fc` (parent of the available-byte bound; that parent still returns Ok from `reject_short_glb_file` when a 22-byte GLB declares length 2_000_012, and `aravath_runtime` keeps a private copy of the `< 12` check). Prior `a802aca2` (parent of the JSON-chunk and reader-length guards; that parent has no `reject_short_glb`, so a JSON chunk that starts with `glTF` reaches `Gltf::from_slice`, and `Gltf::open` / `gltf::import` call `Glb::from_reader`). Prior `99382af7` (parent of the short GLB header guard; that parent calls `Glb::from_slice` when the declared length is below 12 bytes, and gltf 1.4.1 panics on the subtract). Prior `d0539b08` |
-| **Last verified date** | 2026-10-28 |
+| **Document version** | 1.12 |
+| **Last verified against commit** | `cd910720` (parent of the §5 `aravath_runtime` row; that parent calls `reject_short_glb_file` from `src/assets.rs:230` and leaves the consumer table without that row). Prior `40374e98` (parent of the short-read header fill; that parent calls `Read::read` once, so a 12-byte header that arrives a byte at a time skips both length checks and `Glb::from_reader` still allocates `declared - 12`). Prior `a9e434fc` (parent of the available-byte bound; that parent still returns Ok from `reject_short_glb_file` when a 22-byte GLB declares length 2_000_012, and `aravath_runtime` keeps a private copy of the `< 12` check). Prior `a802aca2` (parent of the JSON-chunk and reader-length guards; that parent has no `reject_short_glb`, so a JSON chunk that starts with `glTF` reaches `Gltf::from_slice`, and `Gltf::open` / `gltf::import` call `Glb::from_reader`). Prior `99382af7` (parent of the short GLB header guard; that parent calls `Glb::from_slice` when the declared length is below 12 bytes, and gltf 1.4.1 panics on the subtract). Prior `d0539b08` |
+| **Last verified date** | 2026-10-29 |
 | **Status** | Active (mixed): glTF CPU loaders + cell loader + AssetDatabase are wired (`astraweave-asset` is VERIFIED-PRODUCTION); Nanite preprocess and the entire `astraweave-asset-pipeline` crate are in-design / dormant scaffolding. **R-series M1 trace-honesty (2026-06-30):** `astraweave-asset-pipeline` was individually **FALSE-PRODUCTION-READY** (R.0.B) — a present-tense over-claim at `lib.rs:4` over an ISLAND crate (no live caller). **R-series M2/E4 relabel-and-defer (2026-06-30):** E4 **resolved by relabel** — the `lib.rs:4` over-claim was rewritten to honest in-design status and the unused editor dep (`aw_editor/Cargo.toml:99`) was dropped, moving the crate **FALSE-PRODUCTION-READY → DORMANT-HONEST**. The BC7/KTX2 **cook path is NOT a v1.0 blocker** — the v1.0 render path consumes raw PNG→RGBA8 with no GPU-compressed-upload path, so cooking is a deferrable optimization **deferred to a post-v1.0 engine/compression-pipeline owner**. See `docs/audits/e4_cook_path_recon_2026-06.md`. |
 | **Owner notes** | First trace for this subsystem. `astraweave-asset` is one of the most-consumed untraced crates (9+ Cargo consumers). Derived from forensic data-flow analysis on 2026-06-24. |
 
@@ -209,6 +209,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 | `examples/visual_3d` | `gltf_loader as gl` | example | |
 | `examples/nanite_demo` | `nanite_preprocess::{generate_lod_hierarchy, MeshletHierarchy}` (`main.rs`) | example | **Only** consumer of `nanite_preprocess`. |
 | `examples/skinning_demo` | declares dep; uses `astraweave_render::animation` `Skeleton` | example | Its `Skeleton` comes from the render/animation crate, not this crate's `gltf_loader::Skeleton`. |
+| `aravath_runtime` | `gltf_loader::reject_short_glb_file` (`src/assets.rs:230`, before `gltf::import`) | **Yes** | The game runtime's mesh import path. |
 
 `astraweave-asset-pipeline` Cargo consumers: only `tools/aw_editor` (`Cargo.toml:99`) and the root manifest — and the editor never references the crate's API. **No production caller of `astraweave_asset_pipeline::*` exists** (the only references in the workspace are doc-comment examples inside the crate). See §6.
 
@@ -424,3 +425,4 @@ The crate carries explicit "Phase 0 / Phase 2 foundations" markers (lib.rs:302, 
 | 1.11 | 2026-10-28 | **Header read fills 12 bytes or stops at EOF.** `reject_short_glb_file` no longer trusts one `Read::read`. A reader that returns one byte at a time still rejects declared length 2_000_012 on a 22-byte file, and a file shorter than 12 bytes stays `Ok`. `last_verified_commit` names the parent `40374e98`. That parent returns `Ok` when the first `read` is short of 12 bytes. |
 | 1.10 | 2026-10-28 | **Declared length is bounded by the bytes on hand.** `reject_short_glb_file` returns an error when the declared length is below 12 or greater than the file length, before `Glb::from_reader` allocates `declared - 12`. `aravath_runtime` calls that helper instead of a private `< 12` check. `last_verified_commit` names the parent `a9e434fc`. That parent still returns Ok for a 22-byte file that declares 2_000_012. |
 | 1.9 | 2026-10-28 | **JSON-chunk and reader-length guards.** `read_gltf` refuses a `glTF` header whose declared length is below 12 bytes before `Gltf::from_slice`. A GLB JSON chunk that starts with `glTF` and declares length 8 returns that error instead of reaching gltf 1.4.1's debug subtract. `reject_short_glb_file` is the same check before `Gltf::open` and `gltf::import` in `mesh_gltf::load_gltf` and `aw_asset_cli`. `aravath_runtime` repeats it immediately before `gltf::import`. `last_verified_commit` names the parent `a802aca2`. That parent has no `reject_short_glb`, so the JSON chunk still reaches the subtract, and `open` / `import` call `from_reader`. |
+| 1.12 | 2026-10-29 | **§5 lists `aravath_runtime`.** The downstream table names `gltf_loader::reject_short_glb_file` at `src/assets.rs:230`, before `gltf::import`. `last_verified_commit` names the parent `cd910720`. That parent adds the Cargo dependency and omits the row. |
