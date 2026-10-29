@@ -1,5 +1,9 @@
-//! Room tick must not depend on how many sockets are in the room, and a
-//! client that always has a frame ready must still receive snapshots.
+//! Room tick must not depend on how many sockets are in the room.
+//!
+//! A client that sends one ping per tick is at or under the rate-limit
+//! refill (64/s on the rate-limit server) and must still receive snapshots.
+//! A tight flood above that refill may be closed. That case is
+//! `rate_limit_kick::ping_flood_is_capped_and_closes`.
 //!
 //! The unfixed loop is `biased` with `ws.next()` first and a fresh
 //! `sleep(tick_dt)` on the other arm. A ready frame wins every poll, so the
@@ -70,18 +74,22 @@ async fn four_clients_advance_one_tick_per_period() {
     server.shutdown();
 }
 
+/// One ping per tick stays under the rate-limit refill and must still
+/// receive snapshots. A tight flood is allowed to be kicked.
 #[tokio::test]
-async fn ping_flood_still_receives_snapshots() {
+async fn ping_at_or_under_limit_still_receives_snapshots() {
     let server = spawn_test_server(SigningKey::dev_default(), SignatureFailurePolicy::Kick).await;
     let (mut client, info) =
-        TestClient::connect_and_join(server.ws_addr(), "us-east", "tick-flood").await;
+        TestClient::connect_and_join(server.ws_addr(), "us-east", "tick-paced").await;
     let window = Duration::from_millis(500);
+    let period = Duration::from_millis((1000 / info.tick_hz.max(1)) as u64);
     let start = tokio::time::Instant::now();
     let mut snapshots = 0u32;
     let mut nano = 0u128;
     while start.elapsed() < window {
         client.send_msg(&ClientToServer::Ping { nano }).await;
         nano = nano.wrapping_add(1);
+        let slice = tokio::time::Instant::now();
         loop {
             match timeout(Duration::from_millis(1), client.recv_msg()).await {
                 Ok(ServerToClient::Snapshot { .. }) => snapshots += 1,
@@ -89,11 +97,15 @@ async fn ping_flood_still_receives_snapshots() {
                 Err(_) => break,
             }
         }
+        let spent = slice.elapsed();
+        if let Some(rest) = period.checked_sub(spent) {
+            tokio::time::sleep(rest).await;
+        }
     }
     let expected = window.as_secs_f64() * f64::from(info.tick_hz.max(1));
     assert!(
         f64::from(snapshots) * 2.0 >= expected,
-        "ping flood delivered {snapshots} snapshots in {window:?}; about {expected:.0} are due at {} Hz",
+        "tick-rate pings delivered {snapshots} snapshots in {window:?}; about {expected:.0} are due at {} Hz",
         info.tick_hz
     );
     server.shutdown();
