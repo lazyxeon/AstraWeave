@@ -75,7 +75,7 @@ When the same tests also run under nextest (an affected crate on a pull request,
 
 ## Affected crates and docs-only pulls
 
-`scripts/ci/affected_crates.py` reads `git diff` (or `--files` in tests) and `cargo metadata --no-deps`.
+`scripts/ci/affected_crates.py` reads `git diff --no-renames --name-only` (or `--files` in tests) and `cargo metadata --no-deps`. A rename is the old path and the new path, so a Rust file moved onto a docs path is not docs-only, and a move between crates selects both.
 
 | Diff | Result |
 |---|---|

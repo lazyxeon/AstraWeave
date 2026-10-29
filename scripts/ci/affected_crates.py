@@ -218,8 +218,11 @@ def classify(files: list[str], by_name: dict[str, dict], dirs: list[tuple[str, s
 
 
 def _git_diff(root: Path, args: list[str]) -> str:
+    # Rename detection lists only the destination. A Rust file moved onto a
+    # docs path would then look docs-only and skip the crate checks. Both
+    # paths have to count.
     proc = subprocess.run(
-        ["git", "diff", "--name-only", *args],
+        ["git", "diff", "--no-renames", "--name-only", *args],
         cwd=root,
         text=True,
         capture_output=True,
@@ -227,7 +230,7 @@ def _git_diff(root: Path, args: list[str]) -> str:
     )
     if proc.returncode != 0:
         raise SystemExit(
-            f"git diff --name-only {' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip()}"
+            f"git diff --no-renames --name-only {' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip()}"
         )
     return proc.stdout
 

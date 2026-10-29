@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "ci" / "affected_crates.py"
+sys.path.insert(0, str(SCRIPT.parent))
+import affected_crates  # noqa: E402
 
 
 def run_files(files: str, scope: str | None = None) -> dict[str, str]:
@@ -108,6 +110,80 @@ class AffectedCratesTest(unittest.TestCase):
         excluded = {text[i + 1] for i in exclude_at}
         self.assertIn("hello_companion", excluded)
         self.assertIn("aw_editor", excluded)
+
+    def test_rust_file_moved_onto_docs_is_not_docs_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._repo(Path(tmp))
+            src = repo / "astraweave-math" / "src" / "lib.rs"
+            src.parent.mkdir(parents=True)
+            src.write_text(
+                "".join(f"pub fn item_{i}() -> i32 {{ {i} }}\n" for i in range(200)),
+                encoding="utf-8",
+            )
+            self._git(repo, ["add", "astraweave-math/src/lib.rs"])
+            self._git(repo, ["commit", "-qm", "add"])
+            dest = repo / "docs" / "alpha.md"
+            dest.parent.mkdir()
+            self._git(repo, ["mv", "astraweave-math/src/lib.rs", "docs/alpha.md"])
+            dest.write_text(
+                dest.read_text(encoding="utf-8") + "moved\n",
+                encoding="utf-8",
+            )
+            self._git(repo, ["add", "-A"])
+            self._git(repo, ["commit", "-qm", "move onto docs"])
+
+            followed = self._names(repo, "HEAD^...HEAD")
+            self.assertEqual(followed, ["docs/alpha.md"])
+            skipped = run_files(",".join(followed))
+            self.assertEqual(skipped["docs_only"], "true")
+
+            files = affected_crates.diff_files(repo, "HEAD^", "HEAD")
+            self.assertCountEqual(
+                files,
+                ["astraweave-math/src/lib.rs", "docs/alpha.md"],
+            )
+            result = run_files(",".join(files))
+            self.assertEqual(result["docs_only"], "false")
+            self.assertEqual(result["full"], "false")
+            self.assertIn("astraweave-math", result["packages"].split(","))
+
+    def test_cross_crate_rename_selects_both_crates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = self._repo(Path(tmp))
+            src = repo / "astraweave-math" / "src" / "lib.rs"
+            src.parent.mkdir(parents=True)
+            src.write_text("pub fn item() -> i32 { 1 }\n", encoding="utf-8")
+            self._git(repo, ["add", "astraweave-math/src/lib.rs"])
+            self._git(repo, ["commit", "-qm", "add"])
+            dest = repo / "astraweave-prompts" / "src" / "lib.rs"
+            dest.parent.mkdir(parents=True)
+            self._git(repo, ["mv", "astraweave-math/src/lib.rs", "astraweave-prompts/src/lib.rs"])
+            self._git(repo, ["commit", "-qm", "move crate"])
+
+            followed = self._names(repo, "HEAD^...HEAD")
+            self.assertEqual(followed, ["astraweave-prompts/src/lib.rs"])
+            destination_only = run_files(",".join(followed))
+            self.assertNotIn("astraweave-math", destination_only["packages"].split(","))
+
+            files = affected_crates.diff_files(repo, "HEAD^", "HEAD")
+            self.assertCountEqual(
+                files,
+                ["astraweave-math/src/lib.rs", "astraweave-prompts/src/lib.rs"],
+            )
+            result = run_files(",".join(files))
+            packages = set(result["packages"].split(","))
+            self.assertIn("astraweave-math", packages)
+            self.assertIn("astraweave-prompts", packages)
+            self.assertEqual(result["docs_only"], "false")
+
+    def _repo(self, tmp: Path) -> Path:
+        repo = tmp / "repo"
+        repo.mkdir()
+        self._git(repo, ["init", "-q", "-b", "main"])
+        self._git(repo, ["config", "user.email", "detect@example.com"])
+        self._git(repo, ["config", "user.name", "detect"])
+        self._git(repo, ["config", "diff.renames", "true"])
+        return repo
 
     def test_merge_parent_matches_a_base_that_moved_forward(self) -> None:
         # GitHub's pull_request checkout is a merge commit. Its first parent
