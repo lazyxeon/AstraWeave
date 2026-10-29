@@ -225,7 +225,7 @@ Procedural terrain generation:
 
 There is no `voxel_mesh` module. The crate does not record a `15.06ms/chunk` figure. Public modules include `biome`, `chunk`, `meshing`, `marching_cubes_tables`, and `voxel_data`.
 
-`Biome` is `astraweave_terrain::biome::Biome`. `TerrainChunk` is `astraweave_terrain::chunk::TerrainChunk`. Neither name is re-exported from `lib.rs`. There is no `VoxelMesh` type in `lib.rs`.
+`Biome` and `TerrainChunk` are re-exported from `astraweave-terrain/src/lib.rs` (`pub use biome::Biome` and `pub use chunk::TerrainChunk`). There is no `VoxelMesh` type in `lib.rs`.
 
 *Generate rustdoc:* `cargo doc -p astraweave-terrain --no-deps --open` | [Terrain Guide →](../core-systems/terrain.md)
 

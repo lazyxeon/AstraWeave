@@ -36,13 +36,39 @@ Comments on `update` name microsecond targets. Those comments are not a dated ca
 
 ```rust
 #[cfg(feature = "llm_orchestrator")]
-use astraweave_ai::{AIArbiter, AIControlMode};
+fn arbiter_from_new() {
+    use std::sync::Arc;
 
-let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
-let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt)
-    .with_llm_cooldown(15.0);
-let action = arbiter.update(&snapshot);
-let mode = arbiter.mode();
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime.clone());
+    let fast_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let bt: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
+}
+```
+
+```rust
+#[cfg(feature = "llm_orchestrator")]
+fn arbiter_from_single_executor(snapshot: &astraweave_core::WorldSnapshot) {
+    use std::sync::Arc;
+
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let bt: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt)
+        .with_llm_cooldown(15.0);
+    let action = arbiter.update(snapshot);
+    let mode = arbiter.mode();
+    let _ = (action, mode);
+}
 ```
 
 Signatures in `astraweave-ai/src/ai_arbiter.rs`:

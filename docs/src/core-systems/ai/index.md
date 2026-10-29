@@ -28,7 +28,7 @@ The architecture trace campaign documented eight AI subsystems (per
   Three clients (Phi3, Hermes2Pro, Qwen3) coexist; Qwen3 is supported but is not
   the runtime default despite doc-comment phrasing like "GOAP+Qwen3 Hybrid."
 
-`astraweave-behavior` is optional on `astraweave-ai` (`ai-goap`, `ai-bt`, `veilweaver_slice`). `astraweave-ai/src/core_loop.rs` imports it only under `cfg(feature = "ai-bt")`. It is not part of the default tick.
+`astraweave-behavior` is optional on `astraweave-ai` (`ai-goap`, `ai-bt`, `veilweaver_slice`). `astraweave-ai/src/core_loop.rs` imports it only under `cfg(feature = "ai-bt")`. It is not part of the default tick. Its canonical GOAP (`goap.rs`, `goap_cache.rs`) is a `BTreeMap<u32, bool>` `WorldState`, interned keys, and an LRU plan cache, and the crate defines behavior trees.
 
 Dormant in-design (passes tests, zero production callers — per
 [`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ai_pipeline.md) §13 and `ARCHITECTURE_MAP.md` §5.1):

@@ -60,7 +60,7 @@ There is no public event calendar, office hours, or sponsorship desk in this rep
 
 ## API docs
 
-Of the 141 workspace member entries, 30 set `publish` in the package table. The workspace value in the root `Cargo.toml` is `publish = false`. `astraweave-core` is not a workspace member; its manifest sets `publish = { workspace = true }`. `astraweave-ecs` is a member and does not set `publish`. These crates are not the `docs.rs/astraweave` crate. Generate local rustdoc with `cargo doc -p astraweave-core --no-deps`.
+`cargo metadata --no-deps --format-version 1` reports 142 workspace members, and 30 of those manifests set `publish`. The workspace value in the root `Cargo.toml` is `publish = false`. `astraweave-core` is one of those members and sets `publish = { workspace = true }`. `astraweave-ecs` is a member and does not set `publish`. These crates are not the `docs.rs/astraweave` crate. Generate local rustdoc with `cargo doc -p astraweave-core --no-deps`.
 
 ## Contact
 

@@ -52,11 +52,37 @@ validate_tool_action(agent_id, verb, world, context, target_pos) -> Result<()>
 
 ```rust
 #[cfg(feature = "llm_orchestrator")]
-use astraweave_ai::AIArbiter;
+fn arbiter_from_new() {
+    use std::sync::Arc;
 
-let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
-let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt);
-let action = arbiter.update(&snapshot);
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime.clone());
+    let fast_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let bt: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
+}
+```
+
+```rust
+#[cfg(feature = "llm_orchestrator")]
+fn arbiter_from_single_executor(snapshot: &astraweave_core::WorldSnapshot) {
+    use std::sync::Arc;
+
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let bt: Box<dyn Orchestrator> = Box::new(RuleOrchestrator::new());
+    let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt);
+    let action = arbiter.update(snapshot);
+    let _ = action;
+}
 ```
 
 `update` takes `&mut self`. `new` takes `Option<LlmExecutor>` as the second argument. The type is not on the sim tick. See [AI Arbiter](../core-systems/ai/arbiter.md).
