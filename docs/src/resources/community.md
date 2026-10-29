@@ -1,13 +1,13 @@
 # Community
 
-AstraWeave is developed in the [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) repository. GitHub issues are the working contact channel. This repository does not publish a Discord invite, a social account, or an `astraweave.dev` mailbox. GitHub Discussions are disabled (`has_discussions` is false).
+AstraWeave is developed in the [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) repository. GitHub issues are the working contact channel. This repository does not publish a Discord invite, a social account, or an `astraweave.dev` mailbox. GitHub Discussions are disabled (`has_discussions` is false). Blank issues are disabled; open the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) and pick **Bug report** or **Feature request**.
 
 ## GitHub
 
 | Resource | Description |
 |----------|-------------|
 | [Repository](https://github.com/lazyxeon/AstraWeave) | Source and pull requests |
-| [Issues](https://github.com/lazyxeon/AstraWeave/issues) | Bugs, questions, and feature requests |
+| [Issues](https://github.com/lazyxeon/AstraWeave/issues) | Browse open reports; use the chooser to file new ones |
 | [Releases](https://github.com/lazyxeon/AstraWeave/releases) | Tags the repository has published |
 
 The old Discussions URLs `github.com/astraweave/astraweave` and `github.com/lazyxeon/Veilweaver-Threads-of-Eternity` are not this repository. Do not use them.
@@ -29,7 +29,8 @@ cargo run -p hello_companion --release
 
 | Question type | Where |
 |--------------|--------------|
-| Bugs, questions, and feature requests | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
+| Bug reports | [Bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) |
+| Feature requests and ideas | [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
 | Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 
 The runnable companion demo is [hello_companion](../examples/hello-companion.md). Issue reports that paste a Bevy-style `Query` system are not using the `astraweave-ecs` API.
@@ -66,10 +67,10 @@ There is no public event calendar, office hours, or sponsorship desk in this rep
 
 | Purpose | Contact |
 |---------|---------|
-| General inquiries | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
+| General inquiries | [Issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) (**Bug report** or **Feature request**) |
 | Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
-| Sponsorship | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
-| Press | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
+| Sponsorship | [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
+| Press | [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
 
 `hello@astraweave.dev`, `sponsorship@astraweave.dev`, and `press@astraweave.dev` are removed. The domain does not resolve.
 
@@ -79,3 +80,9 @@ There is no public event calendar, office hours, or sponsorship desk in this rep
 - [Code style](../dev/code-style.md)
 - [Roadmap](roadmap.md)
 - [FAQ](faq.md)
+
+## Revision history
+
+### vNEXT
+
+- Issue chooser, bug/feature templates, and private security reporting links (#579); keeps #513 docs-truth community page.
