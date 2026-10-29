@@ -2658,6 +2658,12 @@ fn validate_plan(plan: &PlanIntent, reg: &ToolRegistry) -> Result<()> {
 /// Maximum allowed coordinate value for plan sanitization
 const MAX_COORD_BOUND: i32 = 100;
 
+/// `i32::abs` panics on `i32::MIN` in debug and wraps in release.
+/// The bound uses the unsigned magnitude so both profiles drop that coordinate.
+fn coord_within_bound(value: i32) -> bool {
+    value.unsigned_abs() <= MAX_COORD_BOUND as u32
+}
+
 /// Sanitize and validate plan for safety
 pub fn sanitize_plan(
     plan: &mut PlanIntent,
@@ -2668,13 +2674,15 @@ pub fn sanitize_plan(
     plan.steps.retain(|step| match step {
         ActionStep::MoveTo { x, y, speed: _ } => {
             // Check bounds (example: within 100 units)
-            (x.abs() <= MAX_COORD_BOUND && y.abs() <= MAX_COORD_BOUND)
+            coord_within_bound(*x)
+                && coord_within_bound(*y)
                 && reg.tools.iter().any(|t| t.name == "MoveTo")
         }
         ActionStep::Throw { item, x, y } => {
             // Check item is allowed
             matches!(item.as_str(), "smoke" | "grenade")
-                && (x.abs() <= MAX_COORD_BOUND && y.abs() <= MAX_COORD_BOUND)
+                && coord_within_bound(*x)
+                && coord_within_bound(*y)
                 && reg.tools.iter().any(|t| t.name == "Throw")
         }
         ActionStep::CoverFire {
@@ -4093,6 +4101,53 @@ Done!"#;
 
         sanitize_plan(&mut plan, &snap, &reg).unwrap();
         assert_eq!(plan.steps.len(), 1); // Out of bounds step removed
+    }
+
+    #[test]
+    fn sanitize_plan_drops_i32_min_and_max() {
+        use astraweave_core::default_tool_registry;
+
+        let reg = default_tool_registry();
+        let snap = create_test_world_snapshot();
+        let extremes = [i32::MIN, i32::MAX];
+
+        for extreme in extremes {
+            for (x, y) in [(extreme, 0), (0, extreme)] {
+                let move_json = format!(
+                    r#"{{"plan_id":"bounds","steps":[{{"act":"MoveTo","x":{x},"y":{y}}},{{"act":"MoveTo","x":0,"y":0}}]}}"#
+                );
+                let mut plan =
+                    parse_llm_plan(&move_json, &reg).expect("default registry accepts MoveTo");
+                assert_eq!(plan.steps.len(), 2);
+                sanitize_plan(&mut plan, &snap, &reg).unwrap();
+                assert_eq!(
+                    plan.steps,
+                    vec![ActionStep::MoveTo {
+                        x: 0,
+                        y: 0,
+                        speed: None,
+                    }],
+                    "MoveTo ({x},{y}) exceeds MAX_COORD_BOUND"
+                );
+
+                let throw_json = format!(
+                    r#"{{"plan_id":"bounds","steps":[{{"act":"Throw","item":"smoke","x":{x},"y":{y}}},{{"act":"Throw","item":"smoke","x":0,"y":0}}]}}"#
+                );
+                let mut plan =
+                    parse_llm_plan(&throw_json, &reg).expect("default registry accepts Throw");
+                assert_eq!(plan.steps.len(), 2);
+                sanitize_plan(&mut plan, &snap, &reg).unwrap();
+                assert_eq!(
+                    plan.steps,
+                    vec![ActionStep::Throw {
+                        item: "smoke".to_string(),
+                        x: 0,
+                        y: 0,
+                    }],
+                    "Throw ({x},{y}) exceeds MAX_COORD_BOUND"
+                );
+            }
+        }
     }
 
     #[test]
