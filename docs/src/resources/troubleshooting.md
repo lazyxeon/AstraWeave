@@ -164,10 +164,10 @@ cargo test -p astraweave-input
 This page does not keep a broken-example list. `aw_editor` is run with `cargo editor`. `navmesh_demo` and `physics_demo3d` are workspace members. Their compile status was not re-run for this edit.
 
 **Workaround:**
-Focus on the working core components and use the provided aliases:
+Focus on the working core components:
 ```bash
 cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai  # Build core components only
-cargo check --workspace             # Check one crate with `cargo check -p <crate>`
+cargo check --workspace             # Check the full workspace (for one crate, use `cargo check -p <crate>`)
 cargo clippy --workspace --all-features -- -D warnings  # Run clippy across the workspace
 ```
 
@@ -523,9 +523,7 @@ When reporting issues, include:
 
 ### Community Resources
 
-- **GitHub Issues**: For bug reports and feature requests
-- **Discussions**: For questions and general help
-- **Matrix/Discord**: For real-time community support (if available)
+- **GitHub Issues**: [Issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) — bug reports and feature requests; security reports go to [private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new)
 
 ### Known Limitations
 
@@ -546,3 +544,9 @@ AstraWeave is under active development. Known limitations:
 ---
 
 *If you're still having issues after trying these solutions, please create an issue on GitHub with the requested information. The community is here to help!*
+
+## Revision history
+
+### vNEXT
+
+- Community resources link to issue chooser and private security reporting; `cargo check --workspace` comment matches behavior.

@@ -212,4 +212,10 @@ cargo run -p hello_companion --release
 2. [Build from source](../dev/building.md)
 3. [First companion](first-companion.md)
 
-Questions go to [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues).
+Questions go to the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose).
+
+## Revision history
+
+### vNEXT
+
+- Questions link to GitHub issue templates (main already documents toolchain check without `system_check`).

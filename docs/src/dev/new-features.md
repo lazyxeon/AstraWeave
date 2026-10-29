@@ -7,7 +7,7 @@ This guide walks you through the process of contributing new features to AstraWe
 ```mermaid
 graph LR
     subgraph Proposal["1. Proposal"]
-        RFC[RFC Discussion] --> DESIGN[Design Doc]
+        RFC[GitHub issue RFC] --> DESIGN[Design Doc]
         DESIGN --> APPROVAL[Team Review]
     end
     
@@ -29,7 +29,7 @@ graph LR
 
 ### Feature Request Format
 
-Before implementing a significant feature, create a discussion or RFC:
+Before implementing a significant feature, open a [feature request](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) as an RFC:
 
 ```markdown
 ## Feature: [Name]
@@ -651,3 +651,9 @@ mod tests {
 - [Code Style](code-style.md) - Coding standards
 - [Testing Guide](testing.md) - Testing practices
 - [Building](building.md) - Build instructions
+
+## Revision history
+
+### vNEXT
+
+- RFC diagram and sample `repository` URL use `lazyxeon/AstraWeave`; RFC opens via feature request template.
