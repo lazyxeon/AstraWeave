@@ -217,12 +217,9 @@ async fn run_client_binary_soak(shared_key_hex: Option<&str>) {
         "expected >= {MIN_SNAPSHOT_LINES} snapshot log lines over the soak, got {snapshot_lines}\n\
          --- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
     );
-    // NOTE: no assertion on `RateLimited` — the shipped client's ~30 Hz input
-    // cadence can outrun the server's token bucket (refill 8/s, bucket 30)
-    // near the end of the soak depending on OS timer granularity. Rate
-    // limiting is reply-only (the server never disconnects for it), so it is
-    // orthogonal to the signature-survival proof and timing-marginal to
-    // assert either way.
+    // The shipped client sends one signed input every 33 ms. The bucket
+    // refills at 64/s, so that cadence pays every frame and stays connected.
+    // A sustained overrun closes with 1008. This soak does not assert that.
 
     // The server must remain healthy after the client process is killed.
     assert_server_still_serves(ws_addr).await;

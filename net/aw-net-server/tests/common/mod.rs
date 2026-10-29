@@ -71,6 +71,24 @@ impl TestServer {
 /// Spawn a real in-process server: TLS disabled, both listeners on
 /// `127.0.0.1:0` (unique ephemeral ports), unique sled temp dir.
 pub async fn spawn_test_server(key: SigningKey, policy: SignatureFailurePolicy) -> TestServer {
+    spawn_test_server_with_rate_limit(key, policy, true).await
+}
+
+/// Same bind as [`spawn_test_server`], with the token bucket turned off.
+/// The ready-socket regression pre-queues frames for the whole window. A
+/// charged flood would close the socket before a tick could be observed.
+pub async fn spawn_test_server_without_rate_limit(
+    key: SigningKey,
+    policy: SignatureFailurePolicy,
+) -> TestServer {
+    spawn_test_server_with_rate_limit(key, policy, false).await
+}
+
+async fn spawn_test_server_with_rate_limit(
+    key: SigningKey,
+    policy: SignatureFailurePolicy,
+    rate_limit_enabled: bool,
+) -> TestServer {
     let db_dir = TempDir::new().expect("create unique sled temp dir");
     let config = ServerConfig {
         ws_listen: "127.0.0.1:0".parse().expect("valid loopback addr"),
@@ -79,6 +97,7 @@ pub async fn spawn_test_server(key: SigningKey, policy: SignatureFailurePolicy) 
         db_path: db_dir.path().join("sled-db"),
         signing_key: key,
         sig_failure_policy: policy,
+        rate_limit_enabled,
         ..ServerConfig::default()
     };
     let server = timeout(IO_TIMEOUT, spawn_server(config))
@@ -196,6 +215,17 @@ impl TestClient {
             .expect("ws send failed");
     }
 
+    /// Lock `SO_SNDBUF`. The kernel otherwise grows the window and a
+    /// compressible flood leaves thousands of frames to verify on drop.
+    pub fn set_send_buffer_bytes(&self, bytes: usize) {
+        let MaybeTlsStream::Plain(stream) = self.ws.get_ref() else {
+            panic!("plain ws client");
+        };
+        socket2::SockRef::from(stream)
+            .set_send_buffer_size(bytes)
+            .expect("set SO_SNDBUF");
+    }
+
     /// Split the socket so one task can send while another reads. A sender
     /// that also drains the socket inserts a gap, and that gap lets a fresh
     /// `sleep(tick_dt)` finish.
@@ -234,6 +264,47 @@ impl TestClient {
             sig,
         })
         .await;
+    }
+
+    /// Like [`Self::send_raw`], but a reset or a timeout is `Err` so a flood
+    /// can stop when the peer has already closed.
+    pub async fn try_send_raw(&mut self, bytes: Vec<u8>) -> Result<(), String> {
+        match timeout(IO_TIMEOUT, self.ws.send(Message::Binary(bytes.into()))).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(format!("ws send failed: {e}")),
+            Err(_) => Err("ws send timed out".into()),
+        }
+    }
+
+    pub async fn try_send_msg(&mut self, msg: &ClientToServer) -> Result<(), String> {
+        let bytes = encode_msg(TEST_CODEC, msg);
+        self.try_send_raw(bytes).await
+    }
+
+    pub async fn try_send_ws(&mut self, msg: Message) -> Result<(), String> {
+        match timeout(IO_TIMEOUT, self.ws.send(msg)).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(format!("ws send failed: {e}")),
+            Err(_) => Err("ws send timed out".into()),
+        }
+    }
+
+    pub async fn try_send_input_frame(
+        &mut self,
+        seq: u32,
+        tick_ms: u64,
+        input_blob: &[u8],
+        key: &SigningKey,
+    ) -> Result<(), String> {
+        let payload = input_frame_sig_payload(seq, tick_ms, input_blob);
+        let sig = sign(key, &payload);
+        self.try_send_msg(&ClientToServer::InputFrame {
+            seq,
+            tick_ms,
+            input_blob: input_blob.to_vec(),
+            sig,
+        })
+        .await
     }
 
     /// Next raw WS message, Close frames included (`Some(Message::Close(_))`
