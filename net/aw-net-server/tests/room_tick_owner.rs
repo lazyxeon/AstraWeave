@@ -1,10 +1,13 @@
 //! Room tick must not depend on how many sockets are in the room.
 //!
-//! A paid protocol Ping every 20 ms is inside a 64/s refill and faster than
-//! `tick_dt` (~33 ms). The sender and the reader are separate tasks, so the
-//! next ping arrives before a fresh `sleep(tick_dt)` can finish. Snapshots
-//! must still arrive. One ping per tick on the same task also receives
-//! snapshots, because that sender waits out the period and the sleep can fire.
+//! A protocol Ping every 20 ms is uncharged on this server. `ClientToServer::Ping`
+//! sends `Pong` and leaves the bucket alone. The bucket refills at 8/s and
+//! charges only `InputFrame`. 50/s was picked to fit #526's 64/s refill and to
+//! stay shorter than `tick_dt` (~33 ms). The sender and the reader are separate
+//! tasks, so the next ping arrives before a fresh `sleep(tick_dt)` can finish.
+//! Snapshots must still arrive. One ping per tick on the same task also
+//! receives snapshots, because that sender waits out the period and the sleep
+//! can fire.
 //!
 //! The unfixed loop is `biased` with `ws.next()` first and a fresh
 //! `sleep(tick_dt)` on the other arm. A frame that arrives before that sleep
@@ -78,11 +81,12 @@ async fn four_clients_advance_one_tick_per_period() {
     server.shutdown();
 }
 
-/// One protocol Ping every 20 ms, on its own task. That is 50 messages/s:
-/// inside the 64/s refill, and shorter than `tick_dt` (~33 ms). The reader
-/// does not share that task, so the sender does not wait for a receive
-/// before the next ping. A fresh `sleep(tick_dt)` in the connection loop is
-/// cancelled before it fires. The room owner must still deliver snapshots.
+/// One protocol Ping every 20 ms, on its own task. That is 50 messages/s.
+/// Ping is uncharged on this server. The rate was picked to fit #526's 64/s
+/// refill and to stay shorter than `tick_dt` (~33 ms). The reader does not
+/// share that task, so the sender does not wait for a receive before the next
+/// ping. A fresh `sleep(tick_dt)` in the connection loop is cancelled before
+/// it fires. The room owner must still deliver snapshots.
 /// One ping per tick does not: the socket is idle for the whole period, and
 /// the fresh sleep fires. That case is
 /// `ping_at_or_under_limit_still_receives_snapshots`.
@@ -93,8 +97,8 @@ async fn paid_frame_inside_limit_still_receives_snapshots() {
         TestClient::connect_and_join(server.ws_addr(), "us-east", "tick-paid").await;
     let (mut sink, mut stream) = client.into_split();
     let window = Duration::from_millis(500);
-    // Shorter than tick_dt so a fresh sleep cannot elapse. Longer than 1/64 s
-    // so every frame still pays on the 64/s server.
+    // Shorter than tick_dt so a fresh sleep cannot elapse. Ping is uncharged
+    // here. 50/s was picked to fit #526's 64/s refill.
     let period = Duration::from_millis(20);
     let reader = tokio::spawn(async move {
         let mut snapshots = 0u32;
