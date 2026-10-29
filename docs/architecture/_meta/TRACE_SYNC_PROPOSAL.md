@@ -151,7 +151,7 @@ The map's data is the `textContent` of `<script id="workspace-data" type="applic
 
 **Externalizing the JSON to a fetched `workspace_data.json` is rejected for v1.** Browsers block `fetch()` from `file://` (CORS), so a fetched model breaks opening `workspace_map.html` directly — a common quick-look workflow. The hosted Pages copy would work, but the local-file regression is not worth it. Revisit only if docs become server-only.
 
-**GitHub Pages requires no tool-specific step:** `.github/workflows/docs.yml` already copies `docs/architecture/workspace_map.html` → the published `/architecture/` page on every push to `main`. Running `--write` (or `--check`) in that workflow before `mdbook build` keeps the published map current even if a contributor forgets locally.
+**GitHub Pages requires no tool-specific step:** `.github/workflows/pages.yml` already copies `docs/architecture/workspace_map.html` → the published `/architecture/` page on every push to `main`. Running `--write` (or `--check`) in that workflow before `mdbook build` keeps the published map current even if a contributor forgets locally.
 
 ## 9. Curated overlay — `docs/architecture/_meta/map_overlay.json`
 

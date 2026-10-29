@@ -1,0 +1,218 @@
+name: Pages
+
+# The repository Pages source is GitHub Actions. Each deployment replaces the
+# site, so this workflow builds every public path into one directory:
+# the mdBook, rustdoc under /api/, the workspace map at /architecture/,
+# and the benchmark dashboard at /dashboard/benchmark_dashboard/.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - '**/*.rs'
+      - '**/*.md'
+      - 'docs/**'
+      - 'tools/benchmark-dashboard/**'
+      - '.github/workflows/pages.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - '**/*.rs'
+      - '**/*.md'
+      - 'docs/**'
+      - 'tools/benchmark-dashboard/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+    inputs:
+      rebuild_reason:
+        description: 'Optional note for why the Pages site is being rebuilt manually'
+        required: false
+        type: string
+      skip_link_check:
+        description: 'Skip the broken-link check for a faster manual rebuild'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  actions: write
+  pages: write
+  id-token: write
+
+env:
+  MDBOOK_VERSION: '0.5.2'
+  MDBOOK_SHA256: '084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d'
+  MDBOOK_MERMAID_VERSION: '0.17.0'
+  MDBOOK_MERMAID_SHA256: '8aced70d781830fb0e81988f081c4abdd49e056a001ae2f1e4d484e1f6385c57'
+
+jobs:
+  build:
+    name: Build Pages site
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Install mdBook
+        run: |
+          set -euo pipefail
+          tmpdir=$(mktemp -d)
+          curl -fsSL -o "$tmpdir/mdbook.tar.gz" \
+            "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${MDBOOK_SHA256}  $tmpdir/mdbook.tar.gz" | sha256sum -c -
+          tar -xzf "$tmpdir/mdbook.tar.gz" -C "$tmpdir"
+          sudo install -m 0755 "$tmpdir/mdbook" /usr/local/bin/mdbook
+          curl -fsSL -o "$tmpdir/mermaid.tar.gz" \
+            "https://github.com/badboy/mdbook-mermaid/releases/download/v${MDBOOK_MERMAID_VERSION}/mdbook-mermaid-v${MDBOOK_MERMAID_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${MDBOOK_MERMAID_SHA256}  $tmpdir/mermaid.tar.gz" | sha256sum -c -
+          tar -xzf "$tmpdir/mermaid.tar.gz" -C "$tmpdir"
+          sudo install -m 0755 "$tmpdir/mdbook-mermaid" /usr/local/bin/mdbook-mermaid
+          rm -rf "$tmpdir"
+          mdbook --version
+          mdbook-mermaid --version
+
+      - name: Build the site
+        run: |
+          set -euo pipefail
+          mdbook build docs
+          # upload-pages-artifact omits dotfiles. Actions Pages does not run Jekyll.
+          touch docs/book/.nojekyll
+          cp docs/src/robots.txt docs/book/robots.txt
+          mkdir -p docs/book/assets
+          cp -a docs/src/assets/. docs/book/assets/
+          mkdir -p docs/book/architecture
+          cp docs/architecture/workspace_map.html docs/book/architecture/index.html
+          dest=docs/book/dashboard/benchmark_dashboard
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          cp -a tools/benchmark-dashboard/index.html tools/benchmark-dashboard/dashboard.js "$dest/"
+          cp -a tools/benchmark-dashboard/benchmark-data tools/benchmark-dashboard/static-data tools/benchmark-dashboard/graphs "$dest/"
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+        with:
+          toolchain: "1.89.0"
+
+      - name: Build API documentation
+        run: |
+          set -euo pipefail
+          cargo doc --no-deps \
+            --package astraweave-core \
+            --package astraweave-ai \
+            --package astraweave-physics \
+            --package astraweave-nav \
+            --package astraweave-render \
+            --package astraweave-ecs \
+            --package astraweave-behavior \
+            --package astraweave-llm \
+            --package astraweave-gameplay \
+            --package astraweave-terrain
+          echo '<meta http-equiv="refresh" content="0; url=astraweave_core/index.html">' > target/doc/index.html
+          mkdir -p docs/book/api
+          cp -a target/doc/. docs/book/api/
+          echo '<meta http-equiv="refresh" content="0; url=astraweave_core/index.html">' > docs/book/api/index.html
+          test -f docs/book/api/astraweave_core/index.html
+
+      - name: Generate sitemap
+        run: |
+          set -euo pipefail
+          bash docs/scripts/generate-sitemap.sh docs/book
+          test -f docs/book/sitemap.xml
+
+      - name: Check for broken links
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_link_check) }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/lychee.tar.gz https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz
+          tar -xzf /tmp/lychee.tar.gz -C /tmp
+          /tmp/lychee docs/book \
+            --exclude-path docs/book/api \
+            --exclude localhost \
+            --exclude 127.0.0.1 \
+            --exclude "file://" \
+            --format markdown \
+            --output link-report.md
+
+      - name: Verify the site
+        run: |
+          set -euo pipefail
+          test -f docs/book/index.html
+          test -f docs/book/robots.txt
+          test -f docs/book/sitemap.xml
+          grep -q "AstraWeave Workspace Architecture Map" docs/book/architecture/index.html
+          test -f docs/book/dashboard/benchmark_dashboard/index.html
+          test -f docs/book/dashboard/benchmark_dashboard/dashboard.js
+          test -f docs/book/dashboard/benchmark_dashboard/benchmark-data/history.jsonl
+          test -f docs/book/dashboard/benchmark_dashboard/static-data/history.jsonl
+          test -f docs/book/dashboard/benchmark_dashboard/graphs/heatmap.png
+          test -f docs/book/dashboard/benchmark_dashboard/graphs/distribution_latest.png
+          test -f docs/book/dashboard/benchmark_dashboard/graphs/top_series_time.png
+          test -f docs/book/api/index.html
+          test -f docs/book/api/astraweave_core/index.html
+          echo "Pages site: $(find docs/book -name '*.html' | wc -l) HTML files"
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/book
+
+      - name: Upload link report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-report
+          path: link-report.md
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Summary
+        env:
+          REBUILD_REASON: ${{ inputs.rebuild_reason }}
+        run: |
+          set -euo pipefail
+          {
+            echo "### Pages site built"
+            echo ""
+            echo "HTML files: $(find docs/book -name '*.html' | wc -l)"
+            echo ""
+            echo "- Book: \`/\`"
+            echo "- Workspace map: \`/architecture/\`"
+            echo "- API: \`/api/\`"
+            echo "- Benchmark dashboard: \`/dashboard/benchmark_dashboard/\`"
+            if [ -n "$REBUILD_REASON" ]; then
+              echo ""
+              echo "Rebuild note: $REBUILD_REASON"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy Pages
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        run: |
+          {
+            echo "### Pages deployed"
+            echo ""
+            echo "**URL**: ${{ steps.deployment.outputs.page_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
