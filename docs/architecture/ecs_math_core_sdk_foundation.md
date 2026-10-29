@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.16"
-last_verified_commit: 0bc6c675
+doc_version: "1.17"
+last_verified_commit: e2884a69
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,12 +20,14 @@ last_verified_commit: 0bc6c675
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.16 |
-| **Last verified against commit** | `0bc6c675` |
+| **Document version** | 1.17 |
+| **Last verified against commit** | `e2884a69` |
 | **Last verified date** | 2026-10-29 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
+> **Revision notice — 2026-10-29 (v1.17).** `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0, before the next decrement. A destructor that reaches the same column needs a second pointer aliasing the live `&mut self`, which is undefined behavior. Checked at `e2884a69`.
+>
 > **Revision notice — 2026-10-29 (v1.16).** `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec::clear` drops from the last index toward the first. `drop_last` publishes the shorter `len` before `drop_fn`, and `swap_remove_raw` / `swap_remove_raw_to` drop through that path. A panicking destructor leaves `len` counting only elements that have not been dropped; `Drop` for `BlobVec` calls `clear` and finishes them. Each element is dropped once. Checked at `0bc6c675`. Kani: `blob_vec_drops_each_element_once_including_panicking_drop` (Kani has no `catch_unwind`, so the harness splits `drop_last` at the panicking slot and then `clear`s the tail). Miri: `clear_panic_does_not_double_free`, `clear_panic_drops_each_element_once`.
 >
 > **Revision notice — 2026-10-28 (v1.15).** `BlobVec` does not allocate a zero-sized column. Capacity is `usize::MAX` and the pointer is a dangling address aligned to the item. `reserve` builds the allocation with `checked_mul` and panics `capacity overflow` when the byte length does not fit. Checked at `129ccac4`. Tests: `zst_push_drop_uses_no_allocation`, `with_capacity_past_address_space_panics`.
@@ -286,7 +288,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/lib.rs` | Top-level: `World`, `Schedule`, `App`, `SystemStage` constants, `Plugin` trait, `Component`/`Resource` blanket impls, change-tick API | Active | `pub mod` declarations at lines 37-46; `pub use` re-exports at lines 73-83. The `ParallelSchedule` removal note lives at lines 78-80. |
 | `astraweave-ecs/src/archetype.rs` | `Archetype`, `ArchetypeId`, `ArchetypeSignature`, `ArchetypeStorage`, change-tick columns | Active | Dual storage modes (Box vs BlobVec) selected per archetype |
 | `astraweave-ecs/src/entity_allocator.rs` | `Entity { id, generation }`, `EntityAllocator` with O(1) free list | Active | 8-byte handle; generational counter on slot reuse |
-| `astraweave-ecs/src/blob_vec.rs` | Type-erased contiguous component column with manual `Layout`/`drop_fn`. A zero-sized column is not allocated. `reserve` uses `checked_mul` and panics `capacity overflow`. `clear` drops from the end via `drop_last`, which commits `len` before `drop_fn`. | Active | Uses `unsafe` (alloc/dealloc/realloc, pointer arithmetic, drop). `blob_vec_kani.rs` drop-once harness is bounded (≤2 elements) and models a panic as a `drop_last` split plus `clear`. The real unwind is covered by the Miri tests. It does not cover a zero-sized column or a near-overflow capacity. |
+| `astraweave-ecs/src/blob_vec.rs` | Type-erased contiguous component column with manual `Layout`/`drop_fn`. A zero-sized column is not allocated. `reserve` uses `checked_mul` and panics `capacity overflow`. `clear` drops from the end via `drop_last`, which commits `len` before `drop_fn`. `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0. | Active | Uses `unsafe` (alloc/dealloc/realloc, pointer arithmetic, drop). `blob_vec_kani.rs` drop-once harness is bounded (≤2 elements) and models a panic as a `drop_last` split plus `clear`. The real unwind is covered by the Miri tests. It does not cover a zero-sized column or a near-overflow capacity. A destructor that reaches this column needs a second pointer aliasing the live `&mut self`. |
 | `astraweave-ecs/src/sparse_set.rs` | Sparse-set entity → dense-row mapping | Active | O(1) entity lookups; replaced earlier BTreeMap (see `system_param.rs:1-15` perf notes) |
 | `astraweave-ecs/src/system_param.rs` | `SystemParam` marker, `Query<T>`, `Query2<T1,T2>`, `Query2Mut<T1,T2>` | Active | Lengthy perf-history docstring at top |
 | `astraweave-ecs/src/command_buffer.rs` | `CommandBuffer` for deferred spawn/insert/remove/despawn | Active | `!Send + !Sync` to match World access model |
@@ -496,7 +498,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
 | 17 | `aw_last_error_string` returns the message set by the calling thread. Another thread's `set_last_error` does not replace it. A single-threaded host still sees the message from its own last `aw_world_submit_intent_json` | Yes | `LAST_ERROR` is `thread_local`. `last_error_is_set_on_intent_parse_error` and `last_error_survives_another_thread_clearing_its_own_slot` |
 | 18 | `CountingAlloc` counts every `alloc`, `alloc_zeroed`, `dealloc`, and `realloc`. It does not walk stacks, and it does not skip frees. A `realloc` increments both `allocs` and `deallocs`. `reset_allocs` stores zero in every local counter. The counters stay quiet until this binary installs `CountingAlloc` | Yes | `counting_alloc.rs`. `tests/alloc_trace_quiet.rs` `alloc_trace_is_quiet` installs the allocator, then checks a `Box`, `alloc_zeroed`, and `realloc` |
-| 19 | `BlobVec` drops each live element exactly once. `drop_last` publishes the shorter `len` before `drop_fn`. `clear` drops from the last index toward the first. `swap_remove_raw` and `swap_remove_raw_to` move the removed value into the last slot and drop it through `drop_last`. A panicking destructor leaves `len` counting only elements that have not been dropped, and `Drop` for `BlobVec` calls `clear` to finish them | Yes | `astraweave-ecs/src/blob_vec.rs` `drop_last`. Kani `blob_vec_drops_each_element_once_including_panicking_drop` is bounded (≤2 elements) and models a panic as a `drop_last` split plus `clear`. The real unwind is covered by Miri `clear_panic_does_not_double_free` and `clear_panic_drops_each_element_once` |
+| 19 | `BlobVec` drops each live element exactly once. `drop_last` publishes the shorter `len` before `drop_fn`. `clear` drops from the last index toward the first. `swap_remove_raw` and `swap_remove_raw_to` move the removed value into the last slot and drop it through `drop_last`. A panicking destructor leaves `len` counting only elements that have not been dropped, and `Drop` for `BlobVec` calls `clear` to finish them. `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0 | Yes | `astraweave-ecs/src/blob_vec.rs` `drop_last` and the SAFETY note on `drop_fn`. Kani `blob_vec_drops_each_element_once_including_panicking_drop` is bounded (≤2 elements) and models a panic as a `drop_last` split plus `clear`. The real unwind is covered by Miri `clear_panic_does_not_double_free` and `clear_panic_drops_each_element_once`. A destructor that reaches this column needs a second pointer aliasing the live `&mut self`, which is undefined behavior |
 
 ---
 
@@ -578,8 +580,14 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+<<<<<<< HEAD
 | 1.16 | 2026-10-29 | `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec` commits `len` before `drop_fn` and drops each element once, including when a destructor panics (invariant 19). |
 | 1.15 | 2026-10-28 | `BlobVec` does not allocate a zero-sized column. `reserve` uses `checked_mul`. Stamp names `129ccac4`. |
+=======
+| 1.17 | 2026-10-29 | `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0 (invariant 19). |
+| 1.16 | 2026-10-29 | `BlobVec` commits `len` before `drop_fn` and drops each element once, including when a destructor panics (invariant 19). |
+| 1.15 | 2026-10-28 | A zero-sized `BlobVec` column is not allocated. `reserve` panics `capacity overflow`. |
+>>>>>>> b3209cd25 (docs(ecs): record that drop_fn must not re-enter BlobVec)
 | 1.14 | 2026-10-23 | Continue-on-error removal is `0784b204`. Log capture is `7b7a21e4` (parent `039b031a`). Stamp names `d4e1ffab`. The date row is 2026-10-23. |
 | 1.13 | 2026-10-22 | That version paired `46be9024` with the log-capture commit. The continue-on-error removal is `0784b204`. `46be9024` and `a0d4a690` are not ancestors. |
 | 1.12 | 2026-10-22 | That version named `46be9024` and `a0d4a690`. Neither is an ancestor. `33abffa1` and `36e1e450` are not ancestors. |
