@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.15"
-last_verified_commit: 129ccac4
+doc_version: "1.16"
+last_verified_commit: 4a13046a
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,12 +20,14 @@ last_verified_commit: 129ccac4
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.15 |
-| **Last verified against commit** | `129ccac4` |
-| **Last verified date** | 2026-10-28 |
+| **Document version** | 1.16 |
+| **Last verified against commit** | `4a13046a` |
+| **Last verified date** | 2026-10-29 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
+> **Revision notice — 2026-10-29 (v1.16).** `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `last_verified_commit` names the parent `4a13046a`.
+>
 > **Revision notice — 2026-10-28 (v1.15).** `BlobVec` does not allocate a zero-sized column. Capacity is `usize::MAX` and the pointer is a dangling address aligned to the item. `reserve` builds the allocation with `checked_mul` and panics `capacity overflow` when the byte length does not fit. Checked at `129ccac4`. Tests: `zst_push_drop_uses_no_allocation`, `with_capacity_past_address_space_panics`.
 >
 > **Revision notice — 2026-10-23 (v1.14).** The continue-on-error removal is `0784b204`. The log-capture commit is `7b7a21e4`. Its parent is `039b031a`. The counter-only commit is `93c448d6`. `last_verified_commit` names the parent `d4e1ffab`. That parent pairs `46be9024` with `7b7a21e4`, which swaps the continue-on-error removal and the log capture. Its last-verified date is 2026-10-15.
@@ -321,7 +323,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-core/src/lib.rs` | Top-level: module declarations, re-exports, `default_tool_registry()` | Active | `pub mod` at lines 28-43; `pub use` re-exports at lines 51-62 |
+| `astraweave-core/src/lib.rs` | Top-level: module declarations, re-exports, `default_tool_registry()` | Active | `pub mod` at lines 28-43; `pub use` re-exports at lines 51-62. `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive` |
 | `astraweave-core/src/schema.rs` | `IVec2`, `WorldSnapshot`, `PlayerState`, `CompanionState`, `EnemyState`, `Poi`, `PlanIntent`, `ActionStep`, `Stance`, `CoverType`, plus `pub type Entity = u32` | Active | Canonical AI-perception schema. **CRITICAL** — names hardcoded in LLM prompts |
 | `astraweave-core/src/world.rs` | Legacy `World` struct with HashMap-per-component-type (poses, health, team, ammo, cds, names, behavior_graphs, parents/children_map) | Transitional | Bridged into ECS via `ecs_adapter::build_app`. `entities`, `all_of_team`, and `enemies_of` return ids sorted by entity id. `sorted_obstacles` / `obstacles_as_ivec2` sort by `(x, y)`. `iter_entities` stays unordered and is not a sim output |
 | `astraweave-core/src/ecs_adapter.rs` | `build_app(legacy_world, dt) -> ecs::App`, `register_sim_extension`, plus `sys_sim`, `sys_move`, `sys_bridge_sync`, `sys_sync_to_legacy`, `sys_refresh_los` | Transitional | Bridge layer between legacy World and ECS substrate. Sim extensions install before the legacy simulation systems |
@@ -575,6 +577,8 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.16 | 2026-10-29 | `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. Stamp names `4a13046a`. |
+| 1.15 | 2026-10-28 | `BlobVec` does not allocate a zero-sized column. `reserve` uses `checked_mul`. Stamp names `129ccac4`. |
 | 1.14 | 2026-10-23 | Continue-on-error removal is `0784b204`. Log capture is `7b7a21e4` (parent `039b031a`). Stamp names `d4e1ffab`. The date row is 2026-10-23. |
 | 1.13 | 2026-10-22 | That version paired `46be9024` with the log-capture commit. The continue-on-error removal is `0784b204`. `46be9024` and `a0d4a690` are not ancestors. |
 | 1.12 | 2026-10-22 | That version named `46be9024` and `a0d4a690`. Neither is an ancestor. `33abffa1` and `36e1e450` are not ancestors. |
