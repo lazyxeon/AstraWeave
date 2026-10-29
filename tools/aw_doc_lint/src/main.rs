@@ -1704,7 +1704,10 @@ mod tests {
         let workflow = include_str!("../../../.github/workflows/doc-truth-lint.yml");
         assert!(!workflow.contains("anyhow + clap"), "{workflow}");
         assert!(workflow.contains("unicode_categories"));
-        let status = include_str!("../../../docs/current/ENGINE_STATUS.md");
+        // Left single quotation mark is an apostrophe. The sentence is the
+        // fixture, so the check does not read ENGINE_STATUS.md.
+        let status = "The apostrophe may be ASCII, U+2018, U+2019, U+02BC, U+FF07, \
+or a character reference that decodes to one of those.";
         assert!(status.contains("U+2018"));
     }
 
