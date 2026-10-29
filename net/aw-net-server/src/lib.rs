@@ -1228,7 +1228,7 @@ mod charge_boundary_tests {
 
     use super::{
         charge_message_at, AppState, Player, Room, Toll, BUCKET_SIZE, COST_PER_MESSAGE,
-        DROPS_IN_WINDOW,
+        DROPS_IN_WINDOW, DROP_WINDOW,
     };
     use crate::SignatureFailurePolicy;
     use aw_net_proto::{Codec, SigningKey};
@@ -1353,5 +1353,41 @@ mod charge_boundary_tests {
             tokens > 0.0 && tokens <= BUCKET_SIZE,
             "paid tokens must sit in (0, {BUCKET_SIZE}], got {tokens}"
         );
+    }
+
+    /// Removing the expired-drop `pop_front` kicks this client. Refill is
+    /// frozen: one second of refill would pay, and the paid arm never reads
+    /// `drop_times`.
+    #[test]
+    fn expired_drops_leave_the_window_and_one_more_stays_open() {
+        let now = Instant::now();
+        let (app, rid, pid, _dir) = harness(0.0, now);
+        for i in 0..(DROPS_IN_WINDOW - 1) {
+            assert_eq!(
+                charge_message_at(&app, &rid, &pid, now),
+                Toll::Drop,
+                "drop {i} must not kick"
+            );
+        }
+        let later = now + DROP_WINDOW;
+        {
+            let mut rooms = app.rooms.lock();
+            let player = rooms.get_mut(&rid).unwrap().players.get_mut(&pid).unwrap();
+            player.last_refill = later;
+            assert_eq!(player.drop_times.len(), (DROPS_IN_WINDOW - 1) as usize);
+        }
+        assert_eq!(
+            charge_message_at(&app, &rid, &pid, later),
+            Toll::Drop,
+            "drops at least one window old must leave before the next unpaid message"
+        );
+        let rooms = app.rooms.lock();
+        let player = rooms.get(&rid).unwrap().players.get(&pid).unwrap();
+        assert_eq!(
+            player.drop_times.len(),
+            1,
+            "only the new drop remains in the window"
+        );
+        assert_eq!(player.tokens, 0.0);
     }
 }
