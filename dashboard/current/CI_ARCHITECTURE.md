@@ -18,7 +18,7 @@ With about eight agent branches open, most of those jobs queued. The same worksp
 
 ## What changed
 
-1. **Benchmarks are off unlabeled pull requests.** `Performance Benchmarks` runs on push to `main` and `develop`, nightly at 05:17 UTC, `workflow_dispatch`, and a pull request whose `run-benchmarks` label was just added (`pull_request` types: `[labeled]`). A later push does not rerun benches; remove and re-add the label, or use `workflow_dispatch`. The 600s per-package cap in `.github/scripts/benchmark-runner.sh` is unchanged. See issue #221.
+1. **Benchmarks are off unlabeled pull requests.** `Performance Benchmarks` runs on push to `main` and `develop`, `workflow_dispatch`, and a pull request whose `run-benchmarks` label was just added (`pull_request` types: `[labeled]`). There is no nightly cron. Push to `main` already runs the 16 shards, and the 05:17 UTC cron ran them again (run `40637628179` used 34625s of runner time). A failure on `main` still opens the nightly-failure issue, because that workflow reports a failed `workflow_run` whose head branch is `main`. A later push does not rerun benches; remove and re-add the label, or use `workflow_dispatch`. The 600s per-package cap in `.github/scripts/benchmark-runner.sh` is unchanged. See issue #221.
 2. **Concurrency on every pull-request workflow.**
 
 ```yaml
@@ -86,6 +86,9 @@ When the same tests also run under nextest (an affected crate on a pull request,
 | A file that is not docs, not under `.github/`, and not inside a crate | `full=true` (a wrong narrow selection is worse than a full run). |
 | Other `.github/**` only (for example `CODEOWNERS`) | fmt gate only. No crate tests. |
 | Push, schedule, or `workflow_dispatch` | `full=true` without consulting the diff. |
+| Pull request whose checkout has no first parent | `full=true`, `reason=missing-merge-parent`. |
+
+`Detect affected crates` checks out with `fetch-depth: 2` and `fetch-tags: false`. On a pull request that checkout is `refs/pull/N/merge`, and the classifier diffs `HEAD^1...HEAD`. The first parent is the base commit of the merge GitHub built. `actions/checkout` treats depth 0 as every branch and every tag, including when `fetch-tags` is false. Run `40747800523` (pull request #484, head `710d84a3`) spent 600s in that fetch. Classify was skipped, and `PR Rust checks` failed because `changes=cancelled`.
 
 `--scope` on the same script sets `run=true` or `run=false` for one heavy workflow. `run=false` only when the diff is known and the expanded crate set misses that scope. An empty diff, any full trigger above, or a scope package missing from metadata sets `run=true`.
 
