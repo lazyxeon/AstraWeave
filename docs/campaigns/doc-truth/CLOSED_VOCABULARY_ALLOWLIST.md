@@ -336,6 +336,7 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `check-all` | quoted-defect-alias | permanent |
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `test-all` | quoted-defect-alias | permanent |
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `clippy-all` | quoted-defect-alias | permanent |
+| `CHANGELOG.md` | `59 library crates` | dated-record | permanent |
 
 <!-- ALLOWLIST-END -->
 

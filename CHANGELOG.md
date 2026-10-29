@@ -6,12 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-_Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/AstraWeave/commit/f24ce31cb)._
+The workspace package is still version 0.4.0. [SECURITY.md](SECURITY.md) calls that the supported line. There is no `v0.4.0` git tag. The notes in this section are changes on `main` after 2025-11-18, grouped by the UTC month of the merge or commit. The dated `[0.4.0]` heading further down is the archival note for that day, not a release tag.
 
 
-## 2026-10
+### 2026-10
 
-### Added
+#### Added
 - feat(combat): deterministic Q32.32 damage resolver ([#212](https://github.com/lazyxeon/AstraWeave/pull/212)).
 - feat(terrain): integer ground, command-log deformation, one streamer ([#215](https://github.com/lazyxeon/AstraWeave/pull/215)).
 - feat(destruction): replay, prefracture, and collapse bounds ([#243](https://github.com/lazyxeon/AstraWeave/pull/243)).
@@ -26,13 +26,13 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - feat(render): enable Bruneton on the fog-and-shafts path after 4.474 ms ([#412](https://github.com/lazyxeon/AstraWeave/pull/412)).
 - feat(render): draw scene normals and motion when enabled ([#416](https://github.com/lazyxeon/AstraWeave/pull/416)).
 
-### Changed
+#### Changed
 - build(deps): bump benchmark-action/github-action-benchmark from 1.20.7 to 1.22.2 ([#204](https://github.com/lazyxeon/AstraWeave/pull/204)).
 - Aravath demo: CC0 characters, streamed world, and sword combat ([#205](https://github.com/lazyxeon/AstraWeave/pull/205)).
-- ci(aravath): Windows release build of aravath_greybox ([#206](https://github.com/lazyxeon/AstraWeave/pull/206)).
-- Harden the Aravath Windows download ([#207](https://github.com/lazyxeon/AstraWeave/pull/207)).
+- ci(aravath): Windows release build of aravath_greybox ([#206](https://github.com/lazyxeon/AstraWeave/pull/206)). Merged into `cursor/aravath-greybox-b3de`, not `main`.
+- Harden the Aravath Windows download ([#207](https://github.com/lazyxeon/AstraWeave/pull/207)). Merged into `cursor/aravath-greybox-b3de`, not `main`.
 - Add the engine production roadmap and determinism gate ([#208](https://github.com/lazyxeon/AstraWeave/pull/208)).
-- Add deterministic fate-scars to volumetric fog and enemy perception ([#209](https://github.com/lazyxeon/AstraWeave/pull/209)).
+- Add deterministic fate-scars to volumetric fog and enemy perception ([#209](https://github.com/lazyxeon/AstraWeave/pull/209)). Merged into `cursor/aravath-greybox-b3de`, not `main`.
 - Determinism gate: ordered perception and a planner for every companion ([#210](https://github.com/lazyxeon/AstraWeave/pull/210)).
 - WS-D2 and WS-STAB: seeded sim RNG and green debug CI ([#211](https://github.com/lazyxeon/AstraWeave/pull/211)).
 - WS-MOD: sandboxed Rhai mods and tick-boundary hot reload ([#214](https://github.com/lazyxeon/AstraWeave/pull/214)).
@@ -134,7 +134,17 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - docs(ai): name the silent Qwen thinking read timeout ([#520](https://github.com/lazyxeon/AstraWeave/pull/520)).
 - Record that workflow edits set full=true ([#522](https://github.com/lazyxeon/AstraWeave/pull/522)).
 
-### Fixed
+- fix(ci): link the SDK CMake example and install editor native libs ([`05c2bff0e`](https://github.com/lazyxeon/AstraWeave/commit/05c2bff0e)).
+- fix(ci): SDK harness load path, save-slot isolation, libudev ([`e7db0dba4`](https://github.com/lazyxeon/AstraWeave/commit/e7db0dba4)).
+- fix(ci): C header language, glTF import, and schedule expects ([`b234452bf`](https://github.com/lazyxeon/AstraWeave/commit/b234452bf)).
+- fix(ci): null audio backend, bit-stable caustics, and clippy ([`e9b4c3419`](https://github.com/lazyxeon/AstraWeave/commit/e9b4c3419)).
+- feat(sim): seed craft, harvest, weaving, and solver draws ([`a570aaf4c`](https://github.com/lazyxeon/AstraWeave/commit/a570aaf4c)).
+- feat(ai): plan every companion on the tick ([`8ae54ce84`](https://github.com/lazyxeon/AstraWeave/commit/8ae54ce84)).
+- feat(perception): order team, enemy, and obstacle snapshots ([`e9b6212e6`](https://github.com/lazyxeon/AstraWeave/commit/e9b6212e6)).
+- feat(determinism): add cross-OS replay-hash CI for planner_pure ([`8be0b00be`](https://github.com/lazyxeon/AstraWeave/commit/8be0b00be)).
+- docs: add engine production roadmap with a determinism gate ([`de5832b50`](https://github.com/lazyxeon/AstraWeave/commit/de5832b50)).
+
+#### Fixed
 - fix: cap hostile parsers and bind servers to loopback ([#290](https://github.com/lazyxeon/AstraWeave/pull/290)).
 - fix: bound model text, imports, admin auth, and socket frames ([#312](https://github.com/lazyxeon/AstraWeave/pull/312)).
 - fix: cap remaining image decodes and jail the last model and glTF holes ([#316](https://github.com/lazyxeon/AstraWeave/pull/316)).
@@ -178,35 +188,23 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - fix(ecs): do not allocate a zero-sized BlobVec ([#527](https://github.com/lazyxeon/AstraWeave/pull/527)).
 - fix(aw_doc_lint): byte-safe retired-title look-behind ([#529](https://github.com/lazyxeon/AstraWeave/pull/529)).
 
-### Security
+#### Security
 - chore(deps): bump tokio to 1.53.3 (RUSTSEC-2026-0386) ([#458](https://github.com/lazyxeon/AstraWeave/pull/458)).
 - Route security reports to GitHub private vulnerability reporting ([#510](https://github.com/lazyxeon/AstraWeave/pull/510)).
 
-### Changed
-- fix(ci): link the SDK CMake example and install editor native libs ([`05c2bff0e`](https://github.com/lazyxeon/AstraWeave/commit/05c2bff0e)).
-- fix(ci): SDK harness load path, save-slot isolation, libudev ([`e7db0dba4`](https://github.com/lazyxeon/AstraWeave/commit/e7db0dba4)).
-- fix(ci): C header language, glTF import, and schedule expects ([`b234452bf`](https://github.com/lazyxeon/AstraWeave/commit/b234452bf)).
-- fix(ci): null audio backend, bit-stable caustics, and clippy ([`e9b4c3419`](https://github.com/lazyxeon/AstraWeave/commit/e9b4c3419)).
-- feat(sim): seed craft, harvest, weaving, and solver draws ([`a570aaf4c`](https://github.com/lazyxeon/AstraWeave/commit/a570aaf4c)).
-- feat(ai): plan every companion on the tick ([`8ae54ce84`](https://github.com/lazyxeon/AstraWeave/commit/8ae54ce84)).
-- feat(perception): order team, enemy, and obstacle snapshots ([`e9b6212e6`](https://github.com/lazyxeon/AstraWeave/commit/e9b6212e6)).
-- feat(determinism): add cross-OS replay-hash CI for planner_pure ([`8be0b00be`](https://github.com/lazyxeon/AstraWeave/commit/8be0b00be)).
-- docs: add engine production roadmap with a determinism gate ([`de5832b50`](https://github.com/lazyxeon/AstraWeave/commit/de5832b50)).
+### 2026-08
 
-## 2026-08
-
-### Changed
+#### Changed
 - feat(l3d): the c3 fix ladder — rung 2 halves the pop for less than the shipped cost, and still misses the bar ([`a3fe3ecdc`](https://github.com/lazyxeon/AstraWeave/commit/a3fe3ecdc)).
 - docs(l3c-res): close-out record — engine-wide win confirmed, HEALTH-lane handoff, levers held ([`724f13de0`](https://github.com/lazyxeon/AstraWeave/commit/724f13de0)).
 - feat(l3c-res): live-c2 ships on budget — but the stepping is c3's, not c2's ([`ed35b3b35`](https://github.com/lazyxeon/AstraWeave/commit/ed35b3b35)).
 - feat(l3c): seam hypothesis CONFIRMED; 4th cascade built — and it triples far-field stepping ([`154d723aa`](https://github.com/lazyxeon/AstraWeave/commit/154d723aa)).
 
-## 2026-07
+### 2026-07
 
-### Changed
+#### Changed
 - Campaign/roadmap ([#198](https://github.com/lazyxeon/AstraWeave/pull/198)).
 
-### Changed
 - 2 `assets(ad4)` commits on `main`, newest "assets(ad4): re-point live consumers to derived_1k sample slots" ([`06780433d`](https://github.com/lazyxeon/AstraWeave/commit/06780433d)) through oldest "assets(ad4): cook 36 1K sample derivatives + re-cook 9 traced families in place" ([`333f38472`](https://github.com/lazyxeon/AstraWeave/commit/333f38472)).
 - assets(ad5): manifest schema v2 + packlists + generated ignore surfaces + CI guard ([`4f3d8c365`](https://github.com/lazyxeon/AstraWeave/commit/4f3d8c365)).
 - 2 `chore` commits on `main`, newest "chore: untrack .recent_files.json (editor-local state, swept in by git add -A)" ([`d6f53c00e`](https://github.com/lazyxeon/AstraWeave/commit/d6f53c00e)) through oldest "chore: refresh tracked local prefs — camera fov→fovy schema, Claude permission entry" ([`ac99a0608`](https://github.com/lazyxeon/AstraWeave/commit/ac99a0608)).
@@ -294,14 +292,13 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - 2 `tune(t2a)` commits on `main`, newest "tune(t2a): hex-tile weight sharpening pow 4.0 -> 2.0 (Phase 2.2, isolated)" ([`bcffe81dd`](https://github.com/lazyxeon/AstraWeave/commit/bcffe81dd)) through oldest "tune(t2a): NORMAL_XY_STRENGTH 1.8 -> 1.4 (Phase 2.1, isolated)" ([`80780567e`](https://github.com/lazyxeon/AstraWeave/commit/80780567e)).
 - tune(terrain): TUNDRA_MAX_TEMP_C 0.0 -> -5.0, boreal taiga threading (T.2a Phase 3) ([`b3051e71b`](https://github.com/lazyxeon/AstraWeave/commit/b3051e71b)).
 
-## 2026-06
+### 2026-06
 
-### Changed
+#### Changed
 - Campaign/fluids f1 ([#192](https://github.com/lazyxeon/AstraWeave/pull/192)).
 - Campaign/water successor ([#194](https://github.com/lazyxeon/AstraWeave/pull/194)).
 - Campaign/doc truth resume ([#197](https://github.com/lazyxeon/AstraWeave/pull/197)).
 
-### Changed
 - docs: Update CLAIMS_REGISTRY and CLOSED_VOCABULARY_ALLOWLIST; add D.2.A Execution Report ([`5bd2d7c15`](https://github.com/lazyxeon/AstraWeave/commit/5bd2d7c15)).
 - docs(architecture): trace campaign — 13 new subsystem traces + water/fluids updates + map refresh ([`5611de364`](https://github.com/lazyxeon/AstraWeave/commit/5611de364)).
 - docs(architecture/_meta): add TRACE_SYNC_PROPOSAL — deterministic trace→registry/map sync ([`ed195223e`](https://github.com/lazyxeon/AstraWeave/commit/ed195223e)).
@@ -361,9 +358,9 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - Unified Camera C.8: parity harness expansion (first dynamic-workflow sub-phase) ([`2dd65f183`](https://github.com/lazyxeon/AstraWeave/commit/2dd65f183)).
 - Unified Camera C.9: campaign closeout (outcome doc + methodology + cleanup hand-off) ([`28858ff29`](https://github.com/lazyxeon/AstraWeave/commit/28858ff29)).
 
-## 2026-05
+### 2026-05
 
-### Changed
+#### Changed
 - Camera System Architecture Audit Sub-phase C.0: audit doc ([`5e03a2ab4`](https://github.com/lazyxeon/AstraWeave/commit/5e03a2ab4)).
 - chore: update code structure for improved readability and maintainability ([`a2414c031`](https://github.com/lazyxeon/AstraWeave/commit/a2414c031)).
 - CLAUDE.md hardening v0.10.1: silent-Result rule + no-second-pipeline rule + Integration Completeness checklist + Key Lessons tightening ([`28d7a033b`](https://github.com/lazyxeon/AstraWeave/commit/28d7a033b)).
@@ -484,9 +481,9 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - Unified Camera C.7.B: cutscene_render_demo tick loop rewrite ([`033996c07`](https://github.com/lazyxeon/AstraWeave/commit/033996c07)).
 - Unified Camera C.7.D: apply_camera_key boundary hardening + CameraKey::sanitize ([`bb96b24a8`](https://github.com/lazyxeon/AstraWeave/commit/bb96b24a8)).
 
-## 2026-04
+### 2026-04
 
-### Changed
+#### Changed
 - Add new asset: verdant_trail.blend ([`3ad2b6294`](https://github.com/lazyxeon/AstraWeave/commit/3ad2b6294)).
 - 3 `docs` commits on `main`, newest "docs: add commit reference for ParallelSchedule removal audit" ([`17be8222d`](https://github.com/lazyxeon/AstraWeave/commit/17be8222d)) through oldest "docs: update README, CLAUDE.md, Architecture Map, and Master Roadmap" ([`838a8a386`](https://github.com/lazyxeon/AstraWeave/commit/838a8a386)).
 - 14 `docs(editor)` commits on `main`, newest "docs(editor): CAMPAIGN COMPLETE — 35 fixes, 44 commits, unified pipeline" ([`49a0b2ea0`](https://github.com/lazyxeon/AstraWeave/commit/49a0b2ea0)) through oldest "docs(editor): update campaign progress — Tier 2 fixes 6-11 complete" ([`f5ba18813`](https://github.com/lazyxeon/AstraWeave/commit/f5ba18813)).
@@ -512,8 +509,8 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - 3 `fix(editor/undo)` commits on `main`, newest "fix(editor/undo): wire all 5 component operations through undo stack — C-5 complete" ([`6b3fd279f`](https://github.com/lazyxeon/AstraWeave/commit/6b3fd279f)) through oldest "fix(editor/undo): remove duplicate EntityManager updates that bypass undo — Fix-12" ([`18ea8298b`](https://github.com/lazyxeon/AstraWeave/commit/18ea8298b)).
 - fix(editor/viewport): eliminate mutex poison cascade with recovering helper — C-3 ([`95260daed`](https://github.com/lazyxeon/AstraWeave/commit/95260daed)).
 - fix(render): improve error handling in bind group creation and output view retrieval ([`6eb05efe6`](https://github.com/lazyxeon/AstraWeave/commit/6eb05efe6)).
-- 21 `misc` commits on `main`, newest "Update scheduled_tasks.lock and add CAMERA_SYSTEMS_SOTA_AUDIT_AND_RECOMMENDATIONS.md for camera system documentation" ([`5b370a37b`](https://github.com/lazyxeon/AstraWeave/commit/5b370a37b)) through oldest "Implement GPU-accelerated mipmap generation and sky color computation" ([`17ee9e057`](https://github.com/lazyxeon/AstraWeave/commit/17ee9e057)).
-- 3 `Phase 1 post-completion` commits on `main`, newest "Phase 1 post-completion: close — re-mark COMPLETE after triangle-streak fix" ([`5e1a8a3f3`](https://github.com/lazyxeon/AstraWeave/commit/5e1a8a3f3)) through oldest "Phase 1 post-completion: revert COMPLETE status pending triangle-streak remediation" ([`3ab9f211a`](https://github.com/lazyxeon/AstraWeave/commit/3ab9f211a)).
+- 22 `misc` commits on `main`, newest "Update scheduled_tasks.lock and add CAMERA_SYSTEMS_SOTA_AUDIT_AND_RECOMMENDATIONS.md for camera system documentation" ([`5b370a37b`](https://github.com/lazyxeon/AstraWeave/commit/5b370a37b)) through oldest "Implement Temporal Anti-Aliasing (TAA) and Velocity Buffer for motion vector generation" ([`4c8817b45`](https://github.com/lazyxeon/AstraWeave/commit/4c8817b45)).
+- 4 `Phase 1 post-completion` commits on `main`, newest "Phase 1 post-completion: close — re-mark COMPLETE after triangle-streak fix" ([`5e1a8a3f3`](https://github.com/lazyxeon/AstraWeave/commit/5e1a8a3f3)) through oldest "Phase 1 post-completion: revert COMPLETE status pending triangle-streak remediation" ([`3ab9f211a`](https://github.com/lazyxeon/AstraWeave/commit/3ab9f211a)).
 - 3 `Phase 1 re-cleanup` commits on `main`, newest "Phase 1 re-cleanup: log Issue 2 investigation findings in §9 (deferred)" ([`62af670a6`](https://github.com/lazyxeon/AstraWeave/commit/62af670a6)) through oldest "Phase 1 re-cleanup: revert Phase 1 and Phase 1.5 COMPLETE status pending remediation" ([`67e567390`](https://github.com/lazyxeon/AstraWeave/commit/67e567390)).
 - Phase 1.0: amend campaign plan for Option D (forward-lit splat shader) ([`75f5af193`](https://github.com/lazyxeon/AstraWeave/commit/75f5af193)).
 - Phase 1.5-T.A: heightmap range investigation ([`2e94d25cc`](https://github.com/lazyxeon/AstraWeave/commit/2e94d25cc)).
@@ -627,9 +624,9 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - remove(ecs): delete ParallelSchedule; document engine as single-threaded ECS ([`3c852c7b1`](https://github.com/lazyxeon/AstraWeave/commit/3c852c7b1)).
 - style: fix formatting across all workspace crates for CI compliance ([`6e70126c6`](https://github.com/lazyxeon/AstraWeave/commit/6e70126c6)).
 
-## 2026-03
+### 2026-03
 
-### Changed
+#### Changed
 - 5 `astraweave-ai` commits on `main`, newest "astraweave-ai: add 4 mutation-killing tests for veilweaver.rs" ([`2b00439e8`](https://github.com/lazyxeon/AstraWeave/commit/2b00439e8)) through oldest "astraweave-ai: add 10 mutation-killing tests for tool_sandbox.rs" ([`be240ccf5`](https://github.com/lazyxeon/AstraWeave/commit/be240ccf5)).
 - 2 `astraweave-ai/goap` commits on `main`, newest "astraweave-ai/goap: add 6 more mutation-killing tests (round 2)" ([`83ea239c4`](https://github.com/lazyxeon/AstraWeave/commit/83ea239c4)) through oldest "astraweave-ai/goap: add 35 mutation-killing tests + fix unrevereted mutant" ([`d8cb5bb35`](https://github.com/lazyxeon/AstraWeave/commit/d8cb5bb35)).
 - astraweave-ai/goap batch 2: add mutation-killing tests for 6 files ([`4803b65c5`](https://github.com/lazyxeon/AstraWeave/commit/4803b65c5)).
@@ -647,17 +644,17 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - feat(ecs): add capacity accessors and mutation-killing tests for reserve/with_capacity ([`fb16f150d`](https://github.com/lazyxeon/AstraWeave/commit/fb16f150d)).
 - feat(tests): add integration tests for && → || mutation kills in dialogue and cinematic logic ([`f474b6697`](https://github.com/lazyxeon/AstraWeave/commit/f474b6697)).
 - feat(weaving): mutation testing complete — 99.2% adjusted kill rate, 182 new tests ([`f910acf34`](https://github.com/lazyxeon/AstraWeave/commit/f910acf34)).
-- 6 `fix` commits on `main`, newest "fix: remove blank line breaking hero HTML block in mdBook" ([`a86c30cd3`](https://github.com/lazyxeon/AstraWeave/commit/a86c30cd3)) through oldest "fix: remove cargo-mutants comment remnant from caustics.rs" ([`7803f628e`](https://github.com/lazyxeon/AstraWeave/commit/7803f628e)).
+- 7 `fix` commits on `main`, newest "fix: remove blank line breaking hero HTML block in mdBook" ([`a86c30cd3`](https://github.com/lazyxeon/AstraWeave/commit/a86c30cd3)) through oldest "fix: repair corrupted sanitizers.yml and restore World::get() alive check" ([`b7cd0a2d3`](https://github.com/lazyxeon/AstraWeave/commit/b7cd0a2d3)).
 - fix(astraweave-prompts): fix render counter artifact + complete mutation audit ([`392445b66`](https://github.com/lazyxeon/AstraWeave/commit/392445b66)).
 - 2 `fix(docs)` commits on `main`, newest "fix(docs): fetch LFS images via media CDN instead of full lfs checkout" ([`9ada02a3c`](https://github.com/lazyxeon/AstraWeave/commit/9ada02a3c)) through oldest "fix(docs): use checkout lfs:true instead of manual git lfs pull" ([`0071ed95c`](https://github.com/lazyxeon/AstraWeave/commit/0071ed95c)).
 - 2 `fix(render_metrics)` commits on `main`, newest "fix(render_metrics): correct cache effectiveness check and render summary logic" ([`cfddd82aa`](https://github.com/lazyxeon/AstraWeave/commit/cfddd82aa)) through oldest "fix(render_metrics): update success_rate calculation and cache effectiveness check" ([`2387a3fc1`](https://github.com/lazyxeon/AstraWeave/commit/2387a3fc1)).
 - fix(trigger_contains): correct distance comparison logic for trigger zones ([`810deb25b`](https://github.com/lazyxeon/AstraWeave/commit/810deb25b)).
-- 17 `misc` commits on `main`, newest "Implement Temporal Anti-Aliasing (TAA) and Velocity Buffer for motion vector generation" ([`4c8817b45`](https://github.com/lazyxeon/AstraWeave/commit/4c8817b45)) through oldest "Add comprehensive mutation-killing tests for adapter, plan_analyzer, goal_validator (88+139+96 misses)" ([`e175cd581`](https://github.com/lazyxeon/AstraWeave/commit/e175cd581)).
+- 16 `misc` commits on `main`, newest "Refactor code structure for improved readability and maintainability" ([`192bd243e`](https://github.com/lazyxeon/AstraWeave/commit/192bd243e)) through oldest "Add comprehensive mutation-killing tests for adapter, plan_analyzer, goal_validator (88+139+96 misses)" ([`e175cd581`](https://github.com/lazyxeon/AstraWeave/commit/e175cd581)).
 - pre-mutation checkpoint: astraweave-ai baseline (268 tests) ([`71cbde5a4`](https://github.com/lazyxeon/AstraWeave/commit/71cbde5a4)).
 - 2 `Pre-mutation checkpoint` commits on `main`, newest "Pre-mutation checkpoint: astraweave-fluids baseline" ([`b597d3b3a`](https://github.com/lazyxeon/AstraWeave/commit/b597d3b3a)) through oldest "Pre-mutation checkpoint: astraweave-core baseline" ([`bc77e25aa`](https://github.com/lazyxeon/AstraWeave/commit/bc77e25aa)).
 - style(dashboard): restyle interactive benchmark dashboard to AstraWeave design language ([`9fdf376bd`](https://github.com/lazyxeon/AstraWeave/commit/9fdf376bd)).
 - style(landing): replace matplotlib benchmark chart with dark-themed inline SVG ([`0829f0633`](https://github.com/lazyxeon/AstraWeave/commit/0829f0633)).
-- 2 `test` commits on `main`, newest mutation-audit completion tagged v1.42.0 ([`edac4e651`](https://github.com/lazyxeon/AstraWeave/commit/edac4e651)) through oldest partial mutation-audit progress ([`f1493f5e0`](https://github.com/lazyxeon/AstraWeave/commit/f1493f5e0)).
+- 2 `test` commits on `main`, newest "test: COMPLETE mutation audit - all 59 library crates verified (v1.42.0)" ([`edac4e651`](https://github.com/lazyxeon/AstraWeave/commit/edac4e651)) through oldest "test: complete mutation audit for 6 remaining crates (48->54/59)" ([`f1493f5e0`](https://github.com/lazyxeon/AstraWeave/commit/f1493f5e0)).
 - test(astract): complete mutation audit (67.1% raw, 100% adj) ([`e840bc55c`](https://github.com/lazyxeon/AstraWeave/commit/e840bc55c)).
 - test(astraweave-asset): complete mutation audit (42.1% raw, 100% adj) ([`5c5e79782`](https://github.com/lazyxeon/AstraWeave/commit/5c5e79782)).
 - test(astraweave-audio): complete mutation audit (49.5% raw, 100% adj) ([`2f3202035`](https://github.com/lazyxeon/AstraWeave/commit/2f3202035)).
@@ -685,12 +682,11 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - Update mutation testing audit: Phase 1 complete (9 crates, all >=96% raw kill rate) ([`79e0c4a80`](https://github.com/lazyxeon/AstraWeave/commit/79e0c4a80)).
 - Update MUTATION_TESTING_AUDIT.md v1.5.0: astraweave-ai complete (100% adjusted, 29 files, ~1900 mutants) ([`1d5a7c3bf`](https://github.com/lazyxeon/AstraWeave/commit/1d5a7c3bf)).
 
-## 2026-02
+### 2026-02
 
-### Changed
-- docs: Update README crate structure taxonomy ([#174](https://github.com/lazyxeon/AstraWeave/pull/174)).
+#### Changed
+- docs: Update README crate structure to accurate 49-crate taxonomy with research-grade descriptions ([#174](https://github.com/lazyxeon/AstraWeave/pull/174)).
 
-### Changed
 - Add performance documentation: benchmarks, budgets, methodology, and optimization guide ([`c05c9e793`](https://github.com/lazyxeon/AstraWeave/commit/c05c9e793)).
 - asset system cleanup: removed incomplete/ broken textures and assets. added python materials script. ([`aaae44f84`](https://github.com/lazyxeon/AstraWeave/commit/aaae44f84)).
 - 3 `ci` commits on `main`, newest "ci: add source-integrity gate to sanitizers workflow" ([`90028f358`](https://github.com/lazyxeon/AstraWeave/commit/90028f358)) through oldest "ci: Update checkout step to use LFS for glTF/glb fixtures" ([`c2fd5a9a4`](https://github.com/lazyxeon/AstraWeave/commit/c2fd5a9a4)).
@@ -701,13 +697,14 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - feat(physics): implement buoyancy force calculation in apply_buoyancy_forces ([`c87ddaa2b`](https://github.com/lazyxeon/AstraWeave/commit/c87ddaa2b)).
 - 4 `feat(render)` commits on `main`, newest "feat(render): targeted projection mutation killers for clustered.rs:59-60" ([`47cb6a314`](https://github.com/lazyxeon/AstraWeave/commit/47cb6a314)) through oldest "feat(render): proactive Wave 2 remediation tests — environment, culling, LOD, animation, primitives" ([`f62bbd498`](https://github.com/lazyxeon/AstraWeave/commit/f62bbd498)).
 - 2 `feat(terrain)` commits on `main`, newest "feat(terrain): add 59 heightmap remediation tests + fix sweep scripts" ([`90ea93ea4`](https://github.com/lazyxeon/AstraWeave/commit/90ea93ea4)) through oldest "feat(terrain): add 146 Wave 2 mutation remediation tests" ([`b508a2f83`](https://github.com/lazyxeon/AstraWeave/commit/b508a2f83)).
-- 19 `fix` commits on `main`, newest "fix: repair corrupted sanitizers.yml and restore World::get() alive check" ([`b7cd0a2d3`](https://github.com/lazyxeon/AstraWeave/commit/b7cd0a2d3)) through oldest "fix: restore has_offensive implementation corrupted by cargo-mutants" ([`ad26d3c41`](https://github.com/lazyxeon/AstraWeave/commit/ad26d3c41)).
+- 18 `fix` commits on `main`, newest "fix: update entity alive check comment to clarify cargo-mutants modification" ([`71c00f850`](https://github.com/lazyxeon/AstraWeave/commit/71c00f850)) through oldest "fix: restore has_offensive implementation corrupted by cargo-mutants" ([`ad26d3c41`](https://github.com/lazyxeon/AstraWeave/commit/ad26d3c41)).
 - 7 `fix(aabb)` commits on `main`, newest "fix(aabb): correct half-extents calculation in AABB method for accurate dimensions" ([`0b4c49de2`](https://github.com/lazyxeon/AstraWeave/commit/0b4c49de2)) through oldest "fix(aabb): update intersection logic for accurate collision detection" ([`18ac32591`](https://github.com/lazyxeon/AstraWeave/commit/18ac32591)).
 - 3 `fix(async_scheduler)` commits on `main`, newest "fix(async_scheduler): implement telemetry export to JSON file in export_telemetry method fix(spatial_hash): correct AABB min calculation in from_center_extents method" ([`c4ac533b1`](https://github.com/lazyxeon/AstraWeave/commit/c4ac533b1)) through oldest "fix(async_scheduler): update get_last_profile to return last_profile instead of default values" ([`42db06064`](https://github.com/lazyxeon/AstraWeave/commit/42db06064)).
 - fix(capture_replay): update WorldSerde conversion to sort obstacles for consistent state capture fix(ecs_adapter): correct cooldown decay calculation to increment instead of decrement ([`09bae8740`](https://github.com/lazyxeon/AstraWeave/commit/09bae8740)).
 - 17 `fix(physics)` commits on `main`, newest "fix(physics): correct calculation logic in PhysicsStepProfile for narrow and integration phase durations" ([`76fae3678`](https://github.com/lazyxeon/AstraWeave/commit/76fae3678)) through oldest "fix(physics): update body ID retrieval and tagging logic in PhysicsWorld" ([`4e55fb632`](https://github.com/lazyxeon/AstraWeave/commit/4e55fb632)).
 - 3 `fix(spatial_hash)` commits on `main`, newest "fix(spatial_hash): correct world_to_cell method for accurate grid cell calculations" ([`2375c93ad`](https://github.com/lazyxeon/AstraWeave/commit/2375c93ad)) through oldest "fix(spatial_hash): correct AABB max calculation and update intersection logic" ([`0502feac5`](https://github.com/lazyxeon/AstraWeave/commit/0502feac5)).
-- 2 `Merge branch 'main' of https` commits on `main`, newest "Merge branch 'main' of https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine" ([`023d1f305`](https://github.com/lazyxeon/AstraWeave/commit/023d1f305)) through oldest "Merge branch 'main' of https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine" ([`35d3bd423`](https://github.com/lazyxeon/AstraWeave/commit/35d3bd423)).
+- Merge branch 'main' of https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine ([`023d1f305`](https://github.com/lazyxeon/AstraWeave/commit/023d1f305)).
+- Merge branch 'main' of https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine ([`35d3bd423`](https://github.com/lazyxeon/AstraWeave/commit/35d3bd423)).
 - 39 `misc` commits on `main`, newest "Add mutation testing audit and Qwen3 latency optimization report" ([`ce9eb80c2`](https://github.com/lazyxeon/AstraWeave/commit/ce9eb80c2)) through oldest "Add comprehensive mutation-resistant tests for Toast UI system" ([`ec75038ad`](https://github.com/lazyxeon/AstraWeave/commit/ec75038ad)).
 - quality: doc-tests, unsafe audit, fmt, dep hygiene, forbid(unsafe_code) ([`e48c3d6c8`](https://github.com/lazyxeon/AstraWeave/commit/e48c3d6c8)).
 - 24 `test` commits on `main`, newest "test: add round-2 mutation kill tests for ECS subsystems" ([`a91a9d4c6`](https://github.com/lazyxeon/AstraWeave/commit/a91a9d4c6)) through oldest "test: add 45 edge-case tests across pcg/scene; fix 3 cargo-mutants leftovers" ([`0dcc91eec`](https://github.com/lazyxeon/AstraWeave/commit/0dcc91eec)).
@@ -717,15 +714,14 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - Wave 2: proactive remediation - structures(61), streaming_diagnostics(44), biome_transition+env(67), clustered(16) = 188 new tests ([`8a0173421`](https://github.com/lazyxeon/AstraWeave/commit/8a0173421)).
 - 17 `wave2` commits on `main`, newest "wave2: batch 12 — terrain renderer, debug quad, mesh registry, overlay, weather, clustered forward (39 tests)" ([`3a3f45b07`](https://github.com/lazyxeon/AstraWeave/commit/3a3f45b07)) through oldest "wave2: 26 lib.rs remediation tests + scatter test speed optimization (300s -> 2s)" ([`4275a4afd`](https://github.com/lazyxeon/AstraWeave/commit/4275a4afd)).
 
-## 2026-01
+### 2026-01
 
-### Changed
+#### Changed
 - Editor stability phase1 ([#162](https://github.com/lazyxeon/AstraWeave/pull/162)).
 - Merge/editor stability phase1 to main ([#166](https://github.com/lazyxeon/AstraWeave/pull/166)).
 - chore: comprehensive root-level cleanup ([#168](https://github.com/lazyxeon/AstraWeave/pull/168)).
 - Chore/root level cleanup ([#169](https://github.com/lazyxeon/AstraWeave/pull/169)).
 
-### Changed
 - 2 `chore` commits on `main`, newest "chore: comprehensive clippy cleanup with -D warnings for production quality" ([`5cc8f4960`](https://github.com/lazyxeon/AstraWeave/commit/5cc8f4960)) through oldest "chore: fix clippy warnings across workspace" ([`6348df7ab`](https://github.com/lazyxeon/AstraWeave/commit/6348df7ab)).
 - 2 `ci` commits on `main`, newest "ci: make PBR Pipeline and Documentation workflows fully non-blocking" ([`7af0fc6ae`](https://github.com/lazyxeon/AstraWeave/commit/7af0fc6ae)) through oldest "ci: fix GitHub Actions workflows to be non-blocking" ([`19a0a62d3`](https://github.com/lazyxeon/AstraWeave/commit/19a0a62d3)).
 - docs: Update WORLD_CLASS_EDITOR_PLAN with completed infrastructure work ([`50394b533`](https://github.com/lazyxeon/AstraWeave/commit/50394b533)).
@@ -736,10 +732,21 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 - Phase 10A: Fluids system enhancements, mutation testing infrastructure, editor panels, and water system improvements ([`c8d10c90e`](https://github.com/lazyxeon/AstraWeave/commit/c8d10c90e)).
 - 3 `test` commits on `main`, newest "test: mark rule_orchestrator_performance test as ignored" ([`90aa9d3b1`](https://github.com/lazyxeon/AstraWeave/commit/90aa9d3b1)) through oldest "test: mark flaky/performance-sensitive tests as ignored" ([`e79430020`](https://github.com/lazyxeon/AstraWeave/commit/e79430020)).
 
-## [0.4.0] - 2025-11-18 (archival — no release tag)
+#### Fixed
+- astraweave-rag: `get_cached_result` in `astraweave-rag/src/pipeline.rs` computes `should_remove` and drops the `cache.get` read guard before `cache.remove` ([#169](https://github.com/lazyxeon/AstraWeave/pull/169)).
+
+## [0.4.0] - 2025-11-18
+
+Archival note for the workspace version named in [SECURITY.md](SECURITY.md). There is no `v0.4.0` git tag. The supported line is current `main` at that version number. The paths below are in the tree at [`0c986d9fa`](https://github.com/lazyxeon/AstraWeave/commit/0c986d9fa) (2025-11-18).
+
+### Added
+- VXGI in `astraweave-render/src/gi/vxgi.rs` ([#112](https://github.com/lazyxeon/AstraWeave/pull/112)).
+- MegaLights clustered light culling in `astraweave-render/src/clustered_megalights.rs` (`MegaLightsRenderer`) ([`ddefcd70a`](https://github.com/lazyxeon/AstraWeave/commit/ddefcd70a)).
+- Nanite-inspired meshlet pipeline in `astraweave-render/src/nanite_render.rs` and `astraweave-asset/src/nanite_preprocess.rs` ([#113](https://github.com/lazyxeon/AstraWeave/pull/113)).
+- ECS capture/replay module `astraweave-core/src/capture_replay.rs` ([`257357062`](https://github.com/lazyxeon/AstraWeave/commit/257357062)).
 
 ### Changed
-- Editor and engine audit reports under `docs/audits/` ([`8220c0f66`](https://github.com/lazyxeon/AstraWeave/commit/8220c0f66)).
+- Audit reports moved under `docs/audits/` ([`d8cd5f027`](https://github.com/lazyxeon/AstraWeave/commit/d8cd5f027)).
 
 ## [0.3.0] - 2025-08-02 (archival — no release tag)
 
@@ -757,5 +764,5 @@ _Nothing yet on top of `main` at [`f24ce31cb`](https://github.com/lazyxeon/Astra
 ### Added
 - Initial public workspace: core ECS, navigation, physics, and AI behavior crates.
 
-[Unreleased]: https://github.com/lazyxeon/AstraWeave/compare/f24ce31cb...HEAD
+[Unreleased]: https://github.com/lazyxeon/AstraWeave/compare/0c986d9fa...HEAD
 
