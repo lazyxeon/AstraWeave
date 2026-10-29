@@ -8,6 +8,30 @@
 use std::alloc::{alloc, dealloc, realloc, Layout};
 use std::ptr::{self, NonNull};
 
+/// Aligned dangling pointer. Zero-sized columns never allocate, and a write
+/// of a zero-sized value still requires a non-null aligned address.
+fn dangling_aligned(align: usize) -> NonNull<u8> {
+    // SAFETY: `align` comes from `Layout` and is a non-zero power of two.
+    unsafe { NonNull::new_unchecked(ptr::without_provenance_mut(align)) }
+}
+
+#[allow(clippy::expect_used)] // OOM/layout panics are the only correct response — no recovery possible
+fn allocation_layout(item: Layout, cap: usize) -> Layout {
+    let size = item.size().checked_mul(cap).expect("capacity overflow");
+    Layout::from_size_align(size, item.align()).expect("capacity overflow")
+}
+
+fn empty_blob(item_layout: Layout, drop_fn: Option<unsafe fn(*mut u8)>) -> BlobVec {
+    let zst = item_layout.size() == 0;
+    BlobVec {
+        data: dangling_aligned(item_layout.align()),
+        len: 0,
+        capacity: if zst { usize::MAX } else { 0 },
+        item_layout,
+        drop_fn,
+    }
+}
+
 /// Type-erased vector of components stored contiguously in memory.
 ///
 /// This is the foundation for high-performance ECS storage, providing:
@@ -15,6 +39,10 @@ use std::ptr::{self, NonNull};
 /// - SIMD-friendly contiguous memory
 /// - Cache-friendly iteration
 /// - Proper drop handling via function pointer
+///
+/// `Send` and `Sync` are unconditional. `push` and `push_raw` are `unsafe`:
+/// the caller must store only `Send + Sync` components. A zero-sized column
+/// is not an allocation.
 ///
 /// # Type-Erased API
 ///
@@ -47,13 +75,7 @@ impl BlobVec {
             None
         };
 
-        Self {
-            data: NonNull::dangling(),
-            len: 0,
-            capacity: 0,
-            item_layout,
-            drop_fn,
-        }
+        empty_blob(item_layout, drop_fn)
     }
 
     /// Create a new BlobVec with specified capacity
@@ -77,13 +99,7 @@ impl BlobVec {
     /// * `item_layout` - Memory layout for each item
     /// * `drop_fn` - Function to drop an item (None if no drop needed)
     pub fn from_layout(item_layout: Layout, drop_fn: Option<unsafe fn(*mut u8)>) -> Self {
-        Self {
-            data: NonNull::dangling(),
-            len: 0,
-            capacity: 0,
-            item_layout,
-            drop_fn,
-        }
+        empty_blob(item_layout, drop_fn)
     }
 
     /// Create a BlobVec from a runtime Layout with pre-allocated capacity.
@@ -109,32 +125,31 @@ impl BlobVec {
     /// Reserve space for at least `additional` more components
     #[allow(clippy::expect_used)] // OOM/layout panics are the only correct response — no recovery possible
     pub fn reserve(&mut self, additional: usize) {
+        // A zero-sized item has no allocation. Capacity stays `usize::MAX`
+        // so later pushes do not call `alloc`.
+        if self.item_layout.size() == 0 {
+            self.capacity = usize::MAX;
+            return;
+        }
+
         let required_cap = self.len.checked_add(additional).expect("capacity overflow");
         if required_cap <= self.capacity {
             return;
         }
 
-        let new_capacity = required_cap.max(self.capacity * 2).max(4);
-
-        let new_layout = Layout::from_size_align(
-            self.item_layout.size() * new_capacity,
-            self.item_layout.align(),
-        )
-        .expect("invalid layout");
+        let doubled = self.capacity.checked_mul(2).expect("capacity overflow");
+        let new_capacity = required_cap.max(doubled).max(4);
+        let new_layout = allocation_layout(self.item_layout, new_capacity);
 
         let new_data = if self.capacity == 0 {
-            // First allocation
-            // SAFETY: `new_layout` has non-zero size (validated above) and correct alignment.
+            // SAFETY: `new_layout` has non-zero size (`item_layout.size() > 0`
+            // and `new_capacity >= 4`) and the alignment from `item_layout`.
             unsafe { NonNull::new(alloc(new_layout)).expect("allocation failed") }
         } else {
-            // Reallocate existing memory
-            let old_layout = Layout::from_size_align(
-                self.item_layout.size() * self.capacity,
-                self.item_layout.align(),
-            )
-            .expect("invalid layout");
+            let old_layout = allocation_layout(self.item_layout, self.capacity);
 
-            // SAFETY: `self.data` was allocated with `old_layout`. `new_layout.size()` >= old size.
+            // SAFETY: `self.data` was allocated with `old_layout`.
+            // `new_layout.size()` is at least the old size.
             unsafe {
                 let new_ptr = realloc(self.data.as_ptr(), old_layout, new_layout.size());
                 NonNull::new(new_ptr).expect("reallocation failed")
@@ -414,28 +429,28 @@ impl Drop for BlobVec {
     fn drop(&mut self) {
         self.clear();
 
-        if self.capacity > 0 {
-            let layout = Layout::from_size_align(
-                self.item_layout.size() * self.capacity,
-                self.item_layout.align(),
-            )
-            .expect("invalid layout");
+        // Zero-sized columns use a dangling pointer and `capacity == usize::MAX`.
+        // They were never allocated.
+        if self.item_layout.size() == 0 || self.capacity == 0 {
+            return;
+        }
 
-            // SAFETY: `self.data` was allocated with this layout. capacity > 0 ensures
-            // the layout is non-zero-sized.
-            unsafe {
-                dealloc(self.data.as_ptr(), layout);
-            }
+        let layout = allocation_layout(self.item_layout, self.capacity);
+
+        // SAFETY: `self.data` was allocated with this layout. The size is
+        // non-zero because `item_layout.size() > 0` and `capacity > 0`.
+        unsafe {
+            dealloc(self.data.as_ptr(), layout);
         }
     }
 }
 
-// SAFETY: BlobVec's data pointer is heap-allocated and not shared across threads
-// without synchronization. The type-erased storage is only accessed through &self
-// (shared) or &mut self (exclusive), maintaining Rust's aliasing guarantees.
+// SAFETY: The data pointer is a heap allocation owned by this `BlobVec`, or a
+// dangling aligned address when the column is zero-sized (never allocated and
+// never dereferenced). The storage is only reached through `&self` or `&mut self`.
 unsafe impl Send for BlobVec {}
-// SAFETY: Same reasoning as Send — concurrent &BlobVec access is safe because
-// shared references cannot mutate the underlying data.
+// SAFETY: Same as `Send`. A shared reference cannot mutate the column, and a
+// zero-sized column has no heap bytes to alias.
 unsafe impl Sync for BlobVec {}
 
 #[cfg(test)]
@@ -1107,5 +1122,45 @@ mod tests {
             assert!(blob.capacity() >= 10);
             // Drop with capacity>0 but len=0 → must dealloc memory
         }
+    }
+
+    thread_local! {
+        static ZST_DROPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    struct CountedZst;
+
+    impl Drop for CountedZst {
+        fn drop(&mut self) {
+            ZST_DROPS.with(|drops| drops.set(drops.get() + 1));
+        }
+    }
+
+    #[test]
+    fn zst_push_drop_uses_no_allocation() {
+        ZST_DROPS.with(|drops| drops.set(0));
+        {
+            let mut blob = BlobVec::new::<CountedZst>();
+            assert_eq!(
+                blob.capacity(),
+                usize::MAX,
+                "a zero-sized column is not allocated"
+            );
+            unsafe {
+                blob.push(CountedZst);
+                blob.push(CountedZst);
+                blob.push(CountedZst);
+            }
+            assert_eq!(blob.len(), 3);
+            assert_eq!(blob.capacity(), usize::MAX);
+        }
+        assert_eq!(ZST_DROPS.with(|drops| drops.get()), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "capacity overflow")]
+    fn with_capacity_past_address_space_panics() {
+        let size = std::mem::size_of::<u64>();
+        let _blob = BlobVec::with_capacity::<u64>(usize::MAX / size + 1);
     }
 }

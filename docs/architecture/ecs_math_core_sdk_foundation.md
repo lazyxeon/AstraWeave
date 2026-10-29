@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.14"
-last_verified_commit: d4e1ffab
+doc_version: "1.15"
+last_verified_commit: 129ccac4
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,12 +20,14 @@ last_verified_commit: d4e1ffab
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.14 |
-| **Last verified against commit** | `d4e1ffab` |
-| **Last verified date** | 2026-10-23 |
+| **Document version** | 1.15 |
+| **Last verified against commit** | `129ccac4` |
+| **Last verified date** | 2026-10-28 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
+> **Revision notice — 2026-10-28 (v1.15).** `BlobVec` does not allocate a zero-sized column. Capacity is `usize::MAX` and the pointer is a dangling address aligned to the item. `reserve` builds the allocation with `checked_mul` and panics `capacity overflow` when the byte length does not fit. Checked at `129ccac4`. Tests: `zst_push_drop_uses_no_allocation`, `with_capacity_past_address_space_panics`.
+>
 > **Revision notice — 2026-10-23 (v1.14).** The continue-on-error removal is `0784b204`. The log-capture commit is `7b7a21e4`. Its parent is `039b031a`. The counter-only commit is `93c448d6`. `last_verified_commit` names the parent `d4e1ffab`. That parent pairs `46be9024` with `7b7a21e4`, which swaps the continue-on-error removal and the log capture. Its last-verified date is 2026-10-15.
 >
 > **Revision notice — 2026-10-22 (v1.13, historical).** This notice paired `46be9024` with `7b7a21e4` (log capture) and `a0d4a690` with `93c448d6`. That pairing swaps the subjects. `a0d4a690` is the counter-only commit, `93c448d6`. `46be9024` is the continue-on-error removal, which on this branch is `0784b204`. The log-capture commit is `7b7a21e4`. Its parent is `039b031a`. `46be9024` and `a0d4a690` are not ancestors.
@@ -282,7 +284,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/lib.rs` | Top-level: `World`, `Schedule`, `App`, `SystemStage` constants, `Plugin` trait, `Component`/`Resource` blanket impls, change-tick API | Active | `pub mod` declarations at lines 37-46; `pub use` re-exports at lines 73-83. The `ParallelSchedule` removal note lives at lines 78-80. |
 | `astraweave-ecs/src/archetype.rs` | `Archetype`, `ArchetypeId`, `ArchetypeSignature`, `ArchetypeStorage`, change-tick columns | Active | Dual storage modes (Box vs BlobVec) selected per archetype |
 | `astraweave-ecs/src/entity_allocator.rs` | `Entity { id, generation }`, `EntityAllocator` with O(1) free list | Active | 8-byte handle; generational counter on slot reuse |
-| `astraweave-ecs/src/blob_vec.rs` | Type-erased contiguous component column with manual `Layout`/`drop_fn` | Active | Uses `unsafe` (alloc/dealloc/realloc, pointer arithmetic, drop) — Kani-verified in `blob_vec_kani.rs` |
+| `astraweave-ecs/src/blob_vec.rs` | Type-erased contiguous component column with manual `Layout`/`drop_fn`. A zero-sized column is not allocated. `reserve` uses `checked_mul` and panics `capacity overflow`. | Active | Uses `unsafe` (alloc/dealloc/realloc, pointer arithmetic, drop). `blob_vec_kani.rs` does not cover a zero-sized column or a near-overflow capacity. |
 | `astraweave-ecs/src/sparse_set.rs` | Sparse-set entity → dense-row mapping | Active | O(1) entity lookups; replaced earlier BTreeMap (see `system_param.rs:1-15` perf notes) |
 | `astraweave-ecs/src/system_param.rs` | `SystemParam` marker, `Query<T>`, `Query2<T1,T2>`, `Query2Mut<T1,T2>` | Active | Lengthy perf-history docstring at top |
 | `astraweave-ecs/src/command_buffer.rs` | `CommandBuffer` for deferred spawn/insert/remove/despawn | Active | `!Send + !Sync` to match World access model |
