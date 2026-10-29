@@ -4187,6 +4187,45 @@ Done!"#;
     }
 
     #[test]
+    fn default_registry_core_steps_validate() {
+        use astraweave_core::default_tool_registry;
+
+        let reg = default_tool_registry();
+        let json = r#"{"plan_id":"core","steps":[
+            {"act":"MoveTo","x":1,"y":2},
+            {"act":"Throw","item":"smoke","x":3,"y":4},
+            {"act":"CoverFire","target_id":99,"duration":2.0},
+            {"act":"Revive","ally_id":1}
+        ]}"#;
+
+        let mut plan = parse_llm_plan(json, &reg).expect("core steps against the default registry");
+        assert_eq!(plan.steps.len(), 4);
+
+        let parsed = plan_parser::parse_llm_response(json, &reg).expect("runtime parser");
+        assert_eq!(parsed.plan.steps.len(), 4);
+
+        let schema = plan_format::plan_format_schema(&reg);
+        let acts: Vec<&str> = schema["properties"]["steps"]["items"]["oneOf"]
+            .as_array()
+            .expect("oneOf")
+            .iter()
+            .filter_map(|branch| branch["properties"]["act"]["enum"][0].as_str())
+            .collect();
+        assert_eq!(acts, ["MoveTo", "Throw", "CoverFire", "Revive"]);
+
+        plan.steps.push(ActionStep::Attack { target_id: 99 });
+        let snap = create_test_world_snapshot();
+        sanitize_plan(&mut plan, &snap, &reg).unwrap();
+        assert_eq!(plan.steps.len(), 4, "Attack is dropped; core steps stay");
+
+        let rejected = parse_llm_plan(
+            r#"{"plan_id":"no","steps":[{"act":"Attack","target_id":99}]}"#,
+            &reg,
+        );
+        assert!(rejected.is_err());
+    }
+
+    #[test]
     fn test_validate_plan_disallowed_move_to() {
         let mut reg = create_test_registry();
         reg.tools.retain(|t| t.name != "MoveTo");
