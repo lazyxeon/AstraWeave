@@ -245,7 +245,9 @@ impl EvaluationSuite {
             }
         };
 
-        // Parse plan - use a permissive ToolRegistry for evaluation
+        // Parse plan - use a permissive ToolRegistry for evaluation.
+        // `validate_plan` matches `ActionStep` names, which are PascalCase.
+        // The snake_case aliases stay for callers that still list those strings.
         let tool_registry = ToolRegistry {
             tools: vec![
                 astraweave_core::ToolSpec {
@@ -253,7 +255,15 @@ impl EvaluationSuite {
                     args: std::collections::BTreeMap::new(),
                 },
                 astraweave_core::ToolSpec {
+                    name: "MoveTo".to_string(),
+                    args: std::collections::BTreeMap::new(),
+                },
+                astraweave_core::ToolSpec {
                     name: "throw".to_string(),
+                    args: std::collections::BTreeMap::new(),
+                },
+                astraweave_core::ToolSpec {
+                    name: "Throw".to_string(),
                     args: std::collections::BTreeMap::new(),
                 },
                 astraweave_core::ToolSpec {
@@ -261,7 +271,23 @@ impl EvaluationSuite {
                     args: std::collections::BTreeMap::new(),
                 },
                 astraweave_core::ToolSpec {
+                    name: "CoverFire".to_string(),
+                    args: std::collections::BTreeMap::new(),
+                },
+                astraweave_core::ToolSpec {
                     name: "revive".to_string(),
+                    args: std::collections::BTreeMap::new(),
+                },
+                astraweave_core::ToolSpec {
+                    name: "Revive".to_string(),
+                    args: std::collections::BTreeMap::new(),
+                },
+                astraweave_core::ToolSpec {
+                    name: "ThrowSmoke".to_string(),
+                    args: std::collections::BTreeMap::new(),
+                },
+                astraweave_core::ToolSpec {
+                    name: "Attack".to_string(),
                     args: std::collections::BTreeMap::new(),
                 },
             ],

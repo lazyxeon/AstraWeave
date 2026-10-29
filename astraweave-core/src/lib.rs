@@ -61,17 +61,20 @@ pub use tools::{
 pub use validation::*;
 pub use world::*;
 
-/// Construct a default ToolRegistry matching MVP verbs.
+/// Four core tools, named as `ActionStep`: `MoveTo`, `Throw`, `CoverFire`, `Revive`.
+///
+/// `LlmOrchestrator::new` uses this registry when the caller passes none.
+/// `validate_plan` and `parse_llm_response` match these names exactly.
 pub fn default_tool_registry() -> ToolRegistry {
     use std::collections::BTreeMap;
     ToolRegistry {
         tools: vec![
             ToolSpec {
-                name: "move_to".into(),
+                name: "MoveTo".into(),
                 args: BTreeMap::from([("x".into(), "i32".into()), ("y".into(), "i32".into())]),
             },
             ToolSpec {
-                name: "throw".into(),
+                name: "Throw".into(),
                 args: BTreeMap::from([
                     ("item".into(), "enum[smoke,grenade]".into()),
                     ("x".into(), "i32".into()),
@@ -79,14 +82,14 @@ pub fn default_tool_registry() -> ToolRegistry {
                 ]),
             },
             ToolSpec {
-                name: "cover_fire".into(),
+                name: "CoverFire".into(),
                 args: BTreeMap::from([
                     ("target_id".into(), "u32".into()),
                     ("duration".into(), "f32".into()),
                 ]),
             },
             ToolSpec {
-                name: "revive".into(),
+                name: "Revive".into(),
                 args: BTreeMap::from([("ally_id".into(), "u32".into())]),
             },
         ],
@@ -111,7 +114,7 @@ mod tests {
     #[test]
     fn test_default_tool_registry_move_to() {
         let registry = default_tool_registry();
-        let move_to = registry.tools.iter().find(|t| t.name == "move_to");
+        let move_to = registry.tools.iter().find(|t| t.name == "MoveTo");
         assert!(move_to.is_some());
         let tool = move_to.unwrap();
         assert_eq!(tool.args.get("x"), Some(&"i32".to_string()));
@@ -121,7 +124,7 @@ mod tests {
     #[test]
     fn test_default_tool_registry_throw() {
         let registry = default_tool_registry();
-        let throw = registry.tools.iter().find(|t| t.name == "throw");
+        let throw = registry.tools.iter().find(|t| t.name == "Throw");
         assert!(throw.is_some());
         let tool = throw.unwrap();
         assert_eq!(
@@ -141,14 +144,14 @@ mod tests {
     #[test]
     fn test_default_tool_registry_cover_fire() {
         let registry = default_tool_registry();
-        let cover_fire = registry.tools.iter().find(|t| t.name == "cover_fire");
+        let cover_fire = registry.tools.iter().find(|t| t.name == "CoverFire");
         assert!(cover_fire.is_some());
     }
 
     #[test]
     fn test_default_tool_registry_revive() {
         let registry = default_tool_registry();
-        let revive = registry.tools.iter().find(|t| t.name == "revive");
+        let revive = registry.tools.iter().find(|t| t.name == "Revive");
         assert!(revive.is_some());
     }
 }

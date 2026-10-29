@@ -242,7 +242,7 @@ impl Qwen3Ollama {
     /// - Ultra-short system prompt — fewest possible prefill tokens
     /// - Lean sampling: no top_k, no repeat_penalty — faster per-token decode
     /// - `num_batch: 1024` — faster prompt prefill (2× default)
-    /// - `num_keep: -1` — cache entire system prompt in KV prefix (skips re-eval)
+    /// - `num_keep: -1` — on a context shift, keep the initial prompt. Prefix reuse is `keep_alive` plus the server prompt cache (`prompt_eval_cached_count`), not this field
     /// - `use_mmap: true` — memory-mapped model loading
     /// - `keep_alive: -1` — never unload model from memory
     ///
@@ -352,8 +352,10 @@ impl Qwen3Ollama {
             // Omit top_k and repeat_penalty — Ollama defaults are fine
             // and each extra sampler adds per-token latency.
             // num_batch: 1024 — doubles parallel prompt processing (default: 512).
-            // num_keep: -1 — cache entire system prompt prefix in KV cache,
-            //   so consecutive requests skip re-evaluating system prompt tokens.
+            // num_keep: -1 — tokens kept from the initial prompt when the context
+            //   shifts. This is not the prefix KV cache. Ollama reuses a prefix
+            //   through the server prompt cache while `keep_alive` holds the model.
+            //   A hit is `prompt_eval_cached_count` on the response.
             // use_mmap: true — memory-mapped model loading for faster access.
             json!({
                 "temperature": self.temperature,
@@ -380,22 +382,24 @@ impl Qwen3Ollama {
         }
     }
 
-    /// Preload the model into GPU/memory and warm the KV prefix cache.
+    /// Preload the model into GPU/memory.
     ///
     /// Performs two operations:
     /// 1. Loads model weights into VRAM (eliminates 3-5s cold-start)
-    /// 2. Sends a minimal inference with the system prompt to populate
-    ///    the KV prefix cache (`num_keep=-1` keeps it cached)
+    /// 2. Sends a minimal inference with the system prompt while `keep_alive: -1`
+    ///    holds the model. Prefix reuse is the server prompt cache, measured by
+    ///    `prompt_eval_cached_count`. `num_keep: -1` is how many tokens survive a
+    ///    context shift, not that cache.
     ///
-    /// After preload, the first real inference request skips both model loading
-    /// AND system prompt re-evaluation, achieving steady-state TTFC immediately.
+    /// After preload, a later request can skip model loading. A prefix hit still
+    /// depends on the server prompt cache.
     ///
     /// # Example
     /// ```no_run
     /// # use astraweave_llm::qwen3_ollama::Qwen3Ollama;
     /// # async fn demo() -> anyhow::Result<()> {
     /// let client = Qwen3Ollama::fast().expect("model client");
-    /// client.preload().await?;  // Warm model + KV cache
+    /// client.preload().await?;  // Load weights; keep_alive holds the model
     /// // First real call now has the same TTFC as subsequent calls
     /// # Ok(())
     /// # }
@@ -407,7 +411,7 @@ impl Qwen3Ollama {
         let url = format!("{}/api/chat", self.url);
 
         // Build messages: include system prompt if configured, plus a minimal
-        // user message to trigger a full forward pass and populate KV cache.
+        // user message to trigger a forward pass while keep_alive holds the model.
         let mut messages = Vec::new();
         if let Some(ref sys) = self.system_prompt {
             messages.push(json!({"role": "system", "content": sys}));
@@ -423,10 +427,7 @@ impl Qwen3Ollama {
             "options": self.build_options(),
         });
 
-        tracing::info!(
-            "Preloading model {} (weights + KV prefix cache)...",
-            self.model
-        );
+        tracing::info!("Preloading model {} (weights + keep_alive)...", self.model);
         let start = std::time::Instant::now();
 
         crate::with_call_deadline(120, async {
@@ -449,7 +450,7 @@ impl Qwen3Ollama {
         .await?;
 
         tracing::info!(
-            "Model {} preloaded in {:.1}s (KV prefix cached)",
+            "Model {} preloaded in {:.1}s (keep_alive holds the model)",
             self.model,
             start.elapsed().as_secs_f64()
         );
@@ -660,10 +661,12 @@ fn extract_ollama_content(response_json: &serde_json::Value) -> Result<String> {
     Ok(String::new())
 }
 
-/// Implement LlmClient trait for Ollama-based Qwen3-8B
-#[async_trait]
-impl LlmClient for Qwen3Ollama {
-    async fn complete(&self, prompt: &str) -> Result<String> {
+impl Qwen3Ollama {
+    async fn complete_formatted(
+        &self,
+        prompt: &str,
+        format_schema: Option<&serde_json::Value>,
+    ) -> Result<String> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
@@ -677,7 +680,7 @@ impl LlmClient for Qwen3Ollama {
         let user_content = self.prepare_user_content(prompt);
         messages.push(json!({"role": "user", "content": user_content}));
 
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "messages": messages,
             "stream": false,
@@ -685,6 +688,9 @@ impl LlmClient for Qwen3Ollama {
             "keep_alive": -1,
             "options": self.build_options(),
         });
+        if let Some(schema) = format_schema {
+            crate::plan_format::insert_schema_format(&mut body, schema);
+        }
 
         tracing::debug!(
             "Sending request to Ollama: {} (thinking={}, temp={}, max_tokens={}, ctx={})",
@@ -697,20 +703,7 @@ impl LlmClient for Qwen3Ollama {
         let start = std::time::Instant::now();
 
         let response_json: serde_json::Value = crate::with_call_deadline(300, async {
-            let response = crate::send_for_headers(
-                crate::stream_read_idle(),
-                client.post(&url).json(&body).send(),
-            )
-            .await
-            .context("Failed to send request to Ollama")?;
-
-            if !response.status().is_success() {
-                anyhow::bail!("Ollama returned error: {}", response.status());
-            }
-
-            crate::read_capped_json(response)
-                .await
-                .context("Failed to parse Ollama response")
+            crate::post_ollama_json_value(client, &url, body).await
         })
         .await?;
 
@@ -729,6 +722,22 @@ impl LlmClient for Qwen3Ollama {
         );
 
         Ok(text)
+    }
+}
+
+/// Implement LlmClient trait for Ollama-based Qwen3-8B
+#[async_trait]
+impl LlmClient for Qwen3Ollama {
+    async fn complete(&self, prompt: &str) -> Result<String> {
+        self.complete_formatted(prompt, None).await
+    }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        self.complete_formatted(prompt, Some(format)).await
     }
 
     /// Complete with streaming support (progressive response delivery)
@@ -1053,7 +1062,8 @@ mod tests {
         assert_eq!(opts["num_ctx"], 2048);
         // num_batch added for round 2 perf optimization
         assert_eq!(opts["num_batch"], 1024);
-        // Round 3: num_keep=-1 caches system prompt prefix in KV cache
+        // num_keep=-1 keeps the initial prompt when the context shifts.
+        // It is not the prefix KV cache.
         assert_eq!(opts["num_keep"], -1);
         // Round 3: use_mmap for memory-mapped model loading
         assert_eq!(opts["use_mmap"], true);

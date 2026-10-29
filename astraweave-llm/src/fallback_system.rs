@@ -388,11 +388,23 @@ impl FallbackOrchestrator {
             _ => unreachable!("try_batch_llm_tier called with non-LLM tier"),
         };
 
-        // Execute batch
-        let batch_response = executor
-            .execute_batch(client, &tool_list)
-            .await
-            .context("Batch LLM execution failed")?;
+        // The schema uses the same registry the single-agent tier would send.
+        let schema_reg = match tier {
+            FallbackTier::FullLlm => reg.clone(),
+            FallbackTier::SimplifiedLlm => self.create_simplified_registry(reg),
+            _ => unreachable!("try_batch_llm_tier called with non-LLM tier"),
+        };
+        let format = crate::plan_format::batch_format_schema(&schema_reg, agents.len());
+        let batch_response = match &format {
+            Some(schema) => executor
+                .execute_batch_formatted(client, &tool_list, Some(schema))
+                .await
+                .context("Batch LLM execution failed")?,
+            None => executor
+                .execute_batch(client, &tool_list)
+                .await
+                .context("Batch LLM execution failed")?,
+        };
 
         let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -453,13 +465,22 @@ impl FallbackOrchestrator {
 
         let prompt = build_enhanced_prompt(snap, reg, &config);
 
-        let response = circuit_breaker_execute!(
-            self.circuit_breaker,
-            "full_llm",
-            client.complete(&prompt).await
-        )
-        .result
-        .context("LLM request failed (circuit breaker)")?;
+        let response = match crate::plan_format::plan_format_for_request(reg) {
+            Some(format) => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "full_llm",
+                client.complete_with_format(&prompt, &format).await
+            )
+            .result
+            .context("LLM request failed (circuit breaker)")?,
+            None => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "full_llm",
+                client.complete(&prompt).await
+            )
+            .result
+            .context("LLM request failed (circuit breaker)")?,
+        };
 
         let parse_result =
             parse_llm_response(&response, reg).context("Failed to parse LLM response")?;
@@ -501,13 +522,22 @@ impl FallbackOrchestrator {
         // let prompt = build_simplified_prompt(snap, &simplified_reg);
 
         let prompt_len = prompt.len();
-        let response = circuit_breaker_execute!(
-            self.circuit_breaker,
-            "simplified_llm",
-            client.complete(&prompt).await
-        )
-        .result
-        .context("Simplified LLM request failed (circuit breaker)")?;
+        let response = match crate::plan_format::plan_format_for_request(&simplified_reg) {
+            Some(format) => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "simplified_llm",
+                client.complete_with_format(&prompt, &format).await
+            )
+            .result
+            .context("Simplified LLM request failed (circuit breaker)")?,
+            None => circuit_breaker_execute!(
+                self.circuit_breaker,
+                "simplified_llm",
+                client.complete(&prompt).await
+            )
+            .result
+            .context("Simplified LLM request failed (circuit breaker)")?,
+        };
 
         let parse_result = parse_llm_response(&response, &simplified_reg)
             .context("Failed to parse simplified LLM response")?;
