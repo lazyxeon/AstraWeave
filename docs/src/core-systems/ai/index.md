@@ -23,12 +23,12 @@ The architecture trace campaign documented eight AI subsystems (per
 * **`astraweave-ai`** — `Orchestrator`, `RuleOrchestrator` on the default tick, `tool_sandbox`.
   `AIArbiter` and `LlmExecutor` compile only with `llm_orchestrator` (default off) and are not on `sys_ai_planning`.
   Agent-capacity figures are dated on the engine status page. This line does not repeat them.
-* **`astraweave-behavior`** — canonical GOAP (`BTreeMap<u32, bool>` `WorldState`,
-  interned keys, LRU plan cache) and Behavior Trees.
 * **`astraweave-llm`** — Ollama client adapters. Runtime model default is
   **`phi3:medium`** (`SystemOrchestratorConfig::default` in `astraweave-ai/src/orchestrator.rs`), set via the `OLLAMA_MODEL` env var.
   Three clients (Phi3, Hermes2Pro, Qwen3) coexist; Qwen3 is supported but is not
   the runtime default despite doc-comment phrasing like "GOAP+Qwen3 Hybrid."
+
+`astraweave-behavior` is optional on `astraweave-ai` (`ai-goap`, `ai-bt`, `veilweaver_slice`). `astraweave-ai/src/core_loop.rs` imports it only under `cfg(feature = "ai-bt")`. It is not part of the default tick.
 
 Dormant in-design (passes tests, zero production callers — per
 [`ai_pipeline.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ai_pipeline.md) §13 and `ARCHITECTURE_MAP.md` §5.1):

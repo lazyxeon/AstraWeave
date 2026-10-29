@@ -56,9 +56,9 @@ All AI actions go through the Tool Validation System:
 
 Common causes:
 1. **Ollama not running**: Start with `ollama serve`
-2. **Model not pulled**: The orchestrator default name is `phi3:medium`. `hello_companion` LLM modes ask for `qwen3.5:4b`. Pull the model you enabled.
+2. **Model not pulled**: The orchestrator default name is `phi3:medium`. `hello_companion --llm` and `--hybrid` ask for `qwen3.5:4b`. Pull the model you enabled.
 3. **Port conflict**: Check Ollama is on port 11434
-4. **Features**: A default `hello_companion` build does not call a model. LLM modes need `--features llm,ollama`.
+4. **Features**: A default `hello_companion` build does not call a model. `--bt`, `--utility`, and `--ensemble` need `--features llm`. `--llm` and `--hybrid` need `--features llm,ollama`.
 
 ## Performance
 

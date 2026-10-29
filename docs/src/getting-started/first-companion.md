@@ -78,7 +78,7 @@ cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter
 
 That flag calls `GoapOrchestrator`, not `AIArbiter`. The type `AIArbiter` is documented on the [arbiter page](../core-systems/ai/arbiter.md). It is not on the deterministic tick.
 
-LLM modes need a local Ollama on loopback and the `ollama` feature. The model constant in those modes is `qwen3.5:4b` (`DEFAULT_QWEN_INSTRUCT_MODEL` in `astraweave-llm/src/qwen3_ollama.rs`).
+`--bt`, `--utility`, and `--ensemble` need the `llm` feature and do not open a socket. `--llm` and `--hybrid` need a local Ollama on loopback and `--features llm,ollama`. Those two flags use `qwen3.5:4b` (`DEFAULT_QWEN_INSTRUCT_MODEL` in `astraweave-llm/src/qwen3_ollama.rs`).
 
 ## 6. Where this sits in a game
 

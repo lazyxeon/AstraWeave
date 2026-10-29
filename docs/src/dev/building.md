@@ -83,7 +83,7 @@ Older GPUs may work but are not officially supported and may have reduced perfor
 ```powershell
 # Clone the repository
 git clone https://github.com/lazyxeon/AstraWeave.git
-cd astraweave
+cd AstraWeave
 
 # Build (release mode recommended)
 cargo build --release
@@ -92,7 +92,7 @@ cargo build --release
 cargo test --release
 
 # Run an example
-cargo run --release --example basic_companion
+cargo run -p hello_companion --release
 ```
 
 ```admonish note
@@ -165,7 +165,7 @@ sudo pacman -S --needed \
 ```bash
 # Clone the repository
 git clone https://github.com/lazyxeon/AstraWeave.git
-cd astraweave
+cd AstraWeave
 
 # Build
 cargo build --release
@@ -174,7 +174,7 @@ cargo build --release
 cargo test --release
 
 # Run an example
-cargo run --release --example basic_companion
+cargo run -p hello_companion --release
 ```
 
 #### GPU Drivers
@@ -223,7 +223,7 @@ vulkaninfo | grep "deviceName"
 ```bash
 # Clone the repository
 git clone https://github.com/lazyxeon/AstraWeave.git
-cd astraweave
+cd AstraWeave
 
 # Build
 cargo build --release
@@ -232,7 +232,7 @@ cargo build --release
 cargo test --release
 
 # Run an example
-cargo run --release --example basic_companion
+cargo run -p hello_companion --release
 ```
 
 ```admonish warning

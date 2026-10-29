@@ -48,7 +48,7 @@ system.step(&device, &mut encoder, &queue, dt);
 // Optional per-pass GPU timings (requires Features::TIMESTAMP_QUERY):
 system.enable_gpu_timing(&device, &queue);
 // ... after submit:
-let timings = system.read_gpu_timings(&device); // blocking; diagnostics only
+let timings = system.read_gpu_timings(&device); // Option<Vec<(&str, f32)>>
 ```
 
 Spawn/despawn: `spawn_particles`, `reset_particles`, `despawn_region` (real

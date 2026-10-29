@@ -116,7 +116,7 @@ Keep PRs focused on a single feature or fix. Large PRs are harder to review and 
 ```bash
 # Clone the repository
 git clone https://github.com/lazyxeon/AstraWeave.git
-cd astraweave
+cd AstraWeave
 
 # Build the project
 cargo build

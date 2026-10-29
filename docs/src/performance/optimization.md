@@ -59,7 +59,7 @@ for pos in &mut positions {
 
 ### GOAP
 
-There is no `GoapPlanner` type and no `with_cache_size` builder. Advanced GOAP is `astraweave_ai::goap::AdvancedGOAP` behind `planner_advanced`. The always-compiled `GoapOrchestrator` calls `htn::legacy_goap_plan`. Cache-hit nanoseconds are not on the engine status page.
+`astraweave-ai` has no `GoapPlanner` and no `with_cache_size` builder. `astraweave-behavior` defines `GoapPlanner` in `astraweave-behavior/src/goap.rs`. Advanced GOAP in `astraweave-ai` is `astraweave_ai::goap::AdvancedGOAP` behind `planner_advanced`. The always-compiled `GoapOrchestrator` calls `htn::legacy_goap_plan`. Cache-hit nanoseconds are not on the engine status page.
 
 ### Agent Update Staggering
 

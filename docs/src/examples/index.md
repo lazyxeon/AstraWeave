@@ -35,7 +35,7 @@ There is no `unified_showcase` package. The rendering walkthrough is [Rendering 
 | [Rendering showcase](./unified-showcase.md) | `shadow_csm_demo` | `cargo run -p shadow_csm_demo --release` |
 | [First game](../game-dev/first-game.md) | the four commands above | see that page |
 
-`fluids_demo` uses `astraweave_fluids::FluidSystem`. The crate has no `PCISPHSystem`. `navmesh_demo` is a navmesh example. The replayed path query is `NavTiles::query_path`. `NavMesh::find_path` is not the hashed route.
+`fluids_demo` uses `astraweave_fluids::FluidSystem`. The crate has no `PCISPHSystem`. `navmesh_demo` calls `NavMesh::find_path`. The replayed path query is `NavTiles::query_path`. `find_path` is not the hashed route.
 
 `adaptive_boss --features veilweaver_slice` switches `BossDirector` to `OathboundWardenDirector` (`examples/adaptive_boss/src/main.rs`). The feature name is an identifier. The player-facing game is Aravath.
 
@@ -49,7 +49,7 @@ These names are also under `examples/` in the workspace `members` list. `cargo r
 
 `companion_profile`, `llm_toolcall`, `phase_director`, `persona_loader`, `ollama_probe`, `phi3_demo`, `ecs_ai_demo`, `ecs_ai_showcase`, `core_loop_bt_demo`, `core_loop_goap_demo`, `ipc_loopback`, `coop_server`, `coop_client`, `terrain_demo`, `visual_3d`, `ui_controls_demo`, `debug_overlay`, `rhai_authoring`, `npc_town_demo`, `weaving_playground`, `cutscene_render_demo`.
 
-`core_loop_goap_demo` is not the deterministic tick. That tick's planner is `RuleOrchestrator`.
+`core_loop_goap_demo` is not the deterministic tick. `sys_ai_planning` boxes `RuleOrchestrator` (`astraweave-ai/src/ecs_ai_plugin.rs`). The window from the commands above is `aravath_greybox`. Its tick calls `BridgeAgent::step` (`aravath_runtime/src/sim.rs`). `BridgeAgent::refresh` calls `NavTiles::query_path` (`aravath_runtime/src/bridge_agent.rs`).
 
 Snapshot net is JSON over WebSocket (`tokio-tungstenite`). Read the networking row on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page before treating `coop_server` as the security model.
 

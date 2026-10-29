@@ -29,7 +29,7 @@ cargo run -p hello_companion --release
 
 `rustc --version` should print 1.89.0. The walkthrough of that binary is [Your first companion](./first-companion.md).
 
-Windowed binaries (`shadow_csm_demo`, `aravath_greybox`, `physics_demo3d`, `fluids_demo`) need a C++ compiler and the graphics packages listed in the [quick start](./quick-start.md). On Linux that is `g++` (package `g++` or `build-essential`) plus the X11, Wayland, ALSA, and Vulkan `-dev` packages in that section. `basis-universal-sys` fails to compile when `<algorithm>` is missing, which is a missing `g++`, not a missing GPU.
+Windowed binaries (`shadow_csm_demo`, `aravath_greybox`, `physics_demo3d`, `fluids_demo`) need the graphics packages listed in the [quick start](./quick-start.md). [`docs/current/ARAVATH_GREYBOX_PROGRESS.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ARAVATH_GREYBOX_PROGRESS.md) records that `c++` on that machine is Clang 18, which selects a GCC 14 toolchain whose libstdc++ headers are not installed. Cargo builds of `basis-universal-sys` (pulled in by `astraweave-render`) need `CXX=g++`.
 
 ## Software Dependencies
 

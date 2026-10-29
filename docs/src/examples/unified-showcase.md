@@ -6,16 +6,17 @@ The windowed rendering exercise in this tree is `shadow_csm_demo`. The game wind
 
 ## Shadow demo
 
-Package `shadow_csm_demo`, file `examples/shadow_csm_demo/src/main.rs`. The file header is the control list:
+Package `shadow_csm_demo`, file `examples/shadow_csm_demo/src/main.rs`. The file header lists `S` as shadows and `+/-` as zoom. The key handler does not. From `input` in that file:
 
-```text
-WASD + Mouse: Camera movement
-C: Toggle cascade visualization
-S: Toggle shadows on/off
-+/-: Zoom in/out
-```
+- **W** moves along the camera forward. **S** moves back along that forward.
+- **A** and **D** move on the camera right.
+- **Space** raises the camera. **ShiftLeft** lowers it.
+- **C** toggles cascade visualization (`show_cascade_colors`).
+- **X** toggles shadows (`enable_shadows`).
+- **V** sets `debug_mode = (debug_mode + 1) % 6`.
+- There is no `+` or `-` arm.
 
-The same header says the demo is there to look at PCF shadow edges, cascade transitions, and a debug view.
+Left mouse sets `mouse_pressed`. The header's shadow and zoom lines are not this handler.
 
 Run it from the repository root. It opens a window, so it needs a GPU wgpu can use.
 
@@ -29,11 +30,11 @@ What the source sets up before the loop:
 - A `Vertex` of `position: [f32; 3]` and `normal: [f32; 3]`, with `wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3]`
 - `CameraUniform` (`view_proj`, `view_pos`)
 - `LightUniform` (`direction`, `color`)
-- `RenderSettings` with `enable_shadows`, `show_cascade_colors`, and `debug_mode` (`0` normal, `1` UVs, `2` receiver depth, `3` atlas depth, `4` raw sample)
+- `RenderSettings` with `enable_shadows`, `show_cascade_colors`, and `debug_mode`. **V** cycles six names: `0` normal, `1` shadow UVs, `2` receiver depth, `3` shadow atlas depth, `4` raw shadow sample, `5` direct atlas view
 
 `Camera.fovy` is the vertical field of view in radians. The comment in that struct says the field was renamed from `fov` so radians stay named `fovy`.
 
-After it runs, `C` and `S` flip the flags in `RenderSettings`. `+` and `-` change the zoom. Quit the window with the platform close control. This demo is not the frame-budget capture. That command and the measured sample are on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page.
+After it runs, **C** flips cascade colors and **X** flips shadows. Quit the window with the platform close control. This demo is not the frame-budget capture. That command and the measured sample are on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page.
 
 ## Greybox window
 

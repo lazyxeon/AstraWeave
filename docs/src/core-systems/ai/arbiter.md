@@ -38,8 +38,8 @@ Comments on `update` name microsecond targets. Those comments are not a dated ca
 #[cfg(feature = "llm_orchestrator")]
 use astraweave_ai::{AIArbiter, AIControlMode};
 
-let arbiter = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
-let arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt)
+let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
+let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt)
     .with_llm_cooldown(15.0);
 let action = arbiter.update(&snapshot);
 let mode = arbiter.mode();
@@ -49,7 +49,7 @@ Signatures in `astraweave-ai/src/ai_arbiter.rs`:
 
 - `new(strategic_executor, fast_executor, goap, bt) -> Self` with `fast_executor: Option<LlmExecutor>` and the last two `Box<dyn Orchestrator>`
 - `with_single_executor(llm_executor, goap, bt)` calls `new(llm_executor, None, goap, bt)`
-- `with_llm_cooldown(self, cooldown: f32) -> Self` stores the seconds. The field starts at `15.0`
+- `with_llm_cooldown(mut self, cooldown: f32) -> Self` stores the seconds. The field starts at `15.0`
 - `update(&mut self, snap: &WorldSnapshot) -> ActionStep`
 - `mode(&self) -> AIControlMode`
 
@@ -75,7 +75,7 @@ cargo check -p astraweave-ai --features llm_orchestrator
 
 That compiles the module. It does not put the type on the sim tick, and it does not run the hello_companion flag.
 
-`GoapOrchestrator` (always compiled) and `astraweave_ai::goap::AdvancedGOAP` (feature `planner_advanced` only) are different types. There is no `GoapPlanner`.
+`GoapOrchestrator` (always compiled) and `astraweave_ai::goap::AdvancedGOAP` (feature `planner_advanced` only) are different types. `astraweave-ai` has no `GoapPlanner`. `astraweave-behavior` defines `GoapPlanner` in `astraweave-behavior/src/goap.rs`.
 
 ## Related
 

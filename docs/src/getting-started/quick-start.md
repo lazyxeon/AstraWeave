@@ -7,7 +7,7 @@ Install the pinned toolchain, build `hello_companion`, and run the default class
 - **Rust**: 1.89.0, pinned in `rust-toolchain.toml`. `rustup` selects that toolchain in this repository.
 - **Platform**: Linux, macOS, or Windows. Replay hashes are compared on all three. That is not a claim that every windowed example has been run on all three.
 - **GPU**: not required for the default `hello_companion` run. That binary is headless. Windowed examples need a Vulkan, Metal, or Direct3D 12 device that wgpu can open.
-- **A local model**: not required for the default run. LLM modes are feature-gated and talk to loopback Ollama.
+- **A local model**: not required for the default run. `--bt`, `--utility`, and `--ensemble` need the `llm` feature and do not open a socket. `--llm` and `--hybrid` need `llm,ollama` and talk to loopback Ollama.
 
 ## Installation
 
@@ -51,7 +51,7 @@ cargo run -p hello_companion --release
 
 The default features are `fast-alloc` only. The process prints a banner, selects **Classical (`RuleOrchestrator`)**, builds a small grid world, proposes a plan, and calls `validate_and_execute`.
 
-It does not panic with `LosBlocked`. That string is not in `examples/hello_companion`. If validation fails, the example prints the error and continues.
+A default run does not panic. The smoke `Throw` is aimed at the midpoint, and the obstacle column blocks that throw. `validate_and_execute` returns `EngineError::LosBlocked`. The example prints `⚠️  Execution failed: line of sight blocked. Continuing...` and keeps going. That line is the expected output. The literal `LosBlocked` is not in `examples/hello_companion`.
 
 `setup_world` inserts a vertical obstacle column, then spawns a player, a companion, and an enemy. Perception uses `PerceptionConfig { los_max: 12 }`.
 
