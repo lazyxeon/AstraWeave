@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
 doc_version: "1.16"
-last_verified_commit: dde6b320
+last_verified_commit: STAMP
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -21,12 +21,12 @@ last_verified_commit: dde6b320
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
 | **Document version** | 1.16 |
-| **Last verified against commit** | `dde6b320` |
+| **Last verified against commit** | `STAMP` |
 | **Last verified date** | 2026-10-29 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
-> **Revision notice — 2026-10-29 (v1.16).** `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `last_verified_commit` names the parent `dde6b320`.
+> **Revision notice — 2026-10-29 (v1.16).** `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec::clear` drops from the last index toward the first. `drop_last` publishes the shorter `len` before `drop_fn`, and `swap_remove_raw` / `swap_remove_raw_to` drop through that path. A panicking destructor leaves `len` counting only elements that have not been dropped; `Drop` for `BlobVec` calls `clear` and finishes them. Each element is dropped once. Checked at `STAMP`. Kani: `blob_vec_drops_each_element_once_including_panicking_drop` (Kani has no `catch_unwind`, so the harness splits `drop_last` at the panicking slot and then `clear`s the tail). Miri: `clear_panic_does_not_double_free`, `clear_panic_drops_each_element_once`.
 >
 > **Revision notice — 2026-10-28 (v1.15).** `BlobVec` does not allocate a zero-sized column. Capacity is `usize::MAX` and the pointer is a dangling address aligned to the item. `reserve` builds the allocation with `checked_mul` and panics `capacity overflow` when the byte length does not fit. Checked at `129ccac4`. Tests: `zst_push_drop_uses_no_allocation`, `with_capacity_past_address_space_panics`.
 >
@@ -212,7 +212,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | **Legacy Entity** | `pub type Entity = u32;` — bare numeric ID, recycled by `world.next_id`. | `astraweave-core/src/schema.rs:62` |
 | **Archetype** | A set of entities that share the same exact component signature. Components are stored as contiguous columns per archetype. | `astraweave-ecs/src/archetype.rs` |
 | **ArchetypeSignature** | A sorted, deduplicated `Vec<TypeId>` describing one archetype's component types. `ArchetypeSignature::new` sorts and dedupes (`astraweave-ecs/src/archetype.rs:25-30`). | `astraweave-ecs/src/archetype.rs` |
-| **BlobVec** | Type-erased contiguous storage for components of one type, with manual layout/drop. Faster than `Vec<Box<dyn Any>>` for archetype iteration. | `astraweave-ecs/src/blob_vec.rs` |
+| **BlobVec** | Type-erased contiguous storage for components of one type, with manual layout/drop. `clear` drops from the end and commits `len` before each destructor, so a panicking `Drop` does not double-free. Faster than `Vec<Box<dyn Any>>` for archetype iteration. | `astraweave-ecs/src/blob_vec.rs` |
 | **SparseSet** | Sparse-array → dense-array mapping for O(1) `Entity → row` lookup with packed iteration. | `astraweave-ecs/src/sparse_set.rs` |
 | **Component** | `pub trait Component: 'static + Send + Sync {}` — blanket-implemented for any `'static + Send + Sync` type. | `astraweave-ecs/src/lib.rs:85-86` |
 | **Resource** | `pub trait Resource: 'static + Send + Sync {}` — blanket-implemented; stored as singletons on `World`. | `astraweave-ecs/src/lib.rs:89-90` |
@@ -286,7 +286,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/lib.rs` | Top-level: `World`, `Schedule`, `App`, `SystemStage` constants, `Plugin` trait, `Component`/`Resource` blanket impls, change-tick API | Active | `pub mod` declarations at lines 37-46; `pub use` re-exports at lines 73-83. The `ParallelSchedule` removal note lives at lines 78-80. |
 | `astraweave-ecs/src/archetype.rs` | `Archetype`, `ArchetypeId`, `ArchetypeSignature`, `ArchetypeStorage`, change-tick columns | Active | Dual storage modes (Box vs BlobVec) selected per archetype |
 | `astraweave-ecs/src/entity_allocator.rs` | `Entity { id, generation }`, `EntityAllocator` with O(1) free list | Active | 8-byte handle; generational counter on slot reuse |
-| `astraweave-ecs/src/blob_vec.rs` | Type-erased contiguous component column with manual `Layout`/`drop_fn`. A zero-sized column is not allocated. `reserve` uses `checked_mul` and panics `capacity overflow`. | Active | Uses `unsafe` (alloc/dealloc/realloc, pointer arithmetic, drop). `blob_vec_kani.rs` does not cover a zero-sized column or a near-overflow capacity. |
+| `astraweave-ecs/src/blob_vec.rs` | Type-erased contiguous component column with manual `Layout`/`drop_fn`. A zero-sized column is not allocated. `reserve` uses `checked_mul` and panics `capacity overflow`. `clear` drops from the end via `drop_last`, which commits `len` before `drop_fn`. | Active | Uses `unsafe` (alloc/dealloc/realloc, pointer arithmetic, drop). `blob_vec_kani.rs` proves each element is dropped once, including a panicking drop's tail. It does not cover a zero-sized column or a near-overflow capacity. |
 | `astraweave-ecs/src/sparse_set.rs` | Sparse-set entity → dense-row mapping | Active | O(1) entity lookups; replaced earlier BTreeMap (see `system_param.rs:1-15` perf notes) |
 | `astraweave-ecs/src/system_param.rs` | `SystemParam` marker, `Query<T>`, `Query2<T1,T2>`, `Query2Mut<T1,T2>` | Active | Lengthy perf-history docstring at top |
 | `astraweave-ecs/src/command_buffer.rs` | `CommandBuffer` for deferred spawn/insert/remove/despawn | Active | `!Send + !Sync` to match World access model |
@@ -296,7 +296,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | `astraweave-ecs/src/rng.rs` | `Rng` resource wrapping `ChaCha8Rng` | Active | Deterministic-AI requirement |
 | `astraweave-ecs/src/counting_alloc.rs` | Allocation-counting allocator for tests. Every alloc and free increments the counters. No stack walk | Active (feature `alloc-counter`) | Behind `#[cfg(feature = "alloc-counter")]` (`lib.rs:48-49`). `tests/alloc_trace_quiet.rs` installs it |
 | `astraweave-ecs/src/lib_new.rs` | 17-line stub containing only blanket-impl `Component`/`Resource` traits (identical to `lib.rs:85-90`) and module-level `use` imports | Dead (orphan scratch file) | Verified — not declared in `pub mod` list at `lib.rs:37-46`; workspace-wide grep finds zero non-self references to `lib_new`. Git log shows only two commits: original add in `400903a18` ("bug fixes, update ecs, nanite implementation, voxelization_pipeline") and a CI fmt sweep in `2702232fb`. Module-doc comment says "AstraWeave ECS / Provides Bevy-like API with Query tuples, Res/ResMut" — describes an API that the file does not actually implement |
-| `astraweave-ecs/src/blob_vec_kani.rs` | Kani proofs for `BlobVec` invariants | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:64-65`) |
+| `astraweave-ecs/src/blob_vec_kani.rs` | Kani proofs for `BlobVec` invariants, including drop-once when a destructor panics | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:64-65`). `blob_vec_drops_each_element_once_including_panicking_drop` |
 | `astraweave-ecs/src/entity_allocator_kani.rs` | Kani proofs for generational-index correctness | Active (kani gate) | `#[cfg(kani)]` (`lib.rs:67-68`) |
 | `astraweave-ecs/src/determinism_tests.rs` | Inline determinism tests | Active (test gate) | `#[cfg(test)] mod determinism_tests;` (`lib.rs:51-52`) |
 | `astraweave-ecs/src/property_tests.rs` | Inline property-based tests | Active (test gate) | `#[cfg(test)]` (`lib.rs:54-55`) |
@@ -496,6 +496,7 @@ There are several distinct flows through this layer. The first is the canonical 
 | 16 | `build_app` installs sim extensions recorded with `register_sim_extension` before `sys_sim`, and records each function pointer once. With no registration, `build_app` is the legacy bridge only | Yes | `astraweave-scripting` test `mod_loaded_through_build_app_replays_identically` |
 | 17 | `aw_last_error_string` returns the message set by the calling thread. Another thread's `set_last_error` does not replace it. A single-threaded host still sees the message from its own last `aw_world_submit_intent_json` | Yes | `LAST_ERROR` is `thread_local`. `last_error_is_set_on_intent_parse_error` and `last_error_survives_another_thread_clearing_its_own_slot` |
 | 18 | `CountingAlloc` counts every `alloc`, `alloc_zeroed`, `dealloc`, and `realloc`. It does not walk stacks, and it does not skip frees. A `realloc` increments both `allocs` and `deallocs`. `reset_allocs` stores zero in every local counter. The counters stay quiet until this binary installs `CountingAlloc` | Yes | `counting_alloc.rs`. `tests/alloc_trace_quiet.rs` `alloc_trace_is_quiet` installs the allocator, then checks a `Box`, `alloc_zeroed`, and `realloc` |
+| 19 | `BlobVec` drops each live element exactly once. `drop_last` publishes the shorter `len` before `drop_fn`. `clear` drops from the last index toward the first. `swap_remove_raw` and `swap_remove_raw_to` move the removed value into the last slot and drop it through `drop_last`. A panicking destructor leaves `len` counting only elements that have not been dropped, and `Drop` for `BlobVec` calls `clear` to finish them | Yes | `astraweave-ecs/src/blob_vec.rs` `drop_last`. Kani `blob_vec_drops_each_element_once_including_panicking_drop`. Miri `clear_panic_does_not_double_free` and `clear_panic_drops_each_element_once` |
 
 ---
 
@@ -544,11 +545,11 @@ There are several distinct flows through this layer. The first is the canonical 
   - `astraweave-math/benches/`: `simd_benchmarks.rs`, `simd_mat_benchmarks.rs`, `simd_quat_benchmarks.rs`, `simd_movement.rs`
   - `astraweave-sdk/benches/`: `sdk_benchmarks.rs`, `sdk_adversarial.rs`
 - **Miri validation (UB detection):**
-  - CI workflow `.github/workflows/miri.yml`, weekly, nightly toolchain. Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md`: 1,059 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour (the dated `MIRI_VALIDATION_REPORT.md` records the earlier 977).
+  - CI workflow `.github/workflows/miri.yml`. Weekly jobs: `astraweave-ecs --lib`, `astraweave-ecs --tests`, `astraweave-sdk --lib --tests`, `astraweave-core --lib`, `astraweave-ai --lib`, and `astraweave-physics --lib`. Physics stays non-blocking until #558 (libm x86 `sqrtf`). A pull request that edits `blob_vec.rs`, `sparse_set.rs`, or `archetype.rs` runs Miri on those modules. The nightly channel is `.github/rust-nightly-channel` (#560). `events::tests::test_large_event_batch_maintains_order` uses 64 events under `cfg(miri)` and 10_000 otherwise (#571). Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md`: 1,059 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour (the dated `MIRI_VALIDATION_REPORT.md` records the earlier 977).
 - **Kani formal verification:**
   - CI workflow `.github/workflows/kani.yml`, weekly. Per `docs/architecture/ARCHITECTURE_MAP.md:578`: `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m).
   - Proof files (per `docs/architecture/ARCHITECTURE_MAP.md:546-550`):
-    - `astraweave-ecs/src/blob_vec_kani.rs` — BlobVec invariants
+    - `astraweave-ecs/src/blob_vec_kani.rs` — BlobVec invariants, including drop-once when a destructor panics (`blob_vec_drops_each_element_once_including_panicking_drop`)
     - `astraweave-ecs/src/entity_allocator_kani.rs` — Generational index correctness
     - `astraweave-math/src/simd_vec_kani.rs` — SIMD operation correctness
     - `astraweave-core/src/schema_kani.rs` — Schema verification
@@ -577,7 +578,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
-| 1.16 | 2026-10-29 | `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. Stamp names `dde6b320`. |
+| 1.16 | 2026-10-29 | `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec` commits `len` before `drop_fn` and drops each element once, including when a destructor panics (invariant 19). |
 | 1.15 | 2026-10-28 | `BlobVec` does not allocate a zero-sized column. `reserve` uses `checked_mul`. Stamp names `129ccac4`. |
 | 1.14 | 2026-10-23 | Continue-on-error removal is `0784b204`. Log capture is `7b7a21e4` (parent `039b031a`). Stamp names `d4e1ffab`. The date row is 2026-10-23. |
 | 1.13 | 2026-10-22 | That version paired `46be9024` with the log-capture commit. The continue-on-error removal is `0784b204`. `46be9024` and `a0d4a690` are not ancestors. |

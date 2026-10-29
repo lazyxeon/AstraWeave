@@ -235,6 +235,10 @@ impl BlobVec {
     /// This is used when removing an entity from an archetype
     /// where we don't need to preserve the component value.
     ///
+    /// The removed value is moved into the last slot and dropped by
+    /// [`Self::drop_last`], which publishes the shorter `len` before the
+    /// destructor. A panic in that destructor cannot drop the slot again.
+    ///
     /// # Panics
     /// Panics if index is out of bounds.
     pub fn swap_remove_raw(&mut self, index: usize) {
@@ -243,28 +247,19 @@ impl BlobVec {
         let item_size = self.item_layout.size();
         let last_index = self.len - 1;
 
-        // Drop the element at index
-        if let Some(drop_fn) = self.drop_fn {
-            // SAFETY: `index < len` (asserted above), so pointer is within allocation.
-            // drop_fn matches the component type registered at construction.
+        // A zero-sized item has one dangling address for every index, so a
+        // swap would alias that address with itself.
+        if index != last_index && item_size != 0 {
+            // SAFETY: Both slots are in-bounds and distinct. The bitwise swap
+            // moves the removed value to the last slot without dropping either.
             unsafe {
-                let ptr = self.data.as_ptr().add(index * item_size);
-                drop_fn(ptr);
+                let removed = self.data.as_ptr().add(index * item_size);
+                let last = self.data.as_ptr().add(last_index * item_size);
+                ptr::swap_nonoverlapping(removed, last, item_size);
             }
         }
 
-        // If not the last element, copy last element to this position
-        if index != last_index {
-            // SAFETY: Both `index` and `last_index` are within bounds. src != dst
-            // since index != last_index, so copy_nonoverlapping is safe.
-            unsafe {
-                let src = self.data.as_ptr().add(last_index * item_size);
-                let dst = self.data.as_ptr().add(index * item_size);
-                ptr::copy_nonoverlapping(src, dst, item_size);
-            }
-        }
-
-        self.len -= 1;
+        self.drop_last(1);
     }
 
     /// Swap-remove and copy bytes to destination (for archetype transitions).
@@ -288,22 +283,18 @@ impl BlobVec {
         let item_size = self.item_layout.size();
         let last_index = self.len - 1;
 
-        // Copy the element at index to dst
+        // Copy the element at index to dst. The original stays live until
+        // `drop_last` commits `len` and drops the last slot.
         let src = self.data.as_ptr().add(index * item_size);
         clone_fn(src, dst);
 
-        // Drop the original at index (cast const ptr to mut for drop)
-        if let Some(drop_fn) = self.drop_fn {
-            drop_fn(src as *const u8 as *mut u8);
+        // A zero-sized item has one dangling address for every index.
+        if index != last_index && item_size != 0 {
+            let last = self.data.as_ptr().add(last_index * item_size);
+            ptr::swap_nonoverlapping(src, last, item_size);
         }
 
-        // If not the last element, move last element to this position
-        if index != last_index {
-            let last_src = self.data.as_ptr().add(last_index * item_size);
-            ptr::copy_nonoverlapping(last_src, src as *const u8 as *mut u8, item_size);
-        }
-
-        self.len -= 1;
+        self.drop_last(1);
     }
 
     /// Get a reference to a component at the specified index
@@ -408,19 +399,37 @@ impl BlobVec {
         self.capacity
     }
 
-    /// Clear all components, calling their drop functions
+    /// Clear all components, calling their drop functions.
+    ///
+    /// Elements are dropped from the last index toward the first. `len` excludes
+    /// a slot before its destructor runs, so a panic cannot drop that slot again.
+    /// [`Drop`] calls `clear` and finishes whatever is still inside `len`.
     pub fn clear(&mut self) {
-        if let Some(drop_fn) = self.drop_fn {
-            for i in 0..self.len {
-                // SAFETY: Each `i < self.len`, so offset is within allocation.
-                // Elements are dropped once (loop runs exactly `len` times, then len = 0).
+        self.drop_last(self.len);
+    }
+
+    /// Drop the last `n` live elements.
+    ///
+    /// `n` is clamped to `len`. Each iteration publishes the shorter `len`
+    /// before `drop_fn`, which is the panic-safe half of `clear` and of
+    /// `swap_remove_raw`. Crate-visible so the Kani split in `blob_vec_kani`
+    /// can resume the tail the way [`Drop`] does after a panicking destructor.
+    pub(crate) fn drop_last(&mut self, n: usize) {
+        let n = n.min(self.len);
+        let drop_fn = self.drop_fn;
+        let item_size = self.item_layout.size();
+        for _ in 0..n {
+            self.len -= 1;
+            if let Some(drop_fn) = drop_fn {
+                // SAFETY: The slot at the new `len` was initialized and in-bounds
+                // before the decrement. `drop_fn` matches the component type
+                // registered at construction. A panic leaves this slot outside `len`.
                 unsafe {
-                    let ptr = self.data.as_ptr().add(i * self.item_layout.size());
+                    let ptr = self.data.as_ptr().add(self.len * item_size);
                     drop_fn(ptr);
                 }
             }
         }
-        self.len = 0;
     }
 }
 
@@ -1162,5 +1171,108 @@ mod tests {
     fn with_capacity_past_address_space_panics() {
         let size = std::mem::size_of::<u64>();
         let _blob = BlobVec::with_capacity::<u64>(usize::MAX / size + 1);
+    }
+
+    #[test]
+    fn clear_panic_drops_each_element_once() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        struct Bomb;
+        impl Drop for Bomb {
+            fn drop(&mut self) {
+                if DROPS.fetch_add(1, Ordering::SeqCst) == 0 {
+                    panic!("first drop");
+                }
+            }
+        }
+
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = BlobVec::new::<Bomb>();
+        unsafe {
+            blob.push(Bomb);
+            blob.push(Bomb);
+        }
+        assert!(catch_unwind(AssertUnwindSafe(|| blob.clear())).is_err());
+        assert_eq!(blob.len(), 1, "len excludes the slot whose drop panicked");
+        assert!(catch_unwind(AssertUnwindSafe(|| drop(blob))).is_ok());
+        assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn clear_panic_does_not_double_free() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        struct BombBox(Box<u32>);
+        impl Drop for BombBox {
+            fn drop(&mut self) {
+                let _value = *self.0;
+                if DROPS.fetch_add(1, Ordering::SeqCst) == 0 {
+                    panic!("first drop");
+                }
+            }
+        }
+
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = BlobVec::new::<BombBox>();
+        unsafe {
+            blob.push(BombBox(Box::new(1)));
+            blob.push(BombBox(Box::new(2)));
+        }
+        assert!(catch_unwind(AssertUnwindSafe(|| blob.clear())).is_err());
+        assert!(catch_unwind(AssertUnwindSafe(|| drop(blob))).is_ok());
+        assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn swap_remove_raw_panic_drops_removed_element_once() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        struct Flag {
+            id: u32,
+            panic_on_drop: bool,
+        }
+        impl Drop for Flag {
+            fn drop(&mut self) {
+                DROPS.fetch_add(1, Ordering::SeqCst);
+                if self.panic_on_drop {
+                    panic!("panicking drop");
+                }
+            }
+        }
+
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = BlobVec::new::<Flag>();
+        unsafe {
+            blob.push(Flag {
+                id: 1,
+                panic_on_drop: false,
+            });
+            blob.push(Flag {
+                id: 2,
+                panic_on_drop: true,
+            });
+            blob.push(Flag {
+                id: 3,
+                panic_on_drop: false,
+            });
+        }
+        assert!(catch_unwind(AssertUnwindSafe(|| blob.swap_remove_raw(1))).is_err());
+        assert_eq!(blob.len(), 2);
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+        unsafe {
+            assert_eq!(blob.get::<Flag>(0).unwrap().id, 1);
+            assert_eq!(blob.get::<Flag>(1).unwrap().id, 3);
+        }
+        assert!(catch_unwind(AssertUnwindSafe(|| drop(blob))).is_ok());
+        assert_eq!(DROPS.load(Ordering::SeqCst), 3);
     }
 }

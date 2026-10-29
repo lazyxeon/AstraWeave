@@ -1,6 +1,8 @@
 # AstraWeave Miri UB Detection Workflow
-# Runs Miri on unsafe-heavy crates to detect undefined behavior
+# Runs Miri on unsafe-heavy crates to detect undefined behavior.
 # Schedule: Weekly (Saturday 2 AM UTC)
+# Pull requests that touch BlobVec, SparseSet, or Archetype also run the
+# ECS hot-path job. The nightly channel is .github/rust-nightly-channel (#560).
 #
 # Miri detects:
 # - Out-of-bounds memory access, use-after-free
@@ -25,6 +27,14 @@ on:
         description: 'Seed range for -Zmiri-many-seeds (e.g., 0..16)'
         required: false
         default: '0..16'
+  pull_request:
+    paths:
+      - 'astraweave-ecs/src/blob_vec.rs'
+      - 'astraweave-ecs/src/sparse_set.rs'
+      - 'astraweave-ecs/src/archetype.rs'
+      - '.github/workflows/miri.yml'
+      - '.github/rust-nightly-channel'
+      - '.github/actions/rust-nightly/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,109 +43,212 @@ env:
 jobs:
   miri-ecs:
     name: Miri - astraweave-ecs
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
-      
-      - name: Install Rust Nightly with Miri
-        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
         with:
           components: miri, rust-src
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-miri-ecs-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-miri-ecs-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
           restore-keys: |
             ${{ runner.os }}-miri-ecs-
-      
+
       - name: Setup Miri
-        run: cargo +nightly miri setup
-      
+        run: cargo +$AW_NIGHTLY miri setup
+
       - name: Run Miri on astraweave-ecs (single seed)
         run: |
           echo "=== Running Miri with single seed for quick check ==="
-          cargo +nightly miri test -p astraweave-ecs --lib -- --test-threads=1
+          cargo +$AW_NIGHTLY miri test -p astraweave-ecs --lib -- --test-threads=1
         env:
           MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
-      
+
       - name: Run Miri on astraweave-ecs (multiple seeds for concurrency)
         run: |
           echo "=== Running Miri with multiple seeds for concurrency testing ==="
-          cargo +nightly miri test -p astraweave-ecs --lib -- --test-threads=1
+          cargo +$AW_NIGHTLY miri test -p astraweave-ecs --lib -- --test-threads=1
         env:
           MIRIFLAGS: "-Zmiri-many-seeds=0..8 -Zmiri-symbolic-alignment-check"
 
-  miri-core:
-    name: Miri - astraweave-core
+  miri-ecs-tests:
+    name: Miri - astraweave-ecs --tests
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
+        with:
+          components: miri, rust-src
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-miri-ecs-tests-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
+          restore-keys: |
+            ${{ runner.os }}-miri-ecs-tests-
+
+      - name: Setup Miri
+        run: cargo +$AW_NIGHTLY miri setup
+
+      - name: Run Miri on astraweave-ecs integration tests
+        run: |
+          cargo +$AW_NIGHTLY miri test -p astraweave-ecs --tests -- --test-threads=1
+        env:
+          MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
+
+  miri-ecs-hotpath:
+    name: Miri - ECS blob_vec/sparse_set/archetype
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
+        with:
+          components: miri, rust-src
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-miri-ecs-hotpath-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
+          restore-keys: |
+            ${{ runner.os }}-miri-ecs-hotpath-
+
+      - name: Setup Miri
+        run: cargo +$AW_NIGHTLY miri setup
+
+      - name: Run Miri on BlobVec, SparseSet, and Archetype
+        run: |
+          cargo +$AW_NIGHTLY miri test -p astraweave-ecs --lib -- \
+            blob_vec:: sparse_set:: archetype:: --test-threads=1
+        env:
+          MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
+
+  miri-sdk:
+    name: Miri - astraweave-sdk --lib --tests
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-      
-      - name: Install Rust Nightly with Miri
-        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
         with:
           components: miri, rust-src
 
       - name: Install Linux build libraries
         run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-miri-core-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-miri-sdk-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
+          restore-keys: |
+            ${{ runner.os }}-miri-sdk-
+
+      - name: Setup Miri
+        run: cargo +$AW_NIGHTLY miri setup
+
+      - name: Run Miri on astraweave-sdk
+        run: |
+          cargo +$AW_NIGHTLY miri test -p astraweave-sdk --lib --tests -- --test-threads=1
+        env:
+          MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
+
+  miri-core:
+    name: Miri - astraweave-core
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
+        with:
+          components: miri, rust-src
+
+      - name: Install Linux build libraries
+        run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-miri-core-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
           restore-keys: |
             ${{ runner.os }}-miri-core-
-      
+
       - name: Setup Miri
-        run: cargo +nightly miri setup
-      
+        run: cargo +$AW_NIGHTLY miri setup
+
       - name: Run Miri on astraweave-core
         run: |
-          cargo +nightly miri test -p astraweave-core --lib -- --test-threads=1
+          cargo +$AW_NIGHTLY miri test -p astraweave-core --lib -- --test-threads=1
         env:
           MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
 
   miri-physics:
     name: Miri - astraweave-physics
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
-      
-      - name: Install Rust Nightly with Miri
-        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
         with:
           components: miri, rust-src
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-miri-physics-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-miri-physics-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
           restore-keys: |
             ${{ runner.os }}-miri-physics-
-      
+
       - name: Setup Miri
-        run: cargo +nightly miri setup
-      
+        run: cargo +$AW_NIGHTLY miri setup
+
+      # Non-blocking until #558. Miri aborts on libm's x86 sqrtf
+      # (deformed::smooth_normal). Keep the job. When #558 lands, delete the
+      # `|| exit 0` and fail the summary on this job.
       - name: Run Miri on astraweave-physics
         run: |
-          # Note: Physics crate may have FFI calls that Miri can't handle
-          # Run with isolation disabled for better compatibility
-          cargo +nightly miri test -p astraweave-physics --lib -- --test-threads=1 || {
-            echo "⚠️ Physics crate had Miri issues (possibly FFI-related)"
-            echo "This is expected for Rapier3D integration"
+          cargo +$AW_NIGHTLY miri test -p astraweave-physics --lib -- --test-threads=1 || {
+            echo "Physics Miri failed; non-blocking until #558 (libm x86 sqrtf)."
             exit 0
           }
         env:
@@ -143,35 +256,36 @@ jobs:
 
   miri-ai:
     name: Miri - astraweave-ai
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
-      
-      - name: Install Rust Nightly with Miri
-        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install pinned Rust nightly with Miri
+        uses: ./.github/actions/rust-nightly
         with:
           components: miri, rust-src
-      
+
       - name: Cache cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-miri-ai-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-miri-ai-${{ hashFiles('**/Cargo.lock', '.github/rust-nightly-channel') }}
           restore-keys: |
             ${{ runner.os }}-miri-ai-
-      
+
       - name: Setup Miri
-        run: cargo +nightly miri setup
-      
+        run: cargo +$AW_NIGHTLY miri setup
+
       - name: Run Miri on astraweave-ai
         run: |
           # Note: Tests using #[serial] attribute are skipped under Miri
           # because serial_test depends on scc crate which has UB (unaligned reference)
           # See: https://github.com/paholg/serial_test/issues/136
-          cargo +nightly miri test -p astraweave-ai --lib -- --test-threads=1
+          cargo +$AW_NIGHTLY miri test -p astraweave-ai --lib -- --test-threads=1
         env:
           MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
 
@@ -179,7 +293,7 @@ jobs:
     name: Miri Summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [miri-ecs, miri-core, miri-physics, miri-ai]
+    needs: [miri-ecs, miri-ecs-tests, miri-ecs-hotpath, miri-sdk, miri-core, miri-physics, miri-ai]
     if: always()
     steps:
       - name: Check Miri Results
@@ -188,15 +302,24 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Crate | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| astraweave-ecs | ${{ needs.miri-ecs.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| astraweave-core | ${{ needs.miri-core.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| astraweave-physics | ${{ needs.miri-physics.result == 'success' && '✅ Pass' || '⚠️ FFI Issues' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| astraweave-ai | ${{ needs.miri-ai.result == 'success' && '✅ Pass' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| astraweave-ecs --lib | ${{ needs.miri-ecs.result == 'success' && '✅ Pass' || needs.miri-ecs.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| astraweave-ecs --tests | ${{ needs.miri-ecs-tests.result == 'success' && '✅ Pass' || needs.miri-ecs-tests.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ecs blob_vec/sparse_set/archetype | ${{ needs.miri-ecs-hotpath.result == 'success' && '✅ Pass' || needs.miri-ecs-hotpath.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| astraweave-sdk --lib --tests | ${{ needs.miri-sdk.result == 'success' && '✅ Pass' || needs.miri-sdk.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| astraweave-core | ${{ needs.miri-core.result == 'success' && '✅ Pass' || needs.miri-core.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| astraweave-physics | non-blocking until #558 |" >> $GITHUB_STEP_SUMMARY
+          echo "| astraweave-ai | ${{ needs.miri-ai.result == 'success' && '✅ Pass' || needs.miri-ai.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Nightly pin: read from .github/rust-nightly-channel." >> $GITHUB_STEP_SUMMARY
           echo "Run completed at: $(date -u)" >> $GITHUB_STEP_SUMMARY
-      
+
       - name: Fail if critical crates failed
-        if: needs.miri-ecs.result == 'failure' || needs.miri-core.result == 'failure'
+        if: >-
+          needs.miri-ecs.result == 'failure' ||
+          needs.miri-ecs-tests.result == 'failure' ||
+          needs.miri-ecs-hotpath.result == 'failure' ||
+          needs.miri-sdk.result == 'failure' ||
+          needs.miri-core.result == 'failure'
         run: |
-          echo "❌ Critical crate Miri check failed!"
+          echo "Critical crate Miri check failed."
           exit 1
