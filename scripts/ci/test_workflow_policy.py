@@ -159,6 +159,35 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("Test (ubuntu, build archive)", text)
         self.assertIn("needs: [changes, gate, test-windows-build]", text)
         self.assertIn("needs: [changes, gate, test-linux-build]", text)
+        self.assertIn("Test full (macos, build archive)", text)
+        self.assertIn("Test full (macos, ${{ matrix.partition }}/3)", text)
+        self.assertIn("name: Test full (macos-latest)", text)
+        self.assertIn("needs: [changes, gate, test-full-macos-build]", text)
+        self.assertIn(
+            "needs: [changes, gate, test-full-macos-build, test-full-macos-part]",
+            text,
+        )
+        self.assertIn("nextest-archive-macos-full", text)
+        self.assertIn("gpu-skip-macos-full-", text)
+        self.assertNotIn("os: [ubuntu-latest, macos-latest]", text)
+        macos_build = text.split("  test-full-macos-build:", 1)[1].split(
+            "\n  test-full-macos-part:", 1
+        )[0]
+        macos_part = text.split("  test-full-macos-part:", 1)[1].split(
+            "\n  test-full-macos:", 1
+        )[0]
+        for binary in (
+            "family1_client_binary",
+            "family3_client_binary_wrong_key",
+            "loopback_http_proxy",
+            "ollama_chat_probe",
+        ):
+            self.assertIn(binary, macos_build)
+        self.assertIn("--profile ci ", macos_build)
+        self.assertIn("AW_CI_PROFILE: ci-full-archive", macos_part)
+        self.assertNotIn("ci-pr-archive", macos_part)
+        self.assertNotIn("ci-pr-linux-archive", macos_part)
+        self.assertIn("check-gpu-skip-log.sh", text.split("  test-full-macos:", 1)[1])
         linux = nextest.split("[profile.ci-pr-linux-archive]", 1)[1].split("\n[", 1)[0]
         self.assertNotIn("test_renderer_bake_environment_wave16", linux)
         self.assertNotIn("gpu_containment_invariant_120_frames", linux)
