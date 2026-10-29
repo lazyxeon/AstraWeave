@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-17 | **Version**: 0.8.14 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-29 | **Version**: 0.8.15 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.15 update (2026-10-29)**: `miri.yml` weekly jobs are ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), and ai (60m). Pull requests that touch `blob_vec.rs`, `sparse_set.rs`, or `archetype.rs` run `miri-ecs-hotpath` (45m). The nightly channel is `.github/rust-nightly-channel` (#560).
 > **0.8.14 update (2026-10-17)**: Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. `zip` 1.1.4 is not in the lockfile. No audit ignore for RUSTSEC-2026-0367, 0368, or 0369. #324 is closed. The fix is #353. Nineteen replay cases stay.
 > **0.8.13 update (2026-10-16)**: Rebased onto `22741c42`. #332 requires nineteen replay cases: `greybox_checkpoint`, `quest_ticks`, and `persist_replay` join the sixteen. The golden stays `b6a9d5a2c5da28a6`.
 > **0.8.12 update (2026-10-16)**: Rebased onto `30afc26d`. #340 closes #273 and #338. The parity harness shares one HDRI bake. #333 removes the terrain and AI rows from `scripts/ci/deferred_pr_tests.txt`. #218 is closed. #254, #242, #314, #304, and #274 stay open. Required cases stay sixteen. The golden stays `b6a9d5a2c5da28a6`.
@@ -824,7 +825,7 @@ Frame Start
 
 | Workflow | Schedule | Crates | Timeout |
 |----------|----------|--------|---------|
-| `miri.yml` | Weekly (Sat 2 AM UTC) | ecs (120m), core (90m), physics (90m), ai (60m) | Per-crate |
+| `miri.yml` | Weekly (Sat 2 AM UTC). PR path filter `miri-ecs-hotpath` on `astraweave-ecs/src/{blob_vec,sparse_set,archetype}.rs`. Nightly pin: `.github/rust-nightly-channel` (#560) | ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), ai (60m). PR job: blob_vec/sparse_set/archetype (45m) | Per-crate |
 | `kani.yml` | Weekly (Sun 3 AM UTC) | ecs (120m), math (60m), sdk (60m), core (90m) | Per-crate |
 | `net-tests.yml` | Push to main + every PR | `astraweave-net` (`--all-features --verbose`) | Per-crate |
 | `sanitizers.yml` | (per workflow) | P1 array includes `astraweave-net`, `astraweave-asset`, `astraweave-memory`, `astraweave-context` | Per-crate |
@@ -966,6 +967,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.15 (2026-10-29)
+`miri.yml` lists ecs `--lib`, ecs `--tests`, sdk `--lib --tests`, core, physics (non-blocking until #558), and ai. `miri-ecs-hotpath` runs on pull requests that touch BlobVec, SparseSet, or Archetype. Nightly is `.github/rust-nightly-channel` (#560).
 
 ### v0.8.14 (2026-10-17)
 Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. No audit ignore for the three zip advisories. #324 is closed. The fix is #353.
