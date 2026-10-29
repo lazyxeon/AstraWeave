@@ -81,10 +81,22 @@ When the same tests also run under nextest (an affected crate on a pull request,
 |---|---|
 | Only `docs/**`, `gh-pages/**`, or `*.md` | `docs_only=true`. The gate does not install a toolchain. Test jobs do not start. Determinism still runs. |
 | Root `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/**`, or `.config/nextest.toml` | `full=true`. Workspace clippy, check, nextest, and MSRV. |
+| `.github/workflows/**`, `.github/actions/**`, or `.github/scripts/**` | `full=true`. A workflow, composite action, or CI script edit runs the full set. |
 | Files under one or more crates | Those crates plus workspace reverse dependencies. |
 | A file that is not docs, not under `.github/`, and not inside a crate | `full=true` (a wrong narrow selection is worse than a full run). |
-| Only `.github/**` | fmt gate only. No crate tests. |
+| Other `.github/**` only (for example `CODEOWNERS`) | fmt gate only. No crate tests. |
 | Push, schedule, or `workflow_dispatch` | `full=true` without consulting the diff. |
+
+`--scope` on the same script sets `run=true` or `run=false` for one heavy workflow. `run=false` only when the diff is known and the expanded crate set misses that scope. An empty diff, any full trigger above, or a scope package missing from metadata sets `run=true`.
+
+| Scope | Workflow | Runs when the expanded set contains |
+|---|---|---|
+| `aravath` | `aravath-windows.yml` | `aravath_runtime`, `aw-save`, or `astraweave-render` |
+| `aravath-determinism` | `aravath-determinism.yml` | `aravath_runtime` |
+| `render-device` | `render-device-validation.yml` | `astraweave-render` or `astraweave-ecs` |
+| `net` | `net-tests.yml` | `astraweave-net` |
+
+Those four workflows still trigger on every pull request. The heavy jobs are conditional. A skipped job reports success to branch protection. `on.paths` is not used: a path filter would leave a required check pending. `determinism-replay.yml` has no scope and no path filter. The Aravath golden-hash matrix still expands when the scope is cold, so the three `Replay hash (...)` check names are created; the compile steps are skipped. `net-tests.yml` no longer uses `paths-ignore` for markdown. A docs-only pull request classifies `run=false` and skips the `net-tests` job by condition instead of omitting the workflow. Push, schedule, and `workflow_dispatch` do not consult the diff.
 
 `scripts/ci/test_affected_crates.py` and `scripts/ci/test_workflow_policy.py` lock this in. `actionlint` 1.7.7 reports no findings on the workflow files.
 
