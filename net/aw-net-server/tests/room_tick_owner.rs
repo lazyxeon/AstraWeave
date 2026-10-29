@@ -1,21 +1,25 @@
 //! Room tick must not depend on how many sockets are in the room.
 //!
-//! WebSocket text is not charged. A client that sends it on every poll keeps
-//! a frame ready, and snapshots must still arrive. One protocol Ping per tick
-//! also receives snapshots.
+//! A paid protocol Ping every 20 ms is inside a 64/s refill and faster than
+//! `tick_dt` (~33 ms). The sender and the reader are separate tasks, so the
+//! next ping arrives before a fresh `sleep(tick_dt)` can finish. Snapshots
+//! must still arrive. One ping per tick on the same task also receives
+//! snapshots, because that sender waits out the period and the sleep can fire.
 //!
 //! The unfixed loop is `biased` with `ws.next()` first and a fresh
-//! `sleep(tick_dt)` on the other arm. A ready frame wins every poll, so the
-//! sleep arm is never polled. `build_snapshot` also adds one to `room.tick`
-//! per connection, so four sockets advance the room about four times per period.
+//! `sleep(tick_dt)` on the other arm. A frame that arrives before that sleep
+//! elapses wins the poll, so the sleep arm never fires. `build_snapshot` also
+//! adds one to `room.tick` per connection, so four sockets advance the room
+//! about four times per period.
 
 mod common;
 
 use std::time::Duration;
 
-use aw_net_proto::{ClientToServer, ServerToClient, SigningKey};
+use aw_net_proto::{encode_msg, ClientToServer, ServerToClient, SigningKey};
 use aw_net_server::SignatureFailurePolicy;
 use common::{spawn_test_server, TestClient, TEST_CODEC};
+use futures::{SinkExt, StreamExt};
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -74,40 +78,66 @@ async fn four_clients_advance_one_tick_per_period() {
     server.shutdown();
 }
 
-/// WebSocket text is not charged, so this client can send on every poll
-/// and still stay inside the bucket. Snapshots must keep arriving.
-#[tokio::test]
-async fn text_flood_still_receives_snapshots() {
+/// One protocol Ping every 20 ms, on its own task. That is 50 messages/s:
+/// inside the 64/s refill, and shorter than `tick_dt` (~33 ms). The reader
+/// does not share that task, so the sender does not wait for a receive
+/// before the next ping. A fresh `sleep(tick_dt)` in the connection loop is
+/// cancelled before it fires. The room owner must still deliver snapshots.
+/// One ping per tick does not: the socket is idle for the whole period, and
+/// the fresh sleep fires. That case is
+/// `ping_at_or_under_limit_still_receives_snapshots`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn paid_frame_inside_limit_still_receives_snapshots() {
     let server = spawn_test_server(SigningKey::dev_default(), SignatureFailurePolicy::Kick).await;
-    let (mut client, info) =
-        TestClient::connect_and_join(server.ws_addr(), "us-east", "tick-text").await;
+    let (client, info) =
+        TestClient::connect_and_join(server.ws_addr(), "us-east", "tick-paid").await;
+    let (mut sink, mut stream) = client.into_split();
     let window = Duration::from_millis(500);
-    let start = tokio::time::Instant::now();
-    let mut snapshots = 0u32;
-    while start.elapsed() < window {
-        client.send_ws(Message::Text("ready".into())).await;
-        loop {
-            match timeout(Duration::from_millis(1), client.recv_raw()).await {
-                Ok(Some(Message::Binary(bytes))) => {
+    // Shorter than tick_dt so a fresh sleep cannot elapse. Longer than 1/64 s
+    // so every frame still pays on the 64/s server.
+    let period = Duration::from_millis(20);
+    let reader = tokio::spawn(async move {
+        let mut snapshots = 0u32;
+        let deadline = tokio::time::Instant::now() + window;
+        while tokio::time::Instant::now() < deadline {
+            let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            match timeout(left, stream.next()).await {
+                Ok(Some(Ok(Message::Binary(bytes)))) => {
                     if let Ok(ServerToClient::Snapshot { .. }) =
                         aw_net_proto::decode_msg::<ServerToClient>(TEST_CODEC, &bytes)
                     {
                         snapshots += 1;
                     }
                 }
-                Ok(Some(Message::Close(frame))) => {
-                    panic!("text flood closed the socket: {frame:?}");
+                Ok(Some(Ok(Message::Close(frame)))) => {
+                    panic!("tick-rate ping closed the socket: {frame:?}");
                 }
-                Ok(Some(_)) => {}
-                Ok(None) => panic!("text flood ended the stream"),
+                Ok(Some(Ok(_))) => {}
+                Ok(Some(Err(e))) => panic!("tick-rate ping transport error: {e}"),
+                Ok(None) => panic!("tick-rate ping ended the stream"),
                 Err(_) => break,
             }
         }
+        snapshots
+    });
+    let start = tokio::time::Instant::now();
+    let mut nano = 0u128;
+    while start.elapsed() < window {
+        let bytes = encode_msg(TEST_CODEC, &ClientToServer::Ping { nano });
+        sink.send(Message::Binary(bytes.into()))
+            .await
+            .unwrap_or_else(|e| panic!("tick-rate ping send failed: {e}"));
+        nano = nano.wrapping_add(1);
+        tokio::time::sleep(period).await;
     }
+    let snapshots = reader.await.expect("reader");
     let expected = window.as_secs_f64() * f64::from(info.tick_hz.max(1));
     assert!(
         f64::from(snapshots) * 2.0 >= expected,
-        "text flood delivered {snapshots} snapshots in {window:?}; about {expected:.0} are due at {} Hz",
+        "a ping every 20 ms delivered {snapshots} snapshots in {window:?}; about {expected:.0} are due at {} Hz",
         info.tick_hz
     );
     server.shutdown();

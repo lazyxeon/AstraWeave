@@ -196,6 +196,18 @@ impl TestClient {
             .expect("ws send failed");
     }
 
+    /// Split the socket so one task can send while another reads. A sender
+    /// that also drains the socket inserts a gap, and that gap lets a fresh
+    /// `sleep(tick_dt)` finish.
+    pub fn into_split(
+        self,
+    ) -> (
+        futures::stream::SplitSink<WsStream, Message>,
+        futures::stream::SplitStream<WsStream>,
+    ) {
+        self.ws.split()
+    }
+
     /// Send a raw tungstenite message (Text / Ping / Close / ...).
     pub async fn send_ws(&mut self, msg: Message) {
         timeout(IO_TIMEOUT, self.ws.send(msg))
