@@ -97,20 +97,20 @@ fn skip_log_path() -> std::path::PathBuf {
     path
 }
 
+/// Same rule as `renderer::existing_workspace_target`.
+///
+/// Compile-time manifest of this package, not the runtime
+/// `CARGO_MANIFEST_DIR` of whichever test binary included this file. A
+/// `<crate>/target` directory must not win the ancestor walk.
 fn existing_target_dir() -> std::path::PathBuf {
     if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
         return std::path::PathBuf::from(dir);
     }
-    let manifest = std::path::PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| std::ffi::OsString::from(".")),
-    );
-    for ancestor in manifest.ancestors() {
-        let candidate = ancestor.join("target");
-        if candidate.is_dir() {
-            return candidate;
-        }
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    match manifest.parent() {
+        Some(workspace) => workspace.join("target"),
+        None => manifest.join("target"),
     }
-    manifest.join("target")
 }
 
 fn skip_line(test: &str, reason: &str) -> String {
