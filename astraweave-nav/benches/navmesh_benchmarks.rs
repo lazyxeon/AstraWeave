@@ -5,6 +5,10 @@
 //! 2. Pathfinding performance (short, medium, long paths)
 //! 3. Throughput (queries/second at different scales)
 //! 4. Memory characteristics
+//! 5. Stress-test latency (`stress_latency`): the `find_path` calls whose
+//!    debug wall-clock asserts moved out of `src/stress_tests.rs` (#575).
+//!    Bake timings for those tests stay on `bake_100_triangles`,
+//!    `bake_1k_triangles`, and `bake_10k_triangles`.
 //!
 //! Target: Establish production performance baselines
 //! Duration: 0.5 hours
@@ -165,6 +169,36 @@ fn create_linear_strip(length: usize) -> Vec<Triangle> {
         assert_triangle_valid(&tri2, "create_linear_strip/tri2");
         tris.push(tri2);
     }
+    tris
+}
+
+/// Unit-square strip from `stress_tests::create_linear_strip`.
+///
+/// `count` is the triangle count. `create_linear_strip` above uses 2-unit
+/// quads and does not match the stress tests.
+fn create_unit_strip(count: usize) -> Vec<Triangle> {
+    let pairs = count.div_ceil(2);
+    let mut tris = Vec::with_capacity(pairs * 2);
+    for i in 0..pairs {
+        let x0 = i as f32;
+        let x1 = (i + 1) as f32;
+        let tri1 = Triangle {
+            a: Vec3::new(x0, 0.0, 0.0),
+            b: Vec3::new(x0, 0.0, 1.0),
+            c: Vec3::new(x1, 0.0, 0.0),
+        };
+        assert_triangle_valid(&tri1, "create_unit_strip/tri1");
+        tris.push(tri1);
+
+        let tri2 = Triangle {
+            a: Vec3::new(x1, 0.0, 0.0),
+            b: Vec3::new(x0, 0.0, 1.0),
+            c: Vec3::new(x1, 0.0, 1.0),
+        };
+        assert_triangle_valid(&tri2, "create_unit_strip/tri2");
+        tris.push(tri2);
+    }
+    tris.truncate(count);
     tris
 }
 
@@ -414,6 +448,143 @@ fn bench_pathfinding_scaling(c: &mut Criterion) {
 }
 
 // ============================================================================
+// Benchmark 5: Stress-test latency (#575)
+// ============================================================================
+// Same calls `src/stress_tests.rs` used to bound with `Instant` on the debug
+// `cargo test` path. Correctness stays in those tests. `AW_PERF_ASSERTS` is
+// only a catastrophic ceiling, not these measurements.
+
+fn bench_pathfind_stress_100_tri_grid(c: &mut Criterion) {
+    let tris = create_grid_navmesh(10, 5);
+    assert_eq!(tris.len(), 100, "Expected 100 triangles");
+    let nm = NavMesh::bake(&tris, 0.5, 60.0);
+    let start = Vec3::new(0.5, 0.0, 0.5);
+    let goal = Vec3::new(9.5, 0.0, 4.5);
+
+    c.bench_function("pathfind_stress_100_tri_grid", |b| {
+        b.iter(|| {
+            let path = nm.find_path(black_box(start), black_box(goal));
+            assert!(
+                path.len() >= 2,
+                "[CORRECTNESS FAILURE] pathfind_stress_100_tri_grid: empty path"
+            );
+            assert_path_valid(&path, start, goal, "pathfind_stress_100_tri_grid");
+            black_box(path)
+        })
+    });
+}
+
+fn bench_pathfind_stress_1k_diagonal(c: &mut Criterion) {
+    let tris = create_grid_navmesh(31, 16);
+    assert_eq!(tris.len(), 992, "Expected 992 triangles");
+    let nm = NavMesh::bake(&tris, 0.5, 60.0);
+    let start = Vec3::new(1.0, 0.0, 1.0);
+    let goal = Vec3::new(30.0, 0.0, 15.0);
+
+    c.bench_function("pathfind_stress_1k_diagonal", |b| {
+        b.iter(|| {
+            let path = nm.find_path(black_box(start), black_box(goal));
+            assert!(
+                path.len() >= 2,
+                "[CORRECTNESS FAILURE] pathfind_stress_1k_diagonal: empty path"
+            );
+            assert_path_valid(&path, start, goal, "pathfind_stress_1k_diagonal");
+            black_box(path)
+        })
+    });
+}
+
+fn bench_pathfind_stress_50_hop(c: &mut Criterion) {
+    let tris = create_unit_strip(50);
+    assert_eq!(tris.len(), 50, "Expected 50 triangles");
+    let nm = NavMesh::bake(&tris, 0.5, 60.0);
+    // Goal matches `test_long_path_50_hops`, including the off-mesh x.
+    let start = Vec3::new(0.5, 0.0, 0.5);
+    let goal = Vec3::new(49.5, 0.0, 0.5);
+
+    c.bench_function("pathfind_stress_50_hop", |b| {
+        b.iter(|| {
+            let path = nm.find_path(black_box(start), black_box(goal));
+            assert!(
+                path.len() >= 2,
+                "[CORRECTNESS FAILURE] pathfind_stress_50_hop: empty path"
+            );
+            assert_path_valid(&path, start, goal, "pathfind_stress_50_hop");
+            black_box(path)
+        })
+    });
+}
+
+fn bench_pathfind_stress_100_hop(c: &mut Criterion) {
+    let tris = create_unit_strip(100);
+    assert_eq!(tris.len(), 100, "Expected 100 triangles");
+    let nm = NavMesh::bake(&tris, 0.5, 60.0);
+    // Goal matches `test_long_path_100_hops`, including the off-mesh x.
+    // That test's `< 10` ms assert is the #575 flake.
+    let start = Vec3::new(0.5, 0.0, 0.5);
+    let goal = Vec3::new(99.5, 0.0, 0.5);
+
+    c.bench_function("pathfind_stress_100_hop", |b| {
+        b.iter(|| {
+            let path = nm.find_path(black_box(start), black_box(goal));
+            assert!(
+                path.len() >= 2,
+                "[CORRECTNESS FAILURE] pathfind_stress_100_hop: empty path"
+            );
+            assert!(
+                path.len() < 102,
+                "[CORRECTNESS FAILURE] pathfind_stress_100_hop: smoothing left {} waypoints",
+                path.len()
+            );
+            assert_path_valid(&path, start, goal, "pathfind_stress_100_hop");
+            black_box(path)
+        })
+    });
+}
+
+fn bench_pathfind_stress_10k_grid(c: &mut Criterion) {
+    let tris = create_grid_navmesh(100, 50);
+    assert_eq!(tris.len(), 10000, "Expected 10000 triangles");
+    let nm = NavMesh::bake(&tris, 0.5, 60.0);
+    let start = Vec3::new(1.0, 0.0, 1.0);
+    let goal = Vec3::new(99.0, 0.0, 49.0);
+
+    c.bench_function("pathfind_stress_10k_grid", |b| {
+        b.iter(|| {
+            let path = nm.find_path(black_box(start), black_box(goal));
+            assert!(
+                path.len() >= 2,
+                "[CORRECTNESS FAILURE] pathfind_stress_10k_grid: empty path"
+            );
+            assert_path_valid(&path, start, goal, "pathfind_stress_10k_grid");
+            black_box(path)
+        })
+    });
+}
+
+fn bench_sequential_100_queries(c: &mut Criterion) {
+    let tris = create_grid_navmesh(10, 10);
+    let nm = NavMesh::bake(&tris, 0.5, 60.0);
+
+    c.bench_function("sequential_100_queries", |b| {
+        b.iter(|| {
+            for i in 0..100 {
+                let x = (i % 10) as f32 + 0.5;
+                let z = (i / 10) as f32 + 0.5;
+                let start = Vec3::new(0.5, 0.0, 0.5);
+                let goal = Vec3::new(x, 0.0, z);
+                let path = nm.find_path(black_box(start), black_box(goal));
+                assert!(
+                    path.len() >= 2 || (x < 1.0 && z < 1.0),
+                    "[CORRECTNESS FAILURE] sequential_100_queries: query {i}"
+                );
+                black_box(path);
+            }
+        })
+    });
+}
+
+// ============================================================================
 // Criterion Configuration
 // ============================================================================
 
@@ -440,6 +611,16 @@ criterion_group!(
     bench_throughput_10k_triangles,
 );
 
+criterion_group!(
+    stress_latency,
+    bench_pathfind_stress_100_tri_grid,
+    bench_pathfind_stress_1k_diagonal,
+    bench_pathfind_stress_50_hop,
+    bench_pathfind_stress_100_hop,
+    bench_pathfind_stress_10k_grid,
+    bench_sequential_100_queries,
+);
+
 fn bench_tile_commits_per_tick(c: &mut Criterion) {
     c.bench_function("tile_commits_per_tick", |b| {
         b.iter(|| {
@@ -460,4 +641,4 @@ fn bench_tile_commits_per_tick(c: &mut Criterion) {
 
 criterion_group!(tile_budget, bench_tile_commits_per_tick);
 
-criterion_main!(baking, pathfinding, throughput, tile_budget);
+criterion_main!(baking, pathfinding, throughput, stress_latency, tile_budget);
