@@ -314,6 +314,21 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertNotIn("continue-on-error: true", text)
         self.assertFalse(has_pull_request(text))
 
+    def test_pinned_nightly_steps_follow_the_experimental_flag(self) -> None:
+        text = (WORKFLOWS / "toolchain-management.yml").read_text(encoding="utf-8")
+        self.assertIn("toolchain: pinned-nightly", text)
+        self.assertNotIn("toolchain: nightly\n", text)
+        fmt = text.split("name: Check code formatting compatibility", 1)[1].split(
+            "name: Run clippy with toolchain", 1
+        )[0]
+        self.assertIn("if: ${{ !matrix.experimental }}", fmt)
+        self.assertNotIn("'nightly'", fmt)
+        nightly = text.split("name: Test nightly features (if nightly)", 1)[1].split(
+            "\n  msrv-check:", 1
+        )[0]
+        self.assertIn("if: matrix.experimental", nightly)
+        self.assertNotIn("'nightly'", nightly)
+
 
 if __name__ == "__main__":
     unittest.main()

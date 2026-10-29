@@ -187,7 +187,8 @@ jobs:
           fi
 
       - name: Check code formatting compatibility
-        if: matrix.toolchain != 'nightly'  # Nightly may have different formatting rules
+        # The pinned-nightly row sets experimental. Nightly rustfmt can differ.
+        if: ${{ !matrix.experimental }}
         shell: bash
         run: bash .github/scripts/fmt-check.sh
 
@@ -196,7 +197,7 @@ jobs:
           cargo clippy --locked --workspace ${{ env.EXCLUDED_PACKAGES }} -- -D warnings
 
       - name: Test nightly features (if nightly)
-        if: matrix.toolchain == 'nightly'
+        if: matrix.experimental
         run: |
           # Test unstable features that might be beneficial
           echo 'Testing nightly-specific features...'
