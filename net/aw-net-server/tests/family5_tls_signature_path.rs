@@ -168,6 +168,7 @@ async fn spawn_tls_test_server(key: SigningKey, policy: SignatureFailurePolicy) 
         signing_key: key,
         sig_failure_policy: policy,
         admin_token: None,
+        rate_limit_enabled: true,
         // Every ServerConfig field is set explicitly — no
         // `..ServerConfig::default()` (clippy::needless_update), and it keeps
         // the TLS config from silently inheriting the 127.0.0.1:8788 default
@@ -408,6 +409,31 @@ impl TlsTestClient {
         .await;
     }
 
+    async fn try_send_input_frame(
+        &mut self,
+        seq: u32,
+        tick_ms: u64,
+        input_blob: &[u8],
+        key: &SigningKey,
+    ) -> Result<(), String> {
+        let payload = input_frame_sig_payload(seq, tick_ms, input_blob);
+        let sig = sign(key, &payload);
+        let bytes = encode_msg(
+            TEST_CODEC,
+            &ClientToServer::InputFrame {
+                seq,
+                tick_ms,
+                input_blob: input_blob.to_vec(),
+                sig,
+            },
+        );
+        match timeout(IO_TIMEOUT, self.ws.send(Message::Binary(bytes.into()))).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(format!("ws send failed: {e}")),
+            Err(_) => Err("ws send timed out".into()),
+        }
+    }
+
     /// Next raw WS message; Close frames included. Returns `None` on the same
     /// "peer went away" shapes the plain harness normalizes (so a kick surfaces
     /// as the Close frame, and the post-Close stream end surfaces as `None`).
@@ -494,20 +520,6 @@ impl TlsTestClient {
             .recv_until(|m| match m {
                 ServerToClient::Pong { nano: n } => Some(n),
                 ServerToClient::Snapshot { .. } => None,
-                other => panic!("unexpected message while awaiting Pong: {other:?}"),
-            })
-            .await;
-        assert_eq!(got, nano, "Pong nano does not match the Ping we sent");
-    }
-
-    /// Like [`assert_ping_pong`] but also tolerates queued `RateLimited`
-    /// replies (needed right after a deliberate rate-limit burst under Warn).
-    async fn assert_ping_pong_tolerating_rate_limited(&mut self, nano: u128) {
-        self.send_msg(&ClientToServer::Ping { nano }).await;
-        let got = self
-            .recv_until(|m| match m {
-                ServerToClient::Pong { nano: n } => Some(n),
-                ServerToClient::Snapshot { .. } | ServerToClient::RateLimited => None,
                 other => panic!("unexpected message while awaiting Pong: {other:?}"),
             })
             .await;
@@ -724,16 +736,13 @@ async fn tls_wrong_key_kicked_via_real_close() {
     server.shutdown();
 }
 
-/// Test 3: wrong key under `Warn` STAYS OPEN over TLS.
+/// Test 3: wrong key under `Warn` over TLS.
 ///
-/// On a Warn TLS server, a wrong-key client keeps receiving snapshots and
-/// completes in-order Pongs after several wrong-key frames — the connection is
-/// NOT closed (closing the fenced TLS-Warn coverage gap).
+/// A short wrong-key batch stays open and does not apply the frame. A tight
+/// wrong-key flood is charged and closes with 1008 `rate limited`.
 ///
-/// Anti-vacuity: a Kick-policy TLS TWIN server (same key A) KICKS the identical
-/// wrong-key frame within this test, proving the key-B signatures genuinely
-/// FAIL verification against key A — i.e. the Warn server was surviving
-/// verification FAILURES, and only the policy differs between the two paths.
+/// Anti-vacuity: a Kick-policy TLS twin kicks the first identical wrong-key
+/// frame, proving the key-B signatures fail verification.
 #[tokio::test(flavor = "multi_thread")]
 async fn tls_wrong_key_under_warn_stays_open() {
     let server_key = key_a();
@@ -767,27 +776,37 @@ async fn tls_wrong_key_under_warn_stays_open() {
     }
     client.assert_ping_pong(0x57B2).await;
 
-    // Full-processing proof: a burst overruns the token bucket (30 initial,
-    // 60 cap, 8/s refill, 1/frame), so the server MUST reply RateLimited —
-    // only the InputFrame processing path can emit it. That the unauthenticated
-    // frames reach the rate-limit path proves Warn processes them (parity with
-    // the plain Family-3 Warn proof). The connection stays open after.
-    for seq in 11u32..=110 {
+    for seq in 11u32..=25 {
         client
-            .send_input_frame(seq, u64::from(seq) * 33, b"warn-tls-burst", &wrong_key)
+            .send_input_frame(
+                seq,
+                u64::from(seq) * 33,
+                b"warn-tls-valid-after",
+                &server_key,
+            )
             .await;
     }
-    client
-        .recv_until(|m| match m {
-            ServerToClient::RateLimited => Some(()),
-            ServerToClient::Snapshot { .. } => None,
-            other => panic!("unexpected message while awaiting RateLimited: {other:?}"),
-        })
-        .await;
-    client
-        .assert_ping_pong_tolerating_rate_limited(0x57B3)
-        .await;
-    client.close().await;
+    client.assert_ping_pong(0x57B3).await;
+
+    for seq in 26u32..=200 {
+        if client
+            .try_send_input_frame(seq, u64::from(seq) * 33, b"warn-tls-burst", &wrong_key)
+            .await
+            .is_err()
+        {
+            break;
+        }
+    }
+    let frame = client
+        .recv_close()
+        .await
+        .expect("wrong-key flood must close");
+    let reason = frame.reason.to_string();
+    assert_eq!(u16::from(frame.code), 1008, "{reason}");
+    assert!(
+        reason.contains("rate limited"),
+        "close reason must say rate limited, got {reason}"
+    );
 
     // Anti-vacuity twin: the identical first wrong-key frame KICKS under Kick
     // over TLS, with the full Close 1008 contract — proving the signatures

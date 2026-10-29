@@ -8,7 +8,7 @@
 //! ephemeral ports and drive a live server in-process.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
@@ -104,7 +104,8 @@ pub enum SignatureFailurePolicy {
     /// best-effort WebSocket close frame (policy violation, 1008).
     #[default]
     Kick,
-    /// Log the failure and process the packet anyway (legacy behavior).
+    /// Log the failure and leave the connection open. The frame is not
+    /// applied. It is still charged, so a wrong-key flood is throttled.
     Warn,
 }
 
@@ -147,6 +148,11 @@ pub struct ServerConfig {
     pub sig_failure_policy: SignatureFailurePolicy,
     /// Bearer token required by `/healthz` and `/regions`. `None` rejects every admin request.
     pub admin_token: Option<String>,
+    /// When false, in-session messages are not charged. `Default` is true.
+    /// The CLI does not parse a flag for this. The ready-socket regression
+    /// turns it off so a pre-queued flood stays connected and the `select!`
+    /// arm order can be observed.
+    pub rate_limit_enabled: bool,
 }
 
 impl Default for ServerConfig {
@@ -161,6 +167,7 @@ impl Default for ServerConfig {
             signing_key: SigningKey::dev_default(),
             sig_failure_policy: SignatureFailurePolicy::default(),
             admin_token: None,
+            rate_limit_enabled: true,
         }
     }
 }
@@ -174,6 +181,7 @@ pub struct RunningServer {
     pub http_addr: SocketAddr,
     ws_task: JoinHandle<Result<()>>,
     http_task: JoinHandle<()>,
+    rooms: Arc<Mutex<HashMap<RoomId, Room>>>,
 }
 
 impl RunningServer {
@@ -182,6 +190,14 @@ impl RunningServer {
     pub fn shutdown(self) {
         self.ws_task.abort();
         self.http_task.abort();
+    }
+
+    /// Accepted signed inputs, and messages that were charged but could not pay.
+    /// `None` when the room or player is already gone.
+    pub fn input_tolls(&self, room_id: &str, player_id: &str) -> Option<(u32, u32)> {
+        let rooms = self.rooms.lock();
+        let player = rooms.get(room_id)?.players.get(player_id)?;
+        Some((player.accepted_inputs, player.dropped_inputs))
     }
 }
 
@@ -203,9 +219,15 @@ struct Player {
     display: String,
     last_input_seq: u32,
     last_seen: Instant,
+    /// Signed inputs that paid and were applied.
+    accepted_inputs: u32,
+    /// Messages that could not pay. A steady client at the refill rate stays at 0.
+    dropped_inputs: u32,
     // token bucket rate limit
     tokens: f32,
     last_refill: Instant,
+    /// Drop times inside the kick window. A paid message does not clear this.
+    drop_times: VecDeque<Instant>,
 }
 
 #[derive(Clone)]
@@ -234,6 +256,7 @@ struct AppState {
     codec: Codec,
     signing_key: SigningKey,
     sig_failure_policy: SignatureFailurePolicy,
+    rate_limit_enabled: bool,
 }
 
 // TLS certificate loading functions
@@ -295,7 +318,9 @@ pub async fn spawn_server(config: ServerConfig) -> Result<RunningServer> {
         codec: Codec::PostcardLz4,
         signing_key: config.signing_key.clone(),
         sig_failure_policy: config.sig_failure_policy,
+        rate_limit_enabled: config.rate_limit_enabled,
     };
+    let rooms = Arc::clone(&state.rooms);
 
     // Health check and region info (HTTP). Every request needs admin_token.
     let http_app = admin_router(config.admin_token.clone());
@@ -358,6 +383,7 @@ pub async fn spawn_server(config: ServerConfig) -> Result<RunningServer> {
         http_addr,
         ws_task,
         http_task,
+        rooms,
     })
 }
 
@@ -566,8 +592,11 @@ where
                         display: "player".into(),
                         last_input_seq: 0,
                         last_seen: tokio::time::Instant::now(),
-                        tokens: 30.0,
+                        accepted_inputs: 0,
+                        dropped_inputs: 0,
+                        tokens: BUCKET_SIZE,
                         last_refill: tokio::time::Instant::now(),
+                        drop_times: VecDeque::new(),
                     },
                 );
                 tick_hz = room.tick_hz;
@@ -649,32 +678,60 @@ where
                 }
             }
 
-            // Receive client messages
+            // Receive client messages. This arm is second under `biased`.
+            // A frame that is already queued cannot skip `snaps.changed()`.
             msg = ws.next() => {
                 match msg {
                     Some(Ok(Message::Binary(bytes))) => {
-                        if let Ok(m) = aw_net_proto::decode_msg::<ClientToServer>(app.codec, &bytes) {
-                            match on_client_msg(&app, &rid, &player_id, &mut ws, m).await {
-                                Ok(MsgOutcome::Continue) => {}
-                                Ok(MsgOutcome::Kick(reason)) => {
-                                    // Best-effort policy-violation close (1008), then break.
-                                    // `_membership` removes the player and an empty room.
-                                    let close = Message::Close(Some(CloseFrame {
-                                        code: CloseCode::Policy,
-                                        reason: reason.into(),
-                                    }));
-                                    if let Err(e) = ws.send(close).await {
-                                        warn!("failed to send close frame to pid={player_id}: {e}");
+                        match aw_net_proto::decode_msg::<ClientToServer>(app.codec, &bytes) {
+                            Ok(m) => {
+                                match on_client_msg(&app, &rid, &player_id, &mut ws, m).await {
+                                    Ok(MsgOutcome::Continue) => {}
+                                    Ok(MsgOutcome::Kick(reason)) => {
+                                        // `_membership` removes the player and an empty room.
+                                        send_policy_close(&mut ws, &player_id, reason).await;
+                                        break;
                                     }
-                                    break;
+                                    Err(e) => {
+                                        warn!("client msg error: {e:?}");
+                                    }
                                 }
-                                Err(e) => {
-                                    warn!("client msg error: {e:?}");
+                            }
+                            Err(_) => {
+                                // Undecodable bytes still take a token. Drop
+                                // sends nothing. Kick closes 1008.
+                                if charge_message(&app, &rid, &player_id) == Toll::Kick {
+                                    send_policy_close(&mut ws, &player_id, "rate limited").await;
+                                    break;
                                 }
                             }
                         }
                     }
-                    Some(Ok(Message::Ping(p))) => { let _ = ws.send(Message::Pong(p)).await; }
+                    Some(Ok(Message::Ping(payload))) => {
+                        match charge_message(&app, &rid, &player_id) {
+                            Toll::Paid => {
+                                // Replaces the Pong tungstenite queued while
+                                // parsing the Ping, so a paid ping is one Pong.
+                                let _ = ws.send(Message::Pong(payload)).await;
+                            }
+                            Toll::Drop => {
+                                // tungstenite already queued a Pong. The next
+                                // read flushes it. A dropped ping is still one
+                                // library Pong. The kick below is what bounds
+                                // a flood.
+                            }
+                            Toll::Kick => {
+                                send_policy_close(&mut ws, &player_id, "rate limited").await;
+                                break;
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Text(_) | Message::Pong(_))) => {
+                        if charge_message(&app, &rid, &player_id) == Toll::Kick {
+                            send_policy_close(&mut ws, &player_id, "rate limited").await;
+                            break;
+                        }
+                    }
                     Some(Ok(_)) => {}
                     Some(Err(e)) => { warn!("ws recv: {e}"); break; }
                     None => break,
@@ -745,6 +802,127 @@ fn build_snapshot(app: &AppState, rid: &str) -> Result<(ServerToClient, u32)> {
     Ok((msg, sid))
 }
 
+/// Tokens per second. A 30 Hz input pays every frame. 60 Hz input plus one
+/// ack per input is 120/s and crosses the kick window (about 96 messages/s:
+/// 64 paid plus 32 unpaid inside one second).
+const REFILL_RATE: f32 = 64.0;
+const BUCKET_SIZE: f32 = 64.0;
+const COST_PER_MESSAGE: f32 = 1.0;
+/// Unpaid messages inside this window close the socket. A paid message
+/// does not clear the window, so a paced overrun cannot reset the count.
+const DROP_WINDOW: Duration = Duration::from_secs(1);
+const DROPS_IN_WINDOW: usize = 32;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Toll {
+    Paid,
+    Drop,
+    Kick,
+}
+
+/// Refill and charge one in-session message. A message that cannot pay
+/// leaves the fractional remainder in place. Tokens never go below 0.
+fn charge_message(app: &AppState, rid: &str, pid: &str) -> Toll {
+    charge_message_at(app, rid, pid, Instant::now())
+}
+
+fn charge_message_at(app: &AppState, rid: &str, pid: &str, now: Instant) -> Toll {
+    if !app.rate_limit_enabled {
+        return Toll::Paid;
+    }
+    let mut rooms = app.rooms.lock();
+    let Some(room) = rooms.get_mut(rid) else {
+        return Toll::Drop;
+    };
+    let Some(player) = room.players.get_mut(pid) else {
+        return Toll::Drop;
+    };
+    let elapsed = now.duration_since(player.last_refill).as_secs_f32();
+    player.tokens = (player.tokens + REFILL_RATE * elapsed).clamp(0.0, BUCKET_SIZE);
+    player.last_refill = now;
+    if player.tokens < COST_PER_MESSAGE {
+        while player
+            .drop_times
+            .front()
+            .is_some_and(|t| now.duration_since(*t) >= DROP_WINDOW)
+        {
+            player.drop_times.pop_front();
+        }
+        player.drop_times.push_back(now);
+        player.dropped_inputs = player.dropped_inputs.saturating_add(1);
+        if player.drop_times.len() >= DROPS_IN_WINDOW {
+            return Toll::Kick;
+        }
+        return Toll::Drop;
+    }
+    player.tokens -= COST_PER_MESSAGE;
+    Toll::Paid
+}
+
+fn note_accepted_input(app: &AppState, rid: &str, pid: &str, seq: u32) {
+    let mut rooms = app.rooms.lock();
+    let Some(room) = rooms.get_mut(rid) else {
+        return;
+    };
+    let Some(player) = room.players.get_mut(pid) else {
+        return;
+    };
+    player.last_input_seq = seq;
+    player.last_seen = Instant::now();
+    player.accepted_inputs = player.accepted_inputs.saturating_add(1);
+}
+
+/// Write Close 1008 and drain the socket before it is dropped.
+///
+/// Windows resets a TCP socket that still has unread data, and that RST
+/// discards a Close frame sitting in the send buffer. Drain first so the
+/// write is not stuck behind a full window, write the Close, then drain
+/// until the peer is quiet so the drop is a FIN.
+async fn send_policy_close<S>(
+    ws: &mut tokio_tungstenite::WebSocketStream<S>,
+    player_id: &str,
+    reason: &'static str,
+) where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    discard_incoming(ws, Duration::from_millis(100)).await;
+    let close = Message::Close(Some(CloseFrame {
+        code: CloseCode::Policy,
+        reason: reason.into(),
+    }));
+    match tokio::time::timeout(Duration::from_secs(2), ws.send(close)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!("failed to send close frame to pid={player_id}: {e}");
+            return;
+        }
+        Err(_) => {
+            warn!("timed out sending close frame to pid={player_id}");
+            return;
+        }
+    }
+    discard_incoming(ws, Duration::from_secs(3)).await;
+}
+
+async fn discard_incoming<S>(ws: &mut tokio_tungstenite::WebSocketStream<S>, budget: Duration)
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let deadline = Instant::now() + budget;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        let slice = Duration::from_millis(30).min(left);
+        match tokio::time::timeout(slice, ws.next()).await {
+            Ok(Some(Ok(Message::Close(_)))) | Ok(None) | Ok(Some(Err(_))) => break,
+            Ok(Some(Ok(_))) => continue,
+            Err(_) => break,
+        }
+    }
+}
+
 async fn on_client_msg<S>(
     app: &AppState,
     rid: &str,
@@ -763,9 +941,9 @@ where
             sig,
             ..
         } => {
-            // Verify the signature FIRST — before last_input_seq/last_seen
-            // updates and before rate-limit token deduction. An
-            // unauthenticated packet must not influence server state.
+            // Verify first. A bad tag under Kick returns before any charge,
+            // and it is never applied. Under Warn the tag is charged and
+            // still not applied, so a wrong-key flood hits the same bucket.
             let payload = aw_net_proto::input_frame_sig_payload(seq, tick_ms, &input_blob);
             if !aw_net_proto::verify(&app.signing_key, &payload, &sig) {
                 match app.sig_failure_policy {
@@ -776,55 +954,45 @@ where
                         ));
                     }
                     SignatureFailurePolicy::Warn => {
-                        // Legacy behavior: log and process the packet anyway.
                         warn!("HMAC signature verification failed for pid={pid} (policy: warn)");
+                        return Ok(toll_to_outcome(charge_message(app, rid, pid)));
                     }
                 }
             }
 
-            // token bucket rate limit
-            let mut kick = false;
-            {
-                let mut rooms = app.rooms.lock();
-                if let Some(room) = rooms.get_mut(rid) {
-                    if let Some(p) = room.players.get_mut(pid) {
-                        let now = tokio::time::Instant::now();
-                        let elapsed = now.duration_since(p.last_refill).as_secs_f32();
-
-                        // Refill tokens based on elapsed time (8 tokens/sec)
-                        const REFILL_RATE: f32 = 8.0;
-                        const BUCKET_SIZE: f32 = 60.0;
-                        const COST_PER_MESSAGE: f32 = 1.0;
-
-                        p.tokens += REFILL_RATE * elapsed;
-                        if p.tokens > BUCKET_SIZE {
-                            p.tokens = BUCKET_SIZE;
-                        }
-                        p.last_refill = now;
-
-                        // Deduct cost
-                        p.tokens -= COST_PER_MESSAGE;
-
-                        if p.tokens < 0.0 {
-                            kick = true;
-                        } else {
-                            p.last_input_seq = seq;
-                            p.last_seen = now;
-                        }
-                    }
+            return Ok(match charge_message(app, rid, pid) {
+                Toll::Paid => {
+                    note_accepted_input(app, rid, pid, seq);
+                    MsgOutcome::Continue
                 }
-            }
-            if kick {
-                send(app, ws, &ServerToClient::RateLimited).await?;
-            }
+                other => toll_to_outcome(other),
+            });
         }
-        ClientToServer::Ping { nano } => {
-            send(app, ws, &ServerToClient::Pong { nano }).await?;
+        ClientToServer::Ping { nano } => match charge_message(app, rid, pid) {
+            Toll::Paid => send(app, ws, &ServerToClient::Pong { nano }).await?,
+            Toll::Drop => {}
+            Toll::Kick => return Ok(MsgOutcome::Kick("rate limited")),
+        },
+        // Ack is charged here and not in the wildcard. Deleting this arm
+        // leaves Ack uncharged.
+        ClientToServer::Ack { .. } => return Ok(toll_to_outcome(charge_message(app, rid, pid))),
+        ClientToServer::Hello { .. }
+        | ClientToServer::FindOrCreate { .. }
+        | ClientToServer::JoinRoom { .. } => {
+            return Ok(toll_to_outcome(charge_message(app, rid, pid)));
         }
-        ClientToServer::Ack { .. } => { /* optional: track delivery / deltas */ }
-        _ => { /* ignore other in-session messages */ }
+        // Unknown future variants are not charged. The known variants above
+        // are the ones a peer can send today.
+        _ => {}
     }
     Ok(MsgOutcome::Continue)
+}
+
+fn toll_to_outcome(toll: Toll) -> MsgOutcome {
+    match toll {
+        Toll::Kick => MsgOutcome::Kick("rate limited"),
+        Toll::Paid | Toll::Drop => MsgOutcome::Continue,
+    }
 }
 
 // Helpers
@@ -965,6 +1133,7 @@ mod ghost_player_tests {
             codec: Codec::PostcardLz4,
             signing_key: SigningKey::dev_default(),
             sig_failure_policy: SignatureFailurePolicy::Kick,
+            rate_limit_enabled: true,
         };
         let observed = Arc::clone(&app.rooms);
         let fail_writes = Arc::new(AtomicBool::new(false));
@@ -1045,5 +1214,180 @@ mod ghost_player_tests {
     #[tokio::test]
     async fn failed_join_send_removes_the_player_on_the_tls_entry() {
         failed_join_send(true).await;
+    }
+}
+
+#[cfg(test)]
+mod charge_boundary_tests {
+    use std::collections::{HashMap, VecDeque};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use parking_lot::Mutex;
+    use tokio::time::Instant;
+
+    use super::{
+        charge_message_at, AppState, Player, Room, Toll, BUCKET_SIZE, COST_PER_MESSAGE,
+        DROPS_IN_WINDOW, DROP_WINDOW,
+    };
+    use crate::SignatureFailurePolicy;
+    use aw_net_proto::{Codec, SigningKey};
+
+    fn harness(tokens: f32, now: Instant) -> (AppState, String, String, tempfile::TempDir) {
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let app = AppState {
+            rooms: Arc::new(Mutex::new(HashMap::new())),
+            db: sled::open(dir.path()).expect("sled"),
+            codec: Codec::PostcardLz4,
+            signing_key: SigningKey::dev_default(),
+            sig_failure_policy: SignatureFailurePolicy::Kick,
+            rate_limit_enabled: true,
+        };
+        let rid = "room".to_string();
+        let pid = "player".to_string();
+        let (snap_tx, _snap_rx) = tokio::sync::watch::channel(None);
+        let mut players = HashMap::new();
+        players.insert(
+            pid.clone(),
+            Player {
+                id: pid.clone(),
+                display: "p".into(),
+                last_input_seq: 0,
+                last_seen: now,
+                accepted_inputs: 0,
+                dropped_inputs: 0,
+                tokens,
+                last_refill: now,
+                drop_times: VecDeque::new(),
+            },
+        );
+        app.rooms.lock().insert(
+            rid.clone(),
+            Room {
+                id: rid.clone(),
+                region: "us-east".into(),
+                game_mode: "duel".into(),
+                tick_hz: 30,
+                players,
+                tick: 0,
+                snap_id: 0,
+                snap_tx,
+            },
+        );
+        (app, rid, pid, dir)
+    }
+
+    fn tokens_of(app: &AppState, rid: &str, pid: &str) -> f32 {
+        app.rooms
+            .lock()
+            .get(rid)
+            .unwrap()
+            .players
+            .get(pid)
+            .unwrap()
+            .tokens
+    }
+
+    /// `<` changed to `<=` treats a full token as unpaid.
+    #[test]
+    fn exact_remaining_token_pays_and_the_next_stays_at_zero() {
+        let now = Instant::now();
+        let (app, rid, pid, _dir) = harness(COST_PER_MESSAGE, now);
+        assert_eq!(
+            charge_message_at(&app, &rid, &pid, now),
+            Toll::Paid,
+            "one remaining token must pay"
+        );
+        assert_eq!(tokens_of(&app, &rid, &pid), 0.0);
+        assert_eq!(charge_message_at(&app, &rid, &pid, now), Toll::Drop);
+        assert_eq!(
+            tokens_of(&app, &rid, &pid),
+            0.0,
+            "an unpaid message must not put the bucket in debt"
+        );
+    }
+
+    /// `>=` changed to `<` kicks on the first unpaid message.
+    #[test]
+    fn thirty_one_unpaid_stay_open_and_the_next_kicks() {
+        let now = Instant::now();
+        let (app, rid, pid, _dir) = harness(0.0, now);
+        for i in 0..(DROPS_IN_WINDOW - 1) {
+            assert_eq!(
+                charge_message_at(&app, &rid, &pid, now),
+                Toll::Drop,
+                "drop {i} must not kick"
+            );
+        }
+        assert_eq!(
+            tokens_of(&app, &rid, &pid),
+            0.0,
+            "the floor must hold at zero across the window"
+        );
+        assert_eq!(
+            charge_message_at(&app, &rid, &pid, now),
+            Toll::Kick,
+            "the 32nd unpaid message inside the window must kick"
+        );
+    }
+
+    /// After 31 unpaid messages, 400 ms refills more than one token from a
+    /// zero floor. A subtract on the unpaid path is caught by the token
+    /// floor asserts above: the next `charge_message_at` clamps before this
+    /// refill, so this test does not see that debt.
+    #[test]
+    fn short_refill_pays_after_the_floor_and_does_not_carry_debt() {
+        let now = Instant::now();
+        let (app, rid, pid, _dir) = harness(0.0, now);
+        for _ in 0..(DROPS_IN_WINDOW - 1) {
+            assert_eq!(charge_message_at(&app, &rid, &pid, now), Toll::Drop);
+        }
+        let later = now + Duration::from_millis(400);
+        assert_eq!(
+            charge_message_at(&app, &rid, &pid, later),
+            Toll::Paid,
+            "400 ms refills more than one token from a zero floor and less than a 31-token debt"
+        );
+        let tokens = tokens_of(&app, &rid, &pid);
+        assert!(
+            tokens > 0.0 && tokens <= BUCKET_SIZE,
+            "paid tokens must sit in (0, {BUCKET_SIZE}], got {tokens}"
+        );
+    }
+
+    /// Removing the expired-drop `pop_front` kicks this client. Refill is
+    /// frozen: one second of refill would pay, and the paid arm never reads
+    /// `drop_times`.
+    #[test]
+    fn expired_drops_leave_the_window_and_one_more_stays_open() {
+        let now = Instant::now();
+        let (app, rid, pid, _dir) = harness(0.0, now);
+        for i in 0..(DROPS_IN_WINDOW - 1) {
+            assert_eq!(
+                charge_message_at(&app, &rid, &pid, now),
+                Toll::Drop,
+                "drop {i} must not kick"
+            );
+        }
+        let later = now + DROP_WINDOW;
+        {
+            let mut rooms = app.rooms.lock();
+            let player = rooms.get_mut(&rid).unwrap().players.get_mut(&pid).unwrap();
+            player.last_refill = later;
+            assert_eq!(player.drop_times.len(), (DROPS_IN_WINDOW - 1) as usize);
+        }
+        assert_eq!(
+            charge_message_at(&app, &rid, &pid, later),
+            Toll::Drop,
+            "drops at least one window old must leave before the next unpaid message"
+        );
+        let rooms = app.rooms.lock();
+        let player = rooms.get(&rid).unwrap().players.get(&pid).unwrap();
+        assert_eq!(
+            player.drop_times.len(),
+            1,
+            "only the new drop remains in the window"
+        );
+        assert_eq!(player.tokens, 0.0);
     }
 }
