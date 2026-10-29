@@ -920,5 +920,5 @@ pub fn dialogue_ui_system(
 
 - [AI Companions](companions.md) - Companion dialogue integration
 - [AI System Overview](../core-systems/ai/index.md) - LLM configuration
-- [Quest Systems](../core-systems/quests.md) - Dialogue-quest integration
-- [Audio Systems](../core-systems/audio/index.md) - Voice synthesis setup
+- [Quest Systems](../examples/index.md) - Dialogue-quest integration
+- [Audio Systems](../core-systems/audio.md) - Voice synthesis setup

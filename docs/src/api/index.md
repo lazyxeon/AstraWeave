@@ -1,71 +1,70 @@
 # API Reference
 
-> **Documentation Accuracy**: All exports listed below are verified against actual `lib.rs` files as of v0.4.0. Coverage percentages sourced from [Master Coverage Report](../performance/methodology.md).
+Coverage percentages and "Production" grades that used to lead this page are removed. Whole-workspace coverage is a dated figure on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page. `use` lines below were checked only where this edit says so. Generate rustdoc with `cargo doc -p <crate> --no-deps` before copying a signature.
 
 Browse the Rust API documentation for all AstraWeave crates.
 
 ## Quick Links
 
-| Crate | Description | Coverage | Status |
-|-------|-------------|----------|--------|
-| [astraweave-ecs](./ecs.md) | Entity Component System implementation | 83.2% | Production |
-| [astraweave-core](./core.md) | Core ECS, simulation, and world systems | 79.1% | Production |
-| [astraweave-ai](./ai.md) | AI orchestration and planning | 71.3% | Production |
-| [astraweave-render](./render.md) | wgpu 25-based renderer | 67.4% | Production |
-| [astraweave-physics](./physics.md) | Rapier3D 0.22 integration | 76.8% | Production |
-| [astraweave-fluids](./fluids.md) | SPH fluid simulation | 94.2% | Production |
-| [astraweave-nav](./nav.md) | Navigation and pathfinding | 72.1% | Production |
-| [astraweave-gameplay](./gameplay.md) | Combat physics, damage | 68.9% | Production |
-| [astraweave-terrain](./terrain.md) | Voxel terrain generation | 71.5% | Production |
-| [astraweave-llm](./llm.md) | LLM integration (Ollama; runtime default phi3:medium) | 58.3% | Beta |
-| [astraweave-behavior](./behavior.md) | Behavior trees, utility AI | 74.2% | Production |
+| Crate | Description | Book page |
+|-------|-------------|-----------|
+| `astraweave-ecs` | Schedule and archetype storage | [ECS](./ecs.md) |
+| `astraweave-core` | Legacy world, snapshots, validation | no separate page; see [architecture](../architecture/ecs.md) |
+| `astraweave-ai` | Orchestrators. `AIArbiter` is feature-gated | [AI](./ai.md) |
+| `astraweave-render` | wgpu path shared with the editor | [Render](./render.md) |
+| `astraweave-physics` | Rapier 0.22 wrapper. Broadphase is `DefaultBroadPhase` | [Physics](./physics.md) |
+| `astraweave-fluids` | Accent remnant, not the game-loop solver | [Fluids](./fluids.md) |
+| `astraweave-nav` | `NavMesh` and `NavTiles` | [Navigation](./nav.md) |
+| `astraweave-gameplay` | Gameplay systems, including `perform_attack_sweep` | no separate API page |
+| `astraweave-terrain` | Terrain crate | [Terrain chapter](../core-systems/terrain.md) |
+| `astraweave-llm` | Local model client. Orchestrator default model is `phi3:medium` | no separate API page |
+| `astraweave-behavior` | Behavior graphs | no separate API page |
 
 ## Core Engine Crates
 
-### astraweave-ecs (83.2% coverage)
+### astraweave-ecs
 
 High-performance Entity Component System:
 
 | Export | Description |
 |--------|-------------|
-| `World` | Main container for all ECS data |
-| `Entity` | Lightweight entity handles with generational indices |
-| `App` | Application builder and runner |
-| `Schedule` | System scheduling and ordering |
-| `Component` | Trait for component data |
-| `Resource` | Singleton data storage |
-| `Query` | Efficient component access patterns |
-| `CommandBuffer` | Deferred entity operations |
-| `Events` | Event queues and readers |
+| `World` | Container. `spawn` takes no bundle. `insert` adds a component. `insert_resource` / `get_resource` store singletons |
+| `Entity` | `id`, `generation`, `to_raw`. `from_raw` is `unsafe` and takes one `u64` |
+| `App` | Owns a `World` and a `Schedule`. `add_system` takes a stage name and `fn(&mut World)` |
+| `Schedule` | Stage list. `run` walks stages on one thread |
+| `Component` | Blanket trait: `impl<T: 'static + Send + Sync> Component for T` |
+| `Resource` | Blanket trait with the same bounds. `World::insert_resource` does not require the trait |
+| `Query` | `Query::<T>::new(&world)` iterates entities that have `T` |
+| `CommandBuffer` | `spawn`, `insert`, `despawn`, then `flush(&mut world)` |
+| `Events` | `send` / `read`. `Event` is a marker with no blanket impl |
 
 ```rust
-use astraweave_ecs::{World, Entity, App, Schedule, Component, Resource, Query, CommandBuffer};
+use astraweave_ecs::{App, CommandBuffer, Entity, Events, Query, World};
 ```
 
 [View Full Documentation →](./ecs.md)
 
 ---
 
-### astraweave-core (79.1% coverage)
+### astraweave-core
 
 Core engine systems and AI infrastructure:
 
 | Module | Description |
 |--------|-------------|
-| `capture_replay` | Deterministic frame recording/playback |
-| `perception` | AI world observation and filtering |
-| `schema` | WorldSnapshot, PlanIntent, ActionStep |
-| `sim` | Game state management |
-| `tool_sandbox` | Secure AI action execution |
-| `tool_vocabulary` | 37-tool AI action vocabulary |
-| `validation` | Input/output validation |
-| `world` | World state management |
+| `capture_replay` | `capture_state` and `replay_state`. There is no `CaptureReplay` type |
+| `perception` | `PerceptionConfig` and `build_snapshot`. There is no `PerceptionFilter` type |
+| `schema` | `WorldSnapshot`, `PlanIntent`, `ActionStep` |
+| `sim` | Sim config and step helpers |
+| `tool_sandbox` | `ToolBlock` and `map_engine_error` |
+| `tool_vocabulary` | `get_all_tools`. The module comment says 37 action tools |
+| `validation` | `validate_and_execute` |
+| `world` | Legacy `World::spawn(name, pos, team, hp, ammo)` |
 
 ```rust
 use astraweave_core::{
-    schema::{WorldSnapshot, PlanIntent, ActionStep},
-    capture_replay::CaptureReplay,
-    perception::PerceptionFilter,
+    perception::PerceptionConfig,
+    schema::{ActionStep, PlanIntent, WorldSnapshot},
 };
 ```
 
@@ -75,7 +74,7 @@ use astraweave_core::{
 
 ## AI & Behavior Crates
 
-### astraweave-ai (71.3% coverage)
+### astraweave-ai
 
 AI orchestration layer with GOAP+LLM hybrid support:
 
@@ -86,22 +85,21 @@ AI orchestration layer with GOAP+LLM hybrid support:
 | `tool_sandbox` | — | Tool validation and sandboxing |
 | `async_task` | `llm_orchestrator` | Async LLM task wrapper |
 | `llm_executor` | `llm_orchestrator` | LLM plan generation |
-| `goap` | `llm_orchestrator` | Goal-oriented action planning |
-| `AIArbiter` | `llm_orchestrator` | GOAP+LLM hybrid (101.7ns control) |
+| `goap` | `planner_advanced` | Advanced GOAP module. `GoapOrchestrator` in `orchestrator.rs` is a different type and is always compiled |
+| `AIArbiter` | `llm_orchestrator` | Not on `sys_ai_planning`. See the arbiter chapter |
 
 ```rust
-use astraweave_ai::{core_loop, orchestrator::Orchestrator};
+use astraweave_ai::{core_loop, orchestrator::Orchestrator, GoapOrchestrator};
 
-// With llm_orchestrator feature:
 #[cfg(feature = "llm_orchestrator")]
-use astraweave_ai::{AIArbiter, goap::GoapOrchestrator};
+use astraweave_ai::AIArbiter;
 ```
 
 [View Full Documentation →](./ai.md) | [Arbiter Guide →](../core-systems/ai/arbiter.md)
 
 ---
 
-### astraweave-behavior (74.2% coverage)
+### astraweave-behavior
 
 Behavior systems:
 
@@ -118,44 +116,34 @@ use astraweave_behavior::{BehaviorGraph, BehaviorNode, BehaviorContext, Behavior
 
 ---
 
-### astraweave-llm (58.3% coverage)
+### astraweave-llm
 
 LLM integration via Ollama (runtime default model phi3:medium; set OLLAMA_MODEL to override):
 
-| Export | Description |
-|--------|-------------|
-| `LlmOrchestrator` | Provider-agnostic LLM coordination |
-| `FallbackChain` | 4-tier fallback (Full LLM → Simplified → Heuristic → Emergency) |
-| `OllamaClient` | Ollama API client |
+| Export | Where |
+|--------|-------|
+| `LlmOrchestrator` | `astraweave-ai`, feature `llm_orchestrator`. Not an export of this crate |
+| `FallbackOrchestrator` | `astraweave_llm::fallback_system`. There is no `FallbackChain` type |
+| `OllamaClient` | `astraweave_llm::OllamaClient` |
 
 ```rust
-use astraweave_llm::{LlmOrchestrator, FallbackChain};
+// LlmOrchestrator is astraweave_ai, behind llm_orchestrator.
+// The Qwen constant lives in astraweave_llm:
+use astraweave_llm::qwen3_ollama::{Qwen3Ollama, DEFAULT_QWEN_INSTRUCT_MODEL};
 ```
 
 *Generate rustdoc:* `cargo doc -p astraweave-llm --no-deps --open`
 
 ## Rendering & Graphics Crates
 
-### astraweave-render (67.4% coverage)
+### astraweave-render
 
-wgpu 25.0.2 based rendering (40+ modules):
+wgpu rendering. There is no `camera`, `forward`, `light`, `shadow`, `ibl_manager`, `post_fx_shader`, `animation_blending`, `skeleton`, `texture_array`, or `particle_system` module. Public modules in `astraweave-render/src/lib.rs` include `renderer`, `clustered`, `clustered_forward`, `deferred`, `ibl`, `shadow_csm`, `animation`, `skinning_gpu`, `mesh`, `culling`, `lod_generator`, `instancing`, `material`, `vertex_compression`, `water`, `volumetric_fog`, and `gpu_particles`.
 
-| Category | Key Modules |
-|----------|-------------|
-| **Pipeline** | `camera`, `clustered`, `deferred`, `forward`, `renderer` |
-| **Animation** | `animation`, `animation_blending`, `skeleton`, `skinning_gpu` |
-| **Lighting** | `light`, `shadow`, `ibl_manager`, `post_fx_shader` |
-| **Geometry** | `mesh`, `culling`, `lod_generator`, `instancing` |
-| **Materials** | `material`, `texture_array`, `vertex_compression` |
-| **Effects** | `water`, `volumetric`, `particle_system` |
+`Camera` is not in this crate. `Material` and `Mesh` are re-exported from `types`. `Renderer` is re-exported from `renderer`.
 
 ```rust
-use astraweave_render::{
-    camera::Camera,
-    material::Material,
-    mesh::Mesh,
-    renderer::Renderer,
-};
+use astraweave_render::{Material, Mesh, Renderer};
 ```
 
 [View Full Documentation →](./render.md)
@@ -164,62 +152,51 @@ use astraweave_render::{
 
 ## Physics & Navigation Crates
 
-### astraweave-physics (76.8% coverage)
+### astraweave-physics
 
-Rapier3D 0.22 integration:
+Rapier3D wrapper. There is no `rigid_body`, `collider`, or `character_controller` module. `PhysicsWorld`, `CharacterController`, `RigidBodyBuilder`, and `ColliderBuilder` are in the crate root (`RigidBodyBuilder` and `ColliderBuilder` are Rapier re-exports). `PhysicsWorld::broad_phase` is `DefaultBroadPhase`.
 
-| Module | Performance | Description |
-|--------|-------------|-------------|
-| `rigid_body` | — | Physics bodies and dynamics |
-| `collider` | — | Collision shapes and detection |
-| `character_controller` | 114ns/move | Player movement |
-| `spatial_hash` | dormant (test-only) | Dormant; actual broadphase is Rapier's `DefaultBroadPhase` |
-| `async_scheduler` | — | Parallel physics stepping |
+Public modules: `spatial_hash`, `async_scheduler`, `ecs`, `projectile`, `ragdoll`, `vehicle`, `environment`, `cloth`, `deformed`, `traversal`.
+
+`SpatialHash::new` and `insert` exist. The world step uses Rapier's broadphase, not that helper.
 
 ```rust
-use astraweave_physics::{
-    rigid_body::RigidBody,
-    collider::Collider,
-    character_controller::CharacterController,
-};
+use astraweave_physics::{CharacterController, PhysicsWorld};
+use glam::vec3;
+
+let mut physics = PhysicsWorld::new(vec3(0.0, -9.81, 0.0));
+let _body = physics.create_ground_plane(vec3(50.0, 0.0, 50.0), 1.0);
+physics.step();
+let controller = CharacterController::new(0.3, 1.8);
+let _grounded = controller.is_grounded();
 ```
 
 [View Full Documentation →](./physics.md)
 
 ---
 
-### astraweave-fluids (94.2% coverage, 2,404 tests)
+### astraweave-fluids
 
-SPH fluid simulation (A+ grade):
+Not a game-loop solver. `PCISPHSystem` is not in the crate. See [Fluids API](./fluids.md).
 
-| Module | Description |
-|--------|-------------|
-| `solver` | SPH pressure/viscosity solver |
-| `surface_tension` | Surface tension forces |
-| `boundary` | Domain boundary handling |
-| `spatial_hash` | Neighbor lookup acceleration |
+There is no `solver`, `surface_tension`, `boundary`, or `spatial_hash` module. Public modules include `anisotropic`, `caustics`, `emitter`, `foam`, `renderer`, `sdf`, `underwater`, `water_effects`, and `waterfall`. `FluidSystem` and `Particle` are in `lib.rs`.
 
 ```rust
-use astraweave_fluids::{FluidWorld, Particle, FluidConfig};
+use astraweave_fluids::{FluidSystem, Particle};
 ```
 
 [View Full Documentation →](./fluids.md) | [Fluids Guide →](../core-systems/fluids.md)
 
 ---
 
-### astraweave-nav (72.1% coverage)
+### astraweave-nav
 
 Navigation and pathfinding:
 
-| Module | Description |
-|--------|-------------|
-| `navmesh` | Navigation mesh generation |
-| `pathfinding` | A* and hierarchical planning |
-| `portal_graph` | Room-to-room navigation |
-| `agent` | Navigation agent component |
+The crate has a private `tiles` module. It re-exports `NavTiles` and `NavMesh` from the crate root. There is no `navmesh`, `pathfinding`, `portal_graph`, or `agent` module. `NavMesh::find_path` returns `Vec<Vec3>`. `NavTiles::query_path` is the hashed route.
 
 ```rust
-use astraweave_nav::{Navmesh, PathQuery, Agent};
+use astraweave_nav::{NavMesh, NavTiles};
 ```
 
 [View Full Documentation →](./nav.md)
@@ -228,15 +205,11 @@ use astraweave_nav::{Navmesh, PathQuery, Agent};
 
 ## Gameplay Crates
 
-### astraweave-gameplay (68.9% coverage)
+### astraweave-gameplay
 
 Combat and game mechanics:
 
-| Module | Description |
-|--------|-------------|
-| `combat_physics` | Raycast attacks, parry, iframes |
-| `damage_system` | Damage calculation |
-| `ability_system` | Ability cooldowns and effects |
+Public modules include `combat`, `combat_physics`, `crafting`, `dialogue`, `items`, `quests`, and `stats`. There is no `damage_system` or `ability_system` module.
 
 ```rust
 use astraweave_gameplay::combat_physics::perform_attack_sweep;
@@ -246,19 +219,13 @@ use astraweave_gameplay::combat_physics::perform_attack_sweep;
 
 ---
 
-### astraweave-terrain (71.5% coverage)
+### astraweave-terrain
 
 Procedural terrain generation:
 
-| Module | Description |
-|--------|-------------|
-| `voxel_mesh` | Marching cubes (256 configurations) |
-| `biome` | Biome distribution and blending |
-| `chunk` | Terrain chunking (15.06ms/chunk) |
+There is no `voxel_mesh` module. The crate does not record a `15.06ms/chunk` figure. Public modules include `biome`, `chunk`, `meshing`, `marching_cubes_tables`, and `voxel_data`.
 
-```rust
-use astraweave_terrain::{VoxelMesh, Biome, TerrainChunk};
-```
+`Biome` and `TerrainChunk` are re-exported from `astraweave-terrain/src/lib.rs` (`pub use biome::Biome` and `pub use chunk::TerrainChunk`). There is no `VoxelMesh` type in `lib.rs`.
 
 *Generate rustdoc:* `cargo doc -p astraweave-terrain --no-deps --open` | [Terrain Guide →](../core-systems/terrain.md)
 
@@ -266,25 +233,32 @@ use astraweave_terrain::{VoxelMesh, Biome, TerrainChunk};
 
 ## Infrastructure Crates
 
-### astraweave-audio (69.2% coverage)
+### astraweave-audio
 
-Spatial audio with rodio:
-
-| Module | Description |
-|--------|-------------|
-| `audio_engine` | 4-bus mixer system (master, music, SFX, voice) |
-| `spatial` | 3D audio positioning |
-| `crossfade` | Music transitions |
+Public modules are `engine`, `voice`, and `dialogue_runtime`. There is no `audio_engine`, `spatial`, or `crossfade` module. `AudioEngine`, `ListenerPose`, `MusicTrack`, `PanMode`, and `EmitterId` are re-exported from `engine`. Volumes are `set_master_volume`, `set_music_volume`, `set_sfx_volume`, and `set_voice_volume`. `play_music` takes a `MusicTrack` and a `crossfade_sec: f32`.
 
 ```rust
-use astraweave_audio::{AudioEngine, SpatialAudio};
+use astraweave_audio::{AudioEngine, ListenerPose};
+use glam::vec3;
+
+fn open() -> anyhow::Result<()> {
+    let mut audio = AudioEngine::null()?;
+    audio.set_master_volume(1.0);
+    audio.update_listener(ListenerPose {
+        position: vec3(0.0, 0.0, 0.0),
+        forward: vec3(1.0, 0.0, 0.0),
+        up: vec3(0.0, 1.0, 0.0),
+    });
+    audio.tick(1.0 / 60.0);
+    Ok(())
+}
 ```
 
 [View Full Documentation →](./audio.md)
 
 ---
 
-### astraweave-scene (74.6% coverage)
+### astraweave-scene
 
 World streaming and partitioning:
 
@@ -293,9 +267,7 @@ World streaming and partitioning:
 | `streaming` | Async cell loading |
 | `partition` | World partitioning |
 
-```rust
-use astraweave_scene::{WorldCell, CellLoader};
-```
+`WorldCell` and `CellLoader` were not found as public types in `astraweave-scene/src/lib.rs` during this pass. Use `cargo doc -p astraweave-scene --no-deps`.
 
 *Generate rustdoc:* `cargo doc -p astraweave-scene --no-deps --open`
 
@@ -314,16 +286,7 @@ cargo doc --package astraweave-ai --all-features --no-deps --open
 cargo doc --package astraweave-core --document-private-items --no-deps --open
 ```
 
-## Coverage by Tier
-
-| Tier | Crates | Avg Coverage | Status |
-|------|--------|--------------|--------|
-| **Tier 1** (Critical) | ecs, core, ai, render | 75.3% | ✅ Production |
-| **Tier 2** (Important) | physics, nav, gameplay | 72.6% | ✅ Production |
-| **Tier 3** (Supporting) | audio, scene, terrain | 71.8% | ✅ Production |
-| **Tier 4** (Specialized) | fluids, llm, prompts | 71.5% | ✅ Production |
-
-See [Master Coverage Report](../performance/methodology.md#coverage) for detailed breakdown.
+Per-crate coverage tiers are not repeated here. The dated whole-workspace figure is on the engine status page.
 
 ## See Also
 

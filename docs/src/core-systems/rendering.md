@@ -568,10 +568,10 @@ render_ctx.mark_material_dirty(material_id);
 
 ## Related Documentation
 
-- [Asset Pipeline](../pipeline/assets.md) - Asset loading and preprocessing
-- [Scene Graph](../ecs/scene-graph.md) - Scene organization and transforms
-- [Editor Integration](../editor/rendering.md) - Editor viewport rendering
-- [Performance Guide](../optimization/rendering.md) - Advanced optimization techniques
+- [Asset Pipeline](./rendering.md) - Asset loading and preprocessing
+- [Scene Graph](../architecture/ecs.md) - Scene organization and transforms
+- [Editor Integration](./rendering.md) - Editor viewport rendering
+- [Performance Guide](../performance/optimization.md) - Advanced optimization techniques
 
 ## API Reference
 

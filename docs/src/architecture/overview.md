@@ -14,16 +14,10 @@ This page is a conceptual orientation. For evidence-grounded, version-controlled
 detail on how the engine actually works, the architecture trace campaign produces
 authoritative references:
 
-* **[Interactive workspace map](https://lazyxeon.github.io/AstraWeave/architecture/)** — Cytoscape.js visualisation of 71 production
-  crates and 188 dependencies with blast-radius highlighting, an 8-step guided
-  tour, dependency-path finder, focus mode, and per-crate trace links.
-* **[`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md)** — 2,500-line consolidated synthesis covering crate dependency
-  graph, structural axioms, dormant-code inventory, integration seams, data-flow
-  paths, and 23 cross-cutting open questions.
-* **[13 per-subsystem traces](https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture)** under `docs/architecture/` — each a forensic reference with file map,
-  conflict map, decision log, invariants, and open questions. Trace docs are
-  treated as part of the production contract (per `CLAUDE.md`) — when subsystem
-  code changes, the trace updates in the same commit.
+* **[Interactive workspace map](https://lazyxeon.github.io/AstraWeave/architecture/)** — Cytoscape.js view of the workspace graph.
+  The member list is the root `Cargo.toml`. On this tree it has 140 unique paths.
+* **[`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md)** — consolidated crate notes. Header counts there are a snapshot. The long body still contains older campaign notes. The [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page says which sentence wins when they disagree.
+* **[Subsystem traces](https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture)** — the generated table in `CLAUDE.md` lists 31 traces. The older "13 traces" figure is the original campaign.
 
 The trace toolkit (5 prompt templates under `docs/architecture/_meta/`) makes the
 methodology re-runnable as the codebase evolves.

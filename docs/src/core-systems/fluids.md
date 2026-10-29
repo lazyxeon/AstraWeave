@@ -12,50 +12,26 @@
 
 # Fluid Simulation (Research Surface)
 
-```admonish warning title="Research surface, not a production-wired engine system"
-Per `ARCHITECTURE_MAP.md` §5.1, `astraweave-fluids` is **dormant for runtime engine use**:
-
-* **~84.5K LoC** across 35 source files plus 8 WGSL shaders — the single largest
-  dormant-code reservoir in the workspace.
-* The **only** workspace consumer outside the crate itself is
-  `examples/fluids_demo/src/main.rs:18-21`.
-* **No production game-loop crate** depends on `astraweave-fluids`. Specifically,
-  `astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`,
-  `astraweave-terrain`, and `astraweave-ecs` all lack the dependency.
-* `astraweave-fluids/src/editor.rs` (5,823 LoC) is forward-design infrastructure —
-  the visual editor (`tools/aw_editor`) does not depend on `astraweave-fluids`,
-  verified 2026-05-12.
-
-The crate exists, builds, and ships with comprehensive tests (2,404 tests / 600+ inline
-plus an integration suite — benchmark-caliber by per-trace §10 grade). It is the
-clearest example of the workspace's *in-design-but-tested* dormant-code category.
-```
+`astraweave-fluids` is in the workspace. The [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page calls it the deprecated accent remnant, not a game-loop solver. `examples/fluids_demo` is a consumer. Line-count and test-count figures from the May 2026 trace were not re-counted here, and they predate the W.1 removal recorded in the crate's `Cargo.toml`.
 
 ## What's in the crate
 
 <!-- Source: fluids.md §1, §5 -->
 
-`astraweave-fluids` carries **five parallel solver and manager surfaces** that have not
-been unified:
+`FluidSystem` is a public type in `astraweave-fluids/src/lib.rs` (`FluidSystem::new`).
+`WaterEffectsManager` is in `water_effects.rs`. `examples/fluids_demo` registers
+`LaboratoryScenario` and `OceanScenario` only.
 
-| Surface | Role |
-|---|---|
-| `FluidSystem` | `lib.rs` PBD GPU pipeline |
-| `PCISPHSystem` | Standalone PCISPH solver |
-| `WaterEffectsManager` | Visual coordinator |
+`PCISPHSystem` / `PcisphSystem` is not in the crate. The `Cargo.toml` comment records
+that the `experimental` modules, including that solver, were removed in W.1
+(2026-06-20), and that `simd_ops` was removed with them. There is no `experimental`
+feature key left. `parallel` still exists and the same comment says it gates nothing.
 
-Plus auxiliary types: `WaterBuildingManager`, `CausticsSystem`, `WaterQualityPreset`
-(Low/Medium/High/Ultra/Custom).
-
-The largest single file is `simd_ops.rs` at 39,554 LoC; second-largest is
-`editor.rs` at 5,823 LoC.
-
-## Status grade
-
-Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` (2026-05-12), the audit
-rates current state at **"Grade B (Good for games, insufficient for research)"** — the
-intent is research-grade simulation; the existing surface has comprehensive tests but
-no production-engine integration path.
+Line counts and test totals on older copies of this page were not re-counted.
+The [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md)
+page calls `astraweave-fluids` the deprecated accent remnant, not a game-loop solver.
+The greybox local field is `astraweave-localsim`. The view-side water crate is
+`astraweave-water`.
 
 ## Why this matters
 
@@ -89,4 +65,4 @@ This is the entire production exposure of the subsystem.
 * [`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md) §5.1 (dormant in-design inventory),
   §4.4 (wired-beats-tested axiom), §14 (Q12 open question).
 * **Interactive workspace map** — the *Dormant Surface Inventory* story preset
-  highlights fluids along with the other ~200K LoC of dormant-but-designed surface.
+  highlights fluids along with other surface that is present and not on the sim tick.

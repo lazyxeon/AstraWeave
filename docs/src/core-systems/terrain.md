@@ -1,8 +1,7 @@
 # Terrain System
 
-> **Status**: Production Ready  
-> **Coverage**: 71.5%  
-> **Crate**: `astraweave-terrain`
+> **Crate**: `astraweave-terrain`  
+> **Status**: see the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) terrain row. The 71.5% coverage figure is not repeated.
 
 AstraWeave's terrain system provides procedural terrain generation using noise functions, voxel data, and biome classification with full LOD support and async streaming.
 
@@ -673,7 +672,7 @@ The `BlueprintOverlay` projects zone polygons as wireframe outlines into the 3D 
 
 ## See Also
 
-- [API Reference](../api/terrain.md) - Detailed API documentation
+- [API Reference](../api/index.md) - Detailed API documentation
 - [Fluids System](./fluids.md) - Water integration
 - [Physics System](./physics.md) - Collision terrain
 - [Navigation](./navigation.md) - Navmesh from terrain

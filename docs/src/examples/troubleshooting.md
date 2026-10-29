@@ -1,78 +1,37 @@
 # Troubleshooting Examples
 
-This guide helps resolve common issues when running AstraWeave examples.
+## Packages
 
-## Working Examples
+These packages exist. A default `hello_companion` run does not panic.
 
-The following examples are verified to build and run:
+| Package | Command |
+| --- | --- |
+| `hello_companion` | `cargo run -p hello_companion --release` |
+| `fluids_demo` | `cargo run -p fluids_demo --release` |
+| `physics_demo3d` | `cargo run -p physics_demo3d --release` |
+| `navmesh_demo` | `cargo run -p navmesh_demo --release` |
+| `audio_spatial_demo` | `cargo run -p audio_spatial_demo --release` |
+| `adaptive_boss` | `cargo run -p adaptive_boss --release` |
+| `ipc_loopback` | `cargo run -p ipc_loopback --release` |
+| `shadow_csm_demo` | `cargo run -p shadow_csm_demo --release` |
 
-| Example | Command | Notes |
-|---------|---------|-------|
-| hello_companion | `cargo run -p hello_companion --release` | Expected panic (demonstrates tool validation) |
-| fluids_demo | `cargo run -p fluids_demo --release` | Interactive PCISPH fluid simulation |
-| unified_showcase | `cargo run -p unified_showcase --release` | wgpu rendering with shadows, terrain |
-| physics_demo3d | `cargo run -p physics_demo3d --release` | Rapier3D physics with character controller |
-| navmesh_demo | `cargo run -p navmesh_demo --release` | NavMesh baking and A* pathfinding |
-| audio_spatial_demo | `cargo run -p audio_spatial_demo --release` | 3D spatial audio |
-| adaptive_boss | `cargo run -p adaptive_boss --release` | Director AI for boss encounters |
-| ipc_loopback | `cargo run -p ipc_loopback --release` | IPC communication test |
+`unified_showcase` is not a package. See [Rendering showcase](./unified-showcase.md).
 
-## Known Compilation Issues
+This page does not keep a "known broken" list. Compilation of `debug_overlay`, `ui_controls_demo`, `visual_3d`, `rhai_authoring`, and `npc_town_demo` was not re-run for this edit. Those directories are still workspace members.
 
-Some examples have compilation issues due to API evolution:
-
-| Example | Issue | Status |
-|---------|-------|--------|
-| debug_overlay | egui 0.32 API changes | Needs update |
-| ui_controls_demo | egui/winit version mismatches | Needs update |
-| visual_3d | winit 0.30 migration | Needs update |
-| rhai_authoring | Rhai sync/send traits | Needs refactor |
-| npc_town_demo | Multiple API mismatches | Needs update |
-
-## Build Aliases
-
-Use these workspace aliases for safer builds:
+## Build
 
 ```bash
 cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai
-cargo check --workspace
-cargo clippy --workspace --all-features -- -D warnings
+cargo run -p hello_companion --release
 ```
 
-## Common Errors
+`hello_companion` without `--features visual` does not open a window. A missing graphics adapter is a failure of a windowed binary, not of the default companion demo.
 
-### "No suitable graphics adapter"
+`cargo editor` runs `aw_editor`. The aliases in `.cargo/config.toml` are `editor`, `editor-release`, and `editor-dev`.
 
-```
-thread 'main' panicked at 'No suitable graphics adapter found'
-```
+## Related
 
-**Solution**: Update graphics drivers or use software rendering:
-```bash
-export WGPU_BACKEND=gl
-cargo run -p hello_companion
-```
-
-### "AI model not found"
-
-```
-Error: Could not load AI model
-```
-
-**Solution**: Examples use mock AI by default. This panic is expected when no LLM is configured.
-
-### Vulkan Not Found (Linux)
-
-```bash
-sudo apt-get install mesa-vulkan-drivers vulkan-tools
-```
-
-### Missing Build Tools (Windows)
-
-Install Visual Studio with C++ build tools.
-
-## Getting Help
-
-- [Full Troubleshooting Guide](../resources/troubleshooting.md)
+- [Examples index](./index.md)
+- [Troubleshooting](../resources/troubleshooting.md)
 - [FAQ](../resources/faq.md)
-- [Community](../resources/community.md)

@@ -4,167 +4,32 @@ This page outlines the hardware and software requirements for developing and run
 
 ## Table of Contents
 
-- [Minimum Requirements](#minimum-requirements)
-- [Recommended Requirements](#recommended-requirements)
-- [GPU Requirements](#gpu-requirements)
+- [What this repository actually pins](#what-this-repository-actually-pins)
 - [Software Dependencies](#software-dependencies)
 - [Platform-Specific Notes](#platform-specific-notes)
 
-## Minimum Requirements
+## What this repository actually pins
 
-These are the bare minimum specifications to run AstraWeave applications:
+Rust is **1.89.0**, pinned in `rust-toolchain.toml`. Replay hashes are compared on the GitHub-hosted Linux, Windows, and macOS runners named in the determinism workflow. That is not a minimum OS version and not a claim that every windowed example has been run on all three.
 
-### Hardware
+No measured minimum CPU, RAM, or GPU is published here. The frame-budget sample and its adapter are on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page. The default `hello_companion` run is headless. Windowed crates need a device wgpu can open (Vulkan, Metal, or Direct3D 12, depending on the OS).
 
-| Component | Specification |
-|-----------|---------------|
-| **CPU** | Quad-core processor (Intel i5-6600K / AMD Ryzen 3 1300X or equivalent) |
-| **RAM** | 8 GB |
-| **GPU** | NVIDIA GTX 1060 (6GB) / AMD RX 580 (8GB) / Intel Arc A380 |
-| **VRAM** | 4 GB |
-| **Storage** | 2 GB available space (SSD recommended) |
-| **Display** | 1920x1080 resolution |
+Older copies of this page listed specific cards (GTX 1060, RTX 3060, and others) and OS point releases. Those lists were not measured for this tree and are removed.
 
-```admonish warning
-Minimum requirements may result in reduced performance. For optimal experience, see recommended specifications.
-```
+## Confirm the install
 
-### Operating System
-
-- **Windows**: Windows 10 (64-bit) version 1909 or later
-- **Linux**: Any modern distribution with kernel 5.4+ (Ubuntu 20.04, Fedora 33, etc.)
-- **macOS**: macOS 10.15 (Catalina) or later
-
-## Recommended Requirements
-
-For optimal performance and development experience:
-
-### Hardware
-
-| Component | Specification |
-|-----------|---------------|
-| **CPU** | 8-core processor (Intel i7-9700K / AMD Ryzen 7 3700X or better) |
-| **RAM** | 16 GB or more |
-| **GPU** | NVIDIA RTX 3060 / AMD RX 6700 XT / Intel Arc A750 or better |
-| **VRAM** | 8 GB or more |
-| **Storage** | 10 GB available space on NVMe SSD |
-| **Display** | 2560x1440 or higher resolution |
-
-### Operating System
-
-- **Windows**: Windows 11 (64-bit)
-- **Linux**: Ubuntu 22.04 LTS / Fedora 38 or later
-- **macOS**: macOS 13 (Ventura) or later
-
-```admonish tip
-More RAM and VRAM allow for larger scenes, more AI companions, and higher-quality assets.
-```
-
-## GPU Requirements
-
-AstraWeave is GPU-accelerated and requires modern graphics hardware with compute shader support.
-
-### Graphics API Support
-
-Your GPU must support one of the following:
-
-| Platform | Graphics API | Minimum Version |
-|----------|--------------|-----------------|
-| **Windows** | DirectX 12 | Feature Level 12.0 |
-| **Windows/Linux** | Vulkan | 1.2 |
-| **macOS** | Metal | Metal 2 |
-
-### Supported GPUs
-
-#### NVIDIA
-
-**Minimum**:
-- GTX 1060 (6GB)
-- GTX 1070
-- GTX 1660 Ti
-
-**Recommended**:
-- RTX 3060 or better
-- RTX 4060 or better
-- RTX A2000 or better (workstation)
-
-**Optimal**:
-- RTX 4070 Ti or better
-- RTX 4080 / 4090
-- RTX A4000 or better (workstation)
-
-#### AMD
-
-**Minimum**:
-- RX 580 (8GB)
-- RX 5500 XT (8GB)
-- RX 6600
-
-**Recommended**:
-- RX 6700 XT or better
-- RX 7600 XT or better
-
-**Optimal**:
-- RX 7800 XT or better
-- RX 7900 XTX
-- Radeon Pro W6800 or better (workstation)
-
-#### Intel
-
-**Minimum**:
-- Arc A380
-
-**Recommended**:
-- Arc A750 or better
-- Arc A770
-
-**Optimal**:
-- Arc A770 (16GB)
-
-```admonish note
-Intel Arc GPUs require the latest drivers for optimal performance. Visit [Intel's driver page](https://www.intel.com/content/www/us/en/download/726609/intel-arc-graphics-windows-dch-driver.html) for updates.
-```
-
-### Integrated Graphics
-
-Integrated GPUs are **not recommended** but may work for basic development:
-
-- Intel Iris Xe (11th gen or later)
-- AMD Radeon Graphics (Ryzen 5000 series or later)
-
-```admonish warning
-Integrated graphics will have significant performance limitations. Dedicated GPU strongly recommended.
-```
-
-### Verifying GPU Support
-
-#### Windows
-
-```powershell
-# Check DirectX version
-dxdiag
-
-# Check GPU with PowerShell
-Get-WmiObject Win32_VideoController | Select-Object Name, DriverVersion
-```
-
-#### Linux
+Headless companion, no GPU:
 
 ```bash
-# Check Vulkan support
-vulkaninfo | grep "deviceName"
-
-# Check GPU details
-lspci | grep -i vga
-nvidia-smi  # For NVIDIA GPUs
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustc --version
+cargo run -p hello_companion --release
 ```
 
-#### macOS
+`rustc --version` should print 1.89.0. The walkthrough of that binary is [Your first companion](./first-companion.md).
 
-```bash
-# Check Metal support
-system_profiler SPDisplaysDataType
-```
+Windowed binaries (`shadow_csm_demo`, `aravath_greybox`, `physics_demo3d`, `fluids_demo`) need the graphics packages listed in the [quick start](./quick-start.md). [`docs/current/ARAVATH_GREYBOX_PROGRESS.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ARAVATH_GREYBOX_PROGRESS.md) records that `c++` on that machine is Clang 18, which selects a GCC 14 toolchain whose libstdc++ headers are not installed. Cargo builds of `basis-universal-sys` (pulled in by `astraweave-render`) need `CXX=g++`.
 
 ## Software Dependencies
 
@@ -172,7 +37,7 @@ system_profiler SPDisplaysDataType
 
 #### Required
 
-- **Rust**: Version 1.75.0 or later
+- **Rust**: 1.89.0, pinned in `rust-toolchain.toml`
   - Install via [rustup](https://rustup.rs/)
   - Verify: `rustc --version`
 
@@ -330,75 +195,21 @@ Always use the latest drivers for optimal performance:
 
 - **Security Settings**: May need to allow apps in System Preferences on first run
 
-## Performance Expectations
-
-### Development Workloads
-
-| Specification | Compile Time (full rebuild) | Test Suite Runtime | Editor Performance |
-|---------------|----------------------------|--------------------|--------------------|
-| **Minimum** | 5-10 minutes | 2-3 minutes | Playable (30+ FPS) |
-| **Recommended** | 2-4 minutes | 1-2 minutes | Smooth (60+ FPS) |
-| **Optimal** | 1-2 minutes | <1 minute | Excellent (120+ FPS) |
-
-### Runtime Performance
-
-Example scene: 10 AI companions with full perception and emotion systems
-
-| Specification | Average FPS | 1% Low FPS | Max Companions |
-|---------------|-------------|------------|----------------|
-| **Minimum** | 30-45 | 25-30 | 10-20 |
-| **Recommended** | 60-90 | 50-60 | 50-100 |
-| **Optimal** | 120-144+ | 90-100 | 200-500+ |
-
-```admonish note
-Performance varies based on scene complexity, AI behavior count, and graphics settings.
-```
-
-## Checking Your System
-
-Run this command to verify your setup:
+## Check the toolchain
 
 ```bash
-# Clone and run the system check example
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
-cargo run --example system_check
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustc --version
+cargo run -p hello_companion --release
 ```
 
-The system check will report:
-- Rust version
-- GPU capabilities
-- Graphics API support
-- Available memory
-- Recommended settings
+`rustc --version` inside the repo should be 1.89.0. There is no `system_check` example. Compile times and FPS tables that used to sit here were not measured for this tree.
 
-```admonish success
-If all checks pass, your system is ready for AstraWeave development!
-```
+## Next steps
 
-## Upgrading Your System
-
-If your system doesn't meet requirements:
-
-### Priority Upgrades
-
-1. **GPU**: Biggest impact on runtime performance
-2. **RAM**: Enables larger scenes and faster compilation
-3. **SSD**: Dramatically reduces build times
-4. **CPU**: Improves compilation speed and AI performance
-
-### Budget Recommendations
-
-- **Entry Level** ($300-500): Used RTX 3060 or RX 6700 XT + 16GB RAM
-- **Mid Range** ($800-1200): RTX 4060 Ti or RX 7700 XT + 32GB RAM + NVMe SSD
-- **High End** ($2000+): RTX 4080 or RX 7900 XTX + 64GB RAM + Fast CPU
-
-## Next Steps
-
-Once your system meets the requirements:
-
-1. [Install AstraWeave](installation.md)
+1. [Install](installation.md)
 2. [Build from source](../dev/building.md)
-3. [Create your first companion](first-companion.md)
+3. [First companion](first-companion.md)
 
-If you have questions about requirements, join our [Discord community](https://discord.gg/astraweave).
+Questions go to [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues).

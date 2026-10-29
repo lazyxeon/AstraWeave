@@ -28,30 +28,19 @@ AstraWeave is in active development (pre-1.0). Core systems are functional and t
 
 ### What platforms does AstraWeave support?
 
-- **Windows**: Full support (primary development platform)
-- **Linux**: Full support
-- **macOS**: Supported (Apple Silicon native)
-- **WebAssembly**: Experimental (rendering only)
-- **Consoles**: Planned for post-1.0
+Replay hashes run on Linux, Windows, and macOS. That matrix is the supported determinism check. This page does not document a WebAssembly or console target.
 
 ## AI System
 
 ### Which LLMs does AstraWeave support?
 
-AstraWeave uses Ollama for local LLM inference. Recommended models:
-
-| Model | Use Case | VRAM Required |
-|-------|----------|---------------|
-| `hermes2-pro-mistral` | Tool calling, dialogue | 8GB |
-| `phi3:mini` | Lightweight inference | 4GB |
-| `llama3:8b` | General purpose | 8GB |
-| `mistral:7b` | Fast inference | 8GB |
+Local models only. `SystemOrchestratorConfig::default` in `astraweave-ai` uses `phi3:medium` when `OLLAMA_MODEL` is unset. `hello_companion` LLM modes use `DEFAULT_QWEN_INSTRUCT_MODEL` (`qwen3.5:4b`). This page does not publish a VRAM table.
 
 ### Can I use cloud LLMs like GPT-4 or Claude?
 
 Not currently. AstraWeave is designed for local inference to ensure:
 - Deterministic behavior
-- Low latency (8ms budget per tick)
+- The frame budget is the one on the engine status page, not an 8 ms tick cap stated here
 - Privacy (no data leaves the machine)
 - Offline gameplay
 
@@ -61,39 +50,21 @@ Cloud support may be added post-1.0 for specific use cases.
 
 All AI actions go through the Tool Validation System:
 
-```rust
-let tool_call = ToolCall {
-    tool: "move_to",
-    params: json!({ "target": [10.0, 0.0, 5.0] }),
-};
-
-match validator.validate(&tool_call, &world_state) {
-    ToolResult::Success(action) => execute(action),
-    ToolResult::Blocked(reason) => handle_failure(reason),
-}
-```
-
-This prevents AI from cheating - it can only perform actions that would be valid for a player.
+`hello_companion` calls `validate_and_execute` from `astraweave-core` on a `PlanIntent`. That function is the validation step the example actually runs. The `ToolCall` / `ToolResult::Success` snippet this page used to show is not that API.
 
 ### Why does my AI companion not respond?
 
 Common causes:
 1. **Ollama not running**: Start with `ollama serve`
-2. **Model not pulled**: Run `ollama pull hermes2-pro-mistral`
+2. **Model not pulled**: The orchestrator default name is `phi3:medium`. `hello_companion --llm` and `--hybrid` ask for `qwen3.5:4b`. Pull the model you enabled.
 3. **Port conflict**: Check Ollama is on port 11434
-4. **Timeout**: AI has an 8ms budget per tick; complex queries may timeout
+4. **Features**: A default `hello_companion` build does not call a model. `--bt`, `--utility`, and `--ensemble` need `--features llm`. `--llm` and `--hybrid` need `--features llm,ollama`.
 
 ## Performance
 
 ### What are the minimum system requirements?
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| CPU | 4 cores, 2.5 GHz | 8 cores, 3.5 GHz |
-| RAM | 8 GB | 16 GB |
-| GPU | GTX 1060 / RX 580 | RTX 3070 / RX 6800 |
-| VRAM | 4 GB | 8 GB (for LLM) |
-| Storage | 10 GB | 50 GB SSD |
+This repository does not publish a measured minimum CPU, RAM, or GPU. The frame sample and its adapter are on the engine status page. The default `hello_companion` binary is headless. Windowed crates need a GPU wgpu can open.
 
 ### Why is my game running slowly?
 
@@ -102,15 +73,9 @@ Common causes:
 3. **Physics overhead**: Reduce collision complexity
 4. **AI agents**: Limit concurrent planning operations
 
-### How do I profile my game?
+### How do I profile?
 
-AstraWeave integrates with Tracy profiler:
-
-```bash
-cargo run -p your_game --release --features profiling
-```
-
-See [Performance Optimization](../dev/performance.md) for details.
+`astraweave-profiling` enables `tracy-client` only with its `profiling` feature. That feature is off by default. `examples/profiling_demo` is the package that opts in. The GPU frame capture command is on the engine status page.
 
 ## ECS Architecture
 
@@ -126,28 +91,17 @@ It's inspired by Bevy but optimized for AI-native gameplay.
 
 ### How do I create entities?
 
+The examples use the legacy world:
+
 ```rust
-let entity = world.spawn((
-    Transform::from_xyz(0.0, 1.0, 0.0),
-    RigidBody::Dynamic,
-    Collider::sphere(0.5),
-    Health { current: 100.0, max: 100.0 },
-));
+let player = world.spawn("Player", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
 ```
+
+That is `astraweave_core::World::spawn`, as called from `examples/hello_companion`. `astraweave_ecs::World` is a different type. The tuple-spawn form is not this API.
 
 ### How do I query entities?
 
-```rust
-fn damage_system(
-    mut query: Query<(&mut Health, &Transform), With<Enemy>>,
-) {
-    for (mut health, transform) in query.iter_mut() {
-        if in_danger_zone(transform) {
-            health.current -= 10.0;
-        }
-    }
-}
-```
+`astraweave_ecs` exports `Query`. It does not use the Bevy `Query<(&mut T, &U), With<Marker>>` form. Read `astraweave-ecs/src/lib.rs` or `cargo doc -p astraweave-ecs --no-deps`.
 
 ## Building and Development
 
@@ -174,7 +128,7 @@ Subsequent builds are much faster due to incremental compilation.
 ```bash
 cargo run -p hello_companion --release
 cargo run -p physics_demo3d --release
-cargo run -p unified_showcase --release
+cargo run -p shadow_csm_demo --release
 ```
 
 ### How do I contribute?
@@ -187,9 +141,9 @@ See [Contributing Guide](../dev/contributing.md). In brief:
 
 ## Troubleshooting
 
-### "LosBlocked" error in hello_companion
+### hello_companion exits or prints a validation error
 
-This is expected behavior! The example demonstrates that AI cannot perform invalid actions. The companion tries to move but line-of-sight is blocked, proving the validation system works.
+A default run exits 0. It prints `Execution failed: line of sight blocked. Continuing...`. That text is `EngineError::LosBlocked` from `astraweave-core`, not a panic, and the literal `LosBlocked` does not appear in `examples/hello_companion`. See [Hello Companion](../examples/hello-companion.md).
 
 ### Shader compilation errors
 
