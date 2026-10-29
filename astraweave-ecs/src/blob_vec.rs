@@ -60,8 +60,10 @@ pub struct BlobVec {
     capacity: usize,
     /// Memory layout of a single component
     item_layout: Layout,
-    /// Function to drop a single component
-    /// SAFETY: Must be called with a valid pointer to T
+    /// Function to drop a single component.
+    ///
+    /// SAFETY: Must be called with a valid pointer to the component type
+    /// registered at construction. Must not re-enter this `BlobVec`.
     drop_fn: Option<unsafe fn(*mut u8)>,
 }
 
@@ -419,11 +421,17 @@ impl BlobVec {
         let drop_fn = self.drop_fn;
         let item_size = self.item_layout.size();
         for _ in 0..n {
+            // `drop_fn` must not re-enter this column. Stop if `len` is already 0
+            // instead of decrementing.
+            if self.len == 0 {
+                return;
+            }
             self.len -= 1;
             if let Some(drop_fn) = drop_fn {
                 // SAFETY: The slot at the new `len` was initialized and in-bounds
                 // before the decrement. `drop_fn` matches the component type
-                // registered at construction. A panic leaves this slot outside `len`.
+                // registered at construction and must not re-enter this `BlobVec`.
+                // A panic leaves this slot outside `len`.
                 unsafe {
                     let ptr = self.data.as_ptr().add(self.len * item_size);
                     drop_fn(ptr);
