@@ -12,7 +12,11 @@ on:
       - '**/*.rs'
       - '**/*.md'
       - 'docs/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '**/Cargo.toml'
       - 'tools/benchmark-dashboard/**'
+      - '.github/actions/rust-ci-setup/**'
       - '.github/workflows/pages.yml'
   pull_request:
     branches: [ "main" ]
@@ -20,7 +24,11 @@ on:
       - '**/*.rs'
       - '**/*.md'
       - 'docs/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '**/Cargo.toml'
       - 'tools/benchmark-dashboard/**'
+      - '.github/actions/rust-ci-setup/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
     inputs:
@@ -40,15 +48,14 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write
-  pages: write
-  id-token: write
 
 env:
   MDBOOK_VERSION: '0.5.2'
   MDBOOK_SHA256: '084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d'
   MDBOOK_MERMAID_VERSION: '0.17.0'
   MDBOOK_MERMAID_SHA256: '8aced70d781830fb0e81988f081c4abdd49e056a001ae2f1e4d484e1f6385c57'
+  LYCHEE_VERSION: '0.15.1'
+  LYCHEE_SHA256: '9afdf0f48064fdcd8a8815ca6d2d9fcd43a0ef4c2edf9da23d6f7bf46a764eb8'
 
 jobs:
   build:
@@ -60,7 +67,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Install mdBook
         run: |
@@ -84,7 +91,7 @@ jobs:
         run: |
           set -euo pipefail
           mdbook build docs
-          # upload-pages-artifact omits dotfiles. Actions Pages does not run Jekyll.
+          # v5 omits dotfiles unless include-hidden-files is true. Actions Pages does not run Jekyll.
           touch docs/book/.nojekyll
           cp docs/src/robots.txt docs/book/robots.txt
           mkdir -p docs/book/assets
@@ -133,15 +140,27 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/lychee.tar.gz https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz
+          curl -fsSL -o /tmp/lychee.tar.gz \
+            "https://github.com/lycheeverse/lychee/releases/download/v${LYCHEE_VERSION}/lychee-v${LYCHEE_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${LYCHEE_SHA256}  /tmp/lychee.tar.gz" | sha256sum -c -
           tar -xzf /tmp/lychee.tar.gz -C /tmp
+          set +e
           /tmp/lychee docs/book \
-            --exclude-path docs/book/api \
             --exclude localhost \
             --exclude 127.0.0.1 \
             --exclude "file://" \
             --format markdown \
             --output link-report.md
+          status=$?
+          set -e
+          if [ -f link-report.md ]; then
+            {
+              echo "### Link Check Report"
+              echo ""
+              cat link-report.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
 
       - name: Verify the site
         run: |
@@ -162,7 +181,7 @@ jobs:
           echo "Pages site: $(find docs/book -name '*.html' | wc -l) HTML files"
 
       - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs/book
 
@@ -201,13 +220,16 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
       - name: Summary
         run: |
