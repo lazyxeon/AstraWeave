@@ -463,8 +463,8 @@ fn retired_title_hits(path: &str, text: &str) -> Vec<String> {
         let end = idx + needle.len();
         let prev_ok = idx == 0 || !is_word_byte(bytes[idx - 1]);
         let ident = bytes.get(end).copied() == Some(b'_');
-        let path_dir =
-            idx >= "projects/".len() && &lower[idx - "projects/".len()..idx] == "projects/";
+        // Byte window, not a `str` slice: `idx - 9` can sit inside a multibyte char.
+        let path_dir = bytes[..idx].ends_with(b"projects/");
         if prev_ok && !ident && !path_dir {
             let line = text[..idx].bytes().filter(|&b| b == b'\n').count() + 1;
             hits.push(format!(
@@ -637,7 +637,10 @@ fn contains_phrase_token(haystack: &str, phrase: &str) -> bool {
         return false;
     }
     let mut from = 0;
-    while let Some(rel) = lower[from..].find(phrase.as_str()) {
+    while let Some(window) = lower.get(from..) {
+        let Some(rel) = window.find(phrase.as_str()) else {
+            break;
+        };
         let idx = from + rel;
         let end = idx + needle.len();
         let prev_ok = idx == 0 || !is_word_byte(bytes[idx - 1]);
@@ -645,7 +648,16 @@ fn contains_phrase_token(haystack: &str, phrase: &str) -> bool {
         if prev_ok && next_ok {
             return true;
         }
+        // One byte later. When the match starts on a multibyte character, that
+        // byte is inside the character, so resume on the next boundary. An
+        // ASCII match is already one byte wide, so this stays `idx + 1`.
         from = idx + 1;
+        if !lower.is_char_boundary(from) {
+            let Some(ch) = lower[idx..].chars().next() else {
+                break;
+            };
+            from = idx + ch.len_utf8();
+        }
     }
     false
 }
@@ -1860,6 +1872,46 @@ mod tests {
         let hits = retired_title_hits("docs/guides/x.md", text);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].contains(":2:"));
+    }
+
+    #[test]
+    fn retired_title_lookbehind_is_byte_safe() {
+        let hits = retired_title_hits("docs/guides/x.md", "\u{20AC}123456 Veilweaver");
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].contains("docs/guides/x.md:1:"), "{hits:?}");
+        assert!(hits[0].contains("retired game title"), "{hits:?}");
+
+        let path = retired_title_hits("docs/guides/x.md", "\u{20AC}projects/veilweaver");
+        assert!(path.is_empty(), "{path:?}");
+
+        assert!(retired_title_hits("docs/guides/x.md", "projects/veilweaver").is_empty());
+        assert!(retired_title_hits("docs/guides/x.md", "Projects/veilweaver").is_empty());
+        assert!(retired_title_hits("docs/guides/x.md", "archive/projects/veilweaver/").is_empty());
+        assert!(retired_title_hits("docs/guides/x.md", "veilweaver_demo").is_empty());
+        assert!(retired_title_hits("docs/guides/x.md", "veilweaver_").is_empty());
+        let game = retired_title_hits("docs/guides/x.md", "The Veilweaver game");
+        assert_eq!(game.len(), 1, "{game:?}");
+        assert!(game[0].contains(":1:"), "{game:?}");
+        let bare = retired_title_hits("README.md", "Veilweaver");
+        assert_eq!(bare.len(), 1, "{bare:?}");
+        assert!(bare[0].starts_with("README.md:1:"), "{bare:?}");
+    }
+
+    #[test]
+    fn phrase_token_search_resumes_on_a_char_boundary() {
+        assert!(!contains_phrase_token("a\u{00E9}x", "\u{00E9}"));
+        assert!(!contains_phrase_token("a\u{00E9}", "\u{00E9}"));
+        assert!(contains_phrase_token("a\u{00E9}\u{00E9}", "\u{00E9}"));
+        assert!(contains_phrase_token("\u{00E9}", "\u{00E9}"));
+        assert!(contains_phrase_token("x \u{00E9} y", "\u{00E9}"));
+        assert!(contains_phrase_token(
+            "The median GPU frame is 3.117 ms.",
+            "median"
+        ));
+        assert!(contains_phrase_token("measured", "measured"));
+        assert!(!contains_phrase_token("unmeasured", "measured"));
+        assert!(contains_phrase_token("The sample was 3.117 ms.", "was"));
+        assert!(!contains_phrase_token("unwashed", "was"));
     }
 
     #[test]
