@@ -11,7 +11,7 @@ The primary home for AstraWeave development:
 | Resource | Description |
 |----------|-------------|
 | [Repository](https://github.com/astraweave/astraweave) | Source code, issues, and pull requests |
-| [Discussions](https://github.com/astraweave/astraweave/discussions) | Q&A, ideas, and general discussion |
+| [Issues](https://github.com/astraweave/astraweave/issues) | Q&A, ideas, and general discussion |
 | [Issues](https://github.com/astraweave/astraweave/issues) | Bug reports and feature requests |
 | [Projects](https://github.com/orgs/astraweave/projects) | Development roadmap and tracking |
 
@@ -41,7 +41,6 @@ Join our Discord server for real-time chat:
    - [FAQ](faq.md)
    - [Troubleshooting](troubleshooting.md)
    - [GitHub Issues](https://github.com/astraweave/astraweave/issues)
-   - [GitHub Discussions](https://github.com/astraweave/astraweave/discussions)
 
 2. **Prepare your question**:
    - Describe what you're trying to do
@@ -54,10 +53,10 @@ Join our Discord server for real-time chat:
 | Question Type | Best Channel |
 |--------------|--------------|
 | Quick questions | Discord #help |
-| Detailed technical questions | GitHub Discussions |
+| Detailed technical questions | GitHub Issues |
 | Bug reports | GitHub Issues |
-| Feature requests | GitHub Issues or Discussions |
-| Security issues | security@astraweave.dev (private) |
+| Feature requests | GitHub Issues |
+| Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 
 ### How to Ask Good Questions
 
@@ -101,7 +100,7 @@ Everyone can contribute, regardless of experience level:
 | **Examples** | Create example projects |
 | **Testing** | Test pre-release versions |
 | **Translations** | Help translate documentation |
-| **Community** | Help others in Discord/Discussions |
+| **Community** | Help others in Discord or GitHub Issues |
 
 ### Getting Started
 
@@ -154,7 +153,7 @@ Share your AstraWeave projects!
    - Screenshots or video
    - Link (if public)
 
-2. **GitHub Discussions**: Create a post in the "Show and Tell" category
+2. **GitHub Issues**: Open an issue describing the project
 
 ### Featured Projects
 
@@ -165,7 +164,7 @@ Projects using AstraWeave:
 | [hello_companion](../examples/hello-companion.md) | Official demo showcasing AI companion systems |
 | [adaptive-boss](../examples/adaptive-boss.md) | Boss AI that learns and adapts to player strategies |
 
-Have a project to share? Post in [#showcase on Discord](https://discord.gg/astraweave) or open a Discussion on GitHub!
+Have a project to share? Post in [#showcase on Discord](https://discord.gg/astraweave) or open a GitHub issue!
 
 ## Events
 
@@ -268,7 +267,7 @@ Thank you to our sponsors! Interested in sponsoring AstraWeave? Contact sponsors
 | Purpose | Contact |
 |---------|---------|
 | General inquiries | hello@astraweave.dev |
-| Security issues | security@astraweave.dev |
+| Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 | Sponsorship | sponsorship@astraweave.dev |
 | Press | press@astraweave.dev |
 
