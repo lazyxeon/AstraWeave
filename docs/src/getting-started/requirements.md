@@ -16,6 +16,21 @@ No measured minimum CPU, RAM, or GPU is published here. The frame-budget sample 
 
 Older copies of this page listed specific cards (GTX 1060, RTX 3060, and others) and OS point releases. Those lists were not measured for this tree and are removed.
 
+## Confirm the install
+
+Headless companion, no GPU:
+
+```bash
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustc --version
+cargo run -p hello_companion --release
+```
+
+`rustc --version` should print 1.89.0. The walkthrough of that binary is [Your first companion](./first-companion.md).
+
+Windowed binaries (`shadow_csm_demo`, `aravath_greybox`, `physics_demo3d`, `fluids_demo`) need a C++ compiler and the graphics packages listed in the [quick start](./quick-start.md). On Linux that is `g++` (package `g++` or `build-essential`) plus the X11, Wayland, ALSA, and Vulkan `-dev` packages in that section. `basis-universal-sys` fails to compile when `<algorithm>` is missing, which is a missing `g++`, not a missing GPU.
+
 ## Software Dependencies
 
 ### Development Dependencies

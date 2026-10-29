@@ -1,47 +1,85 @@
 # AI Arbiter
 
-`AIArbiter` is a feature-gated type in `astraweave-ai`. It is not the planner on the deterministic tick, and it is not what `hello_companion --arbiter` runs.
+This page is the guide to `AIArbiter` and to the `--arbiter` flag on `hello_companion`. They are different.
 
-Current state, from the tree and the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page:
+## Run the flag that exists today
 
-- The module `astraweave-ai/src/ai_arbiter.rs` is compiled only with the `llm_orchestrator` feature. That feature is off by default.
-- `sys_ai_planning` does not call `AIArbiter`. The default tick uses `RuleOrchestrator`.
-- Issue **#334** is open: delete `AIArbiter` once benches have a deterministic replacement. Issue **#383** is the port into the deterministic HTN tick. Neither is on `main` as finished work.
-- Nanosecond tables (101.7 ns, 575 ns, 221.9 ns) are not on the engine status page. They are not repeated here. Comments on `update` state a target under 100 µs. That comment is not a dated capture.
-
-## Constructors
-
-`AIArbiter::new` takes four arguments. The second is `Option<LlmExecutor>`.
-
-```rust
-#[cfg(feature = "llm_orchestrator")]
-use astraweave_ai::AIArbiter;
-
-let arbiter = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
-let arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt);
-let arbiter = arbiter.with_llm_cooldown(15.0);
-```
-
-`with_single_executor` passes `None` for the fast executor. The cooldown field starts at 15 seconds. `update` takes a `WorldSnapshot` and returns an `ActionStep`.
-
-`GoapOrchestrator` in `astraweave-ai/src/orchestrator.rs` is a different type. It is always compiled. `propose_plan` calls `htn::legacy_goap_plan`. The advanced `astraweave_ai::goap` module compiles only with `planner_advanced`.
-
-## hello_companion
+From the repository root:
 
 ```bash
 cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter
 ```
 
-That flag does not construct `AIArbiter`. The example prints that the model is not on the tick and calls `GoapOrchestrator`. See [Hello Companion](../../examples/hello-companion.md).
+`examples/hello_companion/src/main.rs`, arm `AIMode::Arbiter`, prints `The model is not on this tick. The sim validates the proposed steps.` and calls `generate_goap_plan`. That function builds `GoapOrchestrator` and calls `propose_plan`. `GoapOrchestrator` lives in `astraweave-ai/src/orchestrator.rs` and forwards to `htn::legacy_goap_plan`. It does not construct `AIArbiter`.
 
-A default `cargo run -p hello_companion --release` is Classical `RuleOrchestrator` and does not panic.
+Without the feature, the same flag prints `Arbiter mode requires --features llm_orchestrator` and falls back to Classical.
 
-## Model names
+A default run, no flag and no extra features, is `RuleOrchestrator`:
 
-Doc comments on `AIArbiter` say Qwen3. `SystemOrchestratorConfig::default` uses `phi3:medium` when `OLLAMA_MODEL` is unset. The Qwen client constant `DEFAULT_QWEN_INSTRUCT_MODEL` is `qwen3.5:4b`.
+```bash
+cargo run -p hello_companion --release
+```
+
+Walk that path on [Hello Companion](../../examples/hello-companion.md).
+
+## Where the type lives
+
+`astraweave-ai/src/ai_arbiter.rs` is compiled only with feature `llm_orchestrator` (`astraweave-ai/src/lib.rs`). The feature is off by default. `sys_ai_planning` does not call `AIArbiter`. The tick uses `RuleOrchestrator`.
+
+Issue **#334** is open: delete `AIArbiter` once benches have a deterministic replacement. Issue **#383** is the port onto the deterministic HTN tick. The root README lists both under work that is not on `main` as finished work. The [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page says the same.
+
+Comments on `update` name microsecond targets. Those comments are not a dated capture. This page does not repeat nanosecond tables.
+
+## Construct it
+
+`AIArbiter::new` takes four arguments. The second is `Option<LlmExecutor>`.
+
+```rust
+#[cfg(feature = "llm_orchestrator")]
+use astraweave_ai::{AIArbiter, AIControlMode};
+
+let arbiter = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
+let arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt)
+    .with_llm_cooldown(15.0);
+let action = arbiter.update(&snapshot);
+let mode = arbiter.mode();
+```
+
+Signatures in `astraweave-ai/src/ai_arbiter.rs`:
+
+- `new(strategic_executor, fast_executor, goap, bt) -> Self` with `fast_executor: Option<LlmExecutor>` and the last two `Box<dyn Orchestrator>`
+- `with_single_executor(llm_executor, goap, bt)` calls `new(llm_executor, None, goap, bt)`
+- `with_llm_cooldown(self, cooldown: f32) -> Self` stores the seconds. The field starts at `15.0`
+- `update(&mut self, snap: &WorldSnapshot) -> ActionStep`
+- `mode(&self) -> AIControlMode`
+
+`LlmExecutor::new` (`astraweave-ai/src/llm_executor.rs`) takes `Arc<dyn OrchestratorAsync + Send + Sync>` and a `tokio::runtime::Handle`. Building that executor means an orchestrator and a runtime. The hello_companion flag does not do that.
+
+`AIControlMode` is:
+
+- `GOAP` (default)
+- `ExecutingLLM { step_index: usize }`
+- `BehaviorTree`
+
+## What `update` does
+
+`update` polls an in-flight LLM task if one exists. `Ok(plan)` moves to `ExecutingLLM`. `Err` increments `llm_failures` and stays in GOAP. In `GOAP` it may call `maybe_request_llm`, then `self.goap.propose_plan(snap)`, and returns the first step. An empty GOAP plan warns and asks `self.bt`. The fast executor field is stored and marked `dead_code` in this file. The comment says dedicated fast-path dispatch is not wired.
+
+Doc comments on the struct say Qwen3. `SystemOrchestratorConfig::default` in `astraweave-ai/src/orchestrator.rs` uses `phi3:medium` when `OLLAMA_MODEL` is unset. `hello_companion` LLM modes use `DEFAULT_QWEN_INSTRUCT_MODEL` (`qwen3.5:4b`).
+
+## Check that the type builds
+
+```bash
+cargo check -p astraweave-ai --features llm_orchestrator
+```
+
+That compiles the module. It does not put the type on the sim tick, and it does not run the hello_companion flag.
+
+`GoapOrchestrator` (always compiled) and `astraweave_ai::goap::AdvancedGOAP` (feature `planner_advanced` only) are different types. There is no `GoapPlanner`.
 
 ## Related
 
-- [AI system](./index.md)
+- [Hello Companion](../../examples/hello-companion.md)
 - [Planning](./planning.md)
 - [Behavior trees](./behavior-trees.md)
+- [AI system](./index.md)

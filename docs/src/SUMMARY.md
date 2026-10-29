@@ -56,7 +56,7 @@
 - [Navmesh Demo](./examples/navmesh-demo.md)
 - [Audio Spatial](./examples/audio-spatial.md)
 - [Fluids Demo](./examples/fluids-demo.md)
-- [Unified Showcase](./examples/unified-showcase.md)
+- [Rendering Showcase](./examples/unified-showcase.md)
 - [Troubleshooting Examples](./examples/troubleshooting.md)
 
 # Performance

@@ -143,7 +143,7 @@ See [Contributing Guide](../dev/contributing.md). In brief:
 
 ### hello_companion exits or prints a validation error
 
-A default run is not supposed to panic. `LosBlocked` is not a string in `examples/hello_companion`. Validation failures are printed and the process continues. See [Hello Companion](../examples/hello-companion.md).
+A default run exits 0. It prints `Execution failed: line of sight blocked. Continuing...`. That text is `EngineError::LosBlocked` from `astraweave-core`, not a panic, and the literal `LosBlocked` does not appear in `examples/hello_companion`. See [Hello Companion](../examples/hello-companion.md).
 
 ### Shader compilation errors
 

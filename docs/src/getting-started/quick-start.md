@@ -78,4 +78,4 @@ cargo run -p aravath_runtime --bin aravath_greybox --release
 
 - `rustc --version` inside the repo should be 1.89.0. The pin is `rust-toolchain.toml`, not "1.89.0 or any newer".
 - Graphics errors apply to windowed binaries. The default companion demo does not open a window.
-- There is no `unified_showcase` package. See [Unified Showcase](../examples/unified-showcase.md).
+- There is no `unified_showcase` package. See [Rendering showcase](../examples/unified-showcase.md).

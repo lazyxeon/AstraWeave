@@ -15,7 +15,7 @@ These packages exist. A default `hello_companion` run does not panic.
 | `ipc_loopback` | `cargo run -p ipc_loopback --release` |
 | `shadow_csm_demo` | `cargo run -p shadow_csm_demo --release` |
 
-`unified_showcase` is not a package. See [Unified Showcase](./unified-showcase.md).
+`unified_showcase` is not a package. See [Rendering showcase](./unified-showcase.md).
 
 This page does not keep a "known broken" list. Compilation of `debug_overlay`, `ui_controls_demo`, `visual_3d`, `rhai_authoring`, and `npc_town_demo` was not re-run for this edit. Those directories are still workspace members.
 
