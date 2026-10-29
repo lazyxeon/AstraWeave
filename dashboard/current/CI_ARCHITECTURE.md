@@ -30,7 +30,7 @@ concurrency:
 A new push cancels the previous pull-request run. Pushes to main, tags, and schedules are not cancelled.
 3. **Every job has `timeout-minutes`.** Typical jobs are 30–45. The fast gate is `Gate (fmt, clippy, check)`. Linux tests, the Windows partitions, and MSRV `needs` that gate, so a format or compile failure does not start those runners.
 4. **Two tiers.** Nightly Failure Issue (`workflow_run`) opens or updates a GitHub issue when a nightly or main run of the heavy workflows fails. `workflow_run` fires only after this file is on the default branch.
-5. **Duplicates are gone.** `rust-cache-optimized.yml` is folded into `ci.yml` and deleted. The 15-job unwrap matrix is deleted. One `cargo clippy --lib --no-deps` pass reads `[lints.clippy]` on each crate. sccache (GitHub Actions cache backend) plus one Swatinem `shared-key` per OS (`${{ runner.os }}-astraweave`), `cache-targets: false`, `save-if` only on `refs/heads/main`. Affected crates come from `scripts/ci/affected_crates.py`. Docs-only diffs skip the Rust compile. Windows pull-request tests compile once (`cargo nextest archive` on `windows-latest`, debuginfo off so the archive stays uploadable) and then run three `count:N/3` partitions against that archive. Determinism tests are not retried.
+5. **Duplicates are gone.** `rust-cache-optimized.yml` is folded into `ci.yml` and deleted. The 15-job unwrap matrix is deleted. One `cargo clippy --lib --no-deps` pass reads `[lints.clippy]` on each crate. sccache (GitHub Actions cache backend) plus one Swatinem `shared-key` per OS (`${{ runner.os }}-astraweave`), `cache-targets: false`, `save-if` only on `refs/heads/main`. Affected crates come from `scripts/ci/affected_crates.py`. Docs-only diffs skip the Rust compile. Windows and Linux pull-request tests each compile once (`cargo nextest archive`, debuginfo off so the archive stays uploadable) and then run three `count:N/3` partitions against that archive. The Linux archive starts when the gate finishes, in parallel with the Windows archive. It is not built inside the gate. Profile `ci-pr-linux-archive` keeps the Linux GPU tests that `ci-pr-archive` skips, and drops only the four `CARGO_BIN_EXE` binaries, which the archive job runs on the build machine. Determinism tests are not retried.
 6. **Required jobs are not queued behind optional compiles.** PBR, Editor CI, and AW Editor tests do not run on `pull_request`. They run on push, their nightly schedule, and `workflow_dispatch`. `cancel-in-progress` is still `${{ github.event_name == 'pull_request' }}` on every workflow that has the block, so a push to `main` or a schedule is never cancelled.
 
 ## Tiers
@@ -41,7 +41,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 |---|---|
 | Affected-crate detect | `Detect affected crates` |
 | fmt, one clippy, cargo check | `Gate (fmt, clippy, check)` |
-| Linux tests of affected crates | `Test (ubuntu, affected)` |
+| Linux archive, then 3 partitions | `Test (ubuntu, build archive)`, then `Test (ubuntu, 1/3)`, `Test (ubuntu, 2/3)`, `Test (ubuntu, 3/3)` |
 | Windows archive, then 3 partitions | `Test (windows, build archive)`, then `Test (windows, 1/3)`, `Test (windows, 2/3)`, `Test (windows, 3/3)` |
 | MSRV (`rust-version` in the workspace manifest, 1.89.0) | `Minimum Supported Rust Version` |
 | Rollup of the rows above | `PR Rust checks` |
