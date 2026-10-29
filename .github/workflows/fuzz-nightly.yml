@@ -4,8 +4,8 @@
 # named fuzz-corpus-<target>, restored from the newest successful run of
 # this workflow on the default branch of this repository.
 # Crash reproducers are uploaded. The workflow token is contents: read and
-# actions: read. The fuzz job adds actions: write so upload-artifact can
-# save the corpus and the crash files.
+# actions: read. upload-artifact uses the runner artifact token, and the
+# fuzz job inherits that token.
 
 name: Fuzz nightly
 
@@ -49,11 +49,6 @@ jobs:
     needs: targets
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # upload-artifact rejects a token that only has actions: read.
-    # Write stays on this job. The list job above stays contents: read.
-    permissions:
-      contents: read
-      actions: write
     strategy:
       fail-fast: false
       matrix:

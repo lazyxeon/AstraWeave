@@ -329,18 +329,16 @@ class WorkflowPolicyTest(unittest.TestCase):
         _, _, perms = top.partition("permissions:")
         self.assertIn("contents: read", perms)
         self.assertIn("actions: read", perms)
-        self.assertNotIn("actions: write", perms)
+        self.assertNotIn("actions: write", text)
         self.assertIn(
             "permissions:\n      contents: read\n    outputs:",
             jobs,
         )
-        self.assertIn(
-            "permissions:\n      contents: read\n      actions: write",
-            jobs,
-        )
+        # The list job narrows to contents: read. The fuzz job inherits
+        # the workflow token and does not grant actions: write.
+        self.assertEqual(jobs.count("permissions:"), 1)
         self.assertIn("exclude_pull_requests=true", text)
         self.assertIn("github.event.repository.default_branch", text)
-        self.assertEqual(jobs.count("actions: write"), 1)
 
         spec = importlib.util.spec_from_file_location(
             "fuzz_targets", ROOT / "scripts" / "ci" / "fuzz_targets.py"
