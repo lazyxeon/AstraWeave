@@ -101,7 +101,7 @@ Other main-only heavy workflows, job duration p50 / p95:
 | AddressSanitizer (Full Suite) | 10 | 0s median, 26.8 min p95 | | often skipped by `if` |
 | Fuzz nightly | 3 runs | wall ~8 min | | 3 workflow failures |
 
-Benchmarks already do not run on an ordinary pull request (`pull_request` types `labeled` plus `run-benchmarks`, and a nightly schedule). They do run on every push to `main` and again on the nightly cron, so each main push pays 16 shards twice a day when the cron also fires.
+Benchmarks do not run on an ordinary pull request (`pull_request` types `labeled` plus `run-benchmarks`). They run on every push to `main`. #519 (`a9ba44e0`) removed the nightly cron. In this window that cron still fired, so a main push paid the 16 shards twice that day. [CI_ARCHITECTURE.md](../current/CI_ARCHITECTURE.md) records the current triggers.
 
 ## Duplicated work
 
