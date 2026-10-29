@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -317,19 +317,7 @@
 </table>
 </div>
 <h3 id="collision-budget"><a class="header" href="#collision-budget">Collision Budget</a></h3>
-<p>With spatial hashing (99.96% check reduction):</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Objects</th><th>Naive</th><th>With Hash</th><th>Savings</th></tr>
-</thead>
-<tbody>
-<tr><td>100</td><td>4,950 checks</td><td>2 checks</td><td>99.96%</td></tr>
-<tr><td>1,000</td><td>499,500 checks</td><td>~20 checks</td><td>99.996%</td></tr>
-<tr><td>10,000</td><td>49.9M checks</td><td>~200 checks</td><td>99.9996%</td></tr>
-</tbody>
-</table>
-</div>
+<p><code>PhysicsWorld</code> uses Rapier’s <code>DefaultBroadPhase</code>. <code>SpatialHash</code> is not that broadphase. The 99.96% reduction is a comment in <code>astraweave-physics</code>, not a measured live collision budget. Do not size a frame from that table.</p>
 <hr>
 <h2 id="rendering-budget-60-ms"><a class="header" href="#rendering-budget-60-ms">Rendering Budget (6.0 ms)</a></h2>
 <h3 id="sub-allocation-2"><a class="header" href="#sub-allocation-2">Sub-Allocation</a></h3>

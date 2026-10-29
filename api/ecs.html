@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,317 +220,110 @@
                     <main>
                         <h1 id="ecs-api-reference"><a class="header" href="#ecs-api-reference">ECS API Reference</a></h1>
 <blockquote>
-<p><strong>Crate</strong>: <code>astraweave-ecs</code><br><strong>Coverage</strong>: 94.26%<br><strong>Tests</strong>: 1,200+</p>
+<p><strong>Crate</strong>: <code>astraweave-ecs</code><br><strong>Manifest version</strong>: <code>0.1.0</code>. The package table does not set <code>publish</code>.</p>
 </blockquote>
-<p>The Entity Component System is the foundation of AstraWeave, providing deterministic, cache-friendly entity management with archetype-based storage.</p>
 <h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
 <ul>
-<li><a href="https://docs.rs/astraweave-ecs">rustdoc</a> (when published)</li>
-<li><a href="https://github.com/astraweave/astraweave/tree/main/astraweave-ecs">Source</a></li>
-<li><a href="../core-systems/ecs.html">ECS Core Concepts</a></li>
+<li><a href="https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-ecs">Source</a></li>
+<li><a href="../architecture/ecs.html">ECS Core Concepts</a></li>
 </ul>
 <hr>
-<h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
-<h3 id="world"><a class="header" href="#world">World</a></h3>
-<p>The central container for all entities, components, and resources.</p>
+<h2 id="world"><a class="header" href="#world">World</a></h2>
+<p><code>World::spawn</code> returns an <code>Entity</code> and takes no components. <code>insert</code> adds one component. <code>insert_resource</code> stores a singleton. <code>get_resource</code> returns <code>Option&lt;&amp;T&gt;</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use astraweave_ecs::World;
 
 let mut world = World::new();
-
-// Spawn entities
-let entity = world.spawn((Position::default(), Velocity::default()));
-
-// Access resources
-world.insert_resource(GameTime::default());
-let time = world.resource::&lt;GameTime&gt;();
+let entity = world.spawn();
+world.insert(entity, 1u32);
+assert!(world.is_alive(entity));
+world.insert_resource(0.25f32);
+let step = world.get_resource::&lt;f32&gt;().copied();
+assert_eq!(step, Some(0.25));
+let _removed = world.despawn(entity);
 <span class="boring">}</span></code></pre>
-<p><strong>Key Methods</strong>:</p>
-<ul>
-<li><code>new()</code> → <code>World</code> - Create empty world</li>
-<li><code>spawn(bundle)</code> → <code>Entity</code> - Create entity with components</li>
-<li><code>despawn(entity)</code> - Remove entity</li>
-<li><code>insert_resource&lt;R&gt;(resource)</code> - Add singleton resource</li>
-<li><code>resource&lt;R&gt;()</code> → <code>&amp;R</code> - Get resource reference</li>
-<li><code>query&lt;Q&gt;()</code> → <code>Query&lt;Q&gt;</code> - Create component query</li>
-</ul>
+<p>Other methods on the same impl: <code>get</code>, <code>get_mut</code>, <code>has</code>, <code>remove</code>, <code>count</code>, <code>each_mut</code>, <code>entity_count</code>. There is no <code>world.resource()</code>, <code>world.query()</code>, or <code>world.contains()</code>.</p>
 <hr>
-<h3 id="entity"><a class="header" href="#entity">Entity</a></h3>
-<p>Lightweight 64-bit identifier (32-bit index + 32-bit generation).</p>
+<h2 id="entity"><a class="header" href="#entity">Entity</a></h2>
+<p><code>Entity</code> is <code>id: u32</code> plus <code>generation: u32</code>. <code>to_raw</code> packs <code>(id as u64) | ((generation as u64) &lt;&lt; 32)</code>. <code>from_raw</code> is <code>unsafe</code> and takes that one <code>u64</code>.</p>
+<hr>
+<h2 id="app-and-schedule"><a class="header" href="#app-and-schedule">App and Schedule</a></h2>
+<p><code>App</code> holds <code>world: World</code> and <code>schedule: Schedule</code>. <code>App::new</code> registers stages <code>pre_simulation</code>, <code>perception</code>, <code>simulation</code>, <code>sync</code>, <code>ai_planning</code>, <code>physics</code>, <code>post_simulation</code>, and <code>presentation</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_ecs::Entity;
+</span>use astraweave_ecs::{App, World};
 
-// Entities are created via World::spawn()
-let entity = world.spawn(MyBundle::default());
-
-// Check if entity exists
-if world.contains(entity) {
-    // Entity is alive
+fn note(world: &amp;mut World) {
+    let _ = world.entity_count();
 }
 
-// Create from raw (unsafe, for FFI)
-let raw = Entity::from_raw(42, 1);
+let mut app = App::new();
+app.add_system("simulation", note).unwrap();
+let _app = app.run_fixed(1);
 <span class="boring">}</span></code></pre>
-<p><strong>Properties</strong>:</p>
-<ul>
-<li>8 bytes memory footprint</li>
-<li>Copy, Clone, Hash, Eq</li>
-<li>Safe to store in collections</li>
-<li>Generation prevents use-after-free</li>
-</ul>
+<p><code>add_system</code> returns <code>Result&lt;(), UnknownStage&gt;</code> when the stage name was never registered. <code>SystemFn</code> is <code>fn(&amp;mut World)</code>. <code>run_fixed(steps)</code> runs that many schedule passes.</p>
 <hr>
-<h3 id="app"><a class="header" href="#app">App</a></h3>
-<p>Application builder with plugin support.</p>
+<h2 id="component-and-resource"><a class="header" href="#component-and-resource">Component and Resource</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_ecs::App;
+</span>pub trait Component: 'static + Send + Sync {}
+impl&lt;T: 'static + Send + Sync&gt; Component for T {}
 
-App::new()
-    .add_plugin(DefaultPlugins)
-    .add_startup_system(setup)
-    .add_system(update)
-    .run();
+pub trait Resource: 'static + Send + Sync {}
+impl&lt;T: 'static + Send + Sync&gt; Resource for T {}
 <span class="boring">}</span></code></pre>
-<p><strong>Key Methods</strong>:</p>
-<ul>
-<li><code>add_plugin&lt;P&gt;(plugin)</code> - Add functionality bundle</li>
-<li><code>add_startup_system(system)</code> - Run once at start</li>
-<li><code>add_system(system)</code> - Add to main loop</li>
-<li><code>add_system_to_stage(stage, system)</code> - Add to specific stage</li>
-<li><code>run()</code> - Start main loop</li>
-</ul>
+<p>There is no <code>#[derive(Component)]</code>.</p>
 <hr>
-<h3 id="schedule"><a class="header" href="#schedule">Schedule</a></h3>
-<p>System execution scheduler with parallel support.</p>
+<h2 id="query"><a class="header" href="#query">Query</a></h2>
+<p><code>Query::&lt;T&gt;::new(&amp;world)</code> iterates <code>(Entity, &amp;T)</code> for archetypes that contain <code>T</code>. <code>Query2</code> and <code>Query2Mut</code> are the two-component forms.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_ecs::{Schedule, SystemStage};
+</span>use astraweave_ecs::{Query, World};
 
-let mut schedule = Schedule::new();
-schedule.add_system_to_stage(SystemStage::Update, my_system);
-schedule.run(&amp;mut world);
+let mut world = World::new();
+let entity = world.spawn();
+world.insert(entity, 7u32);
+let found: Vec&lt;_&gt; = Query::&lt;u32&gt;::new(&amp;world).map(|(e, v)| (e, *v)).collect();
+assert_eq!(found.len(), 1);
 <span class="boring">}</span></code></pre>
-<p><strong>System Stages</strong> (in execution order):</p>
-<ol>
-<li><code>First</code> - Pre-frame setup</li>
-<li><code>PreUpdate</code> - Input processing</li>
-<li><code>Update</code> - Main game logic</li>
-<li><code>PostUpdate</code> - Physics, AI</li>
-<li><code>Last</code> - Rendering prep</li>
-</ol>
 <hr>
-<h3 id="component"><a class="header" href="#component">Component</a></h3>
-<p>Trait for data attached to entities (auto-implemented for <code>'static + Send + Sync</code>).</p>
+<h2 id="commandbuffer"><a class="header" href="#commandbuffer">CommandBuffer</a></h2>
+<p><code>CommandBuffer::new</code>, <code>spawn</code>, <code>insert</code>, <code>remove</code>, <code>despawn</code>, then <code>flush(&amp;mut world)</code>.</p>
+<p><code>spawn</code> returns a <code>SpawnBuilder</code>. The builder has <code>with</code> and no entity id. Dropping it queues a spawn. <code>flush</code> calls <code>World::spawn</code>, then <code>insert_boxed</code>. <code>insert_boxed</code> panics unless <code>World::register_component::&lt;T&gt;</code> ran for that component. <code>T</code> must be <code>Clone</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_ecs::Component;
+</span>use astraweave_ecs::{CommandBuffer, World};
 
-#[derive(Component, Default)]
-struct Position {
-    x: f32,
-    y: f32,
-    z: f32,
-}
-
-#[derive(Component)]
-struct Velocity(Vec3);
-
-#[derive(Component)]
-struct Name(String);
+let mut world = World::new();
+world.register_component::&lt;u32&gt;();
+let mut commands = CommandBuffer::new();
+commands.spawn().with(1u32);
+commands.flush(&amp;mut world);
+assert_eq!(world.entity_count(), 1);
 <span class="boring">}</span></code></pre>
-<p><strong>Requirements</strong>:</p>
-<ul>
-<li><code>'static</code> lifetime</li>
-<li><code>Send + Sync</code> (for parallel systems)</li>
-<li>Prefer small, focused components</li>
-</ul>
 <hr>
-<h3 id="resource"><a class="header" href="#resource">Resource</a></h3>
-<p>Singleton data shared across systems.</p>
+<h2 id="events"><a class="header" href="#events">Events</a></h2>
+<p><code>Event</code> is a marker trait with no blanket impl. <code>Events::new</code> keeps two frames. <code>send</code>, <code>read</code>, <code>drain</code>, and <code>update</code> are on <code>Events</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_ecs::Resource;
+</span>use astraweave_ecs::{Event, Events};
 
-#[derive(Resource, Default)]
-struct GameTime {
-    elapsed: f32,
-    delta: f32,
-}
+struct Ping(u32);
+impl Event for Ping {}
 
-#[derive(Resource)]
-struct Settings {
-    volume: f32,
-    difficulty: Difficulty,
-}
-
-// Access in systems
-fn update_time(mut time: ResMut&lt;GameTime&gt;) {
-    time.elapsed += time.delta;
-}
+let mut events = Events::new();
+events.send(Ping(1));
+assert_eq!(events.len::&lt;Ping&gt;(), 1);
 <span class="boring">}</span></code></pre>
 <hr>
-<h3 id="query"><a class="header" href="#query">Query</a></h3>
-<p>Efficient iteration over component combinations.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ecs::Query;
-
-// Read-only query
-fn read_system(query: Query&lt;&amp;Position&gt;) {
-    for pos in query.iter() {
-        println!("Position: {:?}", pos);
-    }
-}
-
-// Mutable query
-fn write_system(mut query: Query&lt;&amp;mut Position&gt;) {
-    for mut pos in query.iter_mut() {
-        pos.x += 1.0;
-    }
-}
-
-// Multiple components
-fn complex_query(query: Query&lt;(&amp;Position, &amp;Velocity, Option&lt;&amp;Name&gt;)&gt;) {
-    for (pos, vel, name) in query.iter() {
-        // name is Option&lt;&amp;Name&gt;
-    }
-}
-
-// Filters
-fn filtered_query(query: Query&lt;&amp;Position, With&lt;Player&gt;&gt;) {
-    // Only entities with Player component
-}
-<span class="boring">}</span></code></pre>
-<p><strong>Filter Types</strong>:</p>
-<ul>
-<li><code>With&lt;T&gt;</code> - Entity must have T</li>
-<li><code>Without&lt;T&gt;</code> - Entity must not have T</li>
-<li><code>Or&lt;(A, B)&gt;</code> - Entity has A or B</li>
-<li><code>Added&lt;T&gt;</code> - T was just added</li>
-<li><code>Changed&lt;T&gt;</code> - T was modified</li>
-</ul>
-<hr>
-<h3 id="commandbuffer"><a class="header" href="#commandbuffer">CommandBuffer</a></h3>
-<p>Deferred entity/component modifications (thread-safe).</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ecs::CommandBuffer;
-
-fn spawn_system(mut commands: Commands) {
-    // Spawn entity with components
-    commands.spawn((Position::default(), Velocity::default()));
-    
-    // Modify existing entity
-    commands.entity(some_entity)
-        .insert(Health(100))
-        .remove::&lt;Poisoned&gt;();
-    
-    // Despawn
-    commands.entity(dead_entity).despawn();
-}
-<span class="boring">}</span></code></pre>
-<p><strong>Key Methods</strong>:</p>
-<ul>
-<li><code>spawn(bundle)</code> → <code>EntityCommands</code> - Queue entity spawn</li>
-<li><code>entity(entity)</code> → <code>EntityCommands</code> - Get entity commands</li>
-<li><code>insert_resource&lt;R&gt;(resource)</code> - Queue resource insert</li>
-<li><code>remove_resource&lt;R&gt;()</code> - Queue resource removal</li>
-</ul>
-<hr>
-<h3 id="events"><a class="header" href="#events">Events</a></h3>
-<p>Type-safe event channel for system communication.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ecs::{Events, EventReader, EventWriter};
-
-struct DamageEvent {
-    target: Entity,
-    amount: f32,
-}
-
-fn damage_sender(mut events: EventWriter&lt;DamageEvent&gt;) {
-    events.send(DamageEvent { target: enemy, amount: 50.0 });
-}
-
-fn damage_receiver(mut events: EventReader&lt;DamageEvent&gt;) {
-    for event in events.iter() {
-        println!("Entity {:?} took {} damage", event.target, event.amount);
-    }
-}
-<span class="boring">}</span></code></pre>
-<p><strong>Event Lifecycle</strong>:</p>
-<ol>
-<li>Events sent via <code>EventWriter</code></li>
-<li>Events read via <code>EventReader</code></li>
-<li>Events cleared at end of frame</li>
-<li>Double-buffered for reliable delivery</li>
-</ol>
-<hr>
-<h2 id="archetype-storage"><a class="header" href="#archetype-storage">Archetype Storage</a></h2>
-<p>AstraWeave uses archetype-based storage for optimal cache performance:</p>
-<pre><code>Archetype A: [Position, Velocity]
-┌──────────┬──────────┐
-│ Position │ Velocity │
-├──────────┼──────────┤
-│ (1,2,3)  │ (0,1,0)  │  Entity 1
-│ (4,5,6)  │ (1,0,0)  │  Entity 2
-│ (7,8,9)  │ (0,0,1)  │  Entity 3
-└──────────┴──────────┘
-
-Archetype B: [Position, Velocity, Health]
-┌──────────┬──────────┬────────┐
-│ Position │ Velocity │ Health │
-├──────────┼──────────┼────────┤
-│ (0,0,0)  │ (0,0,0)  │  100   │  Entity 4
-└──────────┴──────────┴────────┘
-</code></pre>
-<p><strong>Benefits</strong>:</p>
-<ul>
-<li>Cache-friendly iteration</li>
-<li>No pointer chasing</li>
-<li>Parallel-safe by design</li>
-</ul>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>World creation</td><td>25.8 ns</td><td>Empty world</td></tr>
-<tr><td>Entity spawn</td><td>420 ns</td><td>With components</td></tr>
-<tr><td>Component access</td><td>&lt;1 ns</td><td>Direct archetype access</td></tr>
-<tr><td>Query iteration</td><td>~2 ns/entity</td><td>Cache-optimal</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Feature</th><th>Description</th><th>Default</th></tr>
-</thead>
-<tbody>
-<tr><td><code>parallel</code></td><td>Parallel system execution</td><td>✅</td></tr>
-<tr><td><code>tracing</code></td><td>Tracy profiling integration</td><td>❌</td></tr>
-<tr><td><code>serde</code></td><td>Serialization support</td><td>❌</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-toml">[dependencies]
-astraweave-ecs = { version = "0.4", features = ["serde"] }
-</code></pre>
+<h2 id="feature-names"><a class="header" href="#feature-names">Feature names</a></h2>
+<p><code>astraweave-ecs/Cargo.toml</code> declares <code>profiling</code>, <code>loom</code>, <code>alloc-counter</code>, and <code>fast-alloc</code>. It does not set <code>default</code>.</p>
 <hr>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
-<li><a href="../core-systems/ecs.html">ECS Architecture</a></li>
-<li><a href="../core-systems/ecs.html#system-ordering">System Ordering</a></li>
-<li><a href="../performance/optimization.html#ecs-optimization">Parallel Systems</a></li>
-<li><a href="./core.html">Core API</a></li>
+<li><a href="../architecture/ecs.html">Architecture</a></li>
+<li><a href="../game-dev/save-load.html">Save and load</a></li>
 </ul>
 
                     </main>

@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -253,10 +253,7 @@ generational <code>Entity { id, generation }</code>, deterministic single-thread
 scheduler (8 stages, executed in fixed order per tick). <code>ParallelSchedule</code>
 removed 2026-04-18; parallelism lives at the subsystem level (rayon, tokio,
 GPU compute) per <code>docs/audits/parallel_schedule_removal_2026-04-18.md</code>.</li>
-<li><strong>AI-first runtime loop</strong> — <code>WorldSnapshot</code> → <code>AIArbiter</code> → <code>Orchestrator.plan()</code>
-→ <code>PlanIntent</code> → <code>tool_sandbox</code> → engine-side <code>validate_and_execute</code>. 12,700+
-agents at 60 FPS validated. Canonical GOAP + Behavior Trees + LLM orchestrator
-hybrid (<code>astraweave-ai</code>, <code>astraweave-behavior</code>, <code>astraweave-llm</code>).</li>
+<li><strong>AI loop on the default tick</strong> — <code>RuleOrchestrator</code>. A local model proposes off that tick. The simulation validates and executes. <code>AIArbiter</code> compiles only with <code>llm_orchestrator</code> and is not on <code>sys_ai_planning</code>. Agent-capacity numbers are dated on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page.</li>
 <li><strong>Rendering</strong> — <code>astraweave-render</code> 78K LoC + 71 WGSL shaders. Disney BRDF +
 multi-scatter PBR, 4-cascade CSM shadows, IBL cubemaps, clustered forward+,
 Lumen GI and VXGI (both implemented), TAA, SSAO/GTAO, SSGI, SSR, volumetric
@@ -270,9 +267,7 @@ pipeline driven by <code>MaterialLibrary</code> in <code>astraweave-render</code
 post-Fix-27.</li>
 <li><strong>Physics</strong> — <code>astraweave-physics</code> wrapping Rapier3D 0.22.
 <code>PhysicsWorld</code> + <code>CharacterController</code>. <code>Send + Sync</code>.</li>
-<li><strong>Foundation verification</strong> — Miri (1,059 tests across <code>ecs</code>, <code>math</code>, <code>core</code>,
-<code>sdk</code> with zero undefined behavior) + Kani proofs (71+ harnesses across
-safety-critical crates).</li>
+<li><strong>Foundation verification</strong> — Miri and Kani figures are dated on the engine status page. This tree contains 69 <code>#[kani::proof]</code> attributes. That is a source count, not a fresh proof run. The older “71+” figure is not that count.</li>
 </ul>
 <h2 id="whats-in-active-development"><a class="header" href="#whats-in-active-development">What’s in active development</a></h2>
 <!-- Source: ARCHITECTURE_MAP.md §12 (Active Work as of 2026-05-13) -->
@@ -287,38 +282,18 @@ surfaced at four layers; Real-Fix.A/B/C landed, Real-Fix.D pending. See
 <li><strong>Editor Behavioral Correctness Audit remediation</strong> — 37 fixes across 47
 commits shipped; per-audit open items still pending Andrew-gate. See
 <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md"><code>docs/current/EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md</code></a>.</li>
-<li><strong>Architecture trace campaign</strong> — 13 of N subsystems traced. Treated as part
-of the production contract by <code>CLAUDE.md</code>. Adding more traces as subsystems
-cross the non-trivial-surface threshold.</li>
+<li><strong>Architecture trace campaign</strong> — 31 traces are listed in the <code>CLAUDE.md</code> table. <code>CLAUDE.md</code> treats a behavior change as updating its trace in the same pull request.</li>
 </ul>
 <h2 id="whats-in-design-research-surface-not-currently-runtime-wired"><a class="header" href="#whats-in-design-research-surface-not-currently-runtime-wired">What’s in-design (research surface, not currently runtime-wired)</a></h2>
 <!-- Source: ARCHITECTURE_MAP.md §5.1 (In-design-but-tested) -->
-<p>Per <code>ARCHITECTURE_MAP.md</code> §5.1, the workspace carries <strong>~200K LoC</strong> of
-<em>in-design-but-tested</em> surface — code that passes its own tests but has zero
-production callers. This is the signature of breadth-first AI-augmented
-development, not a flaw. Each item is documented honestly as awaiting a wiring
-decision:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Subsystem</th><th>LoC</th><th>Status note</th></tr>
-</thead>
-<tbody>
-<tr><td><code>astraweave-fluids</code></td><td>~84.5K</td><td>Only <code>examples/fluids_demo</code> consumes it. Five parallel solver surfaces, no game-loop deps. Q12 in §14.</td></tr>
-<tr><td><code>astraweave-memory</code></td><td>~11K</td><td>Zero in-engine production consumers. Q11 in §14.</td></tr>
-<tr><td><code>astraweave-coordination</code></td><td>~5.3K</td><td>Zero workspace consumers; 3 commented-out <code>pub mod</code> declarations.</td></tr>
-<tr><td>Advanced GOAP (<code>astraweave-ai/src/goap/</code>)</td><td>~16.7K</td><td>Feature <code>planner_advanced</code>; parallel to canonical GOAP. Q2 in §14.</td></tr>
-<tr><td>LLM Production Hardening</td><td>~15K</td><td>Rate limiting / circuit breakers / A/B routing / retry / telemetry / ToolGuard / 4-tier fallback — runtime path bypasses entirely. Q4 in §14.</td></tr>
-<tr><td>RAG composite (<code>astraweave-rag</code> + <code>embeddings</code> + <code>context</code>)</td><td>~12.3K</td><td>Held as field by 5 dormant consumer crates. HNSW advertised; actual is linear scan.</td></tr>
-<tr><td>Dialogue LLM layer</td><td>~2.9K</td><td>60% of <code>astraweave-dialogue</code>. Basic <code>DialogueGraph</code> is production-wired; LLM layer is not.</td></tr>
-<tr><td><code>astraweave-net-ecs</code> ECS Plugin layer</td><td>medium</td><td>Working tests, no production consumer; declared-but-unused dep in <code>astraweave-stress-test</code>.</td></tr>
-<tr><td><code>astraweave-persistence-ecs</code> Plugin layer</td><td>medium</td><td><code>auto_save_system</code> body is comment-only TODO; <code>replay_system</code> advances tick but never applies events. Q18 in §14.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Plus dormant scaffolding (TODO-only bodies), orphan source files, declared-but-unused
-Cargo deps, dormant feature flags, and the aspirational documentation tree from
-commit <code>28bc94f21</code>. Full taxonomy in <code>ARCHITECTURE_MAP.md</code> §5.</p>
+<p>Line-count inventories from the May 2026 map were not re-counted. What this pass rechecked:</p>
+<ul>
+<li><code>astraweave-fluids</code> is not a game-loop solver. <code>PcisphSystem</code> is gone. <code>examples/fluids_demo</code> still exists.</li>
+<li>Advanced GOAP (<code>astraweave-ai/src/goap</code>) compiles with <code>planner_advanced</code>.</li>
+<li><code>VectorStore::search</code> is a linear scan (<code>astraweave-embeddings/src/store.rs</code> calls <code>brute_force_search</code>). Crate docs that say HNSW are ahead of the code.</li>
+<li><code>astraweave-persistence-ecs</code> applies a health payload when <code>CHealth</code> is already on the replay entity. The older sentence that replay never applies events is not the engine status description.</li>
+</ul>
+<p>Memory, RAG, and coordination are present and are not on the default sim tick. The engine status page is the list to trust when this table and that page disagree.</p>
 <h2 id="whats-not-shipping-yet"><a class="header" href="#whats-not-shipping-yet">What’s not shipping yet</a></h2>
 <p>The engine itself. There is <strong>no v1.0 timeline</strong>. The engine ships when Veilweaver
 ships, which is a 12–18 month horizon as of this update (2026-05-15). API
@@ -344,8 +319,8 @@ require explicit Andrew-gate decisions. Highlights:</p>
 — explore the engine.</li>
 <li><a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md"><code>ARCHITECTURE_MAP.md</code></a>
 — consolidated synthesis (2,500+ lines, version-controlled).</li>
-<li><a href="https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture">13 per-subsystem traces</a>
-under <code>docs/architecture/</code>.</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture">Subsystem traces</a>
+under <code>docs/architecture/</code>. The <code>CLAUDE.md</code> table lists 31. The “13 traces” figure is the original campaign.</li>
 <li><a href="https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/">Benchmark dashboard</a>
 — performance measurements.</li>
 </ul>

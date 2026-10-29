@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -247,77 +247,33 @@
 <li>Contributing to an open-source engine</li>
 </ul>
 <h3 id="what-platforms-does-astraweave-support"><a class="header" href="#what-platforms-does-astraweave-support">What platforms does AstraWeave support?</a></h3>
-<ul>
-<li><strong>Windows</strong>: Full support (primary development platform)</li>
-<li><strong>Linux</strong>: Full support</li>
-<li><strong>macOS</strong>: Supported (Apple Silicon native)</li>
-<li><strong>WebAssembly</strong>: Experimental (rendering only)</li>
-<li><strong>Consoles</strong>: Planned for post-1.0</li>
-</ul>
+<p>Replay hashes run on Linux, Windows, and macOS. That matrix is the supported determinism check. This page does not document a WebAssembly or console target.</p>
 <h2 id="ai-system"><a class="header" href="#ai-system">AI System</a></h2>
 <h3 id="which-llms-does-astraweave-support"><a class="header" href="#which-llms-does-astraweave-support">Which LLMs does AstraWeave support?</a></h3>
-<p>AstraWeave uses Ollama for local LLM inference. Recommended models:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Model</th><th>Use Case</th><th>VRAM Required</th></tr>
-</thead>
-<tbody>
-<tr><td><code>hermes2-pro-mistral</code></td><td>Tool calling, dialogue</td><td>8GB</td></tr>
-<tr><td><code>phi3:mini</code></td><td>Lightweight inference</td><td>4GB</td></tr>
-<tr><td><code>llama3:8b</code></td><td>General purpose</td><td>8GB</td></tr>
-<tr><td><code>mistral:7b</code></td><td>Fast inference</td><td>8GB</td></tr>
-</tbody>
-</table>
-</div>
+<p>Local models only. <code>SystemOrchestratorConfig::default</code> in <code>astraweave-ai</code> uses <code>phi3:medium</code> when <code>OLLAMA_MODEL</code> is unset. <code>hello_companion</code> LLM modes use <code>DEFAULT_QWEN_INSTRUCT_MODEL</code> (<code>qwen3.5:4b</code>). This page does not publish a VRAM table.</p>
 <h3 id="can-i-use-cloud-llms-like-gpt-4-or-claude"><a class="header" href="#can-i-use-cloud-llms-like-gpt-4-or-claude">Can I use cloud LLMs like GPT-4 or Claude?</a></h3>
 <p>Not currently. AstraWeave is designed for local inference to ensure:</p>
 <ul>
 <li>Deterministic behavior</li>
-<li>Low latency (8ms budget per tick)</li>
+<li>The frame budget is the one on the engine status page, not an 8 ms tick cap stated here</li>
 <li>Privacy (no data leaves the machine)</li>
 <li>Offline gameplay</li>
 </ul>
 <p>Cloud support may be added post-1.0 for specific use cases.</p>
 <h3 id="how-does-ai-validation-work"><a class="header" href="#how-does-ai-validation-work">How does AI validation work?</a></h3>
 <p>All AI actions go through the Tool Validation System:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let tool_call = ToolCall {
-    tool: "move_to",
-    params: json!({ "target": [10.0, 0.0, 5.0] }),
-};
-
-match validator.validate(&amp;tool_call, &amp;world_state) {
-    ToolResult::Success(action) =&gt; execute(action),
-    ToolResult::Blocked(reason) =&gt; handle_failure(reason),
-}
-<span class="boring">}</span></code></pre>
-<p>This prevents AI from cheating - it can only perform actions that would be valid for a player.</p>
+<p><code>hello_companion</code> calls <code>validate_and_execute</code> from <code>astraweave-core</code> on a <code>PlanIntent</code>. That function is the validation step the example actually runs. The <code>ToolCall</code> / <code>ToolResult::Success</code> snippet this page used to show is not that API.</p>
 <h3 id="why-does-my-ai-companion-not-respond"><a class="header" href="#why-does-my-ai-companion-not-respond">Why does my AI companion not respond?</a></h3>
 <p>Common causes:</p>
 <ol>
 <li><strong>Ollama not running</strong>: Start with <code>ollama serve</code></li>
-<li><strong>Model not pulled</strong>: Run <code>ollama pull hermes2-pro-mistral</code></li>
+<li><strong>Model not pulled</strong>: The orchestrator default name is <code>phi3:medium</code>. <code>hello_companion --llm</code> and <code>--hybrid</code> ask for <code>qwen3.5:4b</code>. Pull the model you enabled.</li>
 <li><strong>Port conflict</strong>: Check Ollama is on port 11434</li>
-<li><strong>Timeout</strong>: AI has an 8ms budget per tick; complex queries may timeout</li>
+<li><strong>Features</strong>: A default <code>hello_companion</code> build does not call a model. <code>--bt</code>, <code>--utility</code>, and <code>--ensemble</code> need <code>--features llm</code>. <code>--llm</code> and <code>--hybrid</code> need <code>--features llm,ollama</code>.</li>
 </ol>
 <h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
 <h3 id="what-are-the-minimum-system-requirements"><a class="header" href="#what-are-the-minimum-system-requirements">What are the minimum system requirements?</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Component</th><th>Minimum</th><th>Recommended</th></tr>
-</thead>
-<tbody>
-<tr><td>CPU</td><td>4 cores, 2.5 GHz</td><td>8 cores, 3.5 GHz</td></tr>
-<tr><td>RAM</td><td>8 GB</td><td>16 GB</td></tr>
-<tr><td>GPU</td><td>GTX 1060 / RX 580</td><td>RTX 3070 / RX 6800</td></tr>
-<tr><td>VRAM</td><td>4 GB</td><td>8 GB (for LLM)</td></tr>
-<tr><td>Storage</td><td>10 GB</td><td>50 GB SSD</td></tr>
-</tbody>
-</table>
-</div>
+<p>This repository does not publish a measured minimum CPU, RAM, or GPU. The frame sample and its adapter are on the engine status page. The default <code>hello_companion</code> binary is headless. Windowed crates need a GPU wgpu can open.</p>
 <h3 id="why-is-my-game-running-slowly"><a class="header" href="#why-is-my-game-running-slowly">Why is my game running slowly?</a></h3>
 <ol>
 <li><strong>Debug builds</strong>: Always use <code>--release</code> for playable performance</li>
@@ -325,11 +281,8 @@ match validator.validate(&amp;tool_call, &amp;world_state) {
 <li><strong>Physics overhead</strong>: Reduce collision complexity</li>
 <li><strong>AI agents</strong>: Limit concurrent planning operations</li>
 </ol>
-<h3 id="how-do-i-profile-my-game"><a class="header" href="#how-do-i-profile-my-game">How do I profile my game?</a></h3>
-<p>AstraWeave integrates with Tracy profiler:</p>
-<pre><code class="language-bash">cargo run -p your_game --release --features profiling
-</code></pre>
-<p>See <a href="../dev/performance.html">Performance Optimization</a> for details.</p>
+<h3 id="how-do-i-profile"><a class="header" href="#how-do-i-profile">How do I profile?</a></h3>
+<p><code>astraweave-profiling</code> enables <code>tracy-client</code> only with its <code>profiling</code> feature. That feature is off by default. <code>examples/profiling_demo</code> is the package that opts in. The GPU frame capture command is on the engine status page.</p>
 <h2 id="ecs-architecture"><a class="header" href="#ecs-architecture">ECS Architecture</a></h2>
 <h3 id="why-does-astraweave-use-its-own-ecs"><a class="header" href="#why-does-astraweave-use-its-own-ecs">Why does AstraWeave use its own ECS?</a></h3>
 <p>AstraWeave’s ECS is designed for:</p>
@@ -341,28 +294,14 @@ match validator.validate(&amp;tool_call, &amp;world_state) {
 </ul>
 <p>It’s inspired by Bevy but optimized for AI-native gameplay.</p>
 <h3 id="how-do-i-create-entities"><a class="header" href="#how-do-i-create-entities">How do I create entities?</a></h3>
+<p>The examples use the legacy world:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>let entity = world.spawn((
-    Transform::from_xyz(0.0, 1.0, 0.0),
-    RigidBody::Dynamic,
-    Collider::sphere(0.5),
-    Health { current: 100.0, max: 100.0 },
-));
+</span>let player = world.spawn("Player", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
 <span class="boring">}</span></code></pre>
+<p>That is <code>astraweave_core::World::spawn</code>, as called from <code>examples/hello_companion</code>. <code>astraweave_ecs::World</code> is a different type. The tuple-spawn form is not this API.</p>
 <h3 id="how-do-i-query-entities"><a class="header" href="#how-do-i-query-entities">How do I query entities?</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn damage_system(
-    mut query: Query&lt;(&amp;mut Health, &amp;Transform), With&lt;Enemy&gt;&gt;,
-) {
-    for (mut health, transform) in query.iter_mut() {
-        if in_danger_zone(transform) {
-            health.current -= 10.0;
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
+<p><code>astraweave_ecs</code> exports <code>Query</code>. It does not use the Bevy <code>Query&lt;(&amp;mut T, &amp;U), With&lt;Marker&gt;&gt;</code> form. Read <code>astraweave-ecs/src/lib.rs</code> or <code>cargo doc -p astraweave-ecs --no-deps</code>.</p>
 <h2 id="building-and-development"><a class="header" href="#building-and-development">Building and Development</a></h2>
 <h3 id="how-do-i-build-from-source"><a class="header" href="#how-do-i-build-from-source">How do I build from source?</a></h3>
 <pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave
@@ -381,7 +320,7 @@ cargo build --release
 <h3 id="how-do-i-run-the-examples"><a class="header" href="#how-do-i-run-the-examples">How do I run the examples?</a></h3>
 <pre><code class="language-bash">cargo run -p hello_companion --release
 cargo run -p physics_demo3d --release
-cargo run -p unified_showcase --release
+cargo run -p shadow_csm_demo --release
 </code></pre>
 <h3 id="how-do-i-contribute"><a class="header" href="#how-do-i-contribute">How do I contribute?</a></h3>
 <p>See <a href="../dev/contributing.html">Contributing Guide</a>. In brief:</p>
@@ -392,8 +331,8 @@ cargo run -p unified_showcase --release
 <li>Submit a pull request</li>
 </ol>
 <h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
-<h3 id="losblocked-error-in-hello_companion"><a class="header" href="#losblocked-error-in-hello_companion">“LosBlocked” error in hello_companion</a></h3>
-<p>This is expected behavior! The example demonstrates that AI cannot perform invalid actions. The companion tries to move but line-of-sight is blocked, proving the validation system works.</p>
+<h3 id="hello_companion-exits-or-prints-a-validation-error"><a class="header" href="#hello_companion-exits-or-prints-a-validation-error">hello_companion exits or prints a validation error</a></h3>
+<p>A default run exits 0. It prints <code>Execution failed: line of sight blocked. Continuing...</code>. That text is <code>EngineError::LosBlocked</code> from <code>astraweave-core</code>, not a panic, and the literal <code>LosBlocked</code> does not appear in <code>examples/hello_companion</code>. See <a href="../examples/hello-companion.html">Hello Companion</a>.</p>
 <h3 id="shader-compilation-errors"><a class="header" href="#shader-compilation-errors">Shader compilation errors</a></h3>
 <p>Ensure your GPU driver is up to date. WGPU requires:</p>
 <ul>

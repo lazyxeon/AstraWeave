@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,246 +220,20 @@
                     <main>
                         <h1 id="render-api-reference"><a class="header" href="#render-api-reference">Render API Reference</a></h1>
 <blockquote>
-<p><strong>Crate</strong>: <code>astraweave-render</code><br><strong>Coverage</strong>: ~68%<br><strong>Tests</strong>: 300+</p>
+<p><strong>Crate</strong>: <code>astraweave-render</code><br><strong>Manifest version</strong>: <code>0.1.0</code></p>
 </blockquote>
-<p>Modern wgpu-based rendering with PBR materials, shadows, post-processing, GPU skinning, and mesh optimization.</p>
-<h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
-<ul>
-<li><a href="https://docs.rs/astraweave-render">rustdoc</a> (when published)</li>
-<li><a href="https://github.com/astraweave/astraweave/tree/main/astraweave-render">Source</a></li>
-<li><a href="../core-systems/rendering.html">Rendering Guide</a></li>
-</ul>
-<hr>
-<h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
-<h3 id="renderer"><a class="header" href="#renderer">Renderer</a></h3>
-<p>Central rendering coordinator.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::{Renderer, RendererConfig};
-
-let config = RendererConfig {
-    width: 1920,
-    height: 1080,
-    vsync: true,
-    msaa_samples: 4,
-    ..Default::default()
-};
-
-let mut renderer = Renderer::new(&amp;window, config).await?;
-
-// Render frame
-renderer.begin_frame();
-renderer.draw_scene(&amp;scene);
-renderer.end_frame();
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="meshregistry"><a class="header" href="#meshregistry">MeshRegistry</a></h3>
-<p>GPU mesh resource management.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::MeshRegistry;
-
-let mut registry = MeshRegistry::new(&amp;device);
-
-// Register mesh
-let mesh_id = registry.register(MeshData {
-    vertices: vertex_data,
-    indices: index_data,
-    bounds: aabb,
-});
-
-// Draw mesh
-renderer.draw_mesh(mesh_id, &amp;transform, &amp;material);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="materialmanager"><a class="header" href="#materialmanager">MaterialManager</a></h3>
-<p>PBR material system with hot reloading.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::{MaterialManager, PbrMaterial};
-
-let mut materials = MaterialManager::new(&amp;device);
-
-// Create material
-let material = PbrMaterial {
-    albedo: Color::rgb(0.8, 0.2, 0.2),
-    metallic: 0.0,
-    roughness: 0.5,
-    normal_map: Some(normal_texture),
-    ..Default::default()
-};
-
-let material_id = materials.register(material);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="iblmanager"><a class="header" href="#iblmanager">IblManager</a></h3>
-<p>Image-Based Lighting for environment reflections.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::IblManager;
-
-let mut ibl = IblManager::new(&amp;device);
-
-// Load environment map
-ibl.load_hdr("environment.hdr").await?;
-
-// Bind to shader
-ibl.bind(&amp;mut render_pass);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="gpu-skinning"><a class="header" href="#gpu-skinning">GPU Skinning</a></h2>
-<h3 id="skinnedvertex"><a class="header" href="#skinnedvertex">SkinnedVertex</a></h3>
-<p>Vertex format with bone weights.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::skinning_gpu::{SkinnedVertex, SkinnedMesh};
-
-let vertex = SkinnedVertex {
-    position: [0.0, 1.0, 0.0],
-    normal: [0.0, 1.0, 0.0],
-    uv: [0.5, 0.5],
-    bone_indices: [0, 1, 0, 0],  // Up to 4 bones
-    bone_weights: [0.7, 0.3, 0.0, 0.0],
-};
-
-let skinned_mesh = SkinnedMesh::new(&amp;device, vertices, indices);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="bonematrixbuffer"><a class="header" href="#bonematrixbuffer">BoneMatrixBuffer</a></h3>
-<p>GPU bone matrix upload.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::skinning_gpu::BoneMatrixBuffer;
-
-let mut bone_buffer = BoneMatrixBuffer::new(&amp;device, max_bones);
-
-// Update bone matrices each frame
-bone_buffer.update(&amp;queue, &amp;bone_matrices);
-
-// Bind for skinning
-bone_buffer.bind(&amp;mut render_pass);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="mesh-optimization"><a class="header" href="#mesh-optimization">Mesh Optimization</a></h2>
-<h3 id="vertex-compression"><a class="header" href="#vertex-compression">Vertex Compression</a></h3>
-<p>37% memory reduction via octahedral normals and half-float UVs.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::vertex_compression::{compress_vertices, CompressedVertex};
-
-let compressed = compress_vertices(&amp;vertices);
-
-// 32 bytes → 20 bytes per vertex
-assert!(std::mem::size_of::&lt;CompressedVertex&gt;() &lt; std::mem::size_of::&lt;Vertex&gt;());
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="lod-generation"><a class="header" href="#lod-generation">LOD Generation</a></h3>
-<p>Automatic level-of-detail mesh generation.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::lod_generator::{generate_lods, LodConfig};
-
-let config = LodConfig {
-    target_ratios: vec![1.0, 0.5, 0.25, 0.1],
-    min_triangles: 100,
-    ..Default::default()
-};
-
-let lods = generate_lods(&amp;mesh, config);
-
-// lods[0] = original
-// lods[1] = 50% triangles
-// lods[2] = 25% triangles
-// lods[3] = 10% triangles
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="instancing"><a class="header" href="#instancing">Instancing</a></h3>
-<p>GPU instanced rendering for repeated objects.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::instancing::{InstanceBuffer, InstanceData};
-
-let mut instances = InstanceBuffer::new(&amp;device, max_instances);
-
-// Update instance data
-let instance_data: Vec&lt;InstanceData&gt; = trees.iter()
-    .map(|t| InstanceData {
-        transform: t.transform.to_cols_array_2d(),
-        color: t.color.into(),
-    })
-    .collect();
-
-instances.update(&amp;queue, &amp;instance_data);
-
-// Draw all instances in one call
-renderer.draw_instanced(mesh_id, &amp;instances);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="shadows"><a class="header" href="#shadows">Shadows</a></h2>
-<h3 id="cascadedshadowmaps"><a class="header" href="#cascadedshadowmaps">CascadedShadowMaps</a></h3>
-<p>Multi-cascade shadow mapping for large scenes.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::shadows::{CascadedShadowMaps, CsmConfig};
-
-let config = CsmConfig {
-    cascade_count: 4,
-    resolution: 2048,
-    split_lambda: 0.5,
-    ..Default::default()
-};
-
-let mut csm = CascadedShadowMaps::new(&amp;device, config);
-
-// Update cascades
-csm.update(&amp;camera, &amp;sun_direction);
-
-// Render shadow maps
-for cascade in csm.cascades() {
-    renderer.render_shadow_pass(cascade, &amp;shadow_casters);
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="post-processing"><a class="header" href="#post-processing">Post-Processing</a></h2>
-<h3 id="postfxpipeline"><a class="header" href="#postfxpipeline">PostFxPipeline</a></h3>
-<p>Post-processing effect chain.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::post_fx::{PostFxPipeline, PostFxConfig};
-
-let config = PostFxConfig {
-    bloom_enabled: true,
-    bloom_intensity: 0.5,
-    tonemapping: Tonemapping::Aces,
-    exposure: 1.0,
-    ..Default::default()
-};
-
-let mut post_fx = PostFxPipeline::new(&amp;device, config);
-
-// Apply post-processing
-post_fx.process(&amp;mut render_context, &amp;scene_texture);
-<span class="boring">}</span></code></pre>
-<p><strong>Available Effects</strong>:</p>
-<ul>
-<li>Bloom</li>
-<li>Tonemapping (ACES, Reinhard, Filmic)</li>
-<li>Color grading</li>
-<li>Vignette</li>
-<li>Film grain</li>
-<li>SSAO (optional)</li>
-</ul>
-<hr>
+<p><code>Renderer</code> is constructed with <code>pub async fn new(window: Arc&lt;winit::window::Window&gt;) -&gt; Result&lt;Self&gt;</code>. <code>new_headless(width, height)</code> is also async. There is no <code>RendererConfig</code>. There is no <code>begin_frame</code>, <code>end_frame</code>, or <code>draw_scene</code>.</p>
+<p><code>render(&amp;mut self) -&gt; Result&lt;()&gt;</code>. <code>update_view(&amp;mut self, view: &amp;RenderView)</code>. <code>set_material_params(&amp;mut self, base_color: [f32; 4], metallic: f32, roughness: f32)</code>.</p>
+<p><code>Material</code> and <code>Mesh</code> are re-exported from <code>types</code>. <code>Material</code> is <code>color: [f32; 4]</code>. <code>Mesh</code> is <code>vertex_buf</code>, <code>index_buf</code>, and <code>index_count</code>. There is no <code>PbrMaterial</code> in that module.</p>
+<p><code>MeshRegistry::new()</code> takes no device. <code>fetch_or_upload(&amp;mut self, device, queue, key: MeshKey, mesh: &amp;CpuMesh) -&gt; Result&lt;MeshHandle&gt;</code>.</p>
+<p><code>IblManager</code> is <code>astraweave_render::ibl::IblManager</code>. <code>Renderer::ibl_mut</code> returns <code>&amp;mut IblManager</code>. <code>bake_environment(&amp;mut self, quality: IblQuality) -&gt; Result&lt;()&gt;</code>.</p>
+<p><code>SkinnedVertex</code> fields are <code>position: [f32; 3]</code>, <code>normal: [f32; 3]</code>, <code>tangent: [f32; 4]</code>, <code>uv: [f32; 2]</code>, <code>joints: [u16; 4]</code>, <code>weights: [f32; 4]</code>.</p>
 <h2 id="camera"><a class="header" href="#camera">Camera</a></h2>
-<p>Camera types live in the <a href="./camera.html"><code>astraweave-camera</code></a> crate as of the
-Unified Camera campaign’s C.3.A sub-phase. The renderer consumes the
-canonical <code>RenderView</code> upload contract exclusively via
-<code>Renderer::update_view</code>; the historical <code>Renderer::update_camera(&amp;Camera)</code>
-and <code>Renderer::update_camera_matrices(...)</code> APIs were removed in C.3.C.</p>
-<h3 id="canonical-upload-pattern"><a class="header" href="#canonical-upload-pattern">Canonical upload pattern</a></h3>
+<p>Camera types live in <code>astraweave-camera</code>. The renderer takes a <code>RenderView</code> through <code>Renderer::update_view</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use astraweave_camera::{CameraProducer, FreeFly};
+use glam::Vec3;
 
 let camera = FreeFly {
     position: Vec3::new(0.0, 5.0, 10.0),
@@ -470,106 +244,19 @@ let camera = FreeFly {
     znear: 0.1,
     zfar: 1000.0,
 };
-
-// Upload to the renderer via the canonical RenderView contract.
-renderer.update_view(&amp;camera.to_render_view());
+let view = camera.to_render_view();
+let relative = camera.to_render_view_camera_relative();
+let _ = (view, relative);
 <span class="boring">}</span></code></pre>
-<p>For camera-relative rendering (used by certain shadow/atmospheric paths to
-mitigate large-world float precision), use the concrete-only sibling method:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>renderer.update_view(&amp;camera.to_render_view_camera_relative());
-<span class="boring">}</span></code></pre>
-<p>For new camera implementations (orbit, follow, cinematic), implement the
-<code>CameraProducer</code> trait from <code>astraweave-camera</code>. See the crate’s documentation
-for the trait surface, and <code>docs/current/CAMERA_CONVENTIONS.md</code> for the
-canonical convention reference.</p>
-<hr>
-<h2 id="debug-rendering"><a class="header" href="#debug-rendering">Debug Rendering</a></h2>
-<h3 id="debugdraw"><a class="header" href="#debugdraw">DebugDraw</a></h3>
-<p>Immediate-mode debug visualization.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::debug_draw::DebugDraw;
-
-let mut debug = DebugDraw::new(&amp;device);
-
-// Draw primitives
-debug.line(start, end, Color::RED);
-debug.sphere(center, radius, Color::GREEN);
-debug.box3d(&amp;aabb, Color::BLUE);
-debug.arrow(origin, direction, Color::YELLOW);
-
-// Submit
-debug.flush(&amp;mut render_pass);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="render-graph"><a class="header" href="#render-graph">Render Graph</a></h2>
-<h3 id="rendergraph"><a class="header" href="#rendergraph">RenderGraph</a></h3>
-<p>Declarative render pipeline.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_render::graph::{RenderGraph, RenderPass};
-
-let mut graph = RenderGraph::new();
-
-// Define passes
-graph.add_pass(RenderPass::new("shadow")
-    .with_output("shadow_map", Format::Depth32Float));
-
-graph.add_pass(RenderPass::new("gbuffer")
-    .with_output("albedo", Format::Rgba8Unorm)
-    .with_output("normal", Format::Rgba16Float)
-    .with_output("depth", Format::Depth32Float));
-
-graph.add_pass(RenderPass::new("lighting")
-    .with_input("albedo")
-    .with_input("normal")
-    .with_input("shadow_map")
-    .with_output("hdr_color", Format::Rgba16Float));
-
-// Execute
-graph.execute(&amp;mut renderer);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>Mesh draw</td><td>21 ns</td><td>Per instance</td></tr>
-<tr><td>Vertex compression</td><td>21 ns</td><td>Per vertex</td></tr>
-<tr><td>Instancing overhead</td><td>2 ns</td><td>Per instance</td></tr>
-<tr><td>Shadow pass (2K)</td><td>~1 ms</td><td>Per cascade</td></tr>
-<tr><td>Post-FX (full)</td><td>~2 ms</td><td>All effects</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Feature</th><th>Description</th><th>Default</th></tr>
-</thead>
-<tbody>
-<tr><td><code>pbr</code></td><td>PBR materials</td><td>✅</td></tr>
-<tr><td><code>shadows</code></td><td>Shadow mapping</td><td>✅</td></tr>
-<tr><td><code>post-fx</code></td><td>Post-processing</td><td>✅</td></tr>
-<tr><td><code>debug-render</code></td><td>Debug visualization</td><td>❌</td></tr>
-<tr><td><code>hot-reload</code></td><td>Shader hot reload</td><td>❌</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
+<p><code>to_render_view</code> is the <code>CameraProducer</code> method. <code>to_render_view_camera_relative</code> is inherent on <code>FreeFly</code>. Pass either view to <code>Renderer::update_view</code>.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<p><code>default = ["postfx", "textures", "terrain-splat-arrays"]</code>.</p>
+<p>Other names in the manifest include <code>gpu-frame-budget</code>, <code>skinning-cpu</code>, <code>skinning-gpu</code>, <code>ibl</code>, <code>msaa</code>, <code>deferred</code>, <code>advanced-post</code>, <code>nanite</code>, and <code>gltf-assets</code>. There is no <code>pbr</code>, <code>shadows</code>, <code>post-fx</code>, <code>debug-render</code>, or <code>hot-reload</code> feature.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../core-systems/rendering.html">Rendering Guide</a></li>
-<li><a href="./materials.html">Materials System</a></li>
-<li><a href="../core-systems/animation.html#gpu-skinning">GPU Skinning</a></li>
-<li><a href="../performance/optimization.html#rendering">Performance Optimization</a></li>
+<li><a href="../examples/unified-showcase.html">Rendering showcase</a></li>
+<li><a href="../performance/optimization.html#rendering-optimization">Performance Optimization</a></li>
 </ul>
 
                     </main>

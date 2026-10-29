@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,274 +219,66 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="community"><a class="header" href="#community">Community</a></h1>
-<p>Welcome to the AstraWeave community! This page lists resources for connecting with other developers, getting help, and contributing to the project.</p>
-<h2 id="official-channels"><a class="header" href="#official-channels">Official Channels</a></h2>
-<h3 id="github"><a class="header" href="#github">GitHub</a></h3>
-<p>The primary home for AstraWeave development:</p>
+<p>AstraWeave is developed in the <a href="https://github.com/lazyxeon/AstraWeave">lazyxeon/AstraWeave</a> repository. GitHub issues are the working contact channel. This repository does not publish a Discord invite, a social account, or an <code>astraweave.dev</code> mailbox. GitHub Discussions are disabled (<code>has_discussions</code> is false).</p>
+<h2 id="github"><a class="header" href="#github">GitHub</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Resource</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="https://github.com/astraweave/astraweave">Repository</a></td><td>Source code, issues, and pull requests</td></tr>
-<tr><td><a href="https://github.com/astraweave/astraweave/issues">Issues</a></td><td>Q&amp;A, ideas, and general discussion</td></tr>
-<tr><td><a href="https://github.com/astraweave/astraweave/issues">Issues</a></td><td>Bug reports and feature requests</td></tr>
-<tr><td><a href="https://github.com/orgs/astraweave/projects">Projects</a></td><td>Development roadmap and tracking</td></tr>
+<tr><td><a href="https://github.com/lazyxeon/AstraWeave">Repository</a></td><td>Source and pull requests</td></tr>
+<tr><td><a href="https://github.com/lazyxeon/AstraWeave/issues">Issues</a></td><td>Bugs, questions, and feature requests</td></tr>
+<tr><td><a href="https://github.com/lazyxeon/AstraWeave/releases">Releases</a></td><td>Tags the repository has published</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="discord"><a class="header" href="#discord">Discord</a></h3>
-<p>Join our Discord server for real-time chat:</p>
-<ul>
-<li><strong>#general</strong> - Introduce yourself and chat with the community</li>
-<li><strong>#help</strong> - Get help with AstraWeave questions</li>
-<li><strong>#showcase</strong> - Share your projects and creations</li>
-<li><strong>#ai-discussion</strong> - Discuss AI/LLM integration topics</li>
-<li><strong>#development</strong> - Engine development discussion</li>
-<li><strong>#announcements</strong> - Official news and updates</li>
-</ul>
-<h3 id="social-media"><a class="header" href="#social-media">Social Media</a></h3>
-<ul>
-<li><strong>Twitter/X</strong>: <a href="https://twitter.com/astraweave">@AstraWeaveEngine</a> - News and updates</li>
-<li><strong>YouTube</strong>: <a href="https://youtube.com/@astraweave">AstraWeave</a> - Tutorials and devlogs</li>
-<li><strong>Reddit</strong>: <a href="https://reddit.com/r/astraweave">r/astraweave</a> - Community discussions</li>
-</ul>
-<h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
-<h3 id="before-asking"><a class="header" href="#before-asking">Before Asking</a></h3>
-<ol>
-<li>
-<p><strong>Search existing resources</strong>:</p>
-<ul>
-<li><a href="../index.html">Documentation</a></li>
-<li><a href="faq.html">FAQ</a></li>
-<li><a href="troubleshooting.html">Troubleshooting</a></li>
-<li><a href="https://github.com/astraweave/astraweave/issues">GitHub Issues</a></li>
-</ul>
-</li>
-<li>
-<p><strong>Prepare your question</strong>:</p>
-<ul>
-<li>Describe what you’re trying to do</li>
-<li>Show what you’ve tried</li>
-<li>Include relevant code snippets</li>
-<li>Share error messages</li>
-</ul>
-</li>
-</ol>
-<h3 id="where-to-ask"><a class="header" href="#where-to-ask">Where to Ask</a></h3>
+<p>The old Discussions URLs <code>github.com/astraweave/astraweave</code> and <code>github.com/lazyxeon/Veilweaver-Threads-of-Eternity</code> are not this repository. Do not use them.</p>
+<h2 id="getting-help"><a class="header" href="#getting-help">Getting help</a></h2>
+<p>Search the <a href="../README.html">book</a>, the <a href="faq.html">FAQ</a>, and <a href="https://github.com/lazyxeon/AstraWeave/issues">open issues</a> before opening a new issue.</p>
+<p>A report that can be reproduced names the command, the toolchain, and the error text. From a fresh clone:</p>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustc --version
+cargo run -p hello_companion --release
+</code></pre>
+<p><code>rustc --version</code> inside the repo should be 1.89.0. Paste that line and the compiler or runtime error into the issue. The companion binary’s source is <a href="../examples/hello-companion.html">Hello Companion</a>. A Bevy-style <code>Query&lt;(&amp;mut T, &amp;U), With&lt;Marker&gt;&gt;</code> system is not the <code>astraweave-ecs</code> API. <code>astraweave_core::World::spawn</code> takes a name, an <code>IVec2</code>, a <code>Team</code>, hp, and ammo.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Question Type</th><th>Best Channel</th></tr>
+<tr><th>Question type</th><th>Where</th></tr>
 </thead>
 <tbody>
-<tr><td>Quick questions</td><td>Discord #help</td></tr>
-<tr><td>Detailed technical questions</td><td>GitHub Issues</td></tr>
-<tr><td>Bug reports</td><td>GitHub Issues</td></tr>
-<tr><td>Feature requests</td><td>GitHub Issues</td></tr>
+<tr><td>Bugs, questions, and feature requests</td><td><a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a></td></tr>
 <tr><td>Security issues</td><td><a href="https://github.com/lazyxeon/AstraWeave/security/advisories/new">GitHub private vulnerability reporting</a></td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="how-to-ask-good-questions"><a class="header" href="#how-to-ask-good-questions">How to Ask Good Questions</a></h3>
-<pre><code class="language-markdown">## What I'm trying to do
-I want to create an AI companion that follows the player and helps in combat.
-
-## What I've tried
-```rust
-// My current code
-fn companion_follow(
-    companion: Query&lt;&amp;mut Transform, With&lt;Companion&gt;&gt;,
-    player: Query&lt;&amp;Transform, With&lt;Player&gt;&gt;,
-) {
-    // This doesn't work as expected
-}
-</code></pre>
-<h2 id="what-happens"><a class="header" href="#what-happens">What happens</a></h2>
-<p>The companion doesn’t move at all.</p>
-<h2 id="what-i-expected"><a class="header" href="#what-i-expected">What I expected</a></h2>
-<p>The companion should move toward the player.</p>
-<h2 id="environment"><a class="header" href="#environment">Environment</a></h2>
-<ul>
-<li>AstraWeave 0.1.0</li>
-<li>Windows 11</li>
-</ul>
-<pre><code>
-## Contributing
-
-### Ways to Contribute
-
-Everyone can contribute, regardless of experience level:
-
-| Contribution | Description |
-|--------------|-------------|
-| **Bug Reports** | Found a bug? Report it on GitHub Issues |
-| **Documentation** | Improve or add documentation |
-| **Code** | Fix bugs or implement features |
-| **Examples** | Create example projects |
-| **Testing** | Test pre-release versions |
-| **Translations** | Help translate documentation |
-| **Community** | Help others in Discord or GitHub Issues |
-
-### Getting Started
-
-1. **Read the contributing guide**: [Contributing](../dev/contributing.md)
-2. **Set up your development environment**: [Building](../dev/building.md)
-3. **Find a good first issue**:
-   - Look for `good first issue` labels on GitHub
-   - Check the `help wanted` label for more challenging tasks
-
-### Code Contribution Workflow
-
-```bash
-# 1. Fork and clone
-git clone https://github.com/YOUR_USERNAME/astraweave.git
-cd astraweave
-
-# 2. Create a branch
+<p>The runnable companion demo is <a href="../examples/hello-companion.html">hello_companion</a>. Issue reports that paste a Bevy-style <code>Query</code> system are not using the <code>astraweave-ecs</code> API.</p>
+<h2 id="contributing"><a class="header" href="#contributing">Contributing</a></h2>
+<p>The repository guide is <a href="https://github.com/lazyxeon/AstraWeave/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>. The book page is <a href="../dev/contributing.html">Contributing</a>.</p>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 git checkout -b feature/my-feature
-
-# 3. Make changes
-# ... edit files ...
-
-# 4. Run tests
-cargo test --all
-
-# 5. Commit
-git commit -am "feat: add my feature"
-
-# 6. Push and create PR
-git push origin feature/my-feature
+cargo test -p astraweave-core
 </code></pre>
-<h3 id="pull-request-guidelines"><a class="header" href="#pull-request-guidelines">Pull Request Guidelines</a></h3>
-<ul>
-<li><strong>Keep PRs focused</strong>: One feature or fix per PR</li>
-<li><strong>Write tests</strong>: Cover new functionality with tests</li>
-<li><strong>Update docs</strong>: Add documentation for new features</li>
-<li><strong>Follow style</strong>: Match existing code style</li>
-<li><strong>Be patient</strong>: Reviews take time</li>
-</ul>
-<h2 id="showcase"><a class="header" href="#showcase">Showcase</a></h2>
-<p>Share your AstraWeave projects!</p>
-<h3 id="how-to-submit"><a class="header" href="#how-to-submit">How to Submit</a></h3>
-<ol>
-<li>
-<p><strong>Discord</strong>: Post in #showcase with:</p>
-<ul>
-<li>Project name</li>
-<li>Brief description</li>
-<li>Screenshots or video</li>
-<li>Link (if public)</li>
-</ul>
-</li>
-<li>
-<p><strong>GitHub Issues</strong>: Open an issue describing the project</p>
-</li>
-</ol>
-<h3 id="featured-projects"><a class="header" href="#featured-projects">Featured Projects</a></h3>
-<p>Projects using AstraWeave:</p>
+<p>Forks clone <code>https://github.com/YOUR_USERNAME/AstraWeave.git</code>. One change per pull request.</p>
+<p>Code of conduct: <a href="https://github.com/lazyxeon/AstraWeave/blob/main/CODE_OF_CONDUCT.md">CODE_OF_CONDUCT.md</a>.</p>
+<h2 id="examples-in-this-repo"><a class="header" href="#examples-in-this-repo">Examples in this repo</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Project</th><th>Description</th></tr>
+<tr><th>Package</th><th>Page</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="../examples/hello-companion.html">hello_companion</a></td><td>Official demo showcasing AI companion systems</td></tr>
-<tr><td><a href="../examples/adaptive-boss.html">adaptive-boss</a></td><td>Boss AI that learns and adapts to player strategies</td></tr>
+<tr><td><code>hello_companion</code></td><td><a href="../examples/hello-companion.html">Hello Companion</a></td></tr>
+<tr><td><code>adaptive_boss</code></td><td><a href="../examples/adaptive-boss.html">Adaptive boss</a></td></tr>
 </tbody>
 </table>
 </div>
-<p>Have a project to share? Post in <a href="https://discord.gg/astraweave">#showcase on Discord</a> or open a GitHub issue!</p>
-<h2 id="events"><a class="header" href="#events">Events</a></h2>
-<h3 id="community-events"><a class="header" href="#community-events">Community Events</a></h3>
-<ul>
-<li><strong>Monthly Showcase</strong>: First Friday of each month</li>
-<li><strong>AI Game Jam</strong>: Quarterly jam focusing on AI-native games</li>
-<li><strong>Office Hours</strong>: Weekly Q&amp;A with maintainers</li>
-</ul>
-<h3 id="conferences"><a class="header" href="#conferences">Conferences</a></h3>
-<p>AstraWeave may be presented at:</p>
-<ul>
-<li>GDC (Game Developers Conference)</li>
-<li>RustConf</li>
-<li>Various game development meetups</li>
-</ul>
-<h2 id="governance"><a class="header" href="#governance">Governance</a></h2>
-<h3 id="project-leadership"><a class="header" href="#project-leadership">Project Leadership</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Role</th><th>Responsibility</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Core Team</strong></td><td>Major decisions, releases, roadmap</td></tr>
-<tr><td><strong>Maintainers</strong></td><td>Code review, issue triage</td></tr>
-<tr><td><strong>Contributors</strong></td><td>Feature development, bug fixes</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="decision-making"><a class="header" href="#decision-making">Decision Making</a></h3>
-<ul>
-<li><strong>Minor changes</strong>: Maintainer approval</li>
-<li><strong>Major changes</strong>: Core team discussion</li>
-<li><strong>Breaking changes</strong>: RFC process with community input</li>
-</ul>
-<h3 id="code-of-conduct"><a class="header" href="#code-of-conduct">Code of Conduct</a></h3>
-<p>We follow a Code of Conduct to ensure a welcoming community:</p>
-<ul>
-<li>Be respectful and inclusive</li>
-<li>Focus on constructive feedback</li>
-<li>Help others learn</li>
-<li>No harassment or discrimination</li>
-</ul>
-<p>Full Code of Conduct: <a href="https://github.com/astraweave/astraweave/blob/main/CODE_OF_CONDUCT.md">CODE_OF_CONDUCT.md</a></p>
-<h2 id="learning-resources"><a class="header" href="#learning-resources">Learning Resources</a></h2>
-<h3 id="official-resources"><a class="header" href="#official-resources">Official Resources</a></h3>
-<ul>
-<li><a href="../index.html">Documentation</a> - Complete documentation</li>
-<li><a href="../examples/index.html">Examples</a> - Working code examples</li>
-<li><a href="https://docs.rs/astraweave">API Reference</a> - Generated API docs</li>
-</ul>
-<h3 id="community-resources"><a class="header" href="#community-resources">Community Resources</a></h3>
-<ul>
-<li><strong>Tutorials</strong>: Community-created tutorials (see Discord pinned messages)</li>
-<li><strong>Templates</strong>: Starter templates for common project types</li>
-<li><strong>Libraries</strong>: Community extensions and plugins</li>
-</ul>
-<h3 id="recommended-learning-path"><a class="header" href="#recommended-learning-path">Recommended Learning Path</a></h3>
-<ol>
-<li><strong>Getting Started</strong>: <a href="../getting-started/installation.html">Installation</a></li>
-<li><strong>First Project</strong>: <a href="../game-dev/first-game.html">Building Your First Game</a></li>
-<li><strong>Core Concepts</strong>: <a href="../architecture/overview.html">Architecture Overview</a></li>
-<li><strong>AI Features</strong>: <a href="../core-systems/ai/index.html">AI System</a></li>
-<li><strong>Advanced Topics</strong>: Explore specific system documentation</li>
-</ol>
-<h2 id="staying-updated"><a class="header" href="#staying-updated">Staying Updated</a></h2>
-<h3 id="release-notes"><a class="header" href="#release-notes">Release Notes</a></h3>
-<ul>
-<li>Check <a href="https://github.com/astraweave/astraweave/releases">GitHub Releases</a></li>
-<li>Watch the repository for release notifications</li>
-</ul>
-<h3 id="changelog"><a class="header" href="#changelog">Changelog</a></h3>
-<p>Each release includes a detailed changelog covering:</p>
-<ul>
-<li>New features</li>
-<li>Bug fixes</li>
-<li>Breaking changes</li>
-<li>Migration guides</li>
-</ul>
-<h3 id="roadmap"><a class="header" href="#roadmap">Roadmap</a></h3>
-<p>See <a href="roadmap.html">Roadmap</a> for upcoming features and long-term plans.</p>
-<h2 id="sponsorship"><a class="header" href="#sponsorship">Sponsorship</a></h2>
-<h3 id="supporting-development"><a class="header" href="#supporting-development">Supporting Development</a></h3>
-<p>If AstraWeave helps you, consider supporting its development:</p>
-<ul>
-<li><strong>GitHub Sponsors</strong>: Support individual maintainers</li>
-<li><strong>Corporate Sponsorship</strong>: Contact sponsorship@astraweave.dev</li>
-</ul>
-<h3 id="sponsors"><a class="header" href="#sponsors">Sponsors</a></h3>
-<p>Thank you to our sponsors! Interested in sponsoring AstraWeave? Contact sponsorship@astraweave.dev to learn about sponsorship tiers and benefits.</p>
+<p>There is no public event calendar, office hours, or sponsorship desk in this repository. Sponsorship and press notes belong in a GitHub issue.</p>
+<h2 id="api-docs"><a class="header" href="#api-docs">API docs</a></h2>
+<p><code>cargo metadata --no-deps --format-version 1</code> reports 142 workspace members, and 30 of those manifests set <code>publish</code>. The workspace value in the root <code>Cargo.toml</code> is <code>publish = false</code>. <code>astraweave-core</code> is one of those members and sets <code>publish = { workspace = true }</code>. <code>astraweave-ecs</code> is a member and does not set <code>publish</code>. These crates are not the <code>docs.rs/astraweave</code> crate. Generate local rustdoc with <code>cargo doc -p astraweave-core --no-deps</code>.</p>
 <h2 id="contact"><a class="header" href="#contact">Contact</a></h2>
 <div class="table-wrapper">
 <table>
@@ -494,19 +286,20 @@ git push origin feature/my-feature
 <tr><th>Purpose</th><th>Contact</th></tr>
 </thead>
 <tbody>
-<tr><td>General inquiries</td><td>hello@astraweave.dev</td></tr>
+<tr><td>General inquiries</td><td><a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a></td></tr>
 <tr><td>Security issues</td><td><a href="https://github.com/lazyxeon/AstraWeave/security/advisories/new">GitHub private vulnerability reporting</a></td></tr>
-<tr><td>Sponsorship</td><td>sponsorship@astraweave.dev</td></tr>
-<tr><td>Press</td><td>press@astraweave.dev</td></tr>
+<tr><td>Sponsorship</td><td><a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a></td></tr>
+<tr><td>Press</td><td><a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a></td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="related-documentation"><a class="header" href="#related-documentation">Related Documentation</a></h2>
+<p><code>hello@astraweave.dev</code>, <code>sponsorship@astraweave.dev</code>, and <code>press@astraweave.dev</code> are removed. The domain does not resolve.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="../dev/contributing.html">Contributing</a> - Contribution guidelines</li>
-<li><a href="../dev/code-style.html">Code Style</a> - Coding standards</li>
-<li><a href="roadmap.html">Roadmap</a> - Future plans</li>
-<li><a href="faq.html">FAQ</a> - Frequently asked questions</li>
+<li><a href="../dev/contributing.html">Contributing</a></li>
+<li><a href="../dev/code-style.html">Code style</a></li>
+<li><a href="roadmap.html">Roadmap</a></li>
+<li><a href="faq.html">FAQ</a></li>
 </ul>
 
                     </main>

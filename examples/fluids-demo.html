@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,33 +219,26 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="fluids-demo"><a class="header" href="#fluids-demo">Fluids Demo</a></h1>
-<p>Interactive demonstration of AstraWeave’s PCISPH-based fluid simulation system with real-time rendering, multiple scenarios, and egui-powered controls.</p>
+<p>Windowed example <code>fluids_demo</code>. It constructs <code>astraweave_fluids::FluidSystem</code>. The crate has no <code>PCISPHSystem</code>. Scenarios registered in <code>main</code> are laboratory and ocean.</p>
 <pre><code class="language-admonish info title=&quot;Run This Example&quot;">cargo run -p fluids_demo --release
 </code></pre>
 <h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
 <p>The fluids demo showcases:</p>
 <ul>
-<li><strong>Real-time particle-based fluid simulation</strong> using PCISPH solver</li>
-<li><strong>Multiple simulation scenarios</strong> (laboratory, ocean, waterfall, splash)</li>
-<li><strong>Interactive controls</strong> for spawning particles and adjusting parameters</li>
-<li><strong>Advanced rendering</strong> with caustics, foam, and refraction effects</li>
-<li><strong>LOD optimization</strong> for performance scaling</li>
+<li><code>FluidSystem</code> from <code>astraweave-fluids</code> (not a PCISPH type; that solver was removed)</li>
+<li>Two scenarios: <code>LaboratoryScenario</code> and <code>OceanScenario</code></li>
+<li>WASD moves the camera. Q and E are read. Space advances the scenario (<code>scenario_manager.next</code>). Particle spawn is rejected outside the laboratory scenario.</li>
 </ul>
 <h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
 <pre><code class="language-bash"># Run the demo
 cargo run -p fluids_demo --release
 
-# Controls:
-# WASD      - Move camera
-# Mouse     - Rotate camera
-# LMB       - Spawn particles at cursor
-# RMB       - Apply force to particles
-# Tab       - Switch scenario
-# F3        - Toggle debug panel
+# WASD moves. Q and E are read. Space advances the scenario.
+# Spawn is laboratory-only. See examples/fluids_demo/src/main.rs.
 </code></pre>
 <h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
 <pre class="mermaid">graph TD
-    A[FluidSystem] --&gt; B[PCISPH Solver]
+    A[FluidSystem] --&gt; B[Compute pipelines in lib.rs]
     A --&gt; C[FluidRenderer]
     A --&gt; D[ScenarioManager]
     
@@ -361,7 +354,7 @@ fn spawn_particles_at_cursor(&amp;mut self) {
 <li>Affects all particles in a configurable radius</li>
 </ul>
 <h3 id="debug-panel"><a class="header" href="#debug-panel">Debug Panel</a></h3>
-<p>Press F3 to toggle the debug panel (egui-based):</p>
+<p>The source reads F1, F2, and F12. It does not mention F3 in the key handler this page used to describe:</p>
 <ul>
 <li>Real-time particle count</li>
 <li>FPS / frame time graph</li>
@@ -461,8 +454,8 @@ egui-winit = { workspace = true }
 <p><strong>Symptom</strong>: Scene renders but no fluid particles</p>
 <p><strong>Solutions</strong>:</p>
 <ol>
-<li>Check scenario is initialized (Tab to switch)</li>
-<li>Click LMB to spawn particles manually</li>
+<li>Space advances the scenario. Spawn runs only in the laboratory scenario.</li>
+<li>Read <code>examples/fluids_demo/src/main.rs</code> for the pointer path. This page does not document a Tab or LMB binding.</li>
 <li>Verify camera position (reset with R key)</li>
 </ol>
 <h3 id="skybox-not-loading"><a class="header" href="#skybox-not-loading">Skybox Not Loading</a></h3>

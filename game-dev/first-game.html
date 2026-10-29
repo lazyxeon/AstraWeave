@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,353 +219,77 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="building-your-first-game"><a class="header" href="#building-your-first-game">Building Your First Game</a></h1>
-<p>This guide walks you through building a complete game with AstraWeave, from project setup to a playable demo featuring AI companions, physics, and navigation.</p>
-<pre><code class="language-admonish info title=&quot;Prerequisites&quot;">Before starting, ensure you have:
-- Rust 1.75+ installed
-- AstraWeave cloned and building successfully
-- Ollama running with a compatible model (see [Installation Guide](../getting-started/installation.md))
+<p>There is no <code>companion_quest</code> package. This guide runs four workspace binaries, in order, from the repository root. Together they are a companion, a quest, a physics hit, and a window. Each command is a package in the root <code>Cargo.toml</code> <code>members</code> list.</p>
+<p>Rust is 1.89.0, pinned by <code>rust-toolchain.toml</code>.</p>
+<h2 id="1-companion-plan"><a class="header" href="#1-companion-plan">1. Companion plan</a></h2>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+cargo run -p hello_companion --release
 </code></pre>
-<h2 id="project-overview"><a class="header" href="#project-overview">Project Overview</a></h2>
-<p>We’ll build <strong>“Companion Quest”</strong> - a small adventure where an AI companion helps the player navigate a dungeon, solve puzzles, and defeat enemies. This showcases:</p>
+<p>Package <code>hello_companion</code>. Default features do not call a model. <code>RuleOrchestrator::propose_plan</code> (<code>astraweave-ai/src/orchestrator.rs</code>) returns smoke, a move, and cover fire for the world in <code>examples/hello_companion/src/main.rs</code>. The smoke throw hits <code>EngineError::LosBlocked</code> (<code>line of sight blocked</code>). The process prints that and exits 0. The walkthrough is <a href="../getting-started/first-companion.html">Your first companion</a>.</p>
+<p>The spawn you will see again in other examples is:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>w.spawn("Player", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+<span class="boring">}</span></code></pre>
+<p>That is <code>astraweave_core::World::spawn</code> in <code>astraweave-core/src/world.rs</code>. It is not a Bevy tuple spawn.</p>
+<h2 id="2-dialogue-and-a-quest"><a class="header" href="#2-dialogue-and-a-quest">2. Dialogue and a quest</a></h2>
+<pre><code class="language-bash">cargo run -p quest_dialogue_demo --release
+</code></pre>
+<p>Run that from the repository root. <code>examples/quest_dialogue_demo/src/main.rs</code> reads two files with paths relative to the working directory:</p>
 <ul>
-<li>AI companion with LLM-powered dialogue</li>
-<li>Physics-based puzzles</li>
-<li>Navigation and pathfinding</li>
-<li>Combat with adaptive enemies</li>
-<li>Save/load functionality</li>
+<li><code>assets/dialogue_intro.toml</code></li>
+<li><code>assets/quests_main.toml</code></li>
 </ul>
-<h2 id="step-1-project-setup"><a class="header" href="#step-1-project-setup">Step 1: Project Setup</a></h2>
-<h3 id="create-a-new-example"><a class="header" href="#create-a-new-example">Create a New Example</a></h3>
-<p>Create a new directory in <code>examples/</code>:</p>
-<pre><code class="language-bash">mkdir -p examples/companion_quest/src
+<p>It parses <code>astraweave_gameplay::dialogue::Dialogue</code>, prints each line, and auto-picks choice <code>0</code> until <code>node.end</code>. It then parses <code>astraweave_gameplay::quests::Quest</code>, calls <code>QuestLog::add</code>, <code>progress_gather("q_tutorial", "Crystal", 2)</code> and <code>progress_gather(..., 1)</code>, and prints <code>Quest completed?</code> from <code>log.is_done("q_tutorial")</code>.</p>
+<p>If you run it from another directory, those <code>read_to_string</code> calls fail because the paths are not absolute.</p>
+<h2 id="3-a-physics-hit"><a class="header" href="#3-a-physics-hit">3. A physics hit</a></h2>
+<pre><code class="language-bash">cargo run -p combat_physics_demo --release
 </code></pre>
-<p>Create <code>examples/companion_quest/Cargo.toml</code>:</p>
-<pre><code class="language-toml">[package]
-name = "companion_quest"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-astraweave-core = { path = "../../astraweave-core" }
-astraweave-ecs = { path = "../../astraweave-ecs" }
-astraweave-ai = { path = "../../astraweave-ai" }
-astraweave-physics = { path = "../../astraweave-physics" }
-astraweave-nav = { path = "../../astraweave-nav" }
-astraweave-render = { path = "../../astraweave-render" }
-astraweave-audio = { path = "../../astraweave-audio" }
-astraweave-input = { path = "../../astraweave-input" }
-astraweave-llm = { path = "../../astraweave-llm" }
-astraweave-gameplay = { path = "../../astraweave-gameplay" }
-tokio = { version = "1.0", features = ["rt-multi-thread", "macros"] }
+<p><code>examples/combat_physics_demo/src/main.rs</code> builds a Rapier world and one swing:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut phys = PhysicsWorld::new(vec3(0.0, -9.81, 0.0));
+let _ground = phys.create_ground_plane(vec3(50.0, 0.0, 50.0), 1.0);
+<span class="boring">}</span></code></pre>
+<p><code>PhysicsWorld::new</code> takes a <code>Vec3</code> gravity (<code>astraweave-physics/src/lib.rs</code>). The workspace dependency is <code>rapier3d</code> 0.22. The demo then <code>add_dynamic_box</code> for a player and an enemy and uses <code>astraweave_gameplay</code> combat types (<code>Combatant</code>, <code>Stats</code>, <code>Parry</code>). Read the rest of that <code>main</code> for the swing. Do not expect the old sample log that named Rapier 0.17 or Hermes. This binary does not connect to Ollama.</p>
+<h2 id="4-open-the-window"><a class="header" href="#4-open-the-window">4. Open the window</a></h2>
+<p>The windowed slice is <code>aravath_greybox</code>, a binary of package <code>aravath_runtime</code>:</p>
+<pre><code class="language-bash">cargo xtask fetch-assets
+cargo run -p aravath_runtime --bin aravath_greybox --release
 </code></pre>
-<h3 id="main-entry-point"><a class="header" href="#main-entry-point">Main Entry Point</a></h3>
-<p>Create <code>examples/companion_quest/src/main.rs</code>:</p>
-<pre class="playground"><code class="language-rust">use astraweave_core::prelude::*;
-use astraweave_ecs::prelude::*;
-use astraweave_ai::prelude::*;
-use astraweave_physics::prelude::*;
-use astraweave_nav::prelude::*;
-
-fn main() {
-    let mut world = World::new();
-    
-    setup_world(&amp;mut world);
-    setup_player(&amp;mut world);
-    setup_companion(&amp;mut world);
-    setup_dungeon(&amp;mut world);
-    
-    run_game_loop(&amp;mut world);
-}
-
-fn setup_world(world: &amp;mut World) {
-    world.insert_resource(PhysicsConfig::default());
-    world.insert_resource(NavigationConfig::default());
-    world.insert_resource(AiConfig {
-        tick_budget_ms: 8,
-        max_concurrent_plans: 4,
-        ..Default::default()
-    });
-}</code></pre>
-<h2 id="step-2-creating-the-player"><a class="header" href="#step-2-creating-the-player">Step 2: Creating the Player</a></h2>
-<p>The player entity needs transform, physics, and input components:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn setup_player(world: &amp;mut World) {
-    let player = world.spawn((
-        Transform::from_xyz(0.0, 1.0, 0.0),
-        RigidBody::Dynamic,
-        Collider::capsule(0.5, 1.8),
-        Player {
-            health: 100.0,
-            max_health: 100.0,
-            stamina: 100.0,
-        },
-        InputReceiver::default(),
-        CharacterController {
-            speed: 5.0,
-            jump_force: 8.0,
-            ..Default::default()
-        },
-    ));
-    
-    world.insert_resource(PlayerEntity(player));
-}
-
-#[derive(Component)]
-struct Player {
-    health: f32,
-    max_health: f32,
-    stamina: f32,
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-3-creating-the-ai-companion"><a class="header" href="#step-3-creating-the-ai-companion">Step 3: Creating the AI Companion</a></h2>
-<p>The companion uses AstraWeave’s AI-native architecture:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn setup_companion(world: &amp;mut World) {
-    let companion = world.spawn((
-        Transform::from_xyz(2.0, 1.0, 0.0),
-        RigidBody::Dynamic,
-        Collider::capsule(0.4, 1.6),
-        
-        AiAgent {
-            personality: "helpful and curious".into(),
-            knowledge_base: vec![
-                "I am Spark, a magical companion".into(),
-                "I can help solve puzzles and fight enemies".into(),
-            ],
-        },
-        
-        PerceptionRadius(15.0),
-        
-        NavAgent {
-            speed: 4.0,
-            acceleration: 10.0,
-            avoidance_radius: 0.5,
-        },
-        
-        Companion {
-            following: true,
-            follow_distance: 3.0,
-        },
-        
-        DialogueCapable::default(),
-    ));
-    
-    world.insert_resource(CompanionEntity(companion));
-}
-
-#[derive(Component)]
-struct Companion {
-    following: bool,
-    follow_distance: f32,
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-4-building-the-dungeon"><a class="header" href="#step-4-building-the-dungeon">Step 4: Building the Dungeon</a></h2>
-<p>Create a simple dungeon with rooms and corridors:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn setup_dungeon(world: &amp;mut World) {
-    let floor = world.spawn((
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        RigidBody::Static,
-        Collider::cuboid(50.0, 0.5, 50.0),
-        Floor,
-    ));
-    
-    spawn_walls(world);
-    spawn_doors(world);
-    spawn_puzzles(world);
-    spawn_enemies(world);
-    
-    generate_navmesh(world);
-}
-
-fn generate_navmesh(world: &amp;mut World) {
-    let navmesh = NavMeshBuilder::new()
-        .cell_size(0.3)
-        .cell_height(0.2)
-        .agent_radius(0.5)
-        .agent_height(1.8)
-        .max_slope(45.0)
-        .build_from_world(world);
-    
-    world.insert_resource(navmesh);
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-5-the-game-loop"><a class="header" href="#step-5-the-game-loop">Step 5: The Game Loop</a></h2>
-<p>AstraWeave uses a fixed-tick simulation for determinism:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn run_game_loop(world: &amp;mut World) {
-    let mut scheduler = Scheduler::new();
-    
-    scheduler.add_system(input_system);
-    scheduler.add_system(player_movement_system);
-    scheduler.add_system(ai_perception_system);
-    scheduler.add_system(ai_planning_system);
-    scheduler.add_system(companion_follow_system);
-    scheduler.add_system(navigation_system);
-    scheduler.add_system(physics_system);
-    scheduler.add_system(combat_system);
-    scheduler.add_system(dialogue_system);
-    scheduler.add_system(render_system);
-    
-    let tick_rate = Duration::from_secs_f64(1.0 / 60.0);
-    let mut accumulator = Duration::ZERO;
-    let mut last_time = Instant::now();
-    
-    loop {
-        let now = Instant::now();
-        let delta = now - last_time;
-        last_time = now;
-        accumulator += delta;
-        
-        while accumulator &gt;= tick_rate {
-            scheduler.run(world);
-            accumulator -= tick_rate;
-        }
-        
-        if should_quit(world) {
-            break;
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-6-ai-companion-behavior"><a class="header" href="#step-6-ai-companion-behavior">Step 6: AI Companion Behavior</a></h2>
-<p>The companion uses perception and planning:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn companion_follow_system(
-    player_query: Query&lt;&amp;Transform, With&lt;Player&gt;&gt;,
-    mut companion_query: Query&lt;(&amp;mut NavAgent, &amp;Companion, &amp;Transform)&gt;,
-    navmesh: Res&lt;NavMesh&gt;,
-) {
-    let player_pos = player_query.single().translation;
-    
-    for (mut nav_agent, companion, transform) in companion_query.iter_mut() {
-        if !companion.following {
-            continue;
-        }
-        
-        let distance = transform.translation.distance(player_pos);
-        
-        if distance &gt; companion.follow_distance {
-            let target = player_pos - (player_pos - transform.translation)
-                .normalize() * companion.follow_distance;
-            
-            if let Some(path) = navmesh.find_path(transform.translation, target) {
-                nav_agent.set_path(path);
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-7-dialogue-integration"><a class="header" href="#step-7-dialogue-integration">Step 7: Dialogue Integration</a></h2>
-<p>Enable LLM-powered dialogue with the companion:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn dialogue_system(
-    mut dialogue_events: EventReader&lt;DialogueEvent&gt;,
-    mut llm_client: ResMut&lt;LlmClient&gt;,
-    companion_query: Query&lt;&amp;AiAgent, With&lt;Companion&gt;&gt;,
-    mut dialogue_responses: EventWriter&lt;DialogueResponse&gt;,
-) {
-    for event in dialogue_events.read() {
-        let agent = companion_query.single();
-        
-        let prompt = format!(
-            "You are {}. The player says: '{}'. Respond in character.",
-            agent.personality,
-            event.message
-        );
-        
-        match llm_client.generate_blocking(&amp;prompt) {
-            Ok(response) =&gt; {
-                dialogue_responses.send(DialogueResponse {
-                    speaker: "Spark".into(),
-                    text: response,
-                });
-            }
-            Err(e) =&gt; {
-                dialogue_responses.send(DialogueResponse {
-                    speaker: "Spark".into(),
-                    text: "Hmm, I'm not sure what to say...".into(),
-                });
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-8-combat-system"><a class="header" href="#step-8-combat-system">Step 8: Combat System</a></h2>
-<p>Add combat with tool validation:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn combat_system(
-    mut combat_events: EventReader&lt;CombatEvent&gt;,
-    mut health_query: Query&lt;&amp;mut Health&gt;,
-    tool_validator: Res&lt;ToolValidator&gt;,
-) {
-    for event in combat_events.read() {
-        let validation = tool_validator.validate(&amp;ToolCall {
-            tool: "attack".into(),
-            params: json!({
-                "attacker": event.attacker,
-                "target": event.target,
-                "damage": event.damage,
-            }),
-        });
-        
-        match validation {
-            ToolResult::Success =&gt; {
-                if let Ok(mut health) = health_query.get_mut(event.target) {
-                    health.current -= event.damage;
-                }
-            }
-            ToolResult::Blocked(reason) =&gt; {
-                println!("Attack blocked: {}", reason);
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="step-9-running-your-game"><a class="header" href="#step-9-running-your-game">Step 9: Running Your Game</a></h2>
-<p>Build and run:</p>
-<pre><code class="language-bash">cargo run -p companion_quest --release
+<p><code>cargo xtask fetch-assets</code> is the asset fetch in <code>tools/xtask</code>. The greybox behavior (KayKit props, streamed chunks, sword hit, dig brush) is the Aravath greybox row on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page. <code>cargo editor</code> is the alias in <code>.cargo/config.toml</code> for <code>aw_editor</code>. It is a separate window from the greybox.</p>
+<p>The default <code>hello_companion</code> run stays headless. Do not use it to test the GPU.</p>
+<h2 id="5-a-boss-in-the-same-world-type"><a class="header" href="#5-a-boss-in-the-same-world-type">5. A boss in the same world type</a></h2>
+<pre><code class="language-bash">cargo run -p adaptive_boss --release
 </code></pre>
-<h3 id="expected-output"><a class="header" href="#expected-output">Expected Output</a></h3>
-<pre><code>[INFO] AstraWeave v0.1.0 starting...
-[INFO] Physics initialized: Rapier 0.17
-[INFO] Navigation: NavMesh built (2,450 polygons)
-[INFO] AI: Connected to Ollama (hermes2-pro)
-[INFO] Companion "Spark" spawned at (2.0, 1.0, 0.0)
-[INFO] Game loop started at 60 Hz
-</code></pre>
-<h2 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h2>
-<p>See the full working example at <code>examples/companion_quest/</code> or explore these related examples:</p>
+<p><code>examples/adaptive_boss/src/main.rs</code> spawns player, companion, and boss with the same <code>World::spawn</code> signature, builds a <code>WorldSnapshot</code>, and steps <code>BossDirector</code> from <code>astraweave-director</code>. <code>--features veilweaver_slice</code> switches the import to <code>OathboundWardenDirector</code>. That feature name is an identifier. The player-facing game name is Aravath.</p>
+<h2 id="what-a-single-game-loop-is"><a class="header" href="#what-a-single-game-loop-is">What a single game loop is</a></h2>
+<p>These binaries are separate <code>main</code>s. They show the types you compose:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Example</th><th>Description</th></tr>
+<tr><th>Piece</th><th>Crate</th><th>Seen in</th></tr>
 </thead>
 <tbody>
-<tr><td><code>hello_companion</code></td><td>Minimal AI companion demo</td></tr>
-<tr><td><code>adaptive_boss</code></td><td>Multi-phase adaptive boss fight</td></tr>
-<tr><td><code>quest_dialogue_demo</code></td><td>Dialogue and quest system</td></tr>
-<tr><td><code>combat_physics_demo</code></td><td>Physics-based combat</td></tr>
-<tr><td><code>unified_showcase</code></td><td>Full engine demonstration</td></tr>
+<tr><td>Grid world and snapshot</td><td><code>astraweave-core</code></td><td><code>hello_companion</code>, <code>adaptive_boss</code></td></tr>
+<tr><td>Plan</td><td><code>astraweave-ai::RuleOrchestrator</code></td><td><code>hello_companion</code></td></tr>
+<tr><td>Accept or reject the plan</td><td><code>validate_and_execute</code></td><td><code>hello_companion</code></td></tr>
+<tr><td>Lines and quests</td><td><code>astraweave-gameplay</code></td><td><code>quest_dialogue_demo</code></td></tr>
+<tr><td>Rapier bodies</td><td><code>astraweave-physics::PhysicsWorld</code></td><td><code>combat_physics_demo</code></td></tr>
+<tr><td>Window</td><td><code>aravath_runtime</code> bin <code>aravath_greybox</code></td><td>engine status</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p>The deterministic tick does not call <code>AIArbiter</code>. A local model, when you enable one, proposes off that tick. The sim validates.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./companions.html">AI Companions</a> - Deep dive into companion AI</li>
-<li><a href="./bosses.html">Adaptive Bosses</a> - Creating intelligent enemies</li>
-<li><a href="./dialogue.html">Dialogue Systems</a> - LLM-powered conversations</li>
-<li><a href="../core-systems/physics.html">Physics</a> - Physics system details</li>
+<li><a href="../examples/hello-companion.html">Hello Companion</a></li>
+<li><a href="./crafting-combat.html">Crafting and combat</a></li>
+<li><a href="./dialogue.html">Dialogue</a></li>
+<li><a href="./save-load.html">Save and load</a></li>
+<li><a href="../examples/index.html">Examples</a></li>
 </ul>
-<pre><code class="language-admonish tip title=&quot;Performance Tip&quot;">Enable release mode (`--release`) for LLM inference. Debug builds can be 10-50x slower for AI operations.
-</code></pre>
 
                     </main>
 

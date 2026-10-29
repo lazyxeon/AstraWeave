@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,490 +218,42 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <!-- markdownlint-disable MD013 MD033 MD041 -->
-<div class="astra-landing">
-<section class="astra-hero" style="grid-template-columns:1fr">
-<div class="astra-hero__copy">
-  <span class="astra-eyebrow">Performance</span>
-  
-<h1>Performance Benchmarks</h1>
-
-  
-<p class="astra-lead">
-    All benchmarks executed via Criterion.rs statistical benchmarking.
-    Results sourced from the Master Benchmark Report v5.55 (January 2026).
-    Every measurement can be reproduced with documented commands.
-  </p>
-
-  
-<div class="astra-meta" aria-label="Benchmark metadata">
-    <span class="astra-meta-badge">~1,500 benchmarks across 76 sections</span>
-    <span class="astra-meta-badge">Criterion.rs + Real Ollama validation</span>
-    <span class="astra-meta-badge">Production Ready (Grade A+)</span>
-  </div>
-
-</div>
-
-</section>
-<section class="astra-proof-strip" aria-label="Key benchmark metrics">
-  <article class="astra-proof-tile">
-    <strong>85%</strong>
-    <span>p99 headroom at 1,000 entities @ 60 FPS</span>
-  </article>
-  <article class="astra-proof-tile">
-    <strong>15.0µs</strong>
-    <span>ECS entity spawn (100), 70% under target</span>
-  </article>
-  <article class="astra-proof-tile">
-    <strong>286ns</strong>
-    <span>GOAP planning (full), 97% under target</span>
-  </article>
-  <article class="astra-proof-tile">
-    <strong>9.8ns</strong>
-    <span>GOAP cache hit, 99% under target</span>
-  </article>
-  <article class="astra-proof-tile">
-    <strong>1.27ms</strong>
-    <span>p50 frame time at 1,000 entities</span>
-  </article>
-  <article class="astra-proof-tile">
-    <strong>2.42ms</strong>
-    <span>p99 frame time at 1,000 entities</span>
-  </article>
-</section>
-<section class="astra-section">
-<div class="astra-section-heading">
-<span class="astra-kicker">Executive summary</span>
-<h2>Key validation results — January 2026</h2>
-
-<p>
-  Engine has <strong>85% headroom</strong> at p99 for 1,000 entities at 60 FPS.
-  All core systems operate well under their per-frame budgets.
-</p>
-
-</div>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>System</th><th>Benchmark</th><th>Target</th><th>Actual</th><th>Margin</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>ECS</strong></td><td>Entity spawn (100)</td><td>&lt;50µs</td><td>15.0µs</td><td>70% under</td></tr>
-<tr><td><strong>ECS</strong></td><td>Entity spawn (1000)</td><td>&lt;500µs</td><td>106.7µs</td><td>79% under</td></tr>
-<tr><td><strong>AI</strong></td><td>GOAP planning (full)</td><td>&lt;10µs</td><td>286ns</td><td>97% under</td></tr>
-<tr><td><strong>AI</strong></td><td>GOAP planning (cache)</td><td>&lt;1µs</td><td>9.8ns</td><td>99% under</td></tr>
-<tr><td><strong>Frame</strong></td><td>p50 @ 1k entities</td><td>&lt;16.67ms</td><td>1.27ms</td><td>92% under</td></tr>
-<tr><td><strong>Frame</strong></td><td>p99 @ 1k entities</td><td>&lt;16.67ms</td><td>2.42ms</td><td>85% under</td></tr>
-</tbody>
-</table>
-</div>
-</section>
-<section class="astra-section">
-<div class="astra-section-heading astra-section-heading--wide">
-<span class="astra-kicker">Best performers</span>
-<h2>Operations achieving sub-nanosecond and sub-10ns latency.</h2>
-
-<p>
-  These benchmarks represent AstraWeave's highest-performing operations,
-  many achieving sub-nanosecond latency.
-</p>
-
-</div>
-
-<div class="astra-split">
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">Sub-nanosecond</span>
-<h3>Operations under 1 ns</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Throughput</th></tr>
-</thead>
-<tbody>
-<tr><td>Multi-Agent Per-Agent</td><td>12-20 ps</td><td>50-83 trillion/sec</td></tr>
-<tr><td>Nav Sliver Triangles</td><td>99-104 ps</td><td>10 billion/sec</td></tr>
-<tr><td>Multi-Agent Per-Plan</td><td>0.29-0.31 ns</td><td>3.2-3.4 billion/sec</td></tr>
-<tr><td>Pan Mode Switching</td><td>418 ps</td><td>—</td></tr>
-<tr><td>State Transitions</td><td>0.49-0.51 ns</td><td>—</td></tr>
-<tr><td>Emotion Blending</td><td>0.55 ns</td><td>—</td></tr>
-<tr><td>Multi-Agent Feedback</td><td>0.73-0.76 ns</td><td>1.3 billion/sec</td></tr>
-<tr><td>MSAA Resize 720p</td><td>582-645 ps</td><td>—</td></tr>
-<tr><td>UI Settings Nav</td><td>696 ps</td><td>—</td></tr>
-<tr><td>Clear Frame</td><td>0.72 ns</td><td>—</td></tr>
-<tr><td>Weather Attenuation</td><td>730-783 ps</td><td>22.8 billion/frame</td></tr>
-<tr><td>Room Overlap Check</td><td>571-629 ps</td><td>—</td></tr>
-<tr><td>Frustum AABB Inside</td><td>889-915 ps</td><td>—</td></tr>
-<tr><td>GPU Budget Check</td><td>890 ps-1.05 ns</td><td>17 billion/frame</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">Sub-10 nanosecond</span>
-<h3>Operations under 10 ns</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>SparseSet Lookup (1k)</td><td>1.56 ns</td><td>37× faster than BTreeMap</td></tr>
-<tr><td>SIMD Movement</td><td>1.73 ns</td><td>2.26× faster than naive</td></tr>
-<tr><td>Quat Multiply</td><td>1.34 ns</td><td>glam SIMD-optimized</td></tr>
-<tr><td>Quat Slerp</td><td>2.10 ns</td><td>Rotation interpolation</td></tr>
-<tr><td>Context Switching</td><td>2.38 ns</td><td>7M switches/frame</td></tr>
-<tr><td>GOAP (no enemies)</td><td>3.46-3.56 ns</td><td>Idle detection FREE</td></tr>
-<tr><td>Component Deserialize</td><td>3.50 ns</td><td>Postcard ECS</td></tr>
-<tr><td>Physics Stage</td><td>3.63 ns</td><td>7,580× vs perception</td></tr>
-<tr><td>RAG Engine Creation</td><td>4.61 ns</td><td>Zero-cost abstraction</td></tr>
-<tr><td>Mat4 Multiply</td><td>4.28 ns</td><td>glam SIMD matrix</td></tr>
-<tr><td>GOAP (close)</td><td>4.68-5.11 ns</td><td>Tactical decision</td></tr>
-<tr><td>GOAP (far)</td><td>7.04-7.86 ns</td><td>Strategic decision</td></tr>
-<tr><td>SparseSet Insert</td><td>9.9 ns</td><td>13× faster than BTreeMap</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-</div>
-
-</section>
-<section class="astra-section">
-<div class="astra-section-heading astra-section-heading--wide">
-<span class="astra-kicker">Core systems</span>
-<h2>Engine subsystem benchmarks</h2>
-
-<p>
-  Each subsystem is benchmarked independently with Criterion.rs.
-  Results include budget analysis against the 16.67ms frame budget.
-</p>
-
-</div>
-
-<div class="astra-grid astra-grid--three">
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">ECS</span>
-<h3>Entity-Component-System</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Benchmark</th><th>Result</th><th>Budget</th></tr>
-</thead>
-<tbody>
-<tr><td>Spawn empty (10k)</td><td>645µs</td><td>Excellent</td></tr>
-<tr><td>Spawn + Position (10k)</td><td>5.6ms</td><td>Production</td></tr>
-<tr><td>Despawn empty (10k)</td><td>287µs</td><td>Fixed</td></tr>
-<tr><td>Despawn + comp (10k)</td><td>2.5ms</td><td>68% faster</td></tr>
-<tr><td>Iteration (10k)</td><td>273µs</td><td>Excellent</td></tr>
-<tr><td>Archetype trans (10k)</td><td>5.6ms</td><td>Within budget</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">AI</span>
-<h3>Planning and orchestration</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Benchmark</th><th>Result</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>GOAP (cache hit)</td><td>9.8 ns</td><td>99% under</td></tr>
-<tr><td>GOAP (cache miss)</td><td>286 ns</td><td>97% under</td></tr>
-<tr><td>GOAP next (idle)</td><td>3.5 ns</td><td>4.7B ops/frame</td></tr>
-<tr><td>GOAP next (close)</td><td>5.1 ns</td><td>3.5B ops/frame</td></tr>
-<tr><td>GOAP next (far)</td><td>7.9 ns</td><td>2.4B ops/frame</td></tr>
-<tr><td>Multi-agent (10)</td><td>1.34-1.39µs</td><td>66-68% faster</td></tr>
-<tr><td>Arbiter GOAP</td><td>101.7 ns</td><td>982× faster</td></tr>
-<tr><td>Arbiter LLM</td><td>575 ns</td><td>86× faster</td></tr>
-<tr><td>Mode transition</td><td>221.9 ns</td><td>45× faster</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">Physics</span>
-<h3>Simulation and collision</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Benchmark</th><th>Result</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>Character move</td><td>43.8-52.0 ns</td><td>12-26% faster</td></tr>
-<tr><td>Rigid body lookup</td><td>14.8-15.4 ns</td><td>10× vs character</td></tr>
-<tr><td>Raycast (empty)</td><td>26.3-31.5 ns</td><td>8-23% faster</td></tr>
-<tr><td>Rigid body batch</td><td>47µs</td><td>Excellent</td></tr>
-<tr><td>Spatial hash</td><td>99.96% fewer</td><td>Grid optimization</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">Fluids</span>
-<h3>SPH simulation (A+ grade)</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Benchmark</th><th>Result</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>Particles (1K-10K)</td><td>5.3-110µs</td><td>100-322 Melem/s</td></tr>
-<tr><td>Spatial hashing</td><td>163µs-5.6ms</td><td>38-62% improved</td></tr>
-<tr><td>SPH kernels (100K)</td><td>171-223µs</td><td>poly6/spiky</td></tr>
-<tr><td>Density/pressure</td><td>3.5-10.5ms</td><td>—</td></tr>
-<tr><td>Sim step (1K)</td><td>1.8-3.0ms</td><td>—</td></tr>
-<tr><td>Multi-step</td><td>450-500µs</td><td>45-57% faster</td></tr>
-<tr><td>GPU data prep</td><td>0.9-2.6 ns</td><td>Sub-nanosecond</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">Rendering</span>
-<h3>wgpu pipeline benchmarks</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Category</th><th>Benchmark</th><th>Result</th></tr>
-</thead>
-<tbody>
-<tr><td>Culling</td><td>AABB inside</td><td>889-915 ps</td></tr>
-<tr><td>Culling</td><td>Contains point</td><td>951 ps-1.01 ns</td></tr>
-<tr><td>MSAA</td><td>Mode check</td><td>795-842 ps</td></tr>
-<tr><td>MSAA</td><td>Resize 720p</td><td>582-645 ps</td></tr>
-<tr><td>Camera</td><td>View matrix</td><td>4.42-5.36 ns</td></tr>
-<tr><td>Camera</td><td>Toggle mode</td><td>1.72-2.29 ns</td></tr>
-<tr><td>Instancing</td><td>Savings calc</td><td>1.43-1.52 ns</td></tr>
-<tr><td>Weather</td><td>Particle</td><td>1.95-2.04 ns</td></tr>
-<tr><td>Weather</td><td>Attenuation</td><td>730-783 ps</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-<article class="astra-card astra-card--panel">
-<span class="astra-kicker">Animation and navigation</span>
-<h3>Interpolation and pathfinding</h3>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Benchmark</th><th>Result</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>vec3_lerp</td><td>1.69-1.83 ns</td><td>57% faster</td></tr>
-<tr><td>quat_to_rotation</td><td>1.63-1.73 ns</td><td>36% faster</td></tr>
-<tr><td>Tween update</td><td>22.1 ns</td><td>—</td></tr>
-<tr><td>Spring update</td><td>14.2 ns</td><td>1.6× vs tween</td></tr>
-<tr><td>Sliver triangles</td><td>99-104 ps</td><td>Sub-nanosecond</td></tr>
-<tr><td>Impossible paths</td><td>3.7-24.9µs</td><td>Fast-fail</td></tr>
-<tr><td>Maze stress</td><td>1.6-108µs</td><td>—</td></tr>
-<tr><td>Pathfind short</td><td>7.5µs</td><td>Excellent</td></tr>
-</tbody>
-</table>
-</div>
-</article>
-</div>
-
-</section>
-<div class="astra-band">
-<div class="astra-section-heading astra-section-heading--compact">
-<span class="astra-eyebrow">Frame budget analysis</span>
-<h2>Target: 60 FPS = 16.67ms per frame</h2>
-
-<p>
-  Budget breakdown at 1,000 entities shows the engine using only 14.5% of the
-  available frame time at p99, leaving 85% headroom for gameplay logic and rendering.
-</p>
-
-</div>
-
-<div class="astra-split">
-<div class="astra-node" style="flex:1">
-<strong>Budget breakdown (1,000 entities)</strong>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>System</th><th>Time</th><th>Budget %</th><th>Status</th></tr>
-</thead>
-<tbody>
-<tr><td>ECS Core</td><td>85 µs</td><td>0.51%</td><td>✅</td></tr>
-<tr><td>AI (500 agents)</td><td>471 µs</td><td>2.83%</td><td>✅</td></tr>
-<tr><td>Physics (100 bodies)</td><td>47 µs</td><td>0.28%</td><td>✅</td></tr>
-<tr><td>Core loop (5k)</td><td>529 µs</td><td>3.17%</td><td>✅</td></tr>
-<tr><td><strong>p50 Total</strong></td><td><strong>1.27 ms</strong></td><td><strong>7.6%</strong></td><td>✅</td></tr>
-<tr><td><strong>p99 Total</strong></td><td><strong>2.42 ms</strong></td><td><strong>14.5%</strong></td><td>✅</td></tr>
-<tr><td><strong>Headroom</strong></td><td><strong>14.25 ms</strong></td><td><strong>85%</strong></td><td>✅</td></tr>
-</tbody>
-</table>
-</div>
-</div>
-
-<div class="astra-node" style="flex:1">
-<strong>Scalability projections</strong>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Entity Count</th><th>p99 Estimate</th><th>Feasibility</th></tr>
-</thead>
-<tbody>
-<tr><td>1,000</td><td>2.42 ms</td><td>✅ 85% headroom</td></tr>
-<tr><td>5,000</td><td>~8-10 ms</td><td>✅ 40-50% headroom</td></tr>
-<tr><td>10,000</td><td>~15-18 ms</td><td>⚠️ Near budget</td></tr>
-<tr><td>20,000+</td><td>&gt;30 ms</td><td>❌ Requires 30 FPS</td></tr>
-</tbody>
-</table>
-</div>
-</div>
-
-</div>
-
-</div>
-
-<section class="astra-section">
-<div class="astra-section-heading">
-<span class="astra-kicker">60 FPS capacity</span>
-<h2>ECS time at scale</h2>
-
-</div>
-
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Entity Count</th><th>ECS Time</th><th>Budget Used</th></tr>
-</thead>
-<tbody>
-<tr><td>1,000</td><td>~85µs</td><td>0.51%</td></tr>
-<tr><td>5,000</td><td>~529µs</td><td>3.17%</td></tr>
-<tr><td>10,000</td><td>~1ms</td><td>~6%</td></tr>
-</tbody>
-</table>
-</div>
-</section>
-<section class="astra-section">
-<div class="astra-section-heading">
-<span class="astra-kicker">Reproduce locally</span>
-<h2>Running benchmarks</h2>
-
-<p>
-  Every benchmark can be reproduced with a single command.
-  Criterion.rs provides confidence intervals and statistical rigor.
-</p>
-
-</div>
-
-<div class="astra-split">
-<article class="astra-card astra-card--panel">
-<h3>Full suite</h3>
-
-<pre><code class="language-bash"># Run all Criterion benchmarks
-cargo bench --workspace
-
-# Run with odyssey automation (captures logs)
-./scripts/benchmark_odyssey.ps1 \
-  -OutDir benchmark_results/$(Get-Date -Format 'yyyy-MM-dd')
+                        <h1 id="benchmarks"><a class="header" href="#benchmarks">Benchmarks</a></h1>
+<p>This page is how to run Criterion in this repository and where the numbers are kept. It does not paste a result table. Dated figures, including the GPU frame sample, are on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page.</p>
+<h2 id="run-one-bench"><a class="header" href="#run-one-bench">Run one bench</a></h2>
+<p>From the repository root, with the pinned toolchain (<code>rustc --version</code> is 1.89.0 here):</p>
+<pre><code class="language-bash">cargo bench -p astraweave-ecs --bench ecs_benchmarks
+cargo bench -p astraweave-ai --bench ai_core_loop
+cargo bench -p astraweave-behavior --bench goap_planning
+cargo bench -p astraweave-behavior --bench behavior_tree
+cargo bench -p astraweave-terrain --bench terrain_generation
+cargo bench -p astraweave-input --bench input_benchmarks
+cargo bench -p astraweave-physics --bench raycast
+cargo bench -p astraweave-physics --bench character_controller
+cargo bench -p astraweave-physics --bench rigid_body
+cargo bench -p astraweave-core --bench core_benchmarks
+cargo bench -p astraweave-core --bench full_game_loop
 </code></pre>
-</article>
-<article class="astra-card astra-card--panel">
-<h3>Per-crate benchmarks</h3>
-
-<pre><code class="language-bash"># ECS benchmarks
-cargo bench -p astraweave-ecs
-
-# AI benchmarks
-cargo bench -p astraweave-ai
-
-# Physics benchmarks
-cargo bench -p astraweave-physics
-
-# Render benchmarks
-cargo bench -p astraweave-render
-</code></pre>
-</article>
-</div>
-
-<div class="astra-card astra-card--panel" style="margin-top:1rem">
-<h3>Generating HTML reports</h3>
-
-<pre><code class="language-bash"># Open Criterion HTML report
-cargo bench -p astraweave-ecs -- --save-baseline main
-# Reports at: target/criterion/*/report/index.html
-</code></pre>
-</div>
-
-</section>
-<div class="astra-band">
-<div class="astra-section-heading astra-section-heading--compact">
-<span class="astra-eyebrow">Philosophy</span>
-<h2>Benchmarks as verification artifacts, not marketing numbers.</h2>
-
-</div>
-
-<div class="astra-flow">
-<div class="astra-node">
-  <strong>Reproducibility</strong>
-  <span>Every claimed measurement has a command that reproduces it.</span>
-</div>
-
-<div class="astra-node">
-  <strong>Raw logs</strong>
-  <span>All runs capture raw output for auditing.</span>
-</div>
-
-<div class="astra-node">
-  <strong>Statistical rigor</strong>
-  <span>Criterion.rs provides confidence intervals.</span>
-</div>
-
-<div class="astra-node">
-  <strong>Adversarial testing</strong>
-  <span>22 adversarial benchmark sections stress edge cases.</span>
-</div>
-
-<div class="astra-node">
-  <strong>Real hardware</strong>
-  <span>No synthetic workloads — real game scenarios.</span>
-</div>
-
-</div>
-
-</div>
-
-<section class="astra-section">
-<div class="astra-section-heading">
-<span class="astra-kicker">Further reading</span>
-<h2>See also</h2>
-
-</div>
-
-<article class="astra-card astra-card--panel">
-<ul class="astra-link-list">
-  
-<li><span>Methodology</span><a href="./methodology.html">How benchmarks are measured</a></li>
-
-  
-<li><span>Optimization guide</span><a href="./optimization.html">Performance improvement techniques</a></li>
-
-  
-<li><span>Performance budgets</span><a href="./budgets.html">Frame budget allocation</a></li>
-
-  
-<li><span>Master benchmark report</span><a href="../../masters/MASTER_BENCHMARK_REPORT.html">Complete raw data</a></li>
-
+<p>Each <code>name</code> is a <code>[[bench]]</code> entry in that crate’s <code>Cargo.toml</code>. <code>harness = false</code> means the bench file drives Criterion itself.</p>
+<p><code>ecs_benchmarks</code> is on <strong>astraweave-ecs</strong>, not astraweave-core. <code>.github/workflows/benchmark-dashboard.yml</code> still runs <code>cargo bench -p astraweave-core --bench ecs_benchmarks</code>. That package does not define that bench name. Use the <code>astraweave-ecs</code> command above. The workflow marks the bench step <code>continue-on-error: true</code>, so a miss there does not fail the job.</p>
+<p>Criterion writes under <code>target/criterion/</code> for the package you benched (reports and sample data for that run). A number from that directory is your machine and your commit. Copy the commit (<code>git rev-parse HEAD</code>) next to it. Do not paste it back onto this page as the project’s latest run.</p>
+<p><code>cargo bench -p &lt;crate&gt;</code> with no <code>--bench</code> runs every bench target that crate declares. That is the long run.</p>
+<h2 id="the-published-dashboard"><a class="header" href="#the-published-dashboard">The published dashboard</a></h2>
+<p>Workflow <code>.github/workflows/benchmark-dashboard.yml</code> (schedule <code>0 2 * * *</code>, <code>workflow_dispatch</code>, and pushes that touch that workflow) runs the subset listed in its “Run Benchmarks” step, then <code>pwsh -File scripts/export_benchmark_jsonl.ps1</code>, and publishes to <code>dashboard/benchmark_dashboard</code>.</p>
+<p>The page that job points at is:</p>
+<p>https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/</p>
+<p>The historical write-up in git is <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/masters/MASTER_BENCHMARK_REPORT.md">MASTER_BENCHMARK_REPORT.md</a>. Engine status says that report is not a fresh full-frame budget.</p>
+<h2 id="the-frame-sample-is-not-a-criterion-row"><a class="header" href="#the-frame-sample-is-not-a-criterion-row">The frame sample is not a Criterion row</a></h2>
+<p>The GPU frame budget is a separate capture, <code>gpu_frame_budget</code>, documented on the engine status page with the adapter and the commit. A cloud shell cannot measure the GTX 1660 Ti named there. Lavapipe time is not that budget. Do not substitute a CPU bench for it.</p>
+<h2 id="what-this-page-used-to-show"><a class="header" href="#what-this-page-used-to-show">What this page used to show</a></h2>
+<p>A January 2026 grid (picosecond rows, a 1.27 ms frame, an arbiter row, a 99.96% spatial-hash cell) was presented as current, with a “Production Ready” badge. Those figures are removed. <code>PhysicsWorld</code> uses Rapier’s <code>DefaultBroadPhase</code>. <code>AIArbiter</code> is not on the sim tick. Re-measure with the commands above if you need a number.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="./methodology.html">Methodology</a></li>
+<li><a href="./budgets.html">Budgets</a></li>
+<li><a href="./optimization.html">Optimization</a></li>
+<li><a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">Engine status</a></li>
 </ul>
-
-</article>
-</section>
-</div>
-
 
                     </main>
 

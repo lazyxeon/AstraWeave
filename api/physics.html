@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,331 +220,47 @@
                     <main>
                         <h1 id="physics-api-reference"><a class="header" href="#physics-api-reference">Physics API Reference</a></h1>
 <blockquote>
-<p><strong>Crate</strong>: <code>astraweave-physics</code><br><strong>Coverage</strong>: ~82%<br><strong>Tests</strong>: 657+</p>
+<p><strong>Crate</strong>: <code>astraweave-physics</code><br><strong>Manifest version</strong>: <code>0.1.0</code></p>
 </blockquote>
-<p>Physics simulation built on Rapier3D with character controllers, vehicles, destruction, and deterministic replay support.</p>
-<h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
-<ul>
-<li><a href="https://docs.rs/astraweave-physics">rustdoc</a> (when published)</li>
-<li><a href="https://github.com/astraweave/astraweave/tree/main/astraweave-physics">Source</a></li>
-<li><a href="../core-systems/physics.html">Physics System Guide</a></li>
-</ul>
-<hr>
-<h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
-<h3 id="physicsworld"><a class="header" href="#physicsworld">PhysicsWorld</a></h3>
-<p>Central physics simulation container.</p>
+<p><code>PhysicsWorld</code> wraps Rapier. <code>broad_phase</code> is <code>DefaultBroadPhase</code>. <code>RigidBodyBuilder</code>, <code>ColliderBuilder</code>, <code>RigidBodySet</code>, and <code>ColliderSet</code> are re-exported from <code>rapier3d::prelude</code>.</p>
+<p>There is no <code>RigidBodyDesc</code>, <code>ColliderDesc</code>, or <code>CharacterConfig</code> type, and no <code>rigid_body</code>, <code>collider</code>, or <code>character_controller</code> module.</p>
+<h2 id="physicsworld"><a class="header" href="#physicsworld">PhysicsWorld</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_physics::{PhysicsWorld, RigidBodyDesc, ColliderDesc};
+</span>use astraweave_physics::PhysicsWorld;
+use glam::vec3;
 
-let mut physics = PhysicsWorld::new();
-
-// Create rigid body
-let body = physics.create_rigid_body(RigidBodyDesc {
-    position: Vec3::new(0.0, 5.0, 0.0),
-    body_type: RigidBodyType::Dynamic,
-    mass: 1.0,
-    ..Default::default()
-});
-
-// Add collider
-physics.add_collider(body, ColliderDesc::sphere(0.5));
-
-// Step simulation
-physics.step(1.0 / 60.0);
+let mut physics = PhysicsWorld::new(vec3(0.0, -9.81, 0.0));
+let _ground = physics.create_ground_plane(vec3(50.0, 0.0, 50.0), 1.0);
+let _box = physics.add_dynamic_box(
+    vec3(0.0, 2.0, 0.0),
+    vec3(0.5, 0.5, 0.5),
+    1.0,
+    astraweave_physics::Layers::DEFAULT,
+);
+physics.step();
 <span class="boring">}</span></code></pre>
-<hr>
-<h3 id="charactercontroller"><a class="header" href="#charactercontroller">CharacterController</a></h3>
-<p>Physics-based character movement with slopes, stairs, and ground detection.</p>
+<p><code>new</code> takes <code>Vec3</code> gravity. <code>step(&amp;mut self)</code> takes no <code>dt</code>. <code>create_ground_plane(&amp;mut self, half: Vec3, friction: f32) -&gt; BodyId</code>. <code>add_dynamic_box(&amp;mut self, pos, half, mass, groups) -&gt; BodyId</code>.</p>
+<p><code>raycast(&amp;self, origin, direction, max_distance) -&gt; Option&lt;(Vec3, Vec3, Option&lt;BodyId&gt;, f32)&gt;</code>.</p>
+<h2 id="charactercontroller"><a class="header" href="#charactercontroller">CharacterController</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use astraweave_physics::CharacterController;
 
-let mut controller = CharacterController::new(CharacterConfig {
-    height: 1.8,
-    radius: 0.3,
-    step_height: 0.3,
-    max_slope: 45.0,
-    ..Default::default()
-});
-
-// Move character
-let movement = controller.move_character(
-    &amp;physics,
-    desired_velocity,
-    delta_time,
-);
-
-// Check ground state
-if controller.is_grounded() {
-    // Can jump
-}
+let controller = CharacterController::new(0.3, 1.8);
+let _grounded = controller.is_grounded();
 <span class="boring">}</span></code></pre>
-<hr>
-<h3 id="vehicle"><a class="header" href="#vehicle">Vehicle</a></h3>
-<p>Vehicle physics with tire model and suspension.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::vehicle::{Vehicle, VehicleConfig, WheelConfig};
-
-let vehicle = Vehicle::new(VehicleConfig {
-    chassis_mass: 1500.0,
-    wheels: vec![
-        WheelConfig { position: Vec3::new(-0.8, 0.0, 1.5), ..Default::default() },
-        WheelConfig { position: Vec3::new(0.8, 0.0, 1.5), ..Default::default() },
-        WheelConfig { position: Vec3::new(-0.8, 0.0, -1.5), ..Default::default() },
-        WheelConfig { position: Vec3::new(0.8, 0.0, -1.5), ..Default::default() },
-    ],
-    ..Default::default()
-});
-
-// Apply input
-vehicle.set_steering(steering_angle);
-vehicle.set_throttle(throttle);
-vehicle.set_brake(brake);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="spatialhash"><a class="header" href="#spatialhash">SpatialHash</a></h3>
-<p>Efficient broad-phase collision detection.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::SpatialHash;
-
-let mut spatial = SpatialHash::new(10.0); // Cell size
-
-// Insert objects
-spatial.insert(entity_a, aabb_a);
-spatial.insert(entity_b, aabb_b);
-
-// Query nearby objects
-let nearby = spatial.query_sphere(position, radius);
-
-// Query potential collisions
-let pairs = spatial.get_collision_pairs();
-<span class="boring">}</span></code></pre>
-<p><strong>Performance</strong>: 99.96% collision check reduction vs brute force</p>
-<hr>
-<h3 id="ragdoll"><a class="header" href="#ragdoll">Ragdoll</a></h3>
-<p>Ragdoll physics with joint constraints.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::ragdoll::{Ragdoll, RagdollConfig, BoneConfig};
-
-let ragdoll = Ragdoll::new(RagdollConfig {
-    bones: vec![
-        BoneConfig { name: "spine", parent: None, .. },
-        BoneConfig { name: "head", parent: Some(0), .. },
-        BoneConfig { name: "arm_l", parent: Some(0), .. },
-        // ...
-    ],
-    ..Default::default()
-});
-
-// Activate ragdoll on character death
-ragdoll.activate(&amp;mut physics, character_pose);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="cloth"><a class="header" href="#cloth">Cloth</a></h3>
-<p>Cloth simulation with wind and collision.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::cloth::{Cloth, ClothConfig};
-
-let cloth = Cloth::new(ClothConfig {
-    width: 10,
-    height: 10,
-    particle_mass: 0.1,
-    stiffness: 1000.0,
-    damping: 0.1,
-    ..Default::default()
-});
-
-// Pin corners
-cloth.pin_particle(0, 0);
-cloth.pin_particle(9, 0);
-
-// Apply wind
-cloth.apply_force(wind_force);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="destruction"><a class="header" href="#destruction">Destruction</a></h3>
-<p>Destructible objects with fracturing.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::destruction::{Destructible, FractureConfig};
-
-let destructible = Destructible::new(FractureConfig {
-    health: 100.0,
-    fracture_threshold: 50.0,
-    piece_count: 8,
-    ..Default::default()
-});
-
-// Apply damage
-let fragments = destructible.apply_damage(damage, hit_point)?;
-
-// Spawn fragment entities
-for fragment in fragments {
-    commands.spawn(fragment);
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="projectile"><a class="header" href="#projectile">Projectile</a></h3>
-<p>Projectile physics with penetration and ricochet.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::projectile::{Projectile, ProjectileConfig};
-
-let projectile = Projectile::new(ProjectileConfig {
-    velocity: Vec3::new(0.0, 0.0, 500.0),
-    mass: 0.01,
-    drag: 0.1,
-    gravity_scale: 1.0,
-    penetration_power: 50.0,
-    ..Default::default()
-});
-
-// Step projectile
-let hit = projectile.step(&amp;physics, delta_time);
-if let Some(hit_info) = hit {
-    // Handle impact
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="collision-detection"><a class="header" href="#collision-detection">Collision Detection</a></h2>
-<h3 id="raycasting"><a class="header" href="#raycasting">Raycasting</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::RaycastResult;
-
-// Single ray
-if let Some(hit) = physics.raycast(origin, direction, max_distance) {
-    println!("Hit at {:?}, normal: {:?}", hit.point, hit.normal);
-}
-
-// Ray with filter
-let hit = physics.raycast_filtered(origin, direction, max_distance, |entity| {
-    !entity.has::&lt;Ghost&gt;()
-});
-<span class="boring">}</span></code></pre>
-<h3 id="shape-casts"><a class="header" href="#shape-casts">Shape Casts</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Sphere cast
-let hit = physics.spherecast(origin, radius, direction, max_distance);
-
-// Box cast
-let hit = physics.boxcast(origin, half_extents, direction, max_distance);
-<span class="boring">}</span></code></pre>
-<h3 id="overlap-queries"><a class="header" href="#overlap-queries">Overlap Queries</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Get all entities in sphere
-let entities = physics.overlap_sphere(center, radius);
-
-// Get all entities in box
-let entities = physics.overlap_box(center, half_extents, rotation);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="collision-shapes"><a class="header" href="#collision-shapes">Collision Shapes</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Shape</th><th>Constructor</th><th>Use Case</th></tr>
-</thead>
-<tbody>
-<tr><td>Sphere</td><td><code>ColliderDesc::sphere(radius)</code></td><td>Characters, projectiles</td></tr>
-<tr><td>Box</td><td><code>ColliderDesc::cuboid(hx, hy, hz)</code></td><td>Crates, buildings</td></tr>
-<tr><td>Capsule</td><td><code>ColliderDesc::capsule(half_height, radius)</code></td><td>Characters</td></tr>
-<tr><td>Cylinder</td><td><code>ColliderDesc::cylinder(half_height, radius)</code></td><td>Pillars</td></tr>
-<tr><td>Convex Hull</td><td><code>ColliderDesc::convex_hull(points)</code></td><td>Complex objects</td></tr>
-<tr><td>Trimesh</td><td><code>ColliderDesc::trimesh(vertices, indices)</code></td><td>Static geometry</td></tr>
-<tr><td>Heightfield</td><td><code>ColliderDesc::heightfield(heights, scale)</code></td><td>Terrain</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="collision-groups"><a class="header" href="#collision-groups">Collision Groups</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::{CollisionGroups, Group};
-
-// Define groups
-const PLAYER: Group = Group::GROUP_1;
-const ENEMY: Group = Group::GROUP_2;
-const PROJECTILE: Group = Group::GROUP_3;
-const ENVIRONMENT: Group = Group::GROUP_4;
-
-// Player collides with enemies and environment
-let player_groups = CollisionGroups::new(
-    PLAYER,
-    ENEMY | ENVIRONMENT,
-);
-
-// Projectile collides with everything
-let projectile_groups = CollisionGroups::new(
-    PROJECTILE,
-    PLAYER | ENEMY | ENVIRONMENT,
-);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="determinism"><a class="header" href="#determinism">Determinism</a></h2>
-<p>AstraWeave physics is fully deterministic for replay and networking:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_physics::PhysicsWorld;
-
-// Same seed = same results
-let mut physics_a = PhysicsWorld::with_seed(12345);
-let mut physics_b = PhysicsWorld::with_seed(12345);
-
-// Run simulation
-for _ in 0..1000 {
-    physics_a.step(1.0 / 60.0);
-    physics_b.step(1.0 / 60.0);
-}
-
-// Results are bit-identical
-assert_eq!(physics_a.checksum(), physics_b.checksum());
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>Rigid body step</td><td>2.97 µs</td><td>Single body</td></tr>
-<tr><td>Full physics tick</td><td>6.52 µs</td><td>100 bodies</td></tr>
-<tr><td>Character move</td><td>114 ns</td><td>Controller step</td></tr>
-<tr><td>Raycast</td><td>~500 ns</td><td>Typical scene</td></tr>
-<tr><td>Spatial hash query</td><td>~50 ns</td><td>Per cell</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Feature</th><th>Description</th><th>Default</th></tr>
-</thead>
-<tbody>
-<tr><td><code>debug-render</code></td><td>Physics visualization</td><td>❌</td></tr>
-<tr><td><code>simd</code></td><td>SIMD acceleration</td><td>✅</td></tr>
-<tr><td><code>parallel</code></td><td>Parallel simulation</td><td>✅</td></tr>
-<tr><td><code>serialize</code></td><td>State serialization</td><td>❌</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
+<p><code>new(radius: f32, height: f32)</code>. The initial <code>state</code> is <code>CharState::Grounded</code>, so <code>is_grounded</code> is true on a fresh controller. There is no <code>move_character</code> method on this struct.</p>
+<h2 id="modules"><a class="header" href="#modules">Modules</a></h2>
+<p>Public modules: <code>spatial_hash</code>, <code>async_scheduler</code>, <code>ecs</code>, <code>projectile</code>, <code>ragdoll</code>, <code>vehicle</code>, <code>environment</code>, <code>cloth</code>, <code>deformed</code>, <code>traversal</code>.</p>
+<p><code>SpatialHash::new(cell_size: f32)</code> and <code>insert</code> exist. <code>PhysicsWorld::step</code> does not call that helper. The step uses Rapier’s broadphase.</p>
+<h2 id="features"><a class="header" href="#features">Features</a></h2>
+<p><code>default = []</code>. Declared features: <code>async-physics</code>, <code>profiling</code>, <code>ecs</code>, <code>alloc-counter</code>, <code>fast-alloc</code>. There is no <code>debug-render</code>, <code>simd</code>, <code>parallel</code>, or <code>serialize</code> feature.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../core-systems/physics.html">Physics System Guide</a></li>
-<li><a href="../core-systems/character-controller.html">Character Controller</a></li>
 <li><a href="./fluids.html">Fluids System</a></li>
-<li><a href="../core-systems/terrain.html#physics-integration">Terrain Integration</a></li>
+<li><a href="../core-systems/terrain.html">Terrain</a></li>
 </ul>
 
                     </main>

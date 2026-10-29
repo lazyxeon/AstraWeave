@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,7 +219,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="crate-reference"><a class="header" href="#crate-reference">Crate Reference</a></h1>
-<p>AstraWeave is organized as a workspace of interconnected crates, each providing focused functionality. This reference documents the crate hierarchy, dependencies, and public APIs.</p>
+<p>The workspace member set is the <code>members</code> array in the root <code>Cargo.toml</code>. On this tree that array has 140 unique paths (<code>astraweave-destruction</code> is listed twice). Diagrams below are not a complete inventory and were not rechecked crate by crate in this pass. Measured status is on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page.</p>
 <h2 id="workspace-overview"><a class="header" href="#workspace-overview">Workspace Overview</a></h2>
 <pre class="mermaid">graph TB
     subgraph Core["Core Layer"]

@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,309 +220,62 @@
                     <main>
                         <h1 id="save--load-systems"><a class="header" href="#save--load-systems">Save &amp; Load Systems</a></h1>
 <blockquote>
-<p><strong>Crates</strong>: <code>astraweave-persistence-ecs</code>, <code>astraweave-core</code><br><strong>Status</strong>: Production Ready</p>
+<p><strong>Crate</strong>: <code>astraweave-persistence-ecs</code></p>
 </blockquote>
-<p>AstraWeave provides deterministic save/load with full ECS state serialization, player profiles, and versioned migrations.</p>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::{SaveSystem, LoadSystem, SaveConfig};
-use astraweave_ecs::World;
-
-let config = SaveConfig {
-    path: "saves/",
-    compression: true,
-    encryption: false,
-    ..Default::default()
-};
-
-let save_system = SaveSystem::new(config);
-
-// Save world state
-save_system.save(&amp;world, "quicksave")?;
-
-// Load world state
-let loaded_world = save_system.load("quicksave")?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="save-system-architecture"><a class="header" href="#save-system-architecture">Save System Architecture</a></h2>
-<pre><code>Save File Structure
-├── Header (version, timestamp, checksum)
-├── World State
-│   ├── Entities (sparse set serialization)
-│   ├── Components (per-archetype)
-│   └── Resources (global state)
-├── Player Data
-│   ├── Inventory
-│   ├── Progress
-│   └── Settings
-└── Metadata
-    ├── Screenshot (optional)
-    └── Play time
-</code></pre>
-<hr>
-<h2 id="ecs-serialization"><a class="header" href="#ecs-serialization">ECS Serialization</a></h2>
-<h3 id="component-registration"><a class="header" href="#component-registration">Component Registration</a></h3>
-<p>Components must be registered for serialization:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ecs::{Component, Serialize, Deserialize};
-
-#[derive(Component, Serialize, Deserialize)]
-struct Health {
-    current: f32,
-    max: f32,
-}
-
-#[derive(Component, Serialize, Deserialize)]
-struct Position {
-    x: f32,
-    y: f32,
-    z: f32,
-}
-
-// Register with world
-app.register_serializable::&lt;Health&gt;();
-app.register_serializable::&lt;Position&gt;();
-<span class="boring">}</span></code></pre>
-<h3 id="selective-serialization"><a class="header" href="#selective-serialization">Selective Serialization</a></h3>
-<p>Mark components to skip during save:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[derive(Component)]
-#[component(skip_save)]
-struct RenderCache {
-    // Regenerated at load time
-}
-
-#[derive(Component, Serialize, Deserialize)]
-#[component(save_priority = "high")]
-struct PlayerData {
-    // Saved first, loaded first
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="save-slots"><a class="header" href="#save-slots">Save Slots</a></h2>
-<h3 id="slot-management"><a class="header" href="#slot-management">Slot Management</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::{SaveSlot, SlotManager};
-
-let mut slots = SlotManager::new("saves/", 10); // 10 slots
-
-// Get available slots
-let available = slots.list()?;
-for slot in &amp;available {
-    println!("Slot {}: {} ({})", slot.index, slot.name, slot.timestamp);
-}
-
-// Save to slot
-slots.save_to_slot(3, &amp;world, "My Save")?;
-
-// Load from slot
-let world = slots.load_from_slot(3)?;
-
-// Delete slot
-slots.delete_slot(3)?;
-<span class="boring">}</span></code></pre>
-<h3 id="auto-save"><a class="header" href="#auto-save">Auto-Save</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::AutoSave;
-
-let mut autosave = AutoSave::new(Duration::from_secs(300)); // 5 minutes
-
-// In game loop
-if autosave.should_save() {
-    slots.save_to_slot(0, &amp;world, "Autosave")?;
-    autosave.mark_saved();
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="player-profiles"><a class="header" href="#player-profiles">Player Profiles</a></h2>
-<h3 id="profile-management"><a class="header" href="#profile-management">Profile Management</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::{PlayerProfile, ProfileManager};
-
-let mut profiles = ProfileManager::new("profiles/")?;
-
-// Create profile
-let profile = PlayerProfile::new("Player1");
-profiles.create(profile)?;
-
-// Load profile
-let profile = profiles.load("Player1")?;
-
-// Update settings
-profile.settings.volume = 0.8;
-profile.settings.difficulty = Difficulty::Hard;
-profiles.save(&amp;profile)?;
-<span class="boring">}</span></code></pre>
-<h3 id="profile-contents"><a class="header" href="#profile-contents">Profile Contents</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct PlayerProfile {
-    pub name: String,
-    pub created: DateTime,
-    pub play_time: Duration,
-    pub settings: PlayerSettings,
-    pub achievements: Vec&lt;Achievement&gt;,
-    pub statistics: PlayerStats,
-}
-
-pub struct PlayerSettings {
-    pub volume: f32,
-    pub music_volume: f32,
-    pub sfx_volume: f32,
-    pub voice_volume: f32,
-    pub difficulty: Difficulty,
-    pub controls: ControlBindings,
-    pub graphics: GraphicsSettings,
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="versioning--migration"><a class="header" href="#versioning--migration">Versioning &amp; Migration</a></h2>
-<h3 id="version-handling"><a class="header" href="#version-handling">Version Handling</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::{SaveVersion, Migration};
-
-// Current save version
-const SAVE_VERSION: SaveVersion = SaveVersion::new(1, 2, 0);
-
-// Load with migration
-let world = save_system.load_with_migrations(
-    "old_save",
-    &amp;[
-        Migration::new(
-            SaveVersion::new(1, 0, 0),
-            SaveVersion::new(1, 1, 0),
-            migrate_1_0_to_1_1,
-        ),
-        Migration::new(
-            SaveVersion::new(1, 1, 0),
-            SaveVersion::new(1, 2, 0),
-            migrate_1_1_to_1_2,
-        ),
-    ],
-)?;
-
-fn migrate_1_0_to_1_1(data: &amp;mut SaveData) -&gt; Result&lt;()&gt; {
-    // Add new health.shield field
-    for entity in data.entities_with::&lt;Health&gt;() {
-        let health: &amp;mut Health = data.get_mut(entity)?;
-        health.shield = 0.0; // New field
-    }
-    Ok(())
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="corruption-recovery"><a class="header" href="#corruption-recovery">Corruption Recovery</a></h2>
-<h3 id="backup-system"><a class="header" href="#backup-system">Backup System</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::BackupConfig;
-
-let config = SaveConfig {
-    backup: BackupConfig {
-        enabled: true,
-        max_backups: 3,
-        backup_on_save: true,
-    },
-    ..Default::default()
-};
-
-// Backups created automatically
-// saves/quicksave.sav
-// saves/quicksave.sav.bak1
-// saves/quicksave.sav.bak2
-// saves/quicksave.sav.bak3
-<span class="boring">}</span></code></pre>
-<h3 id="integrity-verification"><a class="header" href="#integrity-verification">Integrity Verification</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_persistence_ecs::verify_save;
-
-match verify_save("saves/quicksave.sav") {
-    Ok(info) =&gt; {
-        println!("Valid save: v{}", info.version);
-    }
-    Err(SaveError::Corrupted) =&gt; {
-        // Try backup
-        if let Ok(backup) = find_valid_backup("quicksave") {
-            restore_from_backup(backup)?;
-        }
-    }
-    Err(SaveError::VersionMismatch(v)) =&gt; {
-        println!("Save from future version: {}", v);
-    }
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="deterministic-replay"><a class="header" href="#deterministic-replay">Deterministic Replay</a></h2>
-<p>AstraWeave’s deterministic ECS enables save/load that reproduces exact game states:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_core::replay::{ReplayRecorder, ReplayPlayer};
-
-// Record session
-let mut recorder = ReplayRecorder::new();
-recorder.start(&amp;world);
-
-// During gameplay
-recorder.record_frame(&amp;world, &amp;inputs);
-
-// Save replay
-recorder.save("replay.bin")?;
-
-// Play back (bit-identical to original)
-let mut player = ReplayPlayer::load("replay.bin")?;
-while let Some(frame) = player.next_frame() {
-    world.apply_inputs(frame.inputs);
-    world.step();
-    
-    assert_eq!(world.checksum(), frame.checksum);
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
+<p><code>SaveSystem</code>, <code>SaveConfig</code>, <code>SlotManager</code>, <code>AutoSave</code>, <code>PlayerProfile</code>, <code>ProfileManager</code>, <code>SaveVersion</code>, <code>Migration</code>, <code>BackupConfig</code>, and <code>verify_save</code> are not types or functions in <code>astraweave-persistence-ecs/src/lib.rs</code>. <code>astraweave_core::replay</code> is not a module.</p>
+<h2 id="what-the-crate-exports"><a class="header" href="#what-the-crate-exports">What the crate exports</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
+<tr><th>Name</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td>Quick save (1K entities)</td><td>~50 ms</td><td>With compression</td></tr>
-<tr><td>Quick load (1K entities)</td><td>~30 ms</td><td>With decompression</td></tr>
-<tr><td>Profile save</td><td>~5 ms</td><td>Settings only</td></tr>
-<tr><td>Checksum verify</td><td>~2 ms</td><td>Per save file</td></tr>
+<tr><td><code>CPersistenceManager</code></td><td>Holds <code>aw_save::SaveManager</code> and <code>current_player: String</code></td></tr>
+<tr><td><code>save_game</code></td><td><code>(&amp;self, slot: u8, world_tick: u64, world_hash: u64, ecs_blob: Vec&lt;u8&gt;) -&gt; Result&lt;PathBuf&gt;</code></td></tr>
+<tr><td><code>save_game_with_replay</code></td><td>Same arguments plus <code>replay_events: &amp;[ReplayEvent]</code></td></tr>
+<tr><td><code>load_game</code></td><td><code>(&amp;self, slot: u8) -&gt; Result&lt;(SaveBundleV2, PathBuf)&gt;</code></td></tr>
+<tr><td><code>start_replay</code></td><td><code>(&amp;self, slot: u8) -&gt; Result&lt;CReplayState&gt;</code></td></tr>
+<tr><td><code>list_saves</code></td><td><code>(&amp;self) -&gt; Result&lt;Vec&lt;aw_save::SaveMeta&gt;&gt;</code></td></tr>
+<tr><td><code>migrate_save</code></td><td><code>(&amp;self, path, resave: bool) -&gt; Result&lt;SaveBundleV2&gt;</code></td></tr>
+<tr><td><code>serialize_ecs_world</code></td><td><code>(&amp;World) -&gt; Result&lt;Vec&lt;u8&gt;&gt;</code></td></tr>
+<tr><td><code>deserialize_ecs_world</code></td><td><code>(&amp;[u8], &amp;mut World) -&gt; Result&lt;()&gt;</code></td></tr>
+<tr><td><code>calculate_world_hash</code></td><td><code>(&amp;World) -&gt; u64</code></td></tr>
+<tr><td><code>PersistencePlugin</code></td><td><code>new(save_directory: PathBuf)</code>. <code>build</code> registers <code>auto_save_system</code> and <code>replay_system</code></td></tr>
+<tr><td><code>CSimClock</code></td><td><code>world_seed</code>, <code>tick</code>, <code>save_every</code>, <code>last_saved_tick</code>, <code>slot</code>. <code>save_every</code> is a sim-tick interval</td></tr>
+<tr><td><code>CReplayState</code></td><td><code>is_replaying</code>, <code>current_tick</code>, <code>total_ticks</code>, <code>events</code></td></tr>
+<tr><td><code>ReplayEvent</code></td><td><code>tick</code>, <code>event_type: String</code>, <code>data: Vec&lt;u8&gt;</code></td></tr>
+<tr><td><code>AppliedReplay</code></td><td>Events <code>replay_system</code> copied for the current tick</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="optimization-tips"><a class="header" href="#optimization-tips">Optimization Tips</a></h3>
-<ol>
-<li><strong>Async saves</strong> - Don’t block gameplay</li>
-<li><strong>Incremental saves</strong> - Only save changed data</li>
-<li><strong>Compression</strong> - 60-80% size reduction</li>
-<li><strong>Memory-mapped loading</strong> - Faster large worlds</li>
-</ol>
+<p><code>serialize_ecs_world</code> writes entities that have any of <code>CPos</code>, <code>CHealth</code>, <code>CTeam</code>, <code>CAmmo</code>, <code>CCooldowns</code>, <code>CDesiredPos</code>, <code>CAiAgent</code>, <code>CLegacyId</code>, <code>CPersona</code>, or <code>CMemory</code>.</p>
+<p>There is no <code>register_serializable</code> on <code>App</code>, and no <code>#[component(skip_save)]</code> attribute in this crate.</p>
+<h2 id="call-the-functions-that-exist"><a class="header" href="#call-the-functions-that-exist">Call the functions that exist</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Async save
-let handle = save_system.save_async(&amp;world, "quicksave");
+</span>use astraweave_ecs::World;
+use astraweave_persistence_ecs::{calculate_world_hash, serialize_ecs_world};
+use aw_save::SaveManager;
+use astraweave_persistence_ecs::CPersistenceManager;
 
-// Continue gameplay...
-
-// Wait for completion
-handle.await?;
+fn save_empty(dir: &amp;std::path::Path) -&gt; anyhow::Result&lt;()&gt; {
+    let world = World::new();
+    let blob = serialize_ecs_world(&amp;world)?;
+    let hash = calculate_world_hash(&amp;world);
+    let manager = CPersistenceManager {
+        save_manager: SaveManager::new(dir),
+        current_player: "player".into(),
+    };
+    let _path = manager.save_game(0, 0, hash, blob)?;
+    Ok(())
+}
 <span class="boring">}</span></code></pre>
-<hr>
+<p><code>SaveManager::new</code> takes a directory and returns <code>Self</code>. <code>save_game</code> forwards to <code>save_game_with_replay</code> with an empty event slice.</p>
+<p><code>auto_save_system</code> runs when a <code>CSimClock</code> resource is present, <code>save_every</code> is not zero, <code>tick % save_every == 0</code>, and <code>last_saved_tick</code> is not already that tick. It serializes the world, hashes the blob with FNV-64, and calls <code>save_game_with_replay</code>.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../architecture/ecs.html">ECS Architecture</a></li>
-<li><a href="../architecture/deterministic.html">Deterministic Simulation</a></li>
-<li><a href="./player-profiles.html">Player Profiles</a></li>
+<li><a href="../api/ecs.html">ECS API</a></li>
 </ul>
 
                     </main>

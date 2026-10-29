@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,181 +220,39 @@
                     <main>
                         <h1 id="navigation-api-reference"><a class="header" href="#navigation-api-reference">Navigation API Reference</a></h1>
 <blockquote>
-<p><strong>Crate</strong>: <code>astraweave-nav</code><br><strong>Coverage</strong>: ~78%<br><strong>Tests</strong>: 200+</p>
+<p><strong>Crate</strong>: <code>astraweave-nav</code><br><strong>Manifest version</strong>: <code>0.1.0</code></p>
 </blockquote>
-<p>Navmesh-based pathfinding with A*, portal graphs, and dynamic obstacle avoidance.</p>
-<h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
-<ul>
-<li><a href="https://docs.rs/astraweave-nav">rustdoc</a> (when published)</li>
-<li><a href="https://github.com/astraweave/astraweave/tree/main/astraweave-nav">Source</a></li>
-<li><a href="../core-systems/navigation.html">Navigation Guide</a></li>
-</ul>
-<hr>
-<h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
-<h3 id="navmesh"><a class="header" href="#navmesh">NavMesh</a></h3>
-<p>Navigation mesh for pathfinding.</p>
+<p><code>lib.rs</code> keeps <code>tiles</code> private and re-exports <code>NavTiles</code>, <code>NavScratch</code>, <code>NavChange</code>, and related notice helpers from that module. <code>NavMesh</code>, <code>Triangle</code>, <code>NavTri</code>, and <code>Aabb</code> are public in <code>lib.rs</code>.</p>
+<p>There is no <code>NavMeshConfig</code>, <code>NavAgent</code>, <code>PortalGraph</code>, <code>ObstacleAvoidance</code>, or <code>CrowdManager</code> type, and no <code>navmesh</code>, <code>pathfinding</code>, <code>portal_graph</code>, or <code>agent</code> module.</p>
+<h2 id="navmesh"><a class="header" href="#navmesh">NavMesh</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_nav::{NavMesh, NavMeshConfig};
+</span>use astraweave_nav::{NavMesh, Triangle};
+use glam::Vec3;
 
-let config = NavMeshConfig {
-    cell_size: 0.3,
-    cell_height: 0.2,
-    agent_height: 2.0,
-    agent_radius: 0.6,
-    max_slope: 45.0,
-    ..Default::default()
-};
-
-// Build from geometry
-let navmesh = NavMesh::build(&amp;vertices, &amp;indices, config)?;
-
-// Query path
-let path = navmesh.find_path(start, goal)?;
+let tri = Triangle::new(Vec3::ZERO, Vec3::X, Vec3::Y);
+let mesh = NavMesh::bake(&amp;[tri], 0.5, 45.0);
+let path = mesh.find_path(Vec3::ZERO, Vec3::X);
+let _ = path;
 <span class="boring">}</span></code></pre>
-<hr>
-<h3 id="navagent"><a class="header" href="#navagent">NavAgent</a></h3>
-<p>Agent with steering behaviors.</p>
+<p><code>bake(tris, max_step, max_slope_deg) -&gt; Self</code>. <code>find_path(&amp;self, start: Vec3, goal: Vec3) -&gt; Vec&lt;Vec3&gt;</code>. It does not return <code>Result</code>. <code>find_path</code> is not the hashed route.</p>
+<h2 id="navtiles"><a class="header" href="#navtiles">NavTiles</a></h2>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_nav::{NavAgent, AgentConfig};
+</span>use astraweave_nav::{NavScratch, NavTiles};
+use glam::Vec3;
 
-let mut agent = NavAgent::new(AgentConfig {
-    speed: 5.0,
-    acceleration: 10.0,
-    radius: 0.5,
-    ..Default::default()
-});
-
-// Set destination
-agent.set_destination(target_position);
-
-// Update each frame
-agent.update(delta_time, &amp;navmesh);
-
-// Get movement vector
-let velocity = agent.velocity();
+let tiles = NavTiles::new(0.4, 45.0);
+let mut scratch = NavScratch::new();
+let count = tiles.query_path(&amp;mut scratch, Vec3::ZERO, Vec3::X);
+let _ = count;
 <span class="boring">}</span></code></pre>
-<hr>
-<h3 id="portalgraph"><a class="header" href="#portalgraph">PortalGraph</a></h3>
-<p>Hierarchical pathfinding for large worlds.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_nav::PortalGraph;
-
-let mut graph = PortalGraph::new();
-
-// Add regions
-graph.add_region("forest", forest_navmesh);
-graph.add_region("castle", castle_navmesh);
-
-// Connect regions via portals
-graph.add_portal("forest", "castle", portal_polygon);
-
-// Find cross-region path
-let path = graph.find_path(start, goal)?;
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="obstacleavoidance"><a class="header" href="#obstacleavoidance">ObstacleAvoidance</a></h3>
-<p>Dynamic obstacle avoidance using velocity obstacles.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_nav::ObstacleAvoidance;
-
-let mut avoidance = ObstacleAvoidance::new();
-
-// Add moving obstacles
-for other in nearby_agents {
-    avoidance.add_obstacle(other.position, other.velocity, other.radius);
-}
-
-// Compute safe velocity
-let safe_velocity = avoidance.compute(
-    agent.position,
-    agent.desired_velocity,
-    agent.radius,
-    delta_time,
-);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="pathfinding"><a class="header" href="#pathfinding">Pathfinding</a></h2>
-<h3 id="a-search"><a class="header" href="#a-search">A* Search</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_nav::astar::{astar_search, PathResult};
-
-let result = astar_search(&amp;navmesh, start, goal);
-
-match result {
-    PathResult::Found(path) =&gt; {
-        for waypoint in path {
-            // Follow path
-        }
-    }
-    PathResult::Partial(path) =&gt; {
-        // Closest reachable point
-    }
-    PathResult::NotFound =&gt; {
-        // No path exists
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="path-smoothing"><a class="header" href="#path-smoothing">Path Smoothing</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_nav::path_smoothing::smooth_path;
-
-let raw_path = navmesh.find_path(start, goal)?;
-let smooth = smooth_path(&amp;raw_path, &amp;navmesh);
-
-// Smooth path has fewer waypoints
-assert!(smooth.len() &lt;= raw_path.len());
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="crowd-simulation"><a class="header" href="#crowd-simulation">Crowd Simulation</a></h2>
-<h3 id="crowdmanager"><a class="header" href="#crowdmanager">CrowdManager</a></h3>
-<p>Large-scale agent coordination.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_nav::crowd::{CrowdManager, CrowdAgent};
-
-let mut crowd = CrowdManager::new(&amp;navmesh, max_agents);
-
-// Add agents
-let agent_id = crowd.add_agent(CrowdAgent {
-    position: spawn_point,
-    target: destination,
-    speed: 5.0,
-    ..Default::default()
-});
-
-// Update all agents
-crowd.update(delta_time);
-
-// Get agent state
-let agent = crowd.get_agent(agent_id);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>A* pathfind</td><td>50-500 µs</td><td>Depends on distance</td></tr>
-<tr><td>NavMesh query</td><td>~1 µs</td><td>Point location</td></tr>
-<tr><td>Agent update</td><td>~100 ns</td><td>Per agent</td></tr>
-<tr><td>Crowd update (100)</td><td>~50 µs</td><td>All agents</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
+<p><code>NavScratch::new</code> is a <code>const fn</code>. <code>query_path</code> returns <code>u16</code>. That call is the replayed path query.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../core-systems/navigation.html">Navigation Guide</a></li>
-<li><a href="../core-systems/ai-core.html">AI Integration</a></li>
-<li><a href="../core-systems/terrain.html#navigation">Terrain Integration</a></li>
+<li><a href="../core-systems/ai/index.html">AI Integration</a></li>
+<li><a href="../core-systems/terrain.html">Terrain</a></li>
 </ul>
 
                     </main>

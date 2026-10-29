@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -240,7 +240,7 @@
 <li>Read the <a href="building.html">Building from Source</a> guide</li>
 <li>Familiarize yourself with the <a href="code-style.html">Code Style Guide</a></li>
 <li>Review the <a href="testing.html">Testing Guide</a></li>
-<li>Check existing <a href="https://github.com/verdentlabs/astraweave/issues">Issues</a> and <a href="https://github.com/verdentlabs/astraweave/pulls">Pull Requests</a></li>
+<li>Check existing <a href="https://github.com/lazyxeon/AstraWeave/issues">Issues</a> and <a href="https://github.com/lazyxeon/AstraWeave/pulls">Pull Requests</a></li>
 </ol>
 <h2 id="how-to-contribute"><a class="header" href="#how-to-contribute">How to Contribute</a></h2>
 <h3 id="reporting-bugs"><a class="header" href="#reporting-bugs">Reporting Bugs</a></h3>
@@ -255,7 +255,7 @@
 </ul>
 <pre><code class="language-admonish example title=&quot;Bug Report Template&quot;">**Environment:**
 - OS: Windows 11
-- Rust: 1.75.0
+- Rust: 1.89.0, pinned in `rust-toolchain.toml`
 - GPU: NVIDIA RTX 4080
 
 **Steps to Reproduce:**
@@ -318,14 +318,14 @@ cargo fmt --check
 <h2 id="development-setup"><a class="header" href="#development-setup">Development Setup</a></h2>
 <h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h3>
 <ul>
-<li>Rust 1.75.0 or later</li>
+<li>Rust 1.89.0, pinned in <code>rust-toolchain.toml</code></li>
 <li>Git</li>
 <li>A supported GPU with Vulkan/DirectX 12/Metal</li>
 </ul>
 <h3 id="initial-setup"><a class="header" href="#initial-setup">Initial Setup</a></h3>
 <pre><code class="language-bash"># Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # Build the project
 cargo build
@@ -334,7 +334,7 @@ cargo build
 cargo test
 
 # Run examples
-cargo run --example basic_companion
+cargo run -p hello_companion --release
 </code></pre>
 <h3 id="development-workflow"><a class="header" href="#development-workflow">Development Workflow</a></h3>
 <pre><code class="language-bash"># Create a new branch
@@ -570,15 +570,12 @@ pub struct Companion {
 <h2 id="community"><a class="header" href="#community">Community</a></h2>
 <h3 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h3>
 <ul>
-<li><strong>Discord</strong>: Join our <a href="https://discord.gg/astraweave">Discord server</a></li>
-<li><strong>Discussions</strong>: Use <a href="https://github.com/verdentlabs/astraweave/discussions">GitHub Discussions</a></li>
-<li><strong>Issues</strong>: Search existing issues before creating new ones</li>
+<li><strong>Issues</strong>: <a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a>. Discussions are disabled on this repository.</li>
 </ul>
 <h3 id="stay-updated"><a class="header" href="#stay-updated">Stay Updated</a></h3>
 <ul>
 <li>Watch the repository for updates</li>
-<li>Follow our <a href="https://verdentlabs.com/blog">blog</a></li>
-<li>Subscribe to release notifications</li>
+<li>Watch <a href="https://github.com/lazyxeon/AstraWeave">lazyxeon/AstraWeave</a> for release notifications</li>
 </ul>
 <p>Thank you for contributing to AstraWeave! Your efforts help make AI-native gaming better for everyone.</p>
 

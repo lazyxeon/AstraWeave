@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -242,11 +242,11 @@ historical fiction. The authoritative API references are the crate’s
 <tr><th>Feature</th><th>Default</th><th>Gates</th></tr>
 </thead>
 <tbody>
-<tr><td><code>parallel</code></td><td>off</td><td>Rayon CPU helpers in <code>simd_ops</code> (deterministic, element-wise)</td></tr>
-<tr><td><code>experimental</code></td><td>off</td><td>Dormant-real solver inventory: <code>pcisph_system</code>, <code>multi_phase</code>, <code>warm_start</code>, <code>particle_shifting</code>, <code>turbulence</code>, <code>viscosity_gpu</code></td></tr>
+<tr><td><code>parallel</code></td><td>off</td><td>Declared. The <code>Cargo.toml</code> comment says the W.1 removal left it gating nothing. <code>simd_ops</code> is gone.</td></tr>
 </tbody>
 </table>
 </div>
+<p>There is no <code>experimental</code> feature. <code>PcisphSystem</code> and the other modules named in that old feature (<code>multi_phase</code>, <code>warm_start</code>, <code>particle_shifting</code>, <code>turbulence</code>, <code>viscosity_gpu</code>) are not in <code>src/</code>.</p>
 <p>serde support is unconditional (the former decorative <code>serde</code> feature was removed in F.1).</p>
 <h3 id="the-production-exercised-surface-what-examplesfluids_demo-uses"><a class="header" href="#the-production-exercised-surface-what-examplesfluids_demo-uses">The production-exercised surface (what <code>examples/fluids_demo</code> uses)</a></h3>
 <pre><code class="language-rust ignore">use astraweave_fluids::{FluidSystem, FluidRenderer, Particle, DynamicObject};
@@ -267,20 +267,18 @@ system.step(&amp;device, &amp;mut encoder, &amp;queue, dt);
 // Optional per-pass GPU timings (requires Features::TIMESTAMP_QUERY):
 system.enable_gpu_timing(&amp;device, &amp;queue);
 // ... after submit:
-let timings = system.read_gpu_timings(&amp;device); // blocking; diagnostics only</code></pre>
+let timings = system.read_gpu_timings(&amp;device); // Option&lt;Vec&lt;(&amp;str, f32)&gt;&gt;</code></pre>
 <p>Spawn/despawn: <code>spawn_particles</code>, <code>reset_particles</code>, <code>despawn_region</code> (real
 since F.1: despawned particles are flag-skipped by every kernel and parked
 below the world; region membership uses the CPU position cache, exact only
 at spawn/reset time).</p>
-<h3 id="other-real-but-production-dormant-surfaces"><a class="header" href="#other-real-but-production-dormant-surfaces">Other real (but production-dormant) surfaces</a></h3>
+<h3 id="other-names-checked-in-this-pass"><a class="header" href="#other-names-checked-in-this-pass">Other names checked in this pass</a></h3>
 <ul>
-<li><strong>Voxel water</strong>: <code>WaterVolumeGrid</code>, <code>WaterCell</code>, <code>MaterialType</code> — deterministic CPU cellular-automaton water (the campaign’s T3 foundation).</li>
-<li><strong>Building</strong>: <code>WaterBuildingManager</code>, dispensers/drains/wheels (note: <code>WaterGate</code>’s flag is not yet read by the sim — known issue, F.3 scope).</li>
-<li><strong>Visual effects</strong>: <code>WaterEffectsManager::from_preset(WaterQualityPreset)</code> coordinating caustics/foam/god-rays/reflections/underwater/waterfall subsystems.</li>
-<li><strong>Terrain analysis</strong>: <code>analyze_terrain_for_water(&amp;[f32], w, h, &amp;TerrainFluidConfig)</code> — D8 flow-accumulation river/lake/waterfall detection.</li>
-<li><strong>Rendering</strong>: <code>FluidRenderer</code> (screen-space fluid rendering: depth → bilateral smooth → shade, plus secondary particles).</li>
-<li><strong>Editor types</strong>: <code>FluidEditorConfig</code> and friends — forward-design, not yet consumed by <code>tools/aw_editor</code>.</li>
-<li><strong>Experimental</strong> (feature-gated): <code>PcisphSystem</code> — a real GPU PCISPH pipeline with a <strong>fixed</strong> iteration count (no convergence readback; see the module header for honest status).</li>
+<li><code>FluidRenderer</code> is re-exported from <code>renderer</code>.</li>
+<li><code>Particle</code> and <code>DynamicObject</code> are public structs in <code>lib.rs</code>.</li>
+<li><code>WaterEffectsManager</code> is in <code>water_effects.rs</code>. <code>FluidEditorConfig</code> is in <code>editor.rs</code>.</li>
+<li><code>WaterVolumeGrid</code>, <code>WaterBuildingManager</code>, and <code>PcisphSystem</code> are not in <code>src/</code>. Do not copy them from older pages.</li>
+<li>The game-loop water field is <code>astraweave-localsim</code>. The view-side crate is <code>astraweave-water</code>. See the engine status page.</li>
 </ul>
 <h3 id="determinism"><a class="header" href="#determinism">Determinism</a></h3>
 <p>GPU particle state is non-deterministic by construction and excluded from

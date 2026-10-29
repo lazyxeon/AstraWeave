@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -231,7 +231,7 @@
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <h3 id="required-software"><a class="header" href="#required-software">Required Software</a></h3>
 <h4 id="rust-toolchain"><a class="header" href="#rust-toolchain">Rust Toolchain</a></h4>
-<p>AstraWeave requires Rust 1.75.0 or later.</p>
+<p>AstraWeave requires Rust 1.89.0, pinned in <code>rust-toolchain.toml</code>.</p>
 <pre><code class="language-bash"># Install Rust via rustup
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
@@ -241,11 +241,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustc --version
 cargo --version
 </code></pre>
-<pre><code class="language-admonish tip">Keep Rust updated for the latest performance improvements and bug fixes:
-\`\`\`bash
-rustup update
-\`\`\`
-</code></pre>
+<p>The repository pins 1.89.0. <code>rustup update</code> does not move the toolchain inside this directory. <code>rustc --version</code> here should print 1.89.0.</p>
 <h4 id="git"><a class="header" href="#git">Git</a></h4>
 <pre><code class="language-bash"># Linux (Debian/Ubuntu)
 sudo apt install git
@@ -298,8 +294,8 @@ brew install git
 </ol>
 <h4 id="building-on-windows"><a class="header" href="#building-on-windows">Building on Windows</a></h4>
 <pre><code class="language-powershell"># Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # Build (release mode recommended)
 cargo build --release
@@ -308,7 +304,7 @@ cargo build --release
 cargo test --release
 
 # Run an example
-cargo run --release --example basic_companion
+cargo run -p hello_companion --release
 </code></pre>
 <pre><code class="language-admonish note">Windows Defender may flag the first build as suspicious. This is normal for newly compiled executables.
 </code></pre>
@@ -360,8 +356,8 @@ sudo apt install -y \
 </code></pre>
 <h4 id="building-on-linux"><a class="header" href="#building-on-linux">Building on Linux</a></h4>
 <pre><code class="language-bash"># Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # Build
 cargo build --release
@@ -370,7 +366,7 @@ cargo build --release
 cargo test --release
 
 # Run an example
-cargo run --release --example basic_companion
+cargo run -p hello_companion --release
 </code></pre>
 <h4 id="gpu-drivers"><a class="header" href="#gpu-drivers">GPU Drivers</a></h4>
 <p><strong>NVIDIA</strong>:</p>
@@ -406,8 +402,8 @@ sudo apt install mesa-vulkan-drivers
 </ol>
 <h4 id="building-on-macos"><a class="header" href="#building-on-macos">Building on macOS</a></h4>
 <pre><code class="language-bash"># Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # Build
 cargo build --release
@@ -416,7 +412,7 @@ cargo build --release
 cargo test --release
 
 # Run an example
-cargo run --release --example basic_companion
+cargo run -p hello_companion --release
 </code></pre>
 <pre><code class="language-admonish warning">macOS uses Metal as the graphics backend. Ensure your system is macOS 10.15+ with Metal-compatible GPU.
 </code></pre>
@@ -572,9 +568,9 @@ watch -n 1 nvidia-smi
 <p>After successfully building AstraWeave:</p>
 <ol>
 <li><strong>Run the test suite</strong>: See <a href="testing.html">Testing Guide</a></li>
-<li><strong>Try the examples</strong>: <code>cargo run --release --example &lt;name&gt;</code></li>
-<li><strong>Read the tutorials</strong>: <a href="../getting-started/index.html">Getting Started</a></li>
-<li><strong>Join the community</strong>: <a href="https://discord.gg/astraweave">Discord</a></li>
+<li><strong>Try the examples</strong>: <code>cargo run -p hello_companion --release</code></li>
+<li><strong>Read the tutorials</strong>: <a href="../getting-started/quick-start.html">Quick start</a></li>
+<li><strong>Questions</strong>: <a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a>. See <a href="../resources/community.html">Community</a>.</li>
 </ol>
 <pre><code class="language-admonish success">Congratulations! You've successfully built AstraWeave from source. You're ready to start developing AI-native games.
 </code></pre>

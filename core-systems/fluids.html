@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -230,48 +230,21 @@
   classifies it accurately as research surface awaiting production wiring.
 -->
 <h1 id="fluid-simulation-research-surface"><a class="header" href="#fluid-simulation-research-surface">Fluid Simulation (Research Surface)</a></h1>
-<pre><code class="language-admonish warning title=&quot;Research surface not a production-wired engine system&quot;">Per `ARCHITECTURE_MAP.md` §5.1, `astraweave-fluids` is **dormant for runtime engine use**:
-
-* **~84.5K LoC** across 35 source files plus 8 WGSL shaders — the single largest
-  dormant-code reservoir in the workspace.
-* The **only** workspace consumer outside the crate itself is
-  `examples/fluids_demo/src/main.rs:18-21`.
-* **No production game-loop crate** depends on `astraweave-fluids`. Specifically,
-  `astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`,
-  `astraweave-terrain`, and `astraweave-ecs` all lack the dependency.
-* `astraweave-fluids/src/editor.rs` (5,823 LoC) is forward-design infrastructure —
-  the visual editor (`tools/aw_editor`) does not depend on `astraweave-fluids`,
-  verified 2026-05-12.
-
-The crate exists, builds, and ships with comprehensive tests (2,404 tests / 600+ inline
-plus an integration suite — benchmark-caliber by per-trace §10 grade). It is the
-clearest example of the workspace's *in-design-but-tested* dormant-code category.
-</code></pre>
+<p><code>astraweave-fluids</code> is in the workspace. The <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page calls it the deprecated accent remnant, not a game-loop solver. <code>examples/fluids_demo</code> is a consumer. Line-count and test-count figures from the May 2026 trace were not re-counted here, and they predate the W.1 removal recorded in the crate’s <code>Cargo.toml</code>.</p>
 <h2 id="whats-in-the-crate"><a class="header" href="#whats-in-the-crate">What’s in the crate</a></h2>
 <!-- Source: fluids.md §1, §5 -->
-<p><code>astraweave-fluids</code> carries <strong>five parallel solver and manager surfaces</strong> that have not
-been unified:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Surface</th><th>Role</th></tr>
-</thead>
-<tbody>
-<tr><td><code>FluidSystem</code></td><td><code>lib.rs</code> PBD GPU pipeline</td></tr>
-<tr><td><code>PCISPHSystem</code></td><td>Standalone PCISPH solver</td></tr>
-<tr><td><code>WaterEffectsManager</code></td><td>Visual coordinator</td></tr>
-</tbody>
-</table>
-</div>
-<p>Plus auxiliary types: <code>WaterBuildingManager</code>, <code>CausticsSystem</code>, <code>WaterQualityPreset</code>
-(Low/Medium/High/Ultra/Custom).</p>
-<p>The largest single file is <code>simd_ops.rs</code> at 39,554 LoC; second-largest is
-<code>editor.rs</code> at 5,823 LoC.</p>
-<h2 id="status-grade"><a class="header" href="#status-grade">Status grade</a></h2>
-<p>Per <code>docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md</code> (2026-05-12), the audit
-rates current state at <strong>“Grade B (Good for games, insufficient for research)”</strong> — the
-intent is research-grade simulation; the existing surface has comprehensive tests but
-no production-engine integration path.</p>
+<p><code>FluidSystem</code> is a public type in <code>astraweave-fluids/src/lib.rs</code> (<code>FluidSystem::new</code>).
+<code>WaterEffectsManager</code> is in <code>water_effects.rs</code>. <code>examples/fluids_demo</code> registers
+<code>LaboratoryScenario</code> and <code>OceanScenario</code> only.</p>
+<p><code>PCISPHSystem</code> / <code>PcisphSystem</code> is not in the crate. The <code>Cargo.toml</code> comment records
+that the <code>experimental</code> modules, including that solver, were removed in W.1
+(2026-06-20), and that <code>simd_ops</code> was removed with them. There is no <code>experimental</code>
+feature key left. <code>parallel</code> still exists and the same comment says it gates nothing.</p>
+<p>Line counts and test totals on older copies of this page were not re-counted.
+The <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a>
+page calls <code>astraweave-fluids</code> the deprecated accent remnant, not a game-loop solver.
+The greybox local field is <code>astraweave-localsim</code>. The view-side water crate is
+<code>astraweave-water</code>.</p>
 <h2 id="why-this-matters"><a class="header" href="#why-this-matters">Why this matters</a></h2>
 <p>The fluids crate is the canonical example used by the architecture trace campaign to
 illustrate the <em>“wired beats tested”</em> axiom:</p>
@@ -296,7 +269,7 @@ wiring decision (Q12 in <code>ARCHITECTURE_MAP.md</code> §14).</p>
 <li><a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md"><code>ARCHITECTURE_MAP.md</code></a> §5.1 (dormant in-design inventory),
 §4.4 (wired-beats-tested axiom), §14 (Q12 open question).</li>
 <li><strong>Interactive workspace map</strong> — the <em>Dormant Surface Inventory</em> story preset
-highlights fluids along with the other ~200K LoC of dormant-but-designed surface.</li>
+highlights fluids along with other surface that is present and not on the sim tick.</li>
 </ul>
 
                     </main>

@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,326 +218,95 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="hello-companion-walkthrough"><a class="header" href="#hello-companion-walkthrough">Hello Companion Walkthrough</a></h1>
-<p>The <code>hello_companion</code> example is the perfect introduction to AstraWeave’s AI-native architecture. This walkthrough explains every step of what happens when you run this example and why it’s designed this way.</p>
-<h2 id="running-the-example"><a class="header" href="#running-the-example">Running the Example</a></h2>
+                        <h1 id="hello-companion"><a class="header" href="#hello-companion">Hello Companion</a></h1>
+<p><code>examples/hello_companion</code> is the companion binary. The package name is <code>hello_companion</code>. This page walks that file from the command you type to the plan the classical orchestrator returns.</p>
+<p>Run it from the repository root:</p>
 <pre><code class="language-bash">cargo run -p hello_companion --release
 </code></pre>
-<h2 id="expected-output"><a class="header" href="#expected-output">Expected Output</a></h2>
-<pre><code>[INFO] Initializing AstraWeave Engine...
-[INFO] Creating world with ECS...
-[INFO] Spawning AI companion entity
-[INFO] Starting simulation loop at 60Hz
-[INFO] Tick 1: Capturing perception snapshot
-[INFO] AI perception: 1 entities visible, 0 audio events
-[INFO] Sending perception to AI planning layer
-[INFO] AI generated plan: MoveTo { target: Vec3(10.0, 0.0, 5.0), urgency: 0.7 }
-[INFO] Validating movement tool usage...
-[ERROR] Tool validation failed: LosBlocked - No clear line of sight to target
-thread 'main' panicked at examples/hello_companion/src/main.rs:42:5:
-called `Result::unwrap()` on an `Err` value: ToolValidationError(LosBlocked)
-</code></pre>
-<p><strong>This panic is intentional!</strong> It demonstrates AstraWeave’s core principle: AI agents cannot perform actions that violate the game world’s constraints.</p>
-<h2 id="code-walkthrough"><a class="header" href="#code-walkthrough">Code Walkthrough</a></h2>
-<p>Let’s examine the source code to understand each step:</p>
-<h3 id="1-engine-initialization"><a class="header" href="#1-engine-initialization">1. Engine Initialization</a></h3>
-<pre class="playground"><code class="language-rust">// examples/hello_companion/src/main.rs
-use astraweave_core::*;
-use astraweave_ai::*;
-
-fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    // Initialize logging
-    env_logger::init();
-    
-    // Create the ECS world
-    let mut world = World::new();
-    
-    // Configure the engine systems
-    world.add_plugin(CorePlugin)
-         .add_plugin(AIPlugin)
-         .add_plugin(PhysicsPlugin);</code></pre>
-<p><strong>What’s happening:</strong></p>
-<ul>
-<li>Sets up the Entity-Component-System (ECS) world</li>
-<li>Registers core systems for AI, physics, and simulation</li>
-<li>Configures 60Hz fixed-tick simulation</li>
-</ul>
-<h3 id="2-spawning-the-ai-companion"><a class="header" href="#2-spawning-the-ai-companion">2. Spawning the AI Companion</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>    // Spawn an AI companion entity
-    let companion = world.spawn()
-        .insert(Position(Vec3::new(0.0, 0.0, 0.0)))
-        .insert(AIAgent {
-            perception_range: 10.0,
-            planning_interval: Duration::from_millis(500),
-            ai_model: AIModel::Local("companion-7b".to_string()),
-        })
-        .insert(MovementCapability {
-            max_speed: 5.0,
-            acceleration: 2.0,
-        })
-        .id();
-    
-    info!("Spawned AI companion with ID: {:?}", companion);
-<span class="boring">}</span></code></pre>
-<p><strong>What’s happening:</strong></p>
-<ul>
-<li>Creates a new entity in the ECS world</li>
-<li>Adds position component (where the companion is)</li>
-<li>Adds AI agent component (makes it intelligent)</li>
-<li>Adds movement capability (what it can do)</li>
-</ul>
-<h3 id="3-the-simulation-loop"><a class="header" href="#3-the-simulation-loop">3. The Simulation Loop</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>    // Run simulation for a few ticks
-    for tick in 0..5 {
-        info!("Starting tick {}", tick);
-        
-        // This is where the AI magic happens
-        world.step(Duration::from_nanos(16_666_667)); // 1/60 second
-        
-        // Small delay so we can see the output
-        std::thread::sleep(Duration::from_millis(100));
-    }
-<span class="boring">}</span></code></pre>
-<p><strong>What’s happening:</strong></p>
-<ul>
-<li>Runs exactly 5 simulation ticks</li>
-<li>Each tick advances the world by exactly 1/60th of a second</li>
-<li>The deterministic timing ensures consistent behavior</li>
-</ul>
-<h3 id="4-the-ai-pipeline-inside-worldstep"><a class="header" href="#4-the-ai-pipeline-inside-worldstep">4. The AI Pipeline (Inside world.step())</a></h3>
-<p>During each <code>world.step()</code> call, several systems run in sequence:</p>
-<h4 id="a-perception-system"><a class="header" href="#a-perception-system">A. Perception System</a></h4>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn ai_perception_system(
-    mut query: Query&lt;(&amp;Position, &amp;AIAgent, &amp;mut PerceptionState)&gt;,
-    world_query: Query&lt;&amp;Position&gt;,
-) {
-    for (pos, agent, mut perception) in query.iter_mut() {
-        // Gather what the AI can see
-        let mut visible_entities = Vec::new();
-        
-        for other_pos in world_query.iter() {
-            let distance = pos.0.distance(other_pos.0);
-            if distance &lt;= agent.perception_range {
-                visible_entities.push(EntityData {
-                    position: other_pos.0,
-                    distance,
-                    entity_type: "unknown".to_string(),
-                });
-            }
-        }
-        
-        // Create perception snapshot
-        perception.last_snapshot = Some(PerceptionSnapshot {
-            timestamp: world.current_tick(),
-            agent_id: entity,
-            visible_entities,
-            audio_events: vec![], // None in this simple example
-            world_state: WorldState::default(),
-        });
-    }
-}
-<span class="boring">}</span></code></pre>
-<h4 id="b-ai-planning-system"><a class="header" href="#b-ai-planning-system">B. AI Planning System</a></h4>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn ai_planning_system(
-    mut query: Query&lt;(&amp;AIAgent, &amp;PerceptionState, &amp;mut PlanningState)&gt;,
-    ai_service: Res&lt;AIService&gt;,
-) {
-    for (agent, perception, mut planning) in query.iter_mut() {
-        if let Some(snapshot) = &amp;perception.last_snapshot {
-            // Send to AI model for planning
-            let plan_request = PlanningRequest {
-                perception: snapshot.clone(),
-                agent_profile: agent.clone(),
-                available_tools: vec!["MovementTool", "InteractionTool"],
-            };
-            
-            // This is where the LLM generates a plan
-            let plan = ai_service.generate_plan(plan_request)?;
-            
-            info!("AI generated plan: {:?}", plan.intent);
-            planning.current_plan = Some(plan);
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h4 id="c-tool-validation-system"><a class="header" href="#c-tool-validation-system">C. Tool Validation System</a></h4>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn tool_validation_system(
-    mut query: Query&lt;(&amp;PlanningState, &amp;mut ActionState)&gt;,
-    tool_registry: Res&lt;ToolRegistry&gt;,
-    world: &amp;World,
-) {
-    for (planning, mut action) in query.iter_mut() {
-        if let Some(plan) = &amp;planning.current_plan {
-            for tool_usage in &amp;plan.tools {
-                // This is where the validation happens
-                let validation_result = tool_registry
-                    .get_tool(&amp;tool_usage.tool_name)
-                    .unwrap()
-                    .validate(world, tool_usage);
-                
-                match validation_result {
-                    ValidationResult::Valid =&gt; {
-                        info!("Tool validation passed: {}", tool_usage.tool_name);
-                        action.pending_actions.push(tool_usage.clone());
-                    }
-                    ValidationResult::Blocked(reason) =&gt; {
-                        error!("Tool validation failed: {:?}", reason);
-                        // This causes the panic in hello_companion
-                        return Err(ToolValidationError::from(reason));
-                    }
-                }
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="why-does-it-panic"><a class="header" href="#why-does-it-panic">Why Does It Panic?</a></h2>
-<p>The panic occurs because the AI tries to move to a position but there’s no clear line of sight. Here’s what happens:</p>
-<h3 id="1-ai-perception"><a class="header" href="#1-ai-perception">1. AI Perception</a></h3>
-<ul>
-<li>The companion perceives its current position (0, 0, 0)</li>
-<li>It detects no obstacles in its perception range</li>
-</ul>
-<h3 id="2-ai-planning"><a class="header" href="#2-ai-planning">2. AI Planning</a></h3>
-<ul>
-<li>The AI decides it wants to move to position (10, 0, 5)</li>
-<li>This seems reasonable based on its limited perception</li>
-</ul>
-<h3 id="3-tool-validation"><a class="header" href="#3-tool-validation">3. Tool Validation</a></h3>
-<ul>
-<li>The MovementTool.validate() method checks line of sight</li>
-<li>There’s an invisible obstacle blocking the path</li>
-<li>Validation fails with <code>LosBlocked</code> error</li>
-</ul>
-<h3 id="4-engine-authority"><a class="header" href="#4-engine-authority">4. Engine Authority</a></h3>
-<ul>
-<li>The engine refuses to execute the invalid action</li>
-<li>This maintains world integrity and prevents AI cheating</li>
-</ul>
-<h2 id="key-learning-points"><a class="header" href="#key-learning-points">Key Learning Points</a></h2>
-<h3 id="1-ai-cannot-cheat"><a class="header" href="#1-ai-cannot-cheat">1. AI Cannot Cheat</a></h3>
-<p>The AI doesn’t have perfect information about the world. It can only act based on what it perceives, and all actions must be validated by the engine.</p>
-<h3 id="2-deterministic-behavior"><a class="header" href="#2-deterministic-behavior">2. Deterministic Behavior</a></h3>
-<p>Run the example multiple times - you’ll get the same result every time. This determinism is crucial for:</p>
-<ul>
-<li>Reliable testing</li>
-<li>Networking (same simulation on all clients)</li>
-<li>Debugging AI behavior</li>
-</ul>
-<h3 id="3-tool-based-architecture"><a class="header" href="#3-tool-based-architecture">3. Tool-Based Architecture</a></h3>
-<p>The AI doesn’t directly move entities or change the world. It can only request actions through validated tools:</p>
-<ul>
-<li>MovementTool (for movement)</li>
-<li>InteractionTool (for object interaction)</li>
-<li>CombatTool (for attacks)</li>
-<li>CommunicationTool (for dialogue)</li>
-</ul>
-<h3 id="4-perception-vs-reality"><a class="header" href="#4-perception-vs-reality">4. Perception vs Reality</a></h3>
-<p>The AI’s perception is limited and may not match reality. This creates interesting emergent behavior as AI agents must:</p>
-<ul>
-<li>Explore to gather information</li>
-<li>Make decisions with incomplete data</li>
-<li>Adapt when actions fail</li>
-</ul>
-<h2 id="modifying-the-example"><a class="header" href="#modifying-the-example">Modifying the Example</a></h2>
-<h3 id="make-it-not-panic"><a class="header" href="#make-it-not-panic">Make It Not Panic</a></h3>
-<p>To see successful AI behavior, modify the world setup:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Remove the obstacle that blocks line of sight
-world.remove_obstacle(Vec3::new(5.0, 0.0, 2.5));
-
-// Or give the AI perfect perception
-ai_agent.perception_range = f32::INFINITY;
-<span class="boring">}</span></code></pre>
-<h3 id="add-more-interesting-behavior"><a class="header" href="#add-more-interesting-behavior">Add More Interesting Behavior</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Add a target for the AI to find
-world.spawn()
-    .insert(Position(Vec3::new(15.0, 0.0, 0.0)))
-    .insert(InteractableItem {
-        item_type: "treasure_chest".to_string(),
-        value: 100,
-    });
-
-// The AI will now try to navigate to and interact with the chest
-<span class="boring">}</span></code></pre>
-<h3 id="enable-logging-for-more-detail"><a class="header" href="#enable-logging-for-more-detail">Enable Logging for More Detail</a></h3>
-<pre><code class="language-bash">RUST_LOG=debug cargo run -p hello_companion --release
-</code></pre>
-<p>This shows detailed information about:</p>
-<ul>
-<li>ECS system execution order</li>
-<li>AI model input/output</li>
-<li>Tool validation steps</li>
-<li>World state changes</li>
-</ul>
-<h2 id="architectural-insights"><a class="header" href="#architectural-insights">Architectural Insights</a></h2>
-<h3 id="fixed-tick-simulation"><a class="header" href="#fixed-tick-simulation">Fixed-Tick Simulation</a></h3>
-<p>The 60Hz fixed timestep ensures:</p>
-<ul>
-<li>Physics determinism</li>
-<li>Consistent AI decision making</li>
-<li>Reliable networking</li>
-<li>Predictable performance</li>
-</ul>
-<h3 id="ecs-benefits"><a class="header" href="#ecs-benefits">ECS Benefits</a></h3>
-<p>The Entity-Component-System architecture provides:</p>
-<ul>
-<li>Cache-friendly performance</li>
-<li>Clear separation of concerns</li>
-<li>Easy parallel system execution</li>
-<li>Modular, testable code</li>
-</ul>
-<h3 id="ai-validation-pipeline"><a class="header" href="#ai-validation-pipeline">AI Validation Pipeline</a></h3>
-<p>The perception → planning → validation → execution pipeline ensures:</p>
-<ul>
-<li>No AI cheating</li>
-<li>Consistent game rules</li>
-<li>Emergent behavior from constraints</li>
-<li>Easy debugging and testing</li>
-</ul>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>After understanding hello_companion:</p>
+<p>The crate default features are <code>fast-alloc</code> only (<code>examples/hello_companion/Cargo.toml</code>). That build does not open a window and does not call a model. It selects Classical (<code>RuleOrchestrator</code>).</p>
+<h2 id="what-the-process-does"><a class="header" href="#what-the-process-does">What the process does</a></h2>
+<p><code>main</code> without the <code>visual</code> feature is <code>examples/hello_companion/src/main.rs</code>. It prints the banner, calls <code>select_ai_mode</code>, then <code>run_single_demo</code>.</p>
+<p><code>run_single_demo</code> does four things:</p>
 <ol>
-<li><strong>Explore More Examples</strong>: Try <a href="./adaptive-boss.html">Adaptive Boss</a> for complex AI</li>
-<li><strong>Learn Architecture</strong>: Read <a href="../architecture/ai-native.html">AI-Native Design</a></li>
-<li><strong>Build Your Own</strong>: Follow <a href="../game-dev/first-game.html">Building Your First Game</a></li>
-<li><strong>Dive Deeper</strong>: Study <a href="../core-systems/ai/index.html">Core AI Systems</a></li>
+<li><code>setup_world</code> builds an <code>astraweave_core::World</code> and a <code>WorldSnapshot</code>.</li>
+<li><code>build_app(w, 0.25)</code> (<code>astraweave-core/src/ecs_adapter.rs</code>) inserts that world into an <code>astraweave_ecs::App</code> with a <code>Dt(0.25)</code> resource. The <code>0.25</code> is that resource. It is not a claim that this binary ticks at 60 Hz.</li>
+<li><code>generate_plan</code> asks the selected orchestrator for a <code>PlanIntent</code>.</li>
+<li><code>validate_and_execute</code> (<code>astraweave-core/src/validation.rs</code>) applies the plan or returns an <code>EngineError</code>. On <code>Err</code> the example prints the error and continues. It then calls <code>app.run_fixed(1)</code> twenty times and prints positions.</li>
 </ol>
-<h2 id="common-questions"><a class="header" href="#common-questions">Common Questions</a></h2>
-<h3 id="q-why-does-it-panic-instead-of-just-logging-the-error"><a class="header" href="#q-why-does-it-panic-instead-of-just-logging-the-error">Q: Why does it panic instead of just logging the error?</a></h3>
-<p><strong>A</strong>: The panic demonstrates that validation failures are serious. In a real game, you’d handle this gracefully, but the example uses panic to make the validation concept crystal clear.</p>
-<h3 id="q-can-i-make-the-ai-smarter-to-avoid-this-error"><a class="header" href="#q-can-i-make-the-ai-smarter-to-avoid-this-error">Q: Can I make the AI smarter to avoid this error?</a></h3>
-<p><strong>A</strong>: Yes! You can:</p>
+<p>The strings the binary prints are the <code>println!</code> calls in that file, including <code>Using Classical AI (RuleOrchestrator).</code>, <code>Classical AI (RuleOrchestrator)</code>, <code>Generated {} step plan</code>, <code>Executing Plan</code>, and <code>Post-execution State</code>. The validator logs <code>Plan {} with {} steps</code>.</p>
+<h2 id="the-world"><a class="header" href="#the-world">The world</a></h2>
+<p><code>setup_world</code> in the same file:</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>let mut w = World::new();
+for x in 6..=6 {
+    for y in 1..=8 {
+        w.obstacles.insert((x, y));
+    }
+}
+let player = w.spawn("Player", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+let comp = w.spawn("Companion", IVec2 { x: 2, y: 3 }, Team { id: 1 }, 80, 30);
+let enemy = w.spawn("Rival", IVec2 { x: 12, y: 2 }, Team { id: 2 }, 60, 0);
+<span class="boring">}</span></code></pre>
+<p><code>World::spawn</code> is <code>astraweave_core::World::spawn(&amp;mut self, name, pos, team, hp, ammo)</code>. The companion cooldown <code>throw:smoke</code> is set to <code>0.0</code>. The snapshot is <code>build_snapshot</code> with <code>PerceptionConfig { los_max: 12 }</code> and objective <code>extract</code>.</p>
+<p><code>validate_and_execute</code> is called with <code>ValidateCfg { world_bounds: (0, 0, 19, 9) }</code> and the companion entity id.</p>
+<h2 id="the-classical-plan"><a class="header" href="#the-classical-plan">The classical plan</a></h2>
+<p><code>generate_classical_plan</code> constructs <code>RuleOrchestrator</code> and calls <code>propose_plan</code>. That method is <code>astraweave-ai/src/orchestrator.rs</code>. When the snapshot has an enemy and the smoke cooldown is at or below zero, the plan is three steps:</p>
+<ol>
+<li><code>ActionStep::Throw { item: "smoke", x: mid.x, y: mid.y }</code> where <code>mid</code> is the integer midpoint of the companion and the first enemy.</li>
+<li><code>ActionStep::MoveTo</code> two cells toward that enemy on each axis, using <code>saturating_add</code> and <code>signum</code>.</li>
+<li><code>ActionStep::CoverFire</code> on that enemy for <code>2.5</code> seconds.</li>
+</ol>
+<p>For the coordinates <code>setup_world</code> uses, the companion is <code>(2, 3)</code> and the enemy is <code>(12, 2)</code>, so the midpoint is <code>(7, 2)</code> and the move target is <code>(4, 1)</code>. The obstacle column is <code>x = 6</code>.</p>
+<p><code>validate_and_execute</code> walks steps in order. <code>ActionStep::Throw</code> returns <code>EngineError::LosBlocked</code> when line of sight fails (<code>astraweave-core/src/validation.rs</code>). That variant’s display text is <code>line of sight blocked</code> (<code>astraweave-core/src/schema.rs</code>). A debug <code>cargo run -p hello_companion</code> on this tree printed:</p>
+<pre><code class="language-text">Generated 3 steps
+✅ Generated 3 step plan in &lt;milliseconds&gt;
+
+--- Executing Plan @ t=0.00 ---
+   Plan plan-0 with 3 steps
+⚠️  Execution failed: line of sight blocked. Continuing...
+
+--- Post-execution State @ t=5.00 ---
+Companion: IVec2 { x: 2, y: 3 }
+Enemy:     IVec2 { x: 12, y: 2 }
+Enemy HP:  60
+</code></pre>
+<p>The millisecond field is whatever that process measured. The step count, the error line, the positions, and <code>t=5.00</code> follow from the source above.</p>
+<p>The throw fails, so <code>MoveTo</code> does not run and the companion stays at <code>(2, 3)</code>. The process exits 0. <code>t=5.00</code> is twenty <code>run_fixed(1)</code> calls with <code>Dt(0.25)</code>. <code>MoveTo</code> would return <code>EngineError::NoPath</code> (<code>path not found</code>) if a later step reached a blocked path. This world does not get that far.</p>
+<h2 id="change-it-and-run-it-again"><a class="header" href="#change-it-and-run-it-again">Change it and run it again</a></h2>
+<p>Edit <code>setup_world</code> in <code>examples/hello_companion/src/main.rs</code>. Move the enemy, or clear the obstacle loop, then:</p>
+<pre><code class="language-bash">cargo run -p hello_companion --release
+</code></pre>
+<p>The same four steps run. The plan id is <code>plan-{}</code> from <code>(snap.t * 1000.0) as i64</code> inside <code>RuleOrchestrator::propose_plan</code>.</p>
+<h2 id="other-modes"><a class="header" href="#other-modes">Other modes</a></h2>
+<p>Flags go after <code>--</code>. Features go before it.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>What runs</th></tr>
+</thead>
+<tbody>
+<tr><td><code>cargo run -p hello_companion --release</code></td><td><code>RuleOrchestrator</code></td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features llm -- --bt</code></td><td>Behavior tree in this file, feature <code>llm</code></td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features llm -- --utility</code></td><td>Utility scorer, feature <code>llm</code></td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features llm,ollama -- --llm</code></td><td><code>Qwen3Ollama</code>, constant <code>DEFAULT_QWEN_INSTRUCT_MODEL</code> (<code>qwen3.5:4b</code>)</td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features llm,ollama -- --hybrid</code></td><td>LLM, then <code>generate_classical_plan</code> if that call returns <code>Err</code></td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features llm -- --ensemble</code></td><td>Ensemble, feature <code>llm</code></td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter</code></td><td><code>GoapOrchestrator::propose_plan</code>, which calls <code>htn::legacy_goap_plan</code></td></tr>
+<tr><td><code>cargo run -p hello_companion --release --features visual</code></td><td><code>visual_demo::run_visual_demo</code>. This one opens a window.</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>select_ai_mode</code>: with <code>ollama</code> compiled and no flag, the mode is Hybrid. With <code>llm</code> and not <code>ollama</code>, the mode is Behavior Tree. A flag whose feature is missing prints a warning and uses Classical.</p>
+<p><code>--arbiter</code> does not construct <code>AIArbiter</code>. See <a href="../core-systems/ai/arbiter.html">AI Arbiter</a>.</p>
+<h2 id="what-this-binary-is-not"><a class="header" href="#what-this-binary-is-not">What this binary is not</a></h2>
+<p>It is not the cross-OS replay job. The deterministic tick’s planner is <code>RuleOrchestrator</code> inside <code>sys_ai_planning</code>, which is a different call site from this example’s direct <code>propose_plan</code>. Measurements live on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li>Improve the AI’s perception system</li>
-<li>Give it better pathfinding tools</li>
-<li>Add obstacle detection to its planning</li>
-<li>Implement learning from failed actions</li>
+<li><a href="../getting-started/first-companion.html">Your first companion</a></li>
+<li><a href="./index.html">Examples index</a></li>
+<li><a href="../core-systems/ai/index.html">AI system</a></li>
 </ul>
-<h3 id="q-is-this-really-how-a-game-ai-should-work"><a class="header" href="#q-is-this-really-how-a-game-ai-should-work">Q: Is this really how a game AI should work?</a></h3>
-<p><strong>A</strong>: For AI-native games, yes! This approach:</p>
-<ul>
-<li>Prevents AI cheating</li>
-<li>Creates emergent behavior</li>
-<li>Works in multiplayer</li>
-<li>Enables complex AI interactions</li>
-</ul>
-<p>The “failed action = learning opportunity” approach leads to much more interesting AI behavior than scripted sequences.</p>
-<hr>
-<p><em>The hello_companion example may be simple, but it demonstrates the fundamental principles that enable AstraWeave’s AI-native gameplay. Every complex AI behavior in the engine builds on these same validation patterns.</em></p>
 
                     </main>
 

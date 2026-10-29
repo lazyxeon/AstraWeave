@@ -3,11 +3,11 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Unified Showcase - AstraWeave: AI-Native Game Engine Documentation</title>
+        <title>Rendering Showcase - AstraWeave: AI-Native Game Engine Documentation</title>
 
 
         <!-- Custom HTML head -->
-        <meta property="og:title" content="Unified Showcase - AstraWeave: AI-Native Game Engine Documentation">
+        <meta property="og:title" content="Rendering Showcase - AstraWeave: AI-Native Game Engine Documentation">
         <meta property="og:description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
         <meta property="og:type" content="website">
         <meta property="og:url" content="https://lazyxeon.github.io/AstraWeave/">
@@ -16,7 +16,7 @@
         <meta property="og:locale" content="en_US">
         
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="Unified Showcase - AstraWeave: AI-Native Game Engine Documentation">
+        <meta name="twitter:title" content="Rendering Showcase - AstraWeave: AI-Native Game Engine Documentation">
         <meta name="twitter:description" content="The first AI-native game engine built in Rust with deterministic ECS architecture.">
         <meta name="twitter:image" content="https://lazyxeon.github.io/AstraWeave/assets/og-image.svg">
         
@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,331 +218,59 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="unified-showcase"><a class="header" href="#unified-showcase">Unified Showcase</a></h1>
-<p>A comprehensive rendering demonstration combining shadows, terrain, GLTF models, and skybox rendering in a self-contained wgpu application.</p>
-<pre><code class="language-admonish info title=&quot;Run This Example&quot;">cargo run -p unified_showcase --release
-</code></pre>
-<h2 id="overview"><a class="header" href="#overview">Overview</a></h2>
-<p>The unified showcase demonstrates:</p>
+                        <h1 id="rendering-showcase"><a class="header" href="#rendering-showcase">Rendering showcase</a></h1>
+<p>There is no <code>unified_showcase</code> package and no <code>examples/unified_showcase</code> directory. <code>cargo run -p unified_showcase</code> cannot resolve a package.</p>
+<p>The windowed rendering exercise in this tree is <code>shadow_csm_demo</code>. The game window is <code>aravath_greybox</code>. This page walks the shadow demo from the command to the keys in its source, then the greybox command.</p>
+<h2 id="shadow-demo"><a class="header" href="#shadow-demo">Shadow demo</a></h2>
+<p>Package <code>shadow_csm_demo</code>, file <code>examples/shadow_csm_demo/src/main.rs</code>. The file header lists <code>S</code> as shadows and <code>+/-</code> as zoom. The key handler does not. From <code>input</code> in that file:</p>
 <ul>
-<li><strong>Shadow mapping</strong> with 2048×2048 depth textures</li>
-<li><strong>GLTF model loading</strong> with materials and transforms</li>
-<li><strong>Procedural terrain</strong> with multi-texture blending</li>
-<li><strong>HDR skybox</strong> rendering</li>
-<li><strong>4× MSAA</strong> antialiasing</li>
-<li><strong>First-person camera</strong> controls</li>
+<li><strong>W</strong> moves along the camera forward. <strong>S</strong> moves back along that forward.</li>
+<li><strong>A</strong> and <strong>D</strong> move on the camera right.</li>
+<li><strong>Space</strong> raises the camera. <strong>ShiftLeft</strong> lowers it.</li>
+<li><strong>C</strong> toggles cascade visualization (<code>show_cascade_colors</code>).</li>
+<li><strong>X</strong> toggles shadows (<code>enable_shadows</code>).</li>
+<li><strong>V</strong> sets <code>debug_mode = (debug_mode + 1) % 6</code>.</li>
+<li>There is no <code>+</code> or <code>-</code> arm.</li>
 </ul>
-<p>This is a standalone renderer example that doesn’t depend on engine render crates—ideal for learning wgpu patterns.</p>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre><code class="language-bash"># Run the showcase
-cargo run -p unified_showcase --release
-
-# Controls:
-# WASD      - Move camera
-# Mouse     - Look around (click to capture)
-# Escape    - Release mouse
-# Space     - Move up
-# Shift     - Move down
+<p>Left mouse sets <code>mouse_pressed</code>. The header’s shadow and zoom lines are not this handler.</p>
+<p>Run it from the repository root. It opens a window, so it needs a GPU wgpu can use.</p>
+<pre><code class="language-bash">cargo run -p shadow_csm_demo --release
 </code></pre>
-<h2 id="features"><a class="header" href="#features">Features</a></h2>
-<h3 id="shadow-mapping"><a class="header" href="#shadow-mapping">Shadow Mapping</a></h3>
-<p>Real-time shadow casting with PCF (Percentage Closer Filtering):</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Shadow texture configuration
-let shadow_texture = device.create_texture(&amp;wgpu::TextureDescriptor {
-    label: Some("Shadow Texture"),
-    size: wgpu::Extent3d {
-        width: 2048,
-        height: 2048,
-        depth_or_array_layers: 1,
-    },
-    format: wgpu::TextureFormat::Depth32Float,
-    usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-    ...
-});
-
-// Comparison sampler for PCF
-let shadow_sampler = device.create_sampler(&amp;wgpu::SamplerDescriptor {
-    compare: Some(wgpu::CompareFunction::Less),
-    mag_filter: wgpu::FilterMode::Linear,
-    min_filter: wgpu::FilterMode::Linear,
-    ...
-});
-<span class="boring">}</span></code></pre>
-<h3 id="gltf-model-loading"><a class="header" href="#gltf-model-loading">GLTF Model Loading</a></h3>
-<p>The demo includes a custom GLTF loader for scene objects:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Load and render GLTF models
-mod gltf_loader;
-
-// Material indices for different model parts
-pine_bark_mat: usize,
-pine_leaves_mat: usize,
-tower_wood_mat: usize,
-tower_stone_mat: usize,
-<span class="boring">}</span></code></pre>
-<p>Supported GLTF features:</p>
+<p>What the source sets up before the loop:</p>
 <ul>
-<li>Mesh geometry (positions, normals, UVs)</li>
-<li>Base color textures</li>
-<li>Transform hierarchies</li>
-<li>Multiple materials per model</li>
+<li><code>CsmRenderer</code> from <code>astraweave_render::shadow_csm</code></li>
+<li>A <code>Vertex</code> of <code>position: [f32; 3]</code> and <code>normal: [f32; 3]</code>, with <code>wgpu::vertex_attr_array![0 =&gt; Float32x3, 1 =&gt; Float32x3]</code></li>
+<li><code>CameraUniform</code> (<code>view_proj</code>, <code>view_pos</code>)</li>
+<li><code>LightUniform</code> (<code>direction</code>, <code>color</code>)</li>
+<li><code>RenderSettings</code> with <code>enable_shadows</code>, <code>show_cascade_colors</code>, and <code>debug_mode</code>. <strong>V</strong> cycles six names: <code>0</code> normal, <code>1</code> shadow UVs, <code>2</code> receiver depth, <code>3</code> shadow atlas depth, <code>4</code> raw shadow sample, <code>5</code> direct atlas view</li>
 </ul>
-<h3 id="terrain-rendering"><a class="header" href="#terrain-rendering">Terrain Rendering</a></h3>
-<p>Procedural terrain with height-based texture blending:</p>
-<ul>
-<li><strong>Grass texture</strong> - Low elevation areas</li>
-<li><strong>Rock texture</strong> - Steep slopes</li>
-<li><strong>Snow texture</strong> - High elevation peaks</li>
-<li><strong>Normal mapping</strong> - Surface detail</li>
-<li><strong>Triplanar projection</strong> - Seamless texturing on steep surfaces</li>
-</ul>
-<pre><code class="language-wgsl">// terrain.wgsl - height-based texture blending
-fn blend_terrain_textures(height: f32, slope: f32) -&gt; vec4&lt;f32&gt; {
-    let grass_weight = smoothstep(0.0, 0.3, 1.0 - slope);
-    let rock_weight = smoothstep(0.2, 0.5, slope);
-    let snow_weight = smoothstep(0.7, 1.0, height);
-    
-    return grass * grass_weight + rock * rock_weight + snow * snow_weight;
-}
+<p><code>Camera.fovy</code> is the vertical field of view in radians. The comment in that struct says the field was renamed from <code>fov</code> so radians stay named <code>fovy</code>.</p>
+<p>After it runs, <strong>C</strong> flips cascade colors and <strong>X</strong> flips shadows. Quit the window with the platform close control. This demo is not the frame-budget capture. That command and the measured sample are on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page.</p>
+<h2 id="greybox-window"><a class="header" href="#greybox-window">Greybox window</a></h2>
+<pre><code class="language-bash">cargo xtask fetch-assets
+cargo run -p aravath_runtime --bin aravath_greybox --release
 </code></pre>
-<h3 id="skybox"><a class="header" href="#skybox">Skybox</a></h3>
-<p>HDR-based environment rendering:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Skybox pipeline - renders at depth 1.0 (far plane)
-let sky_pipeline = device.create_render_pipeline(&amp;wgpu::RenderPipelineDescriptor {
-    depth_stencil: Some(wgpu::DepthStencilState {
-        depth_write_enabled: false,
-        depth_compare: wgpu::CompareFunction::LessEqual,
-        ...
-    }),
-    ...
-});
-<span class="boring">}</span></code></pre>
-<h3 id="msaa"><a class="header" href="#msaa">MSAA</a></h3>
-<p>4× multisampling for smooth edges:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>multisample: wgpu::MultisampleState {
-    count: 4,
-    mask: !0,
-    alpha_to_coverage_enabled: false,
-}
-<span class="boring">}</span></code></pre>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<pre class="mermaid">graph TD
-    A[ShowcaseApp] --&gt; B[Render Pipelines]
-    A --&gt; C[Scene Data]
-    A --&gt; D[Camera System]
-    
-    B --&gt; E[Main Pipeline]
-    B --&gt; F[Sky Pipeline]
-    B --&gt; G[Terrain Pipeline]
-    B --&gt; H[Shadow Pipeline]
-    
-    C --&gt; I[Meshes]
-    C --&gt; J[Materials]
-    C --&gt; K[Scene Objects]
-    
-    E --&gt; L[MSAA Texture]
-    L --&gt; M[Resolve to Swapchain]
-</pre>
-
-<h3 id="render-pass-order"><a class="header" href="#render-pass-order">Render Pass Order</a></h3>
-<ol>
-<li><strong>Shadow Pass</strong> - Render scene from light perspective</li>
-<li><strong>Skybox Pass</strong> - Render environment (no depth write)</li>
-<li><strong>Terrain Pass</strong> - Render ground with shadows</li>
-<li><strong>Object Pass</strong> - Render GLTF models with shadows</li>
-<li><strong>MSAA Resolve</strong> - Resolve 4× samples to swapchain</li>
-</ol>
-<h2 id="pipeline-details"><a class="header" href="#pipeline-details">Pipeline Details</a></h2>
-<h3 id="main-render-pipeline"><a class="header" href="#main-render-pipeline">Main Render Pipeline</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let render_pipeline = device.create_render_pipeline(&amp;wgpu::RenderPipelineDescriptor {
-    layout: Some(&amp;render_pipeline_layout),
-    vertex: wgpu::VertexState {
-        module: &amp;shader,
-        entry_point: Some("vs_main"),
-        buffers: &amp;[Vertex::desc()],
-    },
-    fragment: Some(wgpu::FragmentState {
-        module: &amp;shader,
-        entry_point: Some("fs_main"),
-        targets: &amp;[Some(wgpu::ColorTargetState {
-            format: config.format,
-            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-            write_mask: wgpu::ColorWrites::ALL,
-        })],
-    }),
-    primitive: wgpu::PrimitiveState {
-        topology: wgpu::PrimitiveTopology::TriangleList,
-        front_face: wgpu::FrontFace::Ccw,
-        cull_mode: Some(wgpu::Face::Back),
-    },
-    depth_stencil: Some(wgpu::DepthStencilState {
-        format: wgpu::TextureFormat::Depth32Float,
-        depth_write_enabled: true,
-        depth_compare: wgpu::CompareFunction::Less,
-    }),
-    multisample: wgpu::MultisampleState { count: 4, ... },
-});
-<span class="boring">}</span></code></pre>
-<h3 id="bind-group-layouts"><a class="header" href="#bind-group-layouts">Bind Group Layouts</a></h3>
-<p>The showcase uses 4 main bind group layouts:</p>
+<p><code>aravath_greybox</code> is a <code>[[bin]]</code> of package <code>aravath_runtime</code>. Fetch assets first. The engine status page describes what that window shows (streamed chunks, sword hit, dig). <code>cargo editor</code> opens <code>aw_editor</code> and is not this binary.</p>
+<h2 id="other-windows"><a class="header" href="#other-windows">Other windows</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Slot</th><th>Name</th><th>Contents</th></tr>
+<tr><th>Package</th><th>Command</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td>Camera</td><td>View-projection matrix, camera position</td></tr>
-<tr><td>1</td><td>Light</td><td>Light view-projection, position, color, shadow map</td></tr>
-<tr><td>2</td><td>Material</td><td>Albedo texture, sampler</td></tr>
-<tr><td>3</td><td>Model</td><td>Per-object transform matrix</td></tr>
+<tr><td><code>physics_demo3d</code></td><td><code>cargo run -p physics_demo3d --release</code></td><td>Rapier demo</td></tr>
+<tr><td><code>fluids_demo</code></td><td><code>cargo run -p fluids_demo --release</code></td><td><code>FluidSystem</code>. Not a PCISPH solver. <a href="./fluids-demo.html">Fluids demo</a></td></tr>
+<tr><td><code>terrain_demo</code></td><td><code>cargo run -p terrain_demo --release</code></td><td>Terrain example package</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="vertex-format"><a class="header" href="#vertex-format">Vertex Format</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>#[repr(C)]
-struct Vertex {
-    position: [f32; 3],
-    normal: [f32; 3],
-    uv: [f32; 2],
-    color: [f32; 4],
-    tangent: [f32; 4],
-}
-<span class="boring">}</span></code></pre>
-<h2 id="shaders"><a class="header" href="#shaders">Shaders</a></h2>
-<h3 id="main-shader-shader_v2wgsl"><a class="header" href="#main-shader-shader_v2wgsl">Main Shader (shader_v2.wgsl)</a></h3>
-<pre><code class="language-wgsl">@vertex
-fn vs_main(in: VertexInput) -&gt; VertexOutput {
-    var out: VertexOutput;
-    let world_pos = model.model * vec4&lt;f32&gt;(in.position, 1.0);
-    out.clip_position = camera.view_proj * world_pos;
-    out.world_position = world_pos.xyz;
-    out.world_normal = normalize((model.model * vec4&lt;f32&gt;(in.normal, 0.0)).xyz);
-    out.uv = in.uv;
-    out.shadow_position = light.view_proj * world_pos;
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -&gt; @location(0) vec4&lt;f32&gt; {
-    let shadow = calculate_shadow(in.shadow_position);
-    let albedo = textureSample(t_diffuse, s_diffuse, in.uv);
-    let lighting = calculate_lighting(in.world_normal, light.position, shadow);
-    return vec4&lt;f32&gt;(albedo.rgb * lighting, albedo.a);
-}
-</code></pre>
-<h3 id="shadow-shader"><a class="header" href="#shadow-shader">Shadow Shader</a></h3>
-<p>Minimal shader for depth-only rendering:</p>
-<pre><code class="language-wgsl">@vertex
-fn vs_main(in: VertexInput) -&gt; @builtin(position) vec4&lt;f32&gt; {
-    return light.view_proj * model.model * vec4&lt;f32&gt;(in.position, 1.0);
-}
-</code></pre>
-<h2 id="dependencies"><a class="header" href="#dependencies">Dependencies</a></h2>
-<pre><code class="language-toml">[dependencies]
-winit = { workspace = true }
-wgpu = { workspace = true }
-glam = { workspace = true }
-pollster = { workspace = true }
-bytemuck = { workspace = true }
-image = { version = "0.25", features = ["png", "jpeg", "hdr", "webp"] }
-gltf = { version = "1.4", features = ["utils", "KHR_materials_unlit"] }
-</code></pre>
-<p>Note: This example is <strong>self-contained</strong> and doesn’t use <code>astraweave-render</code> crates. It’s designed as a clean reference implementation.</p>
-<h2 id="asset-requirements"><a class="header" href="#asset-requirements">Asset Requirements</a></h2>
-<p>The demo expects assets in the following locations:</p>
-<pre><code>assets/
-├── models/
-│   ├── pine_tree.glb
-│   └── watch_tower.glb
-├── textures/
-│   ├── grass_albedo.png
-│   ├── rock_albedo.png
-│   └── snow_albedo.png
-└── hdri/
-    └── polyhaven/
-        └── kloppenheim_02_puresky_2k.hdr
-</code></pre>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<p>Typical performance on mid-range hardware:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Metric</th><th>Value</th></tr>
-</thead>
-<tbody>
-<tr><td>Shadow Resolution</td><td>2048×2048</td></tr>
-<tr><td>MSAA</td><td>4×</td></tr>
-<tr><td>Draw Calls</td><td>10-50 (scene dependent)</td></tr>
-<tr><td>Frame Time</td><td>8-12 ms (60-80+ FPS)</td></tr>
-<tr><td>VRAM</td><td>~200-500 MB</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="optimization-opportunities"><a class="header" href="#optimization-opportunities">Optimization Opportunities</a></h3>
-<p>For production use, consider:</p>
-<ol>
-<li><strong>Cascaded Shadow Maps</strong> - Multiple shadow cascades for large scenes</li>
-<li><strong>Instanced Rendering</strong> - Batch similar objects</li>
-<li><strong>Frustum Culling</strong> - Skip off-screen objects</li>
-<li><strong>LOD System</strong> - Distance-based mesh simplification</li>
-</ol>
-<h2 id="learning-value"><a class="header" href="#learning-value">Learning Value</a></h2>
-<p>This example teaches:</p>
-<ol>
-<li><strong>wgpu Pipeline Creation</strong> - Complete setup from device to swapchain</li>
-<li><strong>Bind Group Management</strong> - Proper resource binding patterns</li>
-<li><strong>Shadow Mapping</strong> - Light-space rendering and PCF sampling</li>
-<li><strong>GLTF Integration</strong> - Loading and rendering real 3D assets</li>
-<li><strong>Multi-Pass Rendering</strong> - Coordinating multiple render passes</li>
-<li><strong>MSAA Setup</strong> - Multisampling with resolve</li>
-</ol>
-<h2 id="related-documentation"><a class="header" href="#related-documentation">Related Documentation</a></h2>
+<p>The old page’s 2048 shadow map, custom GLTF loader, 4× MSAA table, and 8–12 ms frame time described source that is not in the tree. Those figures are not repeated.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="../core-systems/rendering.html">Rendering System Guide</a> - Engine rendering architecture</li>
-<li><a href="../api/render.html">Render API Reference</a> - Complete rendering API</li>
-<li><a href="../performance/optimization.html">Performance Optimization</a> - General optimization</li>
+<li><a href="./index.html">Examples index</a></li>
+<li><a href="../core-systems/rendering.html">Rendering</a></li>
+<li><a href="./hello-companion.html">Hello Companion</a> for the headless companion, which does not open a window</li>
 </ul>
-<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
-<h3 id="black-screen"><a class="header" href="#black-screen">Black Screen</a></h3>
-<p><strong>Symptom</strong>: Window opens but shows only black</p>
-<p><strong>Solutions</strong>:</p>
-<ol>
-<li>Check GPU supports wgpu backends (Vulkan/DX12/Metal)</li>
-<li>Update graphics drivers</li>
-<li>Enable logging: <code>RUST_LOG=info cargo run -p unified_showcase</code></li>
-</ol>
-<h3 id="missing-textures"><a class="header" href="#missing-textures">Missing Textures</a></h3>
-<p><strong>Symptom</strong>: Models render as solid colors</p>
-<p><strong>Cause</strong>: Asset files not found</p>
-<p><strong>Solution</strong>: Ensure <code>assets/</code> directory contains required textures</p>
-<h3 id="slow-performance"><a class="header" href="#slow-performance">Slow Performance</a></h3>
-<p><strong>Symptom</strong>: FPS below 30</p>
-<p><strong>Solutions</strong>:</p>
-<ol>
-<li>Reduce shadow map resolution (edit source)</li>
-<li>Disable MSAA (change count to 1)</li>
-<li>Close other GPU applications</li>
-<li>Try different wgpu backend: <code>WGPU_BACKEND=dx12</code></li>
-</ol>
-<h3 id="gltf-load-errors"><a class="header" href="#gltf-load-errors">GLTF Load Errors</a></h3>
-<p><strong>Symptom</strong>: Panic on startup with GLTF error</p>
-<p><strong>Solutions</strong>:</p>
-<ol>
-<li>Verify GLTF files exist in <code>assets/models/</code></li>
-<li>Check GLTF files are valid (test in Blender)</li>
-<li>Ensure GLTF uses supported features only</li>
-</ol>
 
                     </main>
 

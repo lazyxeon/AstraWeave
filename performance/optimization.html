@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -263,28 +263,12 @@ for pos in &amp;mut positions {
 <li>Group components that are accessed together</li>
 <li>Use <code>u32</code> over <code>u64</code> when possible (cache efficiency)</li>
 </ul>
-<h3 id="entity-spawning"><a class="header" href="#entity-spawning">Entity Spawning</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// ❌ Slow: One-by-one spawning
-for _ in 0..1000 {
-    world.spawn((Position::default(), Velocity::default()));
-}
-
-// ✅ Fast: Batch spawning
-world.spawn_batch((0..1000).map(|_| (Position::default(), Velocity::default())));
-<span class="boring">}</span></code></pre>
+<h3 id="entity-spawning"><a class="header" href="#entity-spawning">Entity spawning</a></h3>
+<p><code>astraweave-ecs</code> has no <code>spawn_batch</code>, and <code>World::spawn</code> does not take a tuple of components. The legacy <code>astraweave_core::World::spawn</code> used by <code>hello_companion</code> takes a name, an <code>IVec2</code>, a <code>Team</code>, hp, and ammo. Do not copy a Bevy spawn loop into this engine.</p>
 <hr>
 <h2 id="ai-optimization"><a class="header" href="#ai-optimization">AI Optimization</a></h2>
-<h3 id="goap-caching"><a class="header" href="#goap-caching">GOAP Caching</a></h3>
-<p>GOAP cache hit: 9.8 ns vs cache miss: 286 ns (29× faster)</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Enable GOAP caching
-let planner = GoapPlanner::new()
-    .with_cache_size(1000)  // Cache 1000 plans
-    .with_cache_ttl(Duration::from_secs(5));
-<span class="boring">}</span></code></pre>
+<h3 id="goap"><a class="header" href="#goap">GOAP</a></h3>
+<p><code>astraweave-ai</code> has no <code>GoapPlanner</code> and no <code>with_cache_size</code> builder. <code>astraweave-behavior</code> defines <code>GoapPlanner</code> in <code>astraweave-behavior/src/goap.rs</code>. Advanced GOAP in <code>astraweave-ai</code> is <code>astraweave_ai::goap::AdvancedGOAP</code> behind <code>planner_advanced</code>. The always-compiled <code>GoapOrchestrator</code> calls <code>htn::legacy_goap_plan</code>. Cache-hit nanoseconds are not on the engine status page.</p>
 <h3 id="agent-update-staggering"><a class="header" href="#agent-update-staggering">Agent Update Staggering</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
@@ -298,33 +282,16 @@ for (i, agent) in agents.iter_mut().enumerate() {
 <h3 id="aiarbiter-cooldown"><a class="header" href="#aiarbiter-cooldown">AIArbiter Cooldown</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>// Reduce LLM request frequency for better performance
-let arbiter = AIArbiter::new(executor, goap, bt)
-    .with_llm_cooldown(15.0);  // 15 seconds between requests
+</span>#[cfg(feature = "llm_orchestrator")]
+let arbiter = AIArbiter::with_single_executor(executor, goap, bt)
+    .with_llm_cooldown(15.0);
 <span class="boring">}</span></code></pre>
+<p><code>AIArbiter::new</code> takes an <code>Option&lt;LlmExecutor&gt;</code> before the orchestrators. The type is not on the sim tick. See <a href="../core-systems/ai/arbiter.html">AI Arbiter</a>.</p>
 <hr>
 <h2 id="physics-optimization"><a class="header" href="#physics-optimization">Physics Optimization</a></h2>
-<h3 id="spatial-hashing"><a class="header" href="#spatial-hashing">Spatial Hashing</a></h3>
-<p>AstraWeave’s spatial hash reduces collision checks by 99.96%:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Automatic with default physics setup
-let physics = PhysicsWorld::new()
-    .with_spatial_hash(cell_size: 2.0);  // Tune cell size to object density
-<span class="boring">}</span></code></pre>
-<p><strong>Tuning</strong>: Cell size should be ~2× average object radius.</p>
-<h3 id="rigid-body-batching"><a class="header" href="#rigid-body-batching">Rigid Body Batching</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Batch physics updates (47µs for 100 bodies)
-physics.step_batch(&amp;mut bodies, dt);
-<span class="boring">}</span></code></pre>
-<h3 id="sleep-optimization"><a class="header" href="#sleep-optimization">Sleep Optimization</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Enable sleeping for static objects
-body.enable_sleeping(linear_threshold: 0.01, angular_threshold: 0.01);
-<span class="boring">}</span></code></pre>
+<h3 id="broadphase"><a class="header" href="#broadphase">Broadphase</a></h3>
+<p><code>PhysicsWorld</code> stores Rapier’s <code>DefaultBroadPhase</code>. There is no <code>PhysicsWorld::with_spatial_hash</code>. <code>SpatialHash</code> is a separate type and is not the broadphase the world steps.</p>
+<p><code>PhysicsWorld::step_batch</code> and <code>enable_sleeping</code> with the call shape previously shown here are not in <code>astraweave-physics/src/lib.rs</code>. Step the world through <code>PhysicsWorld</code>. Picosecond tables that used to follow this section are not on the engine status page.</p>
 <hr>
 <h2 id="rendering-optimization"><a class="header" href="#rendering-optimization">Rendering Optimization</a></h2>
 <h3 id="frustum-culling"><a class="header" href="#frustum-culling">Frustum Culling</a></h3>

@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,70 +219,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="troubleshooting-examples"><a class="header" href="#troubleshooting-examples">Troubleshooting Examples</a></h1>
-<p>This guide helps resolve common issues when running AstraWeave examples.</p>
-<h2 id="working-examples"><a class="header" href="#working-examples">Working Examples</a></h2>
-<p>The following examples are verified to build and run:</p>
+<h2 id="packages"><a class="header" href="#packages">Packages</a></h2>
+<p>These packages exist. A default <code>hello_companion</code> run does not panic.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Example</th><th>Command</th><th>Notes</th></tr>
+<tr><th>Package</th><th>Command</th></tr>
 </thead>
 <tbody>
-<tr><td>hello_companion</td><td><code>cargo run -p hello_companion --release</code></td><td>Expected panic (demonstrates tool validation)</td></tr>
-<tr><td>fluids_demo</td><td><code>cargo run -p fluids_demo --release</code></td><td>Interactive PCISPH fluid simulation</td></tr>
-<tr><td>unified_showcase</td><td><code>cargo run -p unified_showcase --release</code></td><td>wgpu rendering with shadows, terrain</td></tr>
-<tr><td>physics_demo3d</td><td><code>cargo run -p physics_demo3d --release</code></td><td>Rapier3D physics with character controller</td></tr>
-<tr><td>navmesh_demo</td><td><code>cargo run -p navmesh_demo --release</code></td><td>NavMesh baking and A* pathfinding</td></tr>
-<tr><td>audio_spatial_demo</td><td><code>cargo run -p audio_spatial_demo --release</code></td><td>3D spatial audio</td></tr>
-<tr><td>adaptive_boss</td><td><code>cargo run -p adaptive_boss --release</code></td><td>Director AI for boss encounters</td></tr>
-<tr><td>ipc_loopback</td><td><code>cargo run -p ipc_loopback --release</code></td><td>IPC communication test</td></tr>
+<tr><td><code>hello_companion</code></td><td><code>cargo run -p hello_companion --release</code></td></tr>
+<tr><td><code>fluids_demo</code></td><td><code>cargo run -p fluids_demo --release</code></td></tr>
+<tr><td><code>physics_demo3d</code></td><td><code>cargo run -p physics_demo3d --release</code></td></tr>
+<tr><td><code>navmesh_demo</code></td><td><code>cargo run -p navmesh_demo --release</code></td></tr>
+<tr><td><code>audio_spatial_demo</code></td><td><code>cargo run -p audio_spatial_demo --release</code></td></tr>
+<tr><td><code>adaptive_boss</code></td><td><code>cargo run -p adaptive_boss --release</code></td></tr>
+<tr><td><code>ipc_loopback</code></td><td><code>cargo run -p ipc_loopback --release</code></td></tr>
+<tr><td><code>shadow_csm_demo</code></td><td><code>cargo run -p shadow_csm_demo --release</code></td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="known-compilation-issues"><a class="header" href="#known-compilation-issues">Known Compilation Issues</a></h2>
-<p>Some examples have compilation issues due to API evolution:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Example</th><th>Issue</th><th>Status</th></tr>
-</thead>
-<tbody>
-<tr><td>debug_overlay</td><td>egui 0.32 API changes</td><td>Needs update</td></tr>
-<tr><td>ui_controls_demo</td><td>egui/winit version mismatches</td><td>Needs update</td></tr>
-<tr><td>visual_3d</td><td>winit 0.30 migration</td><td>Needs update</td></tr>
-<tr><td>rhai_authoring</td><td>Rhai sync/send traits</td><td>Needs refactor</td></tr>
-<tr><td>npc_town_demo</td><td>Multiple API mismatches</td><td>Needs update</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="build-aliases"><a class="header" href="#build-aliases">Build Aliases</a></h2>
-<p>Use these workspace aliases for safer builds:</p>
+<p><code>unified_showcase</code> is not a package. See <a href="./unified-showcase.html">Rendering showcase</a>.</p>
+<p>This page does not keep a “known broken” list. Compilation of <code>debug_overlay</code>, <code>ui_controls_demo</code>, <code>visual_3d</code>, <code>rhai_authoring</code>, and <code>npc_town_demo</code> was not re-run for this edit. Those directories are still workspace members.</p>
+<h2 id="build"><a class="header" href="#build">Build</a></h2>
 <pre><code class="language-bash">cargo build -p astraweave-core -p astraweave-ecs -p astraweave-math -p astraweave-ai
-cargo check --workspace
-cargo clippy --workspace --all-features -- -D warnings
+cargo run -p hello_companion --release
 </code></pre>
-<h2 id="common-errors"><a class="header" href="#common-errors">Common Errors</a></h2>
-<h3 id="no-suitable-graphics-adapter"><a class="header" href="#no-suitable-graphics-adapter">“No suitable graphics adapter”</a></h3>
-<pre><code>thread 'main' panicked at 'No suitable graphics adapter found'
-</code></pre>
-<p><strong>Solution</strong>: Update graphics drivers or use software rendering:</p>
-<pre><code class="language-bash">export WGPU_BACKEND=gl
-cargo run -p hello_companion
-</code></pre>
-<h3 id="ai-model-not-found"><a class="header" href="#ai-model-not-found">“AI model not found”</a></h3>
-<pre><code>Error: Could not load AI model
-</code></pre>
-<p><strong>Solution</strong>: Examples use mock AI by default. This panic is expected when no LLM is configured.</p>
-<h3 id="vulkan-not-found-linux"><a class="header" href="#vulkan-not-found-linux">Vulkan Not Found (Linux)</a></h3>
-<pre><code class="language-bash">sudo apt-get install mesa-vulkan-drivers vulkan-tools
-</code></pre>
-<h3 id="missing-build-tools-windows"><a class="header" href="#missing-build-tools-windows">Missing Build Tools (Windows)</a></h3>
-<p>Install Visual Studio with C++ build tools.</p>
-<h2 id="getting-help"><a class="header" href="#getting-help">Getting Help</a></h2>
+<p><code>hello_companion</code> without <code>--features visual</code> does not open a window. A missing graphics adapter is a failure of a windowed binary, not of the default companion demo.</p>
+<p><code>cargo editor</code> runs <code>aw_editor</code>. The aliases in <code>.cargo/config.toml</code> are <code>editor</code>, <code>editor-release</code>, and <code>editor-dev</code>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="../resources/troubleshooting.html">Full Troubleshooting Guide</a></li>
+<li><a href="./index.html">Examples index</a></li>
+<li><a href="../resources/troubleshooting.html">Troubleshooting</a></li>
 <li><a href="../resources/faq.html">FAQ</a></li>
-<li><a href="../resources/community.html">Community</a></li>
 </ul>
 
                     </main>

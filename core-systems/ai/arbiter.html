@@ -3,11 +3,11 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>AI Arbiter (Hybrid GOAP+LLM) - AstraWeave: AI-Native Game Engine Documentation</title>
+        <title>AI Arbiter (off the sim tick) - AstraWeave: AI-Native Game Engine Documentation</title>
 
 
         <!-- Custom HTML head -->
-        <meta property="og:title" content="AI Arbiter (Hybrid GOAP+LLM) - AstraWeave: AI-Native Game Engine Documentation">
+        <meta property="og:title" content="AI Arbiter (off the sim tick) - AstraWeave: AI-Native Game Engine Documentation">
         <meta property="og:description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
         <meta property="og:type" content="website">
         <meta property="og:url" content="https://lazyxeon.github.io/AstraWeave/">
@@ -16,7 +16,7 @@
         <meta property="og:locale" content="en_US">
         
         <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="AI Arbiter (Hybrid GOAP+LLM) - AstraWeave: AI-Native Game Engine Documentation">
+        <meta name="twitter:title" content="AI Arbiter (off the sim tick) - AstraWeave: AI-Native Game Engine Documentation">
         <meta name="twitter:description" content="The first AI-native game engine built in Rust with deterministic ECS architecture.">
         <meta name="twitter:image" content="https://lazyxeon.github.io/AstraWeave/assets/og-image.svg">
         
@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../../toc-3cd98da5.js"></script>
+        <script src="../../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,322 +218,90 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="ai-arbiter-system"><a class="header" href="#ai-arbiter-system">AI Arbiter System</a></h1>
-<blockquote>
-<p><strong>Status</strong>: Production Ready<br><strong>Crate</strong>: <code>astraweave-ai</code> (requires <code>llm_orchestrator</code> feature)<br><strong>Documentation</strong>: See also <a href="../../archive/completion_reports/ARBITER_IMPLEMENTATION.html">Complete Implementation Guide</a></p>
-</blockquote>
-<p>The AIArbiter is a hybrid AI control system that combines instant tactical decisions (GOAP) with deep strategic reasoning (LLM), achieving <strong>zero user-facing latency</strong> while maintaining LLM-level intelligence.</p>
-<h2 id="the-problem"><a class="header" href="#the-problem">The Problem</a></h2>
-<p>Traditional game AI faces a dilemma:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Approach</th><th>Latency</th><th>Intelligence</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Fast AI</strong> (GOAP, BT)</td><td>~100 ns</td><td>Limited reasoning</td></tr>
-<tr><td><strong>Smart AI</strong> (LLM)</td><td>13-21 seconds</td><td>Deep understanding</td></tr>
-</tbody>
-</table>
-</div>
-<p>Players either wait 20 seconds for smart AI or get immediate but shallow responses.</p>
-<h2 id="the-solution"><a class="header" href="#the-solution">The Solution</a></h2>
-<p>The arbiter provides <strong>zero user-facing latency</strong> by:</p>
-<ol>
-<li><strong>Instant GOAP control</strong> - Returns tactical actions in 101.7 ns</li>
-<li><strong>Background LLM planning</strong> - Generates strategic plans asynchronously</li>
-<li><strong>Seamless transitions</strong> - Switches to LLM plans when ready</li>
-<li><strong>Non-blocking polling</strong> - Checks LLM completion in 104.7 ns</li>
-</ol>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Target</th><th>Speedup</th></tr>
-</thead>
-<tbody>
-<tr><td>GOAP update</td><td>101.7 ns</td><td>100 µs</td><td>982×</td></tr>
-<tr><td>LLM polling</td><td>575 ns</td><td>50 µs</td><td>86×</td></tr>
-<tr><td>Mode transition</td><td>221.9 ns</td><td>10 µs</td><td>45×</td></tr>
-<tr><td>Full 3-step cycle</td><td>313.7 ns</td><td>—</td><td>—</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="scalability"><a class="header" href="#scalability">Scalability</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Agents</th><th>Overhead</th><th>Frame Budget</th><th>Status</th></tr>
-</thead>
-<tbody>
-<tr><td>1,000</td><td>101.7 µs</td><td>0.6%</td><td>✅</td></tr>
-<tr><td>10,000</td><td>1.02 ms</td><td>6.1%</td><td>✅</td></tr>
-<tr><td>50,000</td><td>5.09 ms</td><td>30.5%</td><td>⚠️</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
-<h2 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h2>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::{AIArbiter, LlmExecutor, GoapOrchestrator, RuleOrchestrator};
-use std::sync::Arc;
-
-// Create arbiter
-let llm_orch = Arc::new(LlmOrchestrator::new(/* config */));
-let runtime = tokio::runtime::Handle::current();
-let llm_executor = LlmExecutor::new(llm_orch, runtime);
-
-let goap = Box::new(GoapOrchestrator::new());
-let bt = Box::new(RuleOrchestrator);
-
-let mut arbiter = AIArbiter::new(llm_executor, goap, bt);
-
-// Game loop
-loop {
-    let snapshot = build_world_snapshot(/* ... */);
-    let action = arbiter.update(&amp;snapshot);  // 101.7 ns
-    execute_action(action);
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="architecture"><a class="header" href="#architecture">Architecture</a></h2>
-<h3 id="three-tier-control-system"><a class="header" href="#three-tier-control-system">Three-Tier Control System</a></h3>
-<pre><code>┌─────────────────────────────────────────────────────┐
-│                   AIArbiter                         │
-│  (Orchestration Layer - 101.7 ns overhead)          │
-└────┬────────────────────┬────────────────────┬──────┘
-     │                    │                    │
-     ▼                    ▼                    ▼
-┌──────────┐      ┌──────────────┐     ┌──────────┐
-│   GOAP   │      │  LLM (Ollama) │     │    BT    │
-│ (3-5 ns) │      │ (13-21s async)│     │ Fallback │
-└──────────┘      └──────────────┘     └──────────┘
+                        <h1 id="ai-arbiter"><a class="header" href="#ai-arbiter">AI Arbiter</a></h1>
+<p>This page is the guide to <code>AIArbiter</code> and to the <code>--arbiter</code> flag on <code>hello_companion</code>. They are different.</p>
+<h2 id="run-the-flag-that-exists-today"><a class="header" href="#run-the-flag-that-exists-today">Run the flag that exists today</a></h2>
+<p>From the repository root:</p>
+<pre><code class="language-bash">cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter
 </code></pre>
-<h3 id="mode-state-machine"><a class="header" href="#mode-state-machine">Mode State Machine</a></h3>
-<pre><code>        ┌──────────────┐
-        │     GOAP     │ ◄─────────┐
-        │ (Instant AI) │           │
-        └───────┬──────┘           │
-                │                  │
-                │ LLM ready        │ Plan exhausted
-                │                  │
-        ┌───────▼──────────┐       │
-        │   ExecutingLLM   │───────┘
-        │  (Step-by-step)  │
-        └──────────────────┘
-                │
-                │ Empty plan
-                ▼
-        ┌──────────────┐
-        │ BehaviorTree │
-        │  (Fallback)  │
-        └──────────────┘
+<p><code>examples/hello_companion/src/main.rs</code>, arm <code>AIMode::Arbiter</code>, prints <code>The model is not on this tick. The sim validates the proposed steps.</code> and calls <code>generate_goap_plan</code>. That function builds <code>GoapOrchestrator</code> and calls <code>propose_plan</code>. <code>GoapOrchestrator</code> lives in <code>astraweave-ai/src/orchestrator.rs</code> and forwards to <code>htn::legacy_goap_plan</code>. It does not construct <code>AIArbiter</code>.</p>
+<p>Without the feature, the same flag prints <code>Arbiter mode requires --features llm_orchestrator</code> and falls back to Classical.</p>
+<p>A default run, no flag and no extra features, is <code>RuleOrchestrator</code>:</p>
+<pre><code class="language-bash">cargo run -p hello_companion --release
 </code></pre>
-<hr>
-<h2 id="api-reference"><a class="header" href="#api-reference">API Reference</a></h2>
-<h3 id="aiarbiter"><a class="header" href="#aiarbiter">AIArbiter</a></h3>
+<p>Walk that path on <a href="../../examples/hello-companion.html">Hello Companion</a>.</p>
+<h2 id="where-the-type-lives"><a class="header" href="#where-the-type-lives">Where the type lives</a></h2>
+<p><code>astraweave-ai/src/ai_arbiter.rs</code> is compiled only with feature <code>llm_orchestrator</code> (<code>astraweave-ai/src/lib.rs</code>). The feature is off by default. <code>sys_ai_planning</code> does not call <code>AIArbiter</code>. The tick uses <code>RuleOrchestrator</code>.</p>
+<p>Issue <strong>#334</strong> is open: delete <code>AIArbiter</code> once benches have a deterministic replacement. Issue <strong>#383</strong> is the port onto the deterministic HTN tick. The root README lists both under work that is not on <code>main</code> as finished work. The <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page says the same.</p>
+<p>Comments on <code>update</code> name microsecond targets. Those comments are not a dated capture. This page does not repeat nanosecond tables.</p>
+<h2 id="construct-it"><a class="header" href="#construct-it">Construct it</a></h2>
+<p><code>AIArbiter::new</code> takes four arguments. The second is <code>Option&lt;LlmExecutor&gt;</code>.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub struct AIArbiter { /* ... */ }
+</span>#[cfg(feature = "llm_orchestrator")]
+fn arbiter_from_new() {
+    use std::sync::Arc;
 
-impl AIArbiter {
-    /// Create new arbiter in GOAP mode
-    pub fn new(
-        llm_executor: LlmExecutor,
-        goap: Box&lt;dyn Orchestrator&gt;,
-        bt: Box&lt;dyn Orchestrator&gt;,
-    ) -&gt; Self;
-    
-    /// Set LLM request cooldown (default: 15s)
-    pub fn with_llm_cooldown(self, cooldown: f32) -&gt; Self;
-    
-    /// Main control loop - call every frame
-    pub fn update(&amp;mut self, snap: &amp;WorldSnapshot) -&gt; ActionStep;
-    
-    /// Get current mode
-    pub fn mode(&amp;self) -&gt; AIControlMode;
-    
-    /// Check if LLM task is active
-    pub fn is_llm_active(&amp;self) -&gt; bool;
-    
-    /// Get performance metrics
-    pub fn metrics(&amp;self) -&gt; (
-        usize,  // mode_transitions
-        usize,  // llm_requests
-        usize,  // llm_successes
-        usize,  // llm_failures
-        usize,  // goap_actions
-        usize,  // llm_steps_executed
-    );
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime.clone());
+    let fast_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let bt: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
 }
 <span class="boring">}</span></code></pre>
-<h3 id="aicontrolmode"><a class="header" href="#aicontrolmode">AIControlMode</a></h3>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>pub enum AIControlMode {
-    GOAP,                              // Fast tactical mode
-    ExecutingLLM { step_index: usize }, // Executing LLM plan
-    BehaviorTree,                      // Emergency fallback
+</span>#[cfg(feature = "llm_orchestrator")]
+fn arbiter_from_single_executor(snapshot: &amp;astraweave_core::WorldSnapshot) {
+    use std::sync::Arc;
+
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let bt: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt)
+        .with_llm_cooldown(15.0);
+    let action = arbiter.update(snapshot);
+    let mode = arbiter.mode();
+    let _ = (action, mode);
 }
 <span class="boring">}</span></code></pre>
-<hr>
-<h2 id="common-patterns"><a class="header" href="#common-patterns">Common Patterns</a></h2>
-<h3 id="pattern-1-basic-agent"><a class="header" href="#pattern-1-basic-agent">Pattern 1: Basic Agent</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>pub struct AIAgent {
-    arbiter: AIArbiter,
-}
-
-impl AIAgent {
-    pub fn update(&amp;mut self, snap: &amp;WorldSnapshot) -&gt; ActionStep {
-        self.arbiter.update(snap)
-    }
-}
-<span class="boring">}</span></code></pre>
-<h3 id="pattern-2-shared-llm-executor"><a class="header" href="#pattern-2-shared-llm-executor">Pattern 2: Shared LLM Executor</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Create once, clone for each agent
-let base_executor = LlmExecutor::new(llm_orch, runtime);
-
-let agents: Vec&lt;AIAgent&gt; = (0..100)
-    .map(|_| AIAgent::new(base_executor.clone()))
-    .collect();
-<span class="boring">}</span></code></pre>
-<h3 id="pattern-3-custom-cooldown"><a class="header" href="#pattern-3-custom-cooldown">Pattern 3: Custom Cooldown</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Aggressive (more LLM requests)
-let arbiter = AIArbiter::new(executor, goap, bt)
-    .with_llm_cooldown(5.0);
-
-// Passive (fewer LLM requests)
-let arbiter = AIArbiter::new(executor, goap, bt)
-    .with_llm_cooldown(30.0);
-<span class="boring">}</span></code></pre>
-<h3 id="pattern-4-metrics-monitoring"><a class="header" href="#pattern-4-metrics-monitoring">Pattern 4: Metrics Monitoring</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let (transitions, requests, successes, failures, goap_actions, llm_steps) = 
-    arbiter.metrics();
-
-let success_rate = 100.0 * successes as f64 / requests as f64;
-if success_rate &lt; 50.0 {
-    warn!("LLM success rate low: {:.1}%", success_rate);
-}
-<span class="boring">}</span></code></pre>
-<h3 id="pattern-5-mode-specific-logic"><a class="header" href="#pattern-5-mode-specific-logic">Pattern 5: Mode-Specific Logic</a></h3>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>match arbiter.mode() {
-    AIControlMode::GOAP =&gt; {
-        ui.show_status("Tactical Mode");
-    }
-    AIControlMode::ExecutingLLM { step_index } =&gt; {
-        ui.show_status(&amp;format!("Strategic Step {}", step_index));
-        ui.show_indicator("LLM Active");
-    }
-    AIControlMode::BehaviorTree =&gt; {
-        ui.show_warning("Fallback Mode");
-    }
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="cooldown-configuration"><a class="header" href="#cooldown-configuration">Cooldown Configuration</a></h2>
-<p>The LLM cooldown controls how frequently the arbiter requests new strategic plans:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Cooldown</th><th>Use Case</th></tr>
-</thead>
-<tbody>
-<tr><td>5s</td><td>Aggressive - Frequent strategic updates</td></tr>
-<tr><td>15s</td><td>Default - Balanced performance</td></tr>
-<tr><td>30s</td><td>Passive - Reduce LLM costs</td></tr>
-<tr><td>0s</td><td>Immediate - Testing only</td></tr>
-</tbody>
-</table>
-</div>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>let arbiter = AIArbiter::new(executor, goap, bt)
-    .with_llm_cooldown(15.0);  // Default
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
-<h3 id="llm-never-completes"><a class="header" href="#llm-never-completes">LLM Never Completes</a></h3>
-<p><strong>Symptoms</strong>: <code>is_llm_active()</code> always true, never transitions to ExecutingLLM</p>
-<p><strong>Causes</strong>:</p>
-<ol>
-<li>Ollama not running</li>
-<li>Model not loaded</li>
-<li>Network issues</li>
-</ol>
-<p><strong>Fix</strong>:</p>
-<pre><code class="language-bash"># Verify Ollama is running
-ollama list
-
-# Test model directly (runtime default is phi3:medium; OLLAMA_MODEL overrides it)
-ollama run phi3:medium
-</code></pre>
-<h3 id="high-failure-rate"><a class="header" href="#high-failure-rate">High Failure Rate</a></h3>
-<p><strong>Symptoms</strong>: <code>llm_failures</code> &gt; 50% of requests</p>
-<p><strong>Causes</strong>:</p>
-<ol>
-<li>Model quality issues</li>
-<li>Bad prompts</li>
-<li>Timeout too short</li>
-</ol>
-<p><strong>Fix</strong>:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>// Increase cooldown to reduce impact
-let arbiter = AIArbiter::new(executor, goap, bt)
-    .with_llm_cooldown(30.0);
-<span class="boring">}</span></code></pre>
-<h3 id="stuck-in-executingllm"><a class="header" href="#stuck-in-executingllm">Stuck in ExecutingLLM</a></h3>
-<p><strong>Symptoms</strong>: Same action repeated, <code>step_index</code> doesn’t advance</p>
-<p><strong>Causes</strong>:</p>
-<ol>
-<li>Plan has duplicate steps</li>
-<li>Plan too long</li>
-</ol>
-<p><strong>Fix</strong>: Validate plan length before execution:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>if plan.steps.len() &gt; 50 {
-    warn!("LLM plan too long: {} steps", plan.steps.len());
-}
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="running-the-demo"><a class="header" href="#running-the-demo">Running the Demo</a></h2>
-<pre><code class="language-bash"># GOAP-only mode
-cargo run -p hello_companion --release
-
-# Arbiter mode (GOAP + LLM; runtime default model phi3:medium via Ollama)
-cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter
-</code></pre>
-<p><strong>Expected output</strong>:</p>
-<pre><code>Frame 0: MoveTo { x: 5, y: 5 } (GOAP)
-Frame 1: TakeCover { position: Some((3, 2)) } (GOAP)
-[INFO] LLM plan ready: 3 steps
-Frame 3: MoveTo { x: 4, y: 0 } (ExecutingLLM[step 1])
-Frame 4: TakeCover { position: Some((4, 1)) } (ExecutingLLM[step 2])
-Frame 5: Attack { target: 1 } (ExecutingLLM[step 3])
-[INFO] Plan exhausted, returning to GOAP
-Frame 6: MoveTo { x: 5, y: 5 } (GOAP)
-</code></pre>
-<hr>
-<h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
+<p>Signatures in <code>astraweave-ai/src/ai_arbiter.rs</code>:</p>
 <ul>
-<li><a href="../../archive/completion_reports/ARBITER_IMPLEMENTATION.html">Complete Implementation Guide</a> - 8,000+ word deep dive</li>
-<li><a href="../../archive/completion_reports/ARBITER_QUICK_REFERENCE.html">Quick Reference</a> - 5-minute API guide</li>
-<li><a href="./ai-core.html">AI Core Loop</a> - Perception-Reasoning-Planning-Action</li>
-<li><a href="./goap.html">GOAP System</a> - Goal-oriented action planning</li>
-<li><a href="./behavior-trees.html">Behavior Trees</a> - Behavior tree integration</li>
+<li><code>new(strategic_executor, fast_executor, goap, bt) -&gt; Self</code> with <code>fast_executor: Option&lt;LlmExecutor&gt;</code> and the last two <code>Box&lt;dyn Orchestrator&gt;</code></li>
+<li><code>with_single_executor(llm_executor, goap, bt)</code> calls <code>new(llm_executor, None, goap, bt)</code></li>
+<li><code>with_llm_cooldown(mut self, cooldown: f32) -&gt; Self</code> stores the seconds. The field starts at <code>15.0</code></li>
+<li><code>update(&amp;mut self, snap: &amp;WorldSnapshot) -&gt; ActionStep</code></li>
+<li><code>mode(&amp;self) -&gt; AIControlMode</code></li>
+</ul>
+<p><code>LlmExecutor::new</code> (<code>astraweave-ai/src/llm_executor.rs</code>) takes <code>Arc&lt;dyn OrchestratorAsync + Send + Sync&gt;</code> and a <code>tokio::runtime::Handle</code>. Building that executor means an orchestrator and a runtime. The hello_companion flag does not do that.</p>
+<p><code>AIControlMode</code> is:</p>
+<ul>
+<li><code>GOAP</code> (default)</li>
+<li><code>ExecutingLLM { step_index: usize }</code></li>
+<li><code>BehaviorTree</code></li>
+</ul>
+<h2 id="what-update-does"><a class="header" href="#what-update-does">What <code>update</code> does</a></h2>
+<p><code>update</code> polls an in-flight LLM task if one exists. <code>Ok(plan)</code> moves to <code>ExecutingLLM</code>. <code>Err</code> increments <code>llm_failures</code> and stays in GOAP. In <code>GOAP</code> it may call <code>maybe_request_llm</code>, then <code>self.goap.propose_plan(snap)</code>, and returns the first step. An empty GOAP plan warns and asks <code>self.bt</code>. The fast executor field is stored and marked <code>dead_code</code> in this file. The comment says dedicated fast-path dispatch is not wired.</p>
+<p>Doc comments on the struct say Qwen3. <code>SystemOrchestratorConfig::default</code> in <code>astraweave-ai/src/orchestrator.rs</code> uses <code>phi3:medium</code> when <code>OLLAMA_MODEL</code> is unset. <code>hello_companion</code> LLM modes use <code>DEFAULT_QWEN_INSTRUCT_MODEL</code> (<code>qwen3.5:4b</code>).</p>
+<h2 id="check-that-the-type-builds"><a class="header" href="#check-that-the-type-builds">Check that the type builds</a></h2>
+<pre><code class="language-bash">cargo check -p astraweave-ai --features llm_orchestrator
+</code></pre>
+<p>That compiles the module. It does not put the type on the sim tick, and it does not run the hello_companion flag.</p>
+<p><code>GoapOrchestrator</code> (always compiled) and <code>astraweave_ai::goap::AdvancedGOAP</code> (feature <code>planner_advanced</code> only) are different types. <code>astraweave-ai</code> has no <code>GoapPlanner</code>. <code>astraweave-behavior</code> defines <code>GoapPlanner</code> in <code>astraweave-behavior/src/goap.rs</code>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="../../examples/hello-companion.html">Hello Companion</a></li>
+<li><a href="./planning.html">Planning</a></li>
+<li><a href="./behavior-trees.html">Behavior trees</a></li>
+<li><a href="./index.html">AI system</a></li>
 </ul>
 
                     </main>

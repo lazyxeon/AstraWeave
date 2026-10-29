@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,137 +220,46 @@
                     <main>
                         <h1 id="audio-api-reference"><a class="header" href="#audio-api-reference">Audio API Reference</a></h1>
 <blockquote>
-<p><strong>Crate</strong>: <code>astraweave-audio</code><br><strong>Coverage</strong>: ~72%<br><strong>Tests</strong>: 150+</p>
+<p><strong>Crate</strong>: <code>astraweave-audio</code><br><strong>Manifest version</strong>: <code>0.1.0</code></p>
 </blockquote>
-<p>Spatial audio with mixer buses, crossfading, reverb zones, and audio occlusion.</p>
-<h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
-<ul>
-<li><a href="https://docs.rs/astraweave-audio">rustdoc</a> (when published)</li>
-<li><a href="https://github.com/astraweave/astraweave/tree/main/astraweave-audio">Source</a></li>
-<li><a href="../core-systems/audio.html">Audio Guide</a></li>
-</ul>
-<hr>
-<h2 id="core-types"><a class="header" href="#core-types">Core Types</a></h2>
-<h3 id="audioengine"><a class="header" href="#audioengine">AudioEngine</a></h3>
-<p>Central audio system with mixer.</p>
+<p>Public modules are <code>engine</code>, <code>voice</code>, and <code>dialogue_runtime</code>. The crate root re-exports <code>AudioEngine</code>, <code>EmitterId</code>, <code>ListenerPose</code>, <code>MusicTrack</code>, <code>PanMode</code>, <code>DialogueAudioMap</code>, <code>DialoguePlayer</code>, <code>VoiceBank</code>, <code>VoiceSpec</code>, <code>TtsAdapter</code>, and <code>SimpleSineTts</code>.</p>
+<p>There is no <code>AudioConfig</code>, <code>AudioMixer</code>, <code>Bus</code>, <code>SpatialSource</code>, <code>MusicLayer</code>, <code>ReverbZone</code>, <code>AudioOcclusion</code>, or <code>PlayConfig</code> type.</p>
+<h2 id="audioengine"><a class="header" href="#audioengine">AudioEngine</a></h2>
+<p><code>AudioEngine::new</code> and <code>AudioEngine::null</code> return <code>anyhow::Result&lt;Self&gt;</code>. <code>null</code> keeps mixer state and does not open an OS device. Playback methods on that backend drop samples.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_audio::{AudioEngine, AudioConfig};
+</span>use astraweave_audio::{AudioEngine, ListenerPose, MusicTrack};
+use glam::vec3;
 
-let config = AudioConfig {
-    sample_rate: 48000,
-    buffer_size: 512,
-    ..Default::default()
-};
-
-let mut audio = AudioEngine::new(config)?;
-
-// Play sound
-audio.play("sfx/explosion.ogg", PlayConfig::default());
-
-// Update each frame
-audio.update(listener_position, listener_orientation);
+fn open() -&gt; anyhow::Result&lt;()&gt; {
+    let mut audio = AudioEngine::null()?;
+    audio.set_master_volume(1.0);
+    audio.set_music_volume(0.8);
+    audio.set_sfx_volume(1.0);
+    audio.set_voice_volume(1.0);
+    audio.update_listener(ListenerPose {
+        position: vec3(0.0, 0.0, 0.0),
+        forward: vec3(1.0, 0.0, 0.0),
+        up: vec3(0.0, 1.0, 0.0),
+    });
+    audio.tick(1.0 / 60.0);
+    let track = MusicTrack {
+        path: "music/theme.ogg".into(),
+        looped: true,
+    };
+    audio.play_music(track, 1.0)?;
+    Ok(())
+}
 <span class="boring">}</span></code></pre>
-<hr>
-<h3 id="audiomixer"><a class="header" href="#audiomixer">AudioMixer</a></h3>
-<p>4-bus mixing system.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::mixer::{AudioMixer, Bus};
-
-let mut mixer = AudioMixer::new();
-
-// Configure bus volumes
-mixer.set_volume(Bus::Master, 1.0);
-mixer.set_volume(Bus::Music, 0.8);
-mixer.set_volume(Bus::Sfx, 1.0);
-mixer.set_volume(Bus::Voice, 1.0);
-
-// Mute bus
-mixer.set_muted(Bus::Music, true);
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="spatialsource"><a class="header" href="#spatialsource">SpatialSource</a></h3>
-<p>3D positioned audio source.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::SpatialSource;
-
-let mut source = SpatialSource::new("ambient/wind.ogg");
-source.set_position(Vec3::new(10.0, 0.0, 5.0));
-source.set_looping(true);
-source.set_min_distance(1.0);
-source.set_max_distance(50.0);
-source.play();
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="musiclayer"><a class="header" href="#musiclayer">MusicLayer</a></h3>
-<p>Dynamic music with layers and crossfading.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::music::{MusicPlayer, MusicLayer};
-
-let mut music = MusicPlayer::new();
-
-// Add layers
-music.add_layer(MusicLayer::new("music/ambient.ogg"));
-music.add_layer(MusicLayer::new("music/combat.ogg"));
-music.add_layer(MusicLayer::new("music/boss.ogg"));
-
-// Crossfade between layers
-music.crossfade_to(1, Duration::from_secs(2)); // Combat music
-<span class="boring">}</span></code></pre>
-<hr>
-<h3 id="reverbzone"><a class="header" href="#reverbzone">ReverbZone</a></h3>
-<p>Environment-based reverb.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::reverb::{ReverbZone, ReverbPreset};
-
-let zone = ReverbZone::new(ReverbPreset::Cave)
-    .with_bounds(aabb)
-    .with_blend_distance(5.0);
-
-// Add to audio system
-audio.add_reverb_zone(zone);
-<span class="boring">}</span></code></pre>
-<p><strong>Presets</strong>: <code>Small</code>, <code>Medium</code>, <code>Large</code>, <code>Hall</code>, <code>Cave</code>, <code>Outdoor</code>, <code>Underwater</code></p>
-<hr>
-<h3 id="audioocclusion"><a class="header" href="#audioocclusion">AudioOcclusion</a></h3>
-<p>Raycast-based sound occlusion.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_audio::occlusion::AudioOcclusion;
-
-let mut occlusion = AudioOcclusion::new(&amp;physics);
-
-// Update occlusion for all sources
-occlusion.update(listener_position, &amp;sources);
-
-// Apply to source
-let factor = occlusion.get_factor(source_id);
-source.set_volume(base_volume * factor);
-<span class="boring">}</span></code></pre>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>Source play</td><td>~100 µs</td><td>Initial setup</td></tr>
-<tr><td>Mixer update</td><td>~50 µs</td><td>Per frame</td></tr>
-<tr><td>Spatial update</td><td>~1 µs</td><td>Per source</td></tr>
-<tr><td>Occlusion raycast</td><td>~5 µs</td><td>Per source</td></tr>
-</tbody>
-</table>
-</div>
-<hr>
+<p><code>play_music</code> and <code>play_ambient</code> take <code>crossfade_sec: f32</code>. File playback is <code>play_sfx_file</code>, <code>play_voice_file</code>, and <code>play_sfx_3d_file</code>. <code>EmitterId</code> is <code>u64</code>.</p>
+<p><code>PanMode</code> is <code>StereoAngle</code> or <code>None</code>. <code>set_pan_mode</code> stores it.</p>
+<h2 id="voice-and-dialogue"><a class="header" href="#voice-and-dialogue">Voice and dialogue</a></h2>
+<p><code>voice</code> exports <code>load_voice_bank</code>, <code>TtsAdapter</code>, <code>VoiceBank</code>, <code>VoiceSpec</code>, and <code>SimpleSineTts</code>. <code>dialogue_runtime</code> exports <code>load_dialogue_audio_map</code>, <code>DialogueAudioMap</code>, and <code>DialoguePlayer</code>.</p>
+<p>The only feature in <code>Cargo.toml</code> is <code>mock_tts</code>.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
 <li><a href="../core-systems/audio.html">Audio Guide</a></li>
-<li><a href="./cinematics.html#audio-tracks">Cinematics Integration</a></li>
+<li><a href="../examples/audio-spatial.html">Examples</a></li>
 </ul>
 
                     </main>

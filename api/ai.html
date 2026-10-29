@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,242 +220,168 @@
                     <main>
                         <h1 id="ai-api-reference"><a class="header" href="#ai-api-reference">AI API Reference</a></h1>
 <blockquote>
-<p><strong>Crate</strong>: <code>astraweave-ai</code><br><strong>Coverage</strong>: ~75%<br><strong>Tests</strong>: 400+</p>
+<p><strong>Crate</strong>: <code>astraweave-ai</code><br><strong>Manifest version</strong>: <code>0.1.0</code> (<code>astraweave-ai/Cargo.toml</code>). The workspace package version is <code>0.4.0</code>. This crate does not set <code>publish</code>.</p>
 </blockquote>
-<p>The AI system provides the core perception-reasoning-planning-action loop, orchestration, and tool validation for AI-native game development.</p>
 <h2 id="quick-links"><a class="header" href="#quick-links">Quick Links</a></h2>
 <ul>
-<li><a href="https://docs.rs/astraweave-ai">rustdoc</a> (when published)</li>
-<li><a href="https://github.com/astraweave/astraweave/tree/main/astraweave-ai">Source</a></li>
-<li><a href="../core-systems/ai-core.html">AI Core Concepts</a></li>
+<li><a href="https://github.com/lazyxeon/AstraWeave/tree/main/astraweave-ai">Source</a></li>
+<li><a href="../core-systems/ai/index.html">AI Core Concepts</a></li>
 <li><a href="../core-systems/ai/arbiter.html">Arbiter System</a></li>
 </ul>
 <hr>
 <h2 id="core-modules"><a class="header" href="#core-modules">Core Modules</a></h2>
 <h3 id="core_loop"><a class="header" href="#core_loop">core_loop</a></h3>
-<p>The fundamental perception → reasoning → planning → action cycle.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::core_loop::{CoreLoop, WorldSnapshot, PlanIntent, ActionStep};
-
-// Build perception
-let snapshot = WorldSnapshot {
-    t: game_time,
-    player: player_state,
-    me: companion_state,
-    enemies: detected_enemies,
-    pois: points_of_interest,
-    obstacles: obstacle_positions,
-    objective: current_objective,
-};
-
-// Execute AI cycle
-let plan = orchestrator.plan(&amp;mut world, &amp;snapshot)?;
-
-// Execute first action
-if let Some(action) = plan.steps.first() {
-    execute_action(action);
-}
-<span class="boring">}</span></code></pre>
-<p><strong>Key Types</strong>:</p>
-<ul>
-<li><code>WorldSnapshot</code> - Filtered world state for AI perception</li>
-<li><code>PlanIntent</code> - Validated action sequence from AI</li>
-<li><code>ActionStep</code> - Individual executable action</li>
-</ul>
-<hr>
+<p><code>astraweave-ai/src/core_loop.rs</code> exports <code>PlannerMode</code>, <code>CAiController</code>, and <code>dispatch_planner</code>. There is no <code>CoreLoop</code> type. <code>WorldSnapshot</code>, <code>PlanIntent</code>, and <code>ActionStep</code> live in <code>astraweave-core</code>.</p>
+<p><code>PlannerMode</code> is <code>Rule</code>, <code>BehaviorTree</code>, <code>GOAP</code>, and <code>Htn</code>. The behavior-tree import in this file is <code>cfg(feature = "ai-bt")</code>.</p>
 <h3 id="orchestrator"><a class="header" href="#orchestrator">orchestrator</a></h3>
-<p>Trait-based AI planning abstraction.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>use astraweave_ai::orchestrator::Orchestrator;
+use astraweave_core::{PlanIntent, WorldSnapshot};
 
-pub trait Orchestrator: Send + Sync {
-    fn plan(&amp;self, world: &amp;mut World, snap: &amp;WorldSnapshot) -&gt; Result&lt;PlanIntent&gt;;
+pub trait Orchestrator {
+    fn propose_plan(&amp;self, snap: &amp;WorldSnapshot) -&gt; PlanIntent;
 }
-
-// Implementations provided:
-// - RuleOrchestrator (classical if-then rules)
-// - GoapOrchestrator (goal-oriented planning)
-// - LlmOrchestrator (LLM-based reasoning, feature-gated)
-// - HybridOrchestrator (GOAP + LLM)
 <span class="boring">}</span></code></pre>
-<hr>
+<p>Types in <code>orchestrator.rs</code>: <code>RuleOrchestrator</code>, <code>UtilityOrchestrator</code>, <code>GoapOrchestrator</code>, and <code>LlmOrchestrator&lt;C&gt;</code>. There is no <code>BehaviorTreeOrchestrator</code> and no <code>HybridOrchestrator</code>.</p>
+<p><code>OrchestratorAsync::plan</code> is <code>async fn plan(&amp;self, snap: WorldSnapshot, budget_ms: u32) -&gt; Result&lt;PlanIntent&gt;</code>.</p>
 <h3 id="tool_sandbox"><a class="header" href="#tool_sandbox">tool_sandbox</a></h3>
-<p>Secure action validation preventing impossible/cheating actions.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::tool_sandbox::{ToolSandbox, ToolResult};
-
-let sandbox = ToolSandbox::new();
-
-// Validate action before execution
-match sandbox.validate(&amp;action, &amp;world_state) {
-    ToolResult::Valid =&gt; execute(action),
-    ToolResult::Invalid(reason) =&gt; {
-        log::warn!("AI attempted invalid action: {}", reason);
-    }
-}
-<span class="boring">}</span></code></pre>
-<p><strong>Validation Examples</strong>:</p>
-<ul>
-<li>Movement range limits</li>
-<li>Line-of-sight requirements</li>
-<li>Resource availability checks</li>
-<li>Cooldown enforcement</li>
-</ul>
+<p>There is no <code>ToolSandbox</code> struct and no <code>ToolResult</code> enum. The function in <code>astraweave-ai/src/tool_sandbox.rs</code> is:</p>
+<pre><code class="language-text">validate_tool_action(agent_id, verb, world, context, target_pos) -&gt; Result&lt;()&gt;
+</code></pre>
+<p><code>verb</code> is <code>ToolVerb</code>. <code>world</code> is <code>&amp;WorldSnapshot</code>. <code>context</code> is <code>&amp;ValidationContext</code>.</p>
 <hr>
 <h2 id="feature-gated-types"><a class="header" href="#feature-gated-types">Feature-Gated Types</a></h2>
 <h3 id="aiarbiter-requires-llm_orchestrator"><a class="header" href="#aiarbiter-requires-llm_orchestrator">AIArbiter (requires <code>llm_orchestrator</code>)</a></h3>
-<p>Hybrid GOAP+LLM system with zero user-facing latency.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>#[cfg(feature = "llm_orchestrator")]
-use astraweave_ai::{AIArbiter, LlmExecutor, GoapOrchestrator, RuleOrchestrator};
+fn arbiter_from_new() {
+    use std::sync::Arc;
 
-let mut arbiter = AIArbiter::new(llm_executor, goap, bt);
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
 
-// Game loop - returns instantly (101.7 ns)
-let action = arbiter.update(&amp;snapshot);
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime.clone());
+    let fast_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let bt: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let _built = AIArbiter::new(strategic_executor, Some(fast_executor), goap, bt);
+}
 <span class="boring">}</span></code></pre>
-<p><strong>Performance</strong>: 101.7 ns GOAP control, 575 ns LLM polling</p>
-<p>See <a href="../core-systems/ai/arbiter.html">Arbiter System</a> for full documentation.</p>
+<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
+</span><span class="boring">fn main() {
+</span>#[cfg(feature = "llm_orchestrator")]
+fn arbiter_from_single_executor(snapshot: &amp;astraweave_core::WorldSnapshot) {
+    use std::sync::Arc;
+
+    use astraweave_ai::orchestrator::{Orchestrator, RuleOrchestrator};
+    use astraweave_ai::{AIArbiter, LlmExecutor};
+
+    let runtime = tokio::runtime::Handle::current();
+    let strategic_executor = LlmExecutor::new(Arc::new(RuleOrchestrator::new()), runtime);
+    let goap: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let bt: Box&lt;dyn Orchestrator&gt; = Box::new(RuleOrchestrator::new());
+    let mut arbiter = AIArbiter::with_single_executor(strategic_executor, goap, bt);
+    let action = arbiter.update(snapshot);
+    let _ = action;
+}
+<span class="boring">}</span></code></pre>
+<p><code>update</code> takes <code>&amp;mut self</code>. <code>new</code> takes <code>Option&lt;LlmExecutor&gt;</code> as the second argument. The type is not on the sim tick. See <a href="../core-systems/ai/arbiter.html">AI Arbiter</a>.</p>
 <hr>
 <h3 id="goap"><a class="header" href="#goap">goap</a></h3>
-<p>Goal-Oriented Action Planning implementation.</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::goap::{GoapPlanner, Goal, Action, WorldState};
-
-let mut planner = GoapPlanner::new();
-
-// Define goals
-planner.add_goal(Goal::new("kill_enemy")
-    .with_precondition("enemy_visible", true)
-    .with_effect("enemy_dead", true));
-
-// Define actions
-planner.add_action(Action::new("attack")
-    .with_precondition("has_weapon", true)
-    .with_precondition("in_range", true)
-    .with_effect("enemy_dead", true)
-    .with_cost(1.0));
-
-// Plan
-let plan = planner.plan(&amp;current_state, &amp;goal_state)?;
-<span class="boring">}</span></code></pre>
+<p>The <code>goap</code> module compiles only with <code>planner_advanced</code>. The planner struct in <code>planner.rs</code> is <code>AdvancedGOAP</code>. <code>astraweave-ai</code> has no <code>GoapPlanner</code> type. <code>astraweave-behavior</code> defines <code>GoapPlanner</code> in <code>astraweave-behavior/src/goap.rs</code>. <code>Goal::new</code> takes a name and a <code>BTreeMap&lt;String, StateValue&gt;</code>.</p>
+<p><code>GoapOrchestrator</code> in <code>orchestrator.rs</code> is a different type. It is always compiled, and <code>propose_plan</code> calls <code>htn::legacy_goap_plan</code>. The deterministic tick uses <code>RuleOrchestrator</code>, not either of these.</p>
 <hr>
-<h3 id="veilweaver"><a class="header" href="#veilweaver">veilweaver</a></h3>
-<p>Integration for the Veilweaver game mechanics (fate-weaving).</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::veilweaver::{FateThread, Prophecy, ThreadWeaver};
-
-let mut weaver = ThreadWeaver::new();
-let thread = weaver.create_thread(prophecy);
-
-// Weave fate during gameplay
-weaver.weave(&amp;mut world, thread)?;
-<span class="boring">}</span></code></pre>
+<h3 id="veilweaver_slice"><a class="header" href="#veilweaver_slice">veilweaver_slice</a></h3>
+<p>The feature <code>veilweaver_slice</code> compiles <code>astraweave_ai::veilweaver</code> and exports <code>VeilweaverCompanionOrchestrator</code>. <code>FateThread</code>, <code>Prophecy</code>, and <code>ThreadWeaver</code> are not types in that module. Weaving on the sim path is <code>astraweave-weaving</code>, described on the engine status page. The identifier is not the player-facing game name.</p>
 <hr>
 <h2 id="worldsnapshot"><a class="header" href="#worldsnapshot">WorldSnapshot</a></h2>
-<p>The AI’s view of the world (filtered for perception).</p>
+<p>Defined in <code>astraweave-core/src/schema.rs</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct WorldSnapshot {
-    pub t: f32,                        // Current game time
-    pub player: PlayerState,           // Player information
-    pub me: CompanionState,            // This AI's state
-    pub enemies: Vec&lt;EnemyState&gt;,      // Detected enemies
-    pub pois: Vec&lt;Poi&gt;,                // Points of interest
-    pub obstacles: Vec&lt;IVec2&gt;,         // Obstacle positions
-    pub objective: Option&lt;String&gt;,     // Current objective
+    pub t: f32,
+    pub player: PlayerState,
+    pub me: CompanionState,
+    pub enemies: Vec&lt;EnemyState&gt;,
+    pub pois: Vec&lt;Poi&gt;,
+    pub obstacles: Vec&lt;IVec2&gt;,
+    pub objective: Option&lt;String&gt;,
+    pub hazards: [WeaveHazard; MAX_WEAVE_HAZARDS],
+    pub hazard_count: u8,
 }
 
 pub struct CompanionState {
-    pub pos: IVec2,                    // Position
-    pub ammo: i32,                     // Ammunition
-    pub cooldowns: BTreeMap&lt;String, f32&gt;, // Ability cooldowns
-    pub morale: f32,                   // Morale level
+    pub ammo: i32,
+    pub cooldowns: BTreeMap&lt;String, f32&gt;,
+    pub morale: f32,
+    pub pos: IVec2,
 }
 <span class="boring">}</span></code></pre>
 <hr>
 <h2 id="planintent"><a class="header" href="#planintent">PlanIntent</a></h2>
-<p>Validated action sequence from AI reasoning.</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
 </span>pub struct PlanIntent {
-    pub plan_id: String,               // Unique plan identifier
-    pub steps: Vec&lt;ActionStep&gt;,        // Ordered actions
-}
-
-pub enum ActionStep {
-    MoveTo { x: i32, y: i32 },
-    Attack { target: u32, stance: String },
-    TakeCover { position: Option&lt;(i32, i32)&gt; },
-    UseAbility { ability: String, target: Option&lt;u32&gt; },
-    Wait { duration: f32 },
-    Interact { object: u32 },
+    pub plan_id: String,
+    pub steps: Vec&lt;ActionStep&gt;,
 }
 <span class="boring">}</span></code></pre>
+<p><code>ActionStep</code> is the enum in the same file. Two variants the crate’s own example constructs:</p>
+<ul>
+<li><code>MoveTo { x: i32, y: i32, speed: Option&lt;MovementSpeed&gt; }</code></li>
+<li><code>Attack { target_id: Entity }</code></li>
+</ul>
+<p><code>Wait { duration }</code> and <code>Interact { object }</code> are not those variants. Read <code>schema.rs</code> for the rest.</p>
 <hr>
 <h2 id="orchestrator-implementations"><a class="header" href="#orchestrator-implementations">Orchestrator Implementations</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Orchestrator</th><th>Latency</th><th>Use Case</th></tr>
+<tr><th>Orchestrator</th><th>In <code>orchestrator.rs</code></th></tr>
 </thead>
 <tbody>
-<tr><td><code>RuleOrchestrator</code></td><td>~100 ns</td><td>Simple if-then logic</td></tr>
-<tr><td><code>GoapOrchestrator</code></td><td>3-50 µs</td><td>Goal-oriented planning</td></tr>
-<tr><td><code>BehaviorTreeOrchestrator</code></td><td>~200 ns</td><td>Behavior trees</td></tr>
-<tr><td><code>UtilityOrchestrator</code></td><td>~500 ns</td><td>Utility-based scoring</td></tr>
-<tr><td><code>LlmOrchestrator</code></td><td>13-21s</td><td>Deep reasoning (async)</td></tr>
-<tr><td><code>HybridOrchestrator</code></td><td>~100 ns</td><td>GOAP + async LLM</td></tr>
+<tr><td><code>RuleOrchestrator</code></td><td>always compiled</td></tr>
+<tr><td><code>UtilityOrchestrator</code></td><td>always compiled</td></tr>
+<tr><td><code>GoapOrchestrator</code></td><td>always compiled. Calls <code>htn::legacy_goap_plan</code></td></tr>
+<tr><td><code>LlmOrchestrator&lt;C&gt;</code></td><td>feature <code>llm_orchestrator</code></td></tr>
 </tbody>
 </table>
 </div>
+<p>This page does not repeat a latency table. The numbers in the crate’s module docs are not a dated capture.</p>
 <hr>
 <h2 id="feature-flags"><a class="header" href="#feature-flags">Feature Flags</a></h2>
+<p><code>default = []</code> in <code>astraweave-ai/Cargo.toml</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Feature</th><th>Description</th><th>Default</th></tr>
+<tr><th>Feature</th><th>What it turns on</th></tr>
 </thead>
 <tbody>
-<tr><td><code>llm_orchestrator</code></td><td>LLM-based planning</td><td>❌</td></tr>
-<tr><td><code>goap</code></td><td>Goal-oriented planning</td><td>✅</td></tr>
-<tr><td><code>behavior_tree</code></td><td>BT integration</td><td>✅</td></tr>
-<tr><td><code>utility</code></td><td>Utility AI</td><td>❌</td></tr>
+<tr><td><code>llm_orchestrator</code></td><td><code>astraweave-llm</code> with <code>ollama</code>, plus <code>tokio</code> and <code>futures</code></td></tr>
+<tr><td><code>ai-goap</code></td><td>optional <code>astraweave-behavior</code></td></tr>
+<tr><td><code>ai-bt</code></td><td>optional <code>astraweave-behavior</code></td></tr>
+<tr><td><code>planner_advanced</code></td><td>advanced GOAP module</td></tr>
+<tr><td><code>rag</code></td><td>declared, empty</td></tr>
+<tr><td><code>profiling</code></td><td>Tracy client</td></tr>
+<tr><td><code>alloc-counter</code></td><td>allocation counter</td></tr>
+<tr><td><code>fast-alloc</code></td><td><code>astraweave-alloc</code></td></tr>
+<tr><td><code>veilweaver_slice</code></td><td>behavior crate and observability</td></tr>
+<tr><td><code>decision-trace</code></td><td><code>decision_trace</code> module</td></tr>
 </tbody>
 </table>
 </div>
-<pre><code class="language-toml">[dependencies]
-astraweave-ai = { version = "0.4", features = ["llm_orchestrator"] }
-</code></pre>
-<hr>
-<h2 id="performance"><a class="header" href="#performance">Performance</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Operation</th><th>Latency</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td>WorldSnapshot build</td><td>~500 ns</td><td>Perception gathering</td></tr>
-<tr><td>GOAP planning</td><td>3-50 µs</td><td>Depends on action space</td></tr>
-<tr><td>Tool validation</td><td>~100 ns</td><td>Per action</td></tr>
-<tr><td>Full AI cycle</td><td>~5 µs</td><td>Typical case</td></tr>
-</tbody>
-</table>
-</div>
+<p>There is no <code>goap</code>, <code>behavior_tree</code>, or <code>utility</code> feature.</p>
 <hr>
 <h2 id="see-also"><a class="header" href="#see-also">See Also</a></h2>
 <ul>
-<li><a href="../core-systems/ai-core.html">AI Core System</a></li>
+<li><a href="../core-systems/ai/index.html">AI Core System</a></li>
 <li><a href="../core-systems/ai/arbiter.html">Arbiter System</a></li>
-<li><a href="../core-systems/goap.html">GOAP Guide</a></li>
-<li><a href="../core-systems/behavior-trees.html">Behavior Trees</a></li>
-<li><a href="./llm.html">LLM Integration</a></li>
+<li><a href="../core-systems/ai/planning.html">GOAP Guide</a></li>
+<li><a href="../core-systems/ai/behavior-trees.html">Behavior Trees</a></li>
+<li><a href="../core-systems/ai/index.html">LLM Integration</a></li>
 </ul>
 
                     </main>

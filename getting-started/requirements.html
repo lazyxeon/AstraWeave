@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -222,168 +222,29 @@
 <p>This page outlines the hardware and software requirements for developing and running AstraWeave applications.</p>
 <h2 id="table-of-contents"><a class="header" href="#table-of-contents">Table of Contents</a></h2>
 <ul>
-<li><a href="#minimum-requirements">Minimum Requirements</a></li>
-<li><a href="#recommended-requirements">Recommended Requirements</a></li>
-<li><a href="#gpu-requirements">GPU Requirements</a></li>
+<li><a href="#what-this-repository-actually-pins">What this repository actually pins</a></li>
 <li><a href="#software-dependencies">Software Dependencies</a></li>
 <li><a href="#platform-specific-notes">Platform-Specific Notes</a></li>
 </ul>
-<h2 id="minimum-requirements"><a class="header" href="#minimum-requirements">Minimum Requirements</a></h2>
-<p>These are the bare minimum specifications to run AstraWeave applications:</p>
-<h3 id="hardware"><a class="header" href="#hardware">Hardware</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Component</th><th>Specification</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>CPU</strong></td><td>Quad-core processor (Intel i5-6600K / AMD Ryzen 3 1300X or equivalent)</td></tr>
-<tr><td><strong>RAM</strong></td><td>8 GB</td></tr>
-<tr><td><strong>GPU</strong></td><td>NVIDIA GTX 1060 (6GB) / AMD RX 580 (8GB) / Intel Arc A380</td></tr>
-<tr><td><strong>VRAM</strong></td><td>4 GB</td></tr>
-<tr><td><strong>Storage</strong></td><td>2 GB available space (SSD recommended)</td></tr>
-<tr><td><strong>Display</strong></td><td>1920x1080 resolution</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-admonish warning">Minimum requirements may result in reduced performance. For optimal experience, see recommended specifications.
+<h2 id="what-this-repository-actually-pins"><a class="header" href="#what-this-repository-actually-pins">What this repository actually pins</a></h2>
+<p>Rust is <strong>1.89.0</strong>, pinned in <code>rust-toolchain.toml</code>. Replay hashes are compared on the GitHub-hosted Linux, Windows, and macOS runners named in the determinism workflow. That is not a minimum OS version and not a claim that every windowed example has been run on all three.</p>
+<p>No measured minimum CPU, RAM, or GPU is published here. The frame-budget sample and its adapter are on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page. The default <code>hello_companion</code> run is headless. Windowed crates need a device wgpu can open (Vulkan, Metal, or Direct3D 12, depending on the OS).</p>
+<p>Older copies of this page listed specific cards (GTX 1060, RTX 3060, and others) and OS point releases. Those lists were not measured for this tree and are removed.</p>
+<h2 id="confirm-the-install"><a class="header" href="#confirm-the-install">Confirm the install</a></h2>
+<p>Headless companion, no GPU:</p>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustc --version
+cargo run -p hello_companion --release
 </code></pre>
-<h3 id="operating-system"><a class="header" href="#operating-system">Operating System</a></h3>
-<ul>
-<li><strong>Windows</strong>: Windows 10 (64-bit) version 1909 or later</li>
-<li><strong>Linux</strong>: Any modern distribution with kernel 5.4+ (Ubuntu 20.04, Fedora 33, etc.)</li>
-<li><strong>macOS</strong>: macOS 10.15 (Catalina) or later</li>
-</ul>
-<h2 id="recommended-requirements"><a class="header" href="#recommended-requirements">Recommended Requirements</a></h2>
-<p>For optimal performance and development experience:</p>
-<h3 id="hardware-1"><a class="header" href="#hardware-1">Hardware</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Component</th><th>Specification</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>CPU</strong></td><td>8-core processor (Intel i7-9700K / AMD Ryzen 7 3700X or better)</td></tr>
-<tr><td><strong>RAM</strong></td><td>16 GB or more</td></tr>
-<tr><td><strong>GPU</strong></td><td>NVIDIA RTX 3060 / AMD RX 6700 XT / Intel Arc A750 or better</td></tr>
-<tr><td><strong>VRAM</strong></td><td>8 GB or more</td></tr>
-<tr><td><strong>Storage</strong></td><td>10 GB available space on NVMe SSD</td></tr>
-<tr><td><strong>Display</strong></td><td>2560x1440 or higher resolution</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="operating-system-1"><a class="header" href="#operating-system-1">Operating System</a></h3>
-<ul>
-<li><strong>Windows</strong>: Windows 11 (64-bit)</li>
-<li><strong>Linux</strong>: Ubuntu 22.04 LTS / Fedora 38 or later</li>
-<li><strong>macOS</strong>: macOS 13 (Ventura) or later</li>
-</ul>
-<pre><code class="language-admonish tip">More RAM and VRAM allow for larger scenes, more AI companions, and higher-quality assets.
-</code></pre>
-<h2 id="gpu-requirements"><a class="header" href="#gpu-requirements">GPU Requirements</a></h2>
-<p>AstraWeave is GPU-accelerated and requires modern graphics hardware with compute shader support.</p>
-<h3 id="graphics-api-support"><a class="header" href="#graphics-api-support">Graphics API Support</a></h3>
-<p>Your GPU must support one of the following:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Platform</th><th>Graphics API</th><th>Minimum Version</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Windows</strong></td><td>DirectX 12</td><td>Feature Level 12.0</td></tr>
-<tr><td><strong>Windows/Linux</strong></td><td>Vulkan</td><td>1.2</td></tr>
-<tr><td><strong>macOS</strong></td><td>Metal</td><td>Metal 2</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="supported-gpus"><a class="header" href="#supported-gpus">Supported GPUs</a></h3>
-<h4 id="nvidia"><a class="header" href="#nvidia">NVIDIA</a></h4>
-<p><strong>Minimum</strong>:</p>
-<ul>
-<li>GTX 1060 (6GB)</li>
-<li>GTX 1070</li>
-<li>GTX 1660 Ti</li>
-</ul>
-<p><strong>Recommended</strong>:</p>
-<ul>
-<li>RTX 3060 or better</li>
-<li>RTX 4060 or better</li>
-<li>RTX A2000 or better (workstation)</li>
-</ul>
-<p><strong>Optimal</strong>:</p>
-<ul>
-<li>RTX 4070 Ti or better</li>
-<li>RTX 4080 / 4090</li>
-<li>RTX A4000 or better (workstation)</li>
-</ul>
-<h4 id="amd"><a class="header" href="#amd">AMD</a></h4>
-<p><strong>Minimum</strong>:</p>
-<ul>
-<li>RX 580 (8GB)</li>
-<li>RX 5500 XT (8GB)</li>
-<li>RX 6600</li>
-</ul>
-<p><strong>Recommended</strong>:</p>
-<ul>
-<li>RX 6700 XT or better</li>
-<li>RX 7600 XT or better</li>
-</ul>
-<p><strong>Optimal</strong>:</p>
-<ul>
-<li>RX 7800 XT or better</li>
-<li>RX 7900 XTX</li>
-<li>Radeon Pro W6800 or better (workstation)</li>
-</ul>
-<h4 id="intel"><a class="header" href="#intel">Intel</a></h4>
-<p><strong>Minimum</strong>:</p>
-<ul>
-<li>Arc A380</li>
-</ul>
-<p><strong>Recommended</strong>:</p>
-<ul>
-<li>Arc A750 or better</li>
-<li>Arc A770</li>
-</ul>
-<p><strong>Optimal</strong>:</p>
-<ul>
-<li>Arc A770 (16GB)</li>
-</ul>
-<pre><code class="language-admonish note">Intel Arc GPUs require the latest drivers for optimal performance. Visit [Intel's driver page](https://www.intel.com/content/www/us/en/download/726609/intel-arc-graphics-windows-dch-driver.html) for updates.
-</code></pre>
-<h3 id="integrated-graphics"><a class="header" href="#integrated-graphics">Integrated Graphics</a></h3>
-<p>Integrated GPUs are <strong>not recommended</strong> but may work for basic development:</p>
-<ul>
-<li>Intel Iris Xe (11th gen or later)</li>
-<li>AMD Radeon Graphics (Ryzen 5000 series or later)</li>
-</ul>
-<pre><code class="language-admonish warning">Integrated graphics will have significant performance limitations. Dedicated GPU strongly recommended.
-</code></pre>
-<h3 id="verifying-gpu-support"><a class="header" href="#verifying-gpu-support">Verifying GPU Support</a></h3>
-<h4 id="windows"><a class="header" href="#windows">Windows</a></h4>
-<pre><code class="language-powershell"># Check DirectX version
-dxdiag
-
-# Check GPU with PowerShell
-Get-WmiObject Win32_VideoController | Select-Object Name, DriverVersion
-</code></pre>
-<h4 id="linux"><a class="header" href="#linux">Linux</a></h4>
-<pre><code class="language-bash"># Check Vulkan support
-vulkaninfo | grep "deviceName"
-
-# Check GPU details
-lspci | grep -i vga
-nvidia-smi  # For NVIDIA GPUs
-</code></pre>
-<h4 id="macos"><a class="header" href="#macos">macOS</a></h4>
-<pre><code class="language-bash"># Check Metal support
-system_profiler SPDisplaysDataType
-</code></pre>
+<p><code>rustc --version</code> should print 1.89.0. The walkthrough of that binary is <a href="./first-companion.html">Your first companion</a>.</p>
+<p>Windowed binaries (<code>shadow_csm_demo</code>, <code>aravath_greybox</code>, <code>physics_demo3d</code>, <code>fluids_demo</code>) need the graphics packages listed in the <a href="./quick-start.html">quick start</a>. <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ARAVATH_GREYBOX_PROGRESS.md"><code>docs/current/ARAVATH_GREYBOX_PROGRESS.md</code></a> records that <code>c++</code> on that machine is Clang 18, which selects a GCC 14 toolchain whose libstdc++ headers are not installed. Cargo builds of <code>basis-universal-sys</code> (pulled in by <code>astraweave-render</code>) need <code>CXX=g++</code>.</p>
 <h2 id="software-dependencies"><a class="header" href="#software-dependencies">Software Dependencies</a></h2>
 <h3 id="development-dependencies"><a class="header" href="#development-dependencies">Development Dependencies</a></h3>
 <h4 id="required"><a class="header" href="#required">Required</a></h4>
 <ul>
 <li>
-<p><strong>Rust</strong>: Version 1.75.0 or later</p>
+<p><strong>Rust</strong>: 1.89.0, pinned in <code>rust-toolchain.toml</code></p>
 <ul>
 <li>Install via <a href="https://rustup.rs/">rustup</a></li>
 <li>Verify: <code>rustc --version</code></li>
@@ -398,7 +259,7 @@ system_profiler SPDisplaysDataType
 </li>
 </ul>
 <h4 id="platform-specific"><a class="header" href="#platform-specific">Platform-Specific</a></h4>
-<h5 id="windows-1"><a class="header" href="#windows-1">Windows</a></h5>
+<h5 id="windows"><a class="header" href="#windows">Windows</a></h5>
 <ul>
 <li>
 <p><strong>Visual Studio Build Tools 2022</strong> or <strong>Visual Studio 2022</strong></p>
@@ -415,7 +276,7 @@ system_profiler SPDisplaysDataType
 </ul>
 </li>
 </ul>
-<h5 id="linux-1"><a class="header" href="#linux-1">Linux</a></h5>
+<h5 id="linux"><a class="header" href="#linux">Linux</a></h5>
 <p><strong>Debian/Ubuntu</strong>:</p>
 <pre><code class="language-bash">sudo apt install -y \
   build-essential \
@@ -453,7 +314,7 @@ system_profiler SPDisplaysDataType
   vulkan-tools \
   vulkan-headers
 </code></pre>
-<h5 id="macos-1"><a class="header" href="#macos-1">macOS</a></h5>
+<h5 id="macos"><a class="header" href="#macos">macOS</a></h5>
 <ul>
 <li>
 <p><strong>Xcode Command Line Tools</strong></p>
@@ -468,13 +329,13 @@ system_profiler SPDisplaysDataType
 </ul>
 <h3 id="gpu-drivers"><a class="header" href="#gpu-drivers">GPU Drivers</a></h3>
 <p>Always use the latest drivers for optimal performance:</p>
-<h4 id="nvidia-1"><a class="header" href="#nvidia-1">NVIDIA</a></h4>
+<h4 id="nvidia"><a class="header" href="#nvidia">NVIDIA</a></h4>
 <ul>
 <li>Download from <a href="https://www.nvidia.com/download/index.aspx">NVIDIA Driver Downloads</a></li>
 <li>Linux: Use distribution’s package manager or NVIDIA’s <code>.run</code> installer</li>
 <li>Minimum driver version: 525.60.11 (Linux) / 528.24 (Windows)</li>
 </ul>
-<h4 id="amd-1"><a class="header" href="#amd-1">AMD</a></h4>
+<h4 id="amd"><a class="header" href="#amd">AMD</a></h4>
 <ul>
 <li>Windows: <a href="https://www.amd.com/en/support">AMD Software Adrenalin Edition</a></li>
 <li>Linux: Mesa drivers (usually pre-installed)
@@ -486,13 +347,13 @@ sudo dnf install mesa-vulkan-drivers
 </code></pre>
 </li>
 </ul>
-<h4 id="intel-1"><a class="header" href="#intel-1">Intel</a></h4>
+<h4 id="intel"><a class="header" href="#intel">Intel</a></h4>
 <ul>
 <li><a href="https://www.intel.com/content/www/us/en/download-center/home.html">Intel Graphics Drivers</a></li>
 <li>Linux: Mesa drivers (usually pre-installed)</li>
 </ul>
 <h2 id="platform-specific-notes"><a class="header" href="#platform-specific-notes">Platform-Specific Notes</a></h2>
-<h3 id="windows-2"><a class="header" href="#windows-2">Windows</a></h3>
+<h3 id="windows-1"><a class="header" href="#windows-1">Windows</a></h3>
 <ul>
 <li>
 <p><strong>Windows Defender</strong>: May slow initial builds. Add exclusion for project directory:</p>
@@ -510,7 +371,7 @@ New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
 <p><strong>Power Settings</strong>: Use “High Performance” or “Ultimate Performance” power plan for best results</p>
 </li>
 </ul>
-<h3 id="linux-2"><a class="header" href="#linux-2">Linux</a></h3>
+<h3 id="linux-1"><a class="header" href="#linux-1">Linux</a></h3>
 <ul>
 <li>
 <p><strong>GPU Permissions</strong>: Ensure user is in the <code>video</code> group:</p>
@@ -531,7 +392,7 @@ ulimit -n 4096
 </code></pre>
 </li>
 </ul>
-<h3 id="macos-2"><a class="header" href="#macos-2">macOS</a></h3>
+<h3 id="macos-1"><a class="header" href="#macos-1">macOS</a></h3>
 <ul>
 <li>
 <p><strong>Metal Support</strong>: Requires macOS 10.15+ and Metal-compatible GPU</p>
@@ -553,76 +414,20 @@ rustc --version --verbose | grep host
 <p><strong>Security Settings</strong>: May need to allow apps in System Preferences on first run</p>
 </li>
 </ul>
-<h2 id="performance-expectations"><a class="header" href="#performance-expectations">Performance Expectations</a></h2>
-<h3 id="development-workloads"><a class="header" href="#development-workloads">Development Workloads</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Specification</th><th>Compile Time (full rebuild)</th><th>Test Suite Runtime</th><th>Editor Performance</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Minimum</strong></td><td>5-10 minutes</td><td>2-3 minutes</td><td>Playable (30+ FPS)</td></tr>
-<tr><td><strong>Recommended</strong></td><td>2-4 minutes</td><td>1-2 minutes</td><td>Smooth (60+ FPS)</td></tr>
-<tr><td><strong>Optimal</strong></td><td>1-2 minutes</td><td>&lt;1 minute</td><td>Excellent (120+ FPS)</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="runtime-performance"><a class="header" href="#runtime-performance">Runtime Performance</a></h3>
-<p>Example scene: 10 AI companions with full perception and emotion systems</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Specification</th><th>Average FPS</th><th>1% Low FPS</th><th>Max Companions</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Minimum</strong></td><td>30-45</td><td>25-30</td><td>10-20</td></tr>
-<tr><td><strong>Recommended</strong></td><td>60-90</td><td>50-60</td><td>50-100</td></tr>
-<tr><td><strong>Optimal</strong></td><td>120-144+</td><td>90-100</td><td>200-500+</td></tr>
-</tbody>
-</table>
-</div>
-<pre><code class="language-admonish note">Performance varies based on scene complexity, AI behavior count, and graphics settings.
+<h2 id="check-the-toolchain"><a class="header" href="#check-the-toolchain">Check the toolchain</a></h2>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustc --version
+cargo run -p hello_companion --release
 </code></pre>
-<h2 id="checking-your-system"><a class="header" href="#checking-your-system">Checking Your System</a></h2>
-<p>Run this command to verify your setup:</p>
-<pre><code class="language-bash"># Clone and run the system check example
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
-cargo run --example system_check
-</code></pre>
-<p>The system check will report:</p>
-<ul>
-<li>Rust version</li>
-<li>GPU capabilities</li>
-<li>Graphics API support</li>
-<li>Available memory</li>
-<li>Recommended settings</li>
-</ul>
-<pre><code class="language-admonish success">If all checks pass, your system is ready for AstraWeave development!
-</code></pre>
-<h2 id="upgrading-your-system"><a class="header" href="#upgrading-your-system">Upgrading Your System</a></h2>
-<p>If your system doesn’t meet requirements:</p>
-<h3 id="priority-upgrades"><a class="header" href="#priority-upgrades">Priority Upgrades</a></h3>
+<p><code>rustc --version</code> inside the repo should be 1.89.0. There is no <code>system_check</code> example. Compile times and FPS tables that used to sit here were not measured for this tree.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ol>
-<li><strong>GPU</strong>: Biggest impact on runtime performance</li>
-<li><strong>RAM</strong>: Enables larger scenes and faster compilation</li>
-<li><strong>SSD</strong>: Dramatically reduces build times</li>
-<li><strong>CPU</strong>: Improves compilation speed and AI performance</li>
-</ol>
-<h3 id="budget-recommendations"><a class="header" href="#budget-recommendations">Budget Recommendations</a></h3>
-<ul>
-<li><strong>Entry Level</strong> ($300-500): Used RTX 3060 or RX 6700 XT + 16GB RAM</li>
-<li><strong>Mid Range</strong> ($800-1200): RTX 4060 Ti or RX 7700 XT + 32GB RAM + NVMe SSD</li>
-<li><strong>High End</strong> ($2000+): RTX 4080 or RX 7900 XTX + 64GB RAM + Fast CPU</li>
-</ul>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>Once your system meets the requirements:</p>
-<ol>
-<li><a href="installation.html">Install AstraWeave</a></li>
+<li><a href="installation.html">Install</a></li>
 <li><a href="../dev/building.html">Build from source</a></li>
-<li><a href="first-companion.html">Create your first companion</a></li>
+<li><a href="first-companion.html">First companion</a></li>
 </ol>
-<p>If you have questions about requirements, join our <a href="https://discord.gg/astraweave">Discord community</a>.</p>
+<p>Questions go to <a href="https://github.com/lazyxeon/AstraWeave/issues">GitHub issues</a>.</p>
 
                     </main>
 

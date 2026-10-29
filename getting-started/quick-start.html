@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,21 +219,23 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="quick-start"><a class="header" href="#quick-start">Quick Start</a></h1>
-<p>Get up and running with AstraWeave in minutes! This guide will help you install the engine, run your first AI companion, and understand the basic concepts.</p>
+<p>Install the pinned toolchain, build <code>hello_companion</code>, and run the default classical planner.</p>
 <h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
 <ul>
-<li><strong>Rust</strong>: 1.89.0+ (managed automatically via <code>rust-toolchain.toml</code>)</li>
-<li><strong>Platform</strong>: Linux, macOS, or Windows</li>
-<li><strong>GPU</strong>: Vulkan-compatible graphics card</li>
-<li><strong>Memory</strong>: 4GB+ RAM recommended for AI models</li>
+<li><strong>Rust</strong>: 1.89.0, pinned in <code>rust-toolchain.toml</code>. <code>rustup</code> selects that toolchain in this repository.</li>
+<li><strong>Platform</strong>: Linux, macOS, or Windows. Replay hashes are compared on all three. That is not a claim that every windowed example has been run on all three.</li>
+<li><strong>GPU</strong>: not required for the default <code>hello_companion</code> run. That binary is headless. Windowed examples need a Vulkan, Metal, or Direct3D 12 device that wgpu can open.</li>
+<li><strong>A local model</strong>: not required for the default run. <code>--bt</code>, <code>--utility</code>, and <code>--ensemble</code> need the <code>llm</code> feature and do not open a socket. <code>--llm</code> and <code>--hybrid</code> need <code>llm,ollama</code> and talk to loopback Ollama.</li>
 </ul>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<h3 id="1-clone-the-repository"><a class="header" href="#1-clone-the-repository">1. Clone the Repository</a></h3>
+<h3 id="1-clone-the-repository"><a class="header" href="#1-clone-the-repository">1. Clone the repository</a></h3>
 <pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
 cd AstraWeave
+rustup show
 </code></pre>
-<h3 id="2-system-dependencies-linux"><a class="header" href="#2-system-dependencies-linux">2. System Dependencies (Linux)</a></h3>
-<p>If you’re on Linux, install the required system packages:</p>
+<p><code>rustup show</code> should report the active toolchain as 1.89.0 inside this directory.</p>
+<h3 id="2-system-packages-linux-windowed-builds"><a class="header" href="#2-system-packages-linux-windowed-builds">2. System packages (Linux, windowed builds)</a></h3>
+<p>Headless <code>hello_companion</code> does not need these. Windowed crates (<code>aw_editor</code>, <code>physics_demo3d</code>, <code>fluids_demo</code>, <code>aravath_greybox</code>) link against the usual X11, Wayland, ALSA, and Vulkan development packages:</p>
 <pre><code class="language-bash">sudo apt-get update
 sudo apt-get install -y build-essential pkg-config cmake ninja-build \
   libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \
@@ -242,68 +244,36 @@ sudo apt-get install -y build-essential pkg-config cmake ninja-build \
   libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \
   libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools
 </code></pre>
-<h3 id="3-build-core-components"><a class="header" href="#3-build-core-components">3. Build Core Components</a></h3>
-<p>Build the stable, working core components:</p>
-<pre><code class="language-bash">cargo build -p astraweave-core -p astraweave-ai -p astraweave-physics \
-            -p astraweave-nav -p astraweave-render -p hello_companion
+<h3 id="3-build-the-companion-demo"><a class="header" href="#3-build-the-companion-demo">3. Build the companion demo</a></h3>
+<pre><code class="language-bash">cargo build -p hello_companion --release
 </code></pre>
-<p>This typically takes 8-15 seconds after initial dependency download.</p>
-<h2 id="your-first-ai-companion"><a class="header" href="#your-first-ai-companion">Your First AI Companion</a></h2>
-<p>Let’s run the most basic example to see AstraWeave in action:</p>
+<h2 id="run-hello_companion"><a class="header" href="#run-hello_companion">Run hello_companion</a></h2>
 <pre><code class="language-bash">cargo run -p hello_companion --release
 </code></pre>
-<h3 id="what-youll-see"><a class="header" href="#what-youll-see">What You’ll See</a></h3>
-<p>The demo will show:</p>
-<ol>
-<li><strong>AI Perception</strong>: The companion perceives the world state</li>
-<li><strong>Planning</strong>: AI generates a plan using its understanding</li>
-<li><strong>Tool Validation</strong>: The engine validates what the AI wants to do</li>
-<li><strong>Expected Panic</strong>: The demo will panic with “LosBlocked” - this is expected behavior demonstrating the validation system</li>
-</ol>
-<h3 id="example-output"><a class="header" href="#example-output">Example Output</a></h3>
-<pre><code>[INFO] AI Companion initialized
-[INFO] Perception snapshot captured: 1 entities
-[INFO] Planning phase: generating intent for companion
-[INFO] Generated plan: MoveTo(target_position)
-[INFO] Validating tool usage: MovementTool
-[ERROR] Validation failed: LosBlocked
-thread 'main' panicked at 'LOS validation failed'
+<h3 id="what-the-default-run-does"><a class="header" href="#what-the-default-run-does">What the default run does</a></h3>
+<p>The default features are <code>fast-alloc</code> only. The process prints a banner, selects <strong>Classical (<code>RuleOrchestrator</code>)</strong>, builds a small grid world, proposes a plan, and calls <code>validate_and_execute</code>.</p>
+<p>A default run does not panic. The smoke <code>Throw</code> is aimed at the midpoint, and the obstacle column blocks that throw. <code>validate_and_execute</code> returns <code>EngineError::LosBlocked</code>. The example prints <code>⚠️  Execution failed: line of sight blocked. Continuing...</code> and keeps going. That line is the expected output. The literal <code>LosBlocked</code> is not in <code>examples/hello_companion</code>.</p>
+<p><code>setup_world</code> inserts a vertical obstacle column, then spawns a player, a companion, and an enemy. Perception uses <code>PerceptionConfig { los_max: 12 }</code>.</p>
+<p>The seven modes, and the features they need, are on the <a href="../examples/hello-companion.html">Hello Companion</a> page. A default run does not enable all seven. <code>AIArbiter</code> is not on the deterministic tick.</p>
+<h2 id="editor-and-greybox"><a class="header" href="#editor-and-greybox">Editor and greybox</a></h2>
+<pre><code class="language-bash">cargo xtask fetch-assets
+cargo editor
+cargo run -p aravath_runtime --bin aravath_greybox --release
 </code></pre>
-<p><strong>This panic is intentional!</strong> It demonstrates AstraWeave’s core principle: <em>the AI can only do what the engine validates as possible</em>.</p>
-<h2 id="understanding-what-happened"><a class="header" href="#understanding-what-happened">Understanding What Happened</a></h2>
-<p>The hello_companion example showcases AstraWeave’s fundamental architecture:</p>
-<ol>
-<li><strong>Fixed-Tick Simulation</strong>: The world runs at deterministic 60Hz</li>
-<li><strong>AI Perception</strong>: AI agents receive structured world snapshots</li>
-<li><strong>Planning Layer</strong>: AI generates intentions using LLM-based planning</li>
-<li><strong>Tool Validation</strong>: Engine validates every AI action before execution</li>
-<li><strong>Safety First</strong>: Invalid actions are rejected, maintaining game integrity</li>
-</ol>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>Now that you’ve seen the core loop in action:</p>
+<p><code>cargo editor</code> is the alias in <code>.cargo/config.toml</code>. It runs <code>aw_editor</code>.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
-<li><strong>Learn the Architecture</strong>: Read <a href="../architecture/ai-native.html">AI-Native Design</a></li>
-<li><strong>Build Your First Game</strong>: Follow <a href="../game-dev/first-game.html">Building Your First Game</a></li>
-<li><strong>Explore More Examples</strong>: Check out <a href="../examples/index.html">Working Examples</a></li>
-<li><strong>Dive Deeper</strong>: Study <a href="../core-systems/ai/index.html">Core Systems</a></li>
+<li><a href="../examples/hello-companion.html">Hello Companion</a> for the mode flags</li>
+<li><a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">Engine status</a> for measurements and the replay list</li>
+<li><a href="../examples/index.html">Working examples</a></li>
+<li><a href="../core-systems/ai/index.html">AI systems</a></li>
 </ul>
 <h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
-<h3 id="build-errors"><a class="header" href="#build-errors">Build Errors</a></h3>
-<p>If you encounter build errors:</p>
 <ul>
-<li>Make sure you have the correct Rust version (check <code>rust-toolchain.toml</code>)</li>
-<li>Install system dependencies for your platform</li>
-<li>Some examples have known compilation issues - stick to the working core components listed above</li>
+<li><code>rustc --version</code> inside the repo should be 1.89.0. The pin is <code>rust-toolchain.toml</code>, not “1.89.0 or any newer”.</li>
+<li>Graphics errors apply to windowed binaries. The default companion demo does not open a window.</li>
+<li>There is no <code>unified_showcase</code> package. See <a href="../examples/unified-showcase.html">Rendering showcase</a>.</li>
 </ul>
-<h3 id="runtime-issues"><a class="header" href="#runtime-issues">Runtime Issues</a></h3>
-<ul>
-<li><strong>Graphics errors</strong>: Ensure you have Vulkan drivers installed</li>
-<li><strong>Audio errors</strong>: Install audio system dependencies (ALSA/PulseAudio on Linux)</li>
-<li><strong>Permission errors</strong>: Make sure your user can access graphics and audio devices</li>
-</ul>
-<p>For more help, see <a href="../resources/troubleshooting.html">Troubleshooting</a>.</p>
-<hr>
-<p><strong>🎉 Congratulations!</strong> You’ve successfully run your first AstraWeave AI companion. The engine validated the AI’s actions and maintained world integrity, just as it should.</p>
 
                     </main>
 

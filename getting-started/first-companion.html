@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,593 +219,62 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="your-first-ai-companion"><a class="header" href="#your-first-ai-companion">Your First AI Companion</a></h1>
-<p>This tutorial will guide you through creating your first AI companion in AstraWeave. By the end, you’ll have a companion that can perceive its environment, experience emotions, and exhibit autonomous behaviors.</p>
-<h2 id="table-of-contents"><a class="header" href="#table-of-contents">Table of Contents</a></h2>
-<ul>
-<li><a href="#prerequisites">Prerequisites</a></li>
-<li><a href="#project-setup">Project Setup</a></li>
-<li><a href="#creating-a-basic-companion">Creating a Basic Companion</a></li>
-<li><a href="#adding-perception">Adding Perception</a></li>
-<li><a href="#adding-emotions">Adding Emotions</a></li>
-<li><a href="#adding-behaviors">Adding Behaviors</a></li>
-<li><a href="#testing-your-companion">Testing Your Companion</a></li>
-<li><a href="#next-steps">Next Steps</a></li>
-</ul>
-<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
-<p>Before starting, ensure you have:</p>
-<ul>
-<li>Rust 1.75.0 or later installed</li>
-<li>AstraWeave installed (see <a href="installation.html">Installation</a>)</li>
-<li>A compatible GPU (see <a href="requirements.html">System Requirements</a>)</li>
-<li>Basic Rust knowledge</li>
-</ul>
-<pre><code class="language-admonish tip">New to Rust? Check out [The Rust Book](https://doc.rust-lang.org/book/) for a comprehensive introduction.
+<p>You will clone the repository, run <code>hello_companion</code>, read the classical plan it builds, and change that world.</p>
+<p>The binary is the workspace package <code>hello_companion</code> (<code>examples/hello_companion</code>). You do not create a new crate. A new crate would have to be added to the root <code>Cargo.toml</code> <code>members</code> list. This tutorial stays on the package that is already a member.</p>
+<h2 id="1-toolchain"><a class="header" href="#1-toolchain">1. Toolchain</a></h2>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
+rustup show
+rustc --version
 </code></pre>
-<h2 id="project-setup"><a class="header" href="#project-setup">Project Setup</a></h2>
-<h3 id="create-a-new-project"><a class="header" href="#create-a-new-project">Create a New Project</a></h3>
-<pre><code class="language-bash"># Create a new Rust project
-cargo new my_first_companion
-cd my_first_companion
+<p><code>rust-toolchain.toml</code> pins channel <code>1.89.0</code>. Inside this directory, <code>rustc --version</code> should report 1.89.0.</p>
+<h2 id="2-run-the-companion"><a class="header" href="#2-run-the-companion">2. Run the companion</a></h2>
+<pre><code class="language-bash">cargo run -p hello_companion --release
 </code></pre>
-<h3 id="add-astraweave-dependencies"><a class="header" href="#add-astraweave-dependencies">Add AstraWeave Dependencies</a></h3>
-<p>Edit <code>Cargo.toml</code> to add AstraWeave dependencies:</p>
-<pre><code class="language-toml">[package]
-name = "my_first_companion"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-# Core AstraWeave crates
-astraweave-ai = "0.1.0"
-astraweave-render = "0.1.0"
-bevy = "0.12"
-
-# Utilities
-anyhow = "1.0"
+<p>That command uses the default features in <code>examples/hello_companion/Cargo.toml</code> (<code>fast-alloc</code> only). No GPU and no Ollama process are required. The program is headless.</p>
+<p>You should see the banner from <code>main</code>, then <code>Using Classical AI (RuleOrchestrator).</code>, then <code>Generated 3 steps</code>, <code>Plan plan-0 with 3 steps</code>, and:</p>
+<pre><code class="language-text">⚠️  Execution failed: line of sight blocked. Continuing...
 </code></pre>
-<pre><code class="language-admonish note">Version numbers may change. Check [crates.io](https://crates.io) for the latest versions.
-</code></pre>
-<h3 id="verify-setup"><a class="header" href="#verify-setup">Verify Setup</a></h3>
-<pre><code class="language-bash"># Build to ensure dependencies are resolved
-cargo build
-</code></pre>
-<h2 id="creating-a-basic-companion"><a class="header" href="#creating-a-basic-companion">Creating a Basic Companion</a></h2>
-<p>Let’s start with a simple companion that just exists in the world.</p>
-<h3 id="basic-structure"><a class="header" href="#basic-structure">Basic Structure</a></h3>
-<p>Edit <code>src/main.rs</code>:</p>
-<pre class="playground"><code class="language-rust">use bevy::prelude::*;
-use astraweave_ai::prelude::*;
-use anyhow::Result;
-
-fn main() -&gt; Result&lt;()&gt; {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(AstraWeaveAIPlugin)
-        .add_systems(Startup, setup_companion)
-        .add_systems(Update, update_companion)
-        .run();
-    
-    Ok(())
-}
-
-fn setup_companion(mut commands: Commands) {
-    // Create a basic companion
-    let companion = CompanionBuilder::new()
-        .with_name("Buddy")
-        .build();
-    
-    commands.spawn(companion);
-    
-    info!("Spawned companion: Buddy");
-}
-
-fn update_companion(
-    mut companions: Query&lt;&amp;mut Companion&gt;,
-    time: Res&lt;Time&gt;,
-) {
-    for mut companion in companions.iter_mut() {
-        companion.update(time.delta_seconds());
-    }
-}</code></pre>
-<h3 id="run-your-first-companion"><a class="header" href="#run-your-first-companion">Run Your First Companion</a></h3>
-<pre><code class="language-bash">cargo run
-</code></pre>
-<p>You should see log output indicating your companion was spawned!</p>
-<pre><code class="language-admonish success">Congratulations! You've created your first AI companion. Now let's make it more interesting.
-</code></pre>
-<h2 id="adding-perception"><a class="header" href="#adding-perception">Adding Perception</a></h2>
-<p>Companions need to perceive their environment to interact meaningfully.</p>
-<h3 id="visual-perception"><a class="header" href="#visual-perception">Visual Perception</a></h3>
-<p>Add visual perception to detect nearby entities:</p>
+<p>That string is <code>EngineError::LosBlocked</code> (<code>astraweave-core/src/schema.rs</code> displays it as <code>line of sight blocked</code>). The example prints it from <code>Execution failed: {}. Continuing...</code> and returns <code>Ok(())</code>. It does not panic. A debug run on this tree left the companion at <code>(2, 3)</code>, the enemy at <code>(12, 2)</code> with HP 60, and printed <code>t=5.00</code> after twenty <code>run_fixed(1)</code> calls.</p>
+<h2 id="3-the-calls-that-produced-that-output"><a class="header" href="#3-the-calls-that-produced-that-output">3. The calls that produced that output</a></h2>
+<p><code>setup_world</code> uses <code>astraweave_core::World</code>:</p>
 <pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
 </span><span class="boring">fn main() {
-</span>use astraweave_ai::perception::*;
-
-fn setup_companion(mut commands: Commands) {
-    let companion = CompanionBuilder::new()
-        .with_name("Buddy")
-        .with_perception(PerceptionConfig {
-            visual_range: 10.0,
-            visual_fov: 120.0,      // 120-degree field of view
-            update_rate: 10.0,       // 10 updates per second
-            ..default()
-        })
-        .build();
-    
-    commands.spawn(companion);
-}
+</span>let mut w = World::new();
+let player = w.spawn("Player", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+let comp = w.spawn("Companion", IVec2 { x: 2, y: 3 }, Team { id: 1 }, 80, 30);
+let enemy = w.spawn("Rival", IVec2 { x: 12, y: 2 }, Team { id: 2 }, 60, 0);
 <span class="boring">}</span></code></pre>
-<h3 id="adding-stimuli"><a class="header" href="#adding-stimuli">Adding Stimuli</a></h3>
-<p>Create entities that the companion can perceive:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn setup_companion(
-    mut commands: Commands,
-    mut meshes: ResMut&lt;Assets&lt;Mesh&gt;&gt;,
-    mut materials: ResMut&lt;Assets&lt;StandardMaterial&gt;&gt;,
-) {
-    // Spawn the companion
-    let companion = CompanionBuilder::new()
-        .with_name("Buddy")
-        .with_perception(PerceptionConfig {
-            visual_range: 10.0,
-            visual_fov: 120.0,
-            update_rate: 10.0,
-            ..default()
-        })
-        .build();
-    
-    commands.spawn((
-        companion,
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-    
-    // Spawn a ball that the companion can see
-    commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Sphere::new(0.5)),
-            material: materials.add(Color::rgb(0.8, 0.2, 0.2)),
-            transform: Transform::from_xyz(3.0, 0.5, 0.0),
-            ..default()
-        },
-        Stimulus::new(StimulusType::Visual, 1.0),
-    ));
-    
-    // Add camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 5.0, 10.0)
-            .looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
-    
-    // Add light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
-}
-<span class="boring">}</span></code></pre>
-<h3 id="reacting-to-perception"><a class="header" href="#reacting-to-perception">Reacting to Perception</a></h3>
-<p>Add a system to log what the companion perceives:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>fn update_companion(
-    mut companions: Query&lt;(&amp;mut Companion, &amp;Transform)&gt;,
-    stimuli: Query&lt;(&amp;Stimulus, &amp;Transform)&gt;,
-    time: Res&lt;Time&gt;,
-) {
-    for (mut companion, companion_transform) in companions.iter_mut() {
-        companion.update(time.delta_seconds());
-        
-        // Check what the companion can see
-        if let Some(perception) = companion.perception() {
-            for (stimulus, stimulus_transform) in stimuli.iter() {
-                let distance = companion_transform
-                    .translation
-                    .distance(stimulus_transform.translation);
-                
-                if distance &lt;= perception.visual_range {
-                    info!(
-                        "{} sees {} stimulus at distance {:.2}",
-                        companion.name(),
-                        stimulus.stimulus_type,
-                        distance
-                    );
-                }
-            }
-        }
-    }
-}
-<span class="boring">}</span></code></pre>
-<h2 id="adding-emotions"><a class="header" href="#adding-emotions">Adding Emotions</a></h2>
-<p>Emotions make companions feel alive and responsive.</p>
-<h3 id="emotion-system"><a class="header" href="#emotion-system">Emotion System</a></h3>
-<p>Add emotion processing to your companion:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::emotion::*;
-
-fn setup_companion(
-    mut commands: Commands,
-    mut meshes: ResMut&lt;Assets&lt;Mesh&gt;&gt;,
-    mut materials: ResMut&lt;Assets&lt;StandardMaterial&gt;&gt;,
-) {
-    let companion = CompanionBuilder::new()
-        .with_name("Buddy")
-        .with_perception(PerceptionConfig {
-            visual_range: 10.0,
-            visual_fov: 120.0,
-            update_rate: 10.0,
-            ..default()
-        })
-        .with_emotions(vec![
-            EmotionConfig::new("joy", 0.5, 0.95),
-            EmotionConfig::new("curiosity", 0.3, 0.98),
-            EmotionConfig::new("calm", 0.7, 0.99),
-        ])
-        .build();
-    
-    commands.spawn((
-        companion,
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-    
-    // ... spawn stimuli and camera as before
-}
-<span class="boring">}</span></code></pre>
-<h3 id="emotion-responses"><a class="header" href="#emotion-responses">Emotion Responses</a></h3>
-<p>Make emotions respond to stimuli:</p>
-<pre class="playground"><code class="language-rust">fn process_emotions(
-    mut companions: Query&lt;&amp;mut Companion&gt;,
-    stimuli: Query&lt;(&amp;Stimulus, &amp;Transform)&gt;,
-) {
-    for mut companion in companions.iter_mut() {
-        if let Some(emotion_system) = companion.emotion_system_mut() {
-            // Process nearby stimuli
-            for (stimulus, _) in stimuli.iter() {
-                match stimulus.stimulus_type {
-                    StimulusType::Visual =&gt; {
-                        emotion_system.increase_emotion("curiosity", 0.1);
-                    }
-                    StimulusType::Positive =&gt; {
-                        emotion_system.increase_emotion("joy", 0.2);
-                    }
-                    StimulusType::Negative =&gt; {
-                        emotion_system.decrease_emotion("calm", 0.15);
-                    }
-                    _ =&gt; {}
-                }
-            }
-            
-            // Log dominant emotion
-            if let Some(dominant) = emotion_system.dominant_emotion() {
-                info!(
-                    "{} feels {} (intensity: {:.2})",
-                    companion.name(),
-                    dominant.name,
-                    dominant.intensity
-                );
-            }
-        }
-    }
-}
-
-// Add this system to your app
-fn main() -&gt; Result&lt;()&gt; {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(AstraWeaveAIPlugin)
-        .add_systems(Startup, setup_companion)
-        .add_systems(Update, (update_companion, process_emotions))
-        .run();
-    
-    Ok(())
-}</code></pre>
-<h2 id="adding-behaviors"><a class="header" href="#adding-behaviors">Adding Behaviors</a></h2>
-<p>Behaviors allow companions to act autonomously based on their internal state.</p>
-<h3 id="basic-movement-behavior"><a class="header" href="#basic-movement-behavior">Basic Movement Behavior</a></h3>
-<p>Add a simple behavior that makes the companion wander:</p>
-<pre class="playground"><code class="language-rust"><span class="boring">#![allow(unused)]
-</span><span class="boring">fn main() {
-</span>use astraweave_ai::behavior::*;
-
-fn setup_companion(
-    mut commands: Commands,
-    mut meshes: ResMut&lt;Assets&lt;Mesh&gt;&gt;,
-    mut materials: ResMut&lt;Assets&lt;StandardMaterial&gt;&gt;,
-) {
-    let companion = CompanionBuilder::new()
-        .with_name("Buddy")
-        .with_perception(PerceptionConfig::default())
-        .with_emotions(vec![
-            EmotionConfig::new("joy", 0.5, 0.95),
-            EmotionConfig::new("curiosity", 0.3, 0.98),
-            EmotionConfig::new("calm", 0.7, 0.99),
-        ])
-        .with_behavior(BehaviorConfig {
-            wander_speed: 2.0,
-            wander_radius: 5.0,
-            ..default()
-        })
-        .build();
-    
-    commands.spawn((
-        companion,
-        PbrBundle {
-            mesh: meshes.add(Capsule3d::new(0.5, 1.0)),
-            material: materials.add(Color::rgb(0.3, 0.5, 0.8)),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
-            ..default()
-        },
-    ));
-    
-    // ... rest of scene setup
-}
-<span class="boring">}</span></code></pre>
-<h3 id="emotion-driven-behavior"><a class="header" href="#emotion-driven-behavior">Emotion-Driven Behavior</a></h3>
-<p>Make behavior change based on emotions:</p>
-<pre class="playground"><code class="language-rust">fn emotion_driven_behavior(
-    mut companions: Query&lt;(&amp;mut Companion, &amp;mut Transform)&gt;,
-    time: Res&lt;Time&gt;,
-) {
-    for (mut companion, mut transform) in companions.iter_mut() {
-        if let Some(emotion_system) = companion.emotion_system() {
-            let curiosity = emotion_system
-                .get_emotion("curiosity")
-                .map(|e| e.intensity)
-                .unwrap_or(0.0);
-            
-            let calm = emotion_system
-                .get_emotion("calm")
-                .map(|e| e.intensity)
-                .unwrap_or(0.0);
-            
-            // High curiosity = move around more
-            if curiosity &gt; 0.6 {
-                let speed = 2.0 * curiosity;
-                let direction = Vec3::new(
-                    (time.elapsed_seconds() * 0.5).sin(),
-                    0.0,
-                    (time.elapsed_seconds() * 0.5).cos(),
-                );
-                
-                transform.translation += direction * speed * time.delta_seconds();
-                
-                info!("{} is exploring curiously!", companion.name());
-            }
-            // High calm = stay still
-            else if calm &gt; 0.7 {
-                info!("{} is resting calmly.", companion.name());
-            }
-        }
-    }
-}
-
-// Update main to include the behavior system
-fn main() -&gt; Result&lt;()&gt; {
-    App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(AstraWeaveAIPlugin)
-        .add_systems(Startup, setup_companion)
-        .add_systems(Update, (
-            update_companion,
-            process_emotions,
-            emotion_driven_behavior,
-        ))
-        .run();
-    
-    Ok(())
-}</code></pre>
-<h2 id="testing-your-companion"><a class="header" href="#testing-your-companion">Testing Your Companion</a></h2>
-<h3 id="complete-example"><a class="header" href="#complete-example">Complete Example</a></h3>
-<p>Here’s the full code with all features:</p>
-<pre class="playground"><code class="language-rust">use bevy::prelude::*;
-use astraweave_ai::prelude::*;
-use anyhow::Result;
-
-fn main() -&gt; Result&lt;()&gt; {
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "My First Companion".to_string(),
-                resolution: (1280.0, 720.0).into(),
-                ..default()
-            }),
-            ..default()
-        }))
-        .add_plugins(AstraWeaveAIPlugin)
-        .add_systems(Startup, setup_companion)
-        .add_systems(Update, (
-            update_companion,
-            process_emotions,
-            emotion_driven_behavior,
-        ))
-        .run();
-    
-    Ok(())
-}
-
-fn setup_companion(
-    mut commands: Commands,
-    mut meshes: ResMut&lt;Assets&lt;Mesh&gt;&gt;,
-    mut materials: ResMut&lt;Assets&lt;StandardMaterial&gt;&gt;,
-) {
-    // Create companion
-    let companion = CompanionBuilder::new()
-        .with_name("Buddy")
-        .with_perception(PerceptionConfig {
-            visual_range: 10.0,
-            visual_fov: 120.0,
-            update_rate: 10.0,
-            ..default()
-        })
-        .with_emotions(vec![
-            EmotionConfig::new("joy", 0.5, 0.95),
-            EmotionConfig::new("curiosity", 0.3, 0.98),
-            EmotionConfig::new("calm", 0.7, 0.99),
-        ])
-        .with_behavior(BehaviorConfig::default())
-        .build();
-    
-    commands.spawn((
-        companion,
-        PbrBundle {
-            mesh: meshes.add(Capsule3d::new(0.5, 1.0)),
-            material: materials.add(Color::rgb(0.3, 0.5, 0.8)),
-            transform: Transform::from_xyz(0.0, 0.5, 0.0),
-            ..default()
-        },
-    ));
-    
-    // Add ground plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::new(Vec3::Y, Vec2::new(20.0, 20.0))),
-        material: materials.add(Color::rgb(0.3, 0.5, 0.3)),
-        ..default()
-    });
-    
-    // Add interactive objects
-    for i in 0..5 {
-        let angle = (i as f32 / 5.0) * std::f32::consts::TAU;
-        let pos = Vec3::new(angle.cos() * 4.0, 0.5, angle.sin() * 4.0);
-        
-        commands.spawn((
-            PbrBundle {
-                mesh: meshes.add(Sphere::new(0.5)),
-                material: materials.add(Color::rgb(0.8, 0.2, 0.2)),
-                transform: Transform::from_translation(pos),
-                ..default()
-            },
-            Stimulus::new(StimulusType::Visual, 1.0),
-        ));
-    }
-    
-    // Add camera
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(0.0, 8.0, 12.0)
-            .looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
-    
-    // Add light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
-        ..default()
-    });
-}
-
-fn update_companion(
-    mut companions: Query&lt;&amp;mut Companion&gt;,
-    time: Res&lt;Time&gt;,
-) {
-    for mut companion in companions.iter_mut() {
-        companion.update(time.delta_seconds());
-    }
-}
-
-fn process_emotions(
-    mut companions: Query&lt;(&amp;mut Companion, &amp;Transform)&gt;,
-    stimuli: Query&lt;(&amp;Stimulus, &amp;Transform)&gt;,
-) {
-    for (mut companion, companion_transform) in companions.iter_mut() {
-        if let Some(emotion_system) = companion.emotion_system_mut() {
-            for (stimulus, stimulus_transform) in stimuli.iter() {
-                let distance = companion_transform
-                    .translation
-                    .distance(stimulus_transform.translation);
-                
-                if distance &lt;= 5.0 {
-                    emotion_system.increase_emotion("curiosity", 0.05);
-                    emotion_system.increase_emotion("joy", 0.02);
-                }
-            }
-        }
-    }
-}
-
-fn emotion_driven_behavior(
-    mut companions: Query&lt;(&amp;mut Companion, &amp;mut Transform)&gt;,
-    time: Res&lt;Time&gt;,
-) {
-    for (companion, mut transform) in companions.iter_mut() {
-        if let Some(emotion_system) = companion.emotion_system() {
-            let curiosity = emotion_system
-                .get_emotion("curiosity")
-                .map(|e| e.intensity)
-                .unwrap_or(0.0);
-            
-            if curiosity &gt; 0.4 {
-                let speed = 1.5 * curiosity;
-                let direction = Vec3::new(
-                    (time.elapsed_seconds() * 0.8).sin(),
-                    0.0,
-                    (time.elapsed_seconds() * 0.8).cos(),
-                );
-                
-                transform.translation += direction * speed * time.delta_seconds();
-                transform.translation.y = 0.5; // Keep on ground
-            }
-        }
-    }
-}</code></pre>
-<h3 id="run-and-observe"><a class="header" href="#run-and-observe">Run and Observe</a></h3>
-<pre><code class="language-bash">cargo run --release
-</code></pre>
-<p>Watch your companion:</p>
+<p><code>spawn</code> is declared in <code>astraweave-core/src/world.rs</code> as <code>spawn(&amp;mut self, name: &amp;str, pos: IVec2, team: Team, hp: i32, ammo: i32) -&gt; Entity</code>.</p>
+<p>A column of obstacles is inserted at <code>x = 6</code>, <code>y = 1..=8</code>. The companion’s <code>throw:smoke</code> cooldown is set to <code>0.0</code>. <code>build_snapshot</code> (<code>astraweave-core/src/perception.rs</code>) is called with <code>PerceptionConfig { los_max: 12 }</code> and objective <code>Some("extract")</code>.</p>
+<p>The orchestrator is <code>RuleOrchestrator</code> from <code>astraweave-ai</code>. <code>propose_plan</code> (<code>astraweave-ai/src/orchestrator.rs</code>) sees an enemy and a ready smoke cooldown, and returns:</p>
 <ul>
-<li>Wander around the scene</li>
-<li>React to nearby objects</li>
-<li>Show emotional responses</li>
-<li>Exhibit autonomous behavior</li>
+<li><code>Throw</code> smoke at the integer midpoint of companion and enemy, here <code>(7, 2)</code></li>
+<li><code>MoveTo</code> two steps toward the enemy, here <code>(4, 1)</code></li>
+<li><code>CoverFire</code> on the enemy for <code>2.5</code></li>
 </ul>
-<pre><code class="language-admonish success">You've created a fully functional AI companion with perception, emotions, and behaviors!
+<p><code>validate_and_execute</code> (<code>astraweave-core/src/validation.rs</code>) checks each step in order. The first step is <code>Throw</code>. The wall at <code>x = 6</code> makes that throw <code>EngineError::LosBlocked</code>. Later steps, including <code>MoveTo</code>, are not applied. <code>MoveTo</code> itself returns <code>EngineError::NoPath</code> only when <code>path_exists</code> fails.</p>
+<p><code>build_app(world, 0.25)</code> (<code>astraweave-core/src/ecs_adapter.rs</code>) stores the legacy world on an <code>astraweave_ecs::App</code> and sets resource <code>Dt(0.25)</code>. <code>run_fixed(1)</code> runs the ECS schedule once. The demo calls it 20 times. <code>Dt</code> is not a 60 Hz claim.</p>
+<h2 id="4-change-the-companions-world"><a class="header" href="#4-change-the-companions-world">4. Change the companion’s world</a></h2>
+<p>Edit <code>examples/hello_companion/src/main.rs</code>, function <code>setup_world</code>.</p>
+<p>Move the rival off the row, for example <code>IVec2 { x: 12, y: 6 }</code>, or delete the obstacle loop. Save the file and run the same command:</p>
+<pre><code class="language-bash">cargo run -p hello_companion --release
 </code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>Now that you have a working companion, try:</p>
-<ol>
-<li><strong>Add more emotions</strong>: Experiment with fear, excitement, anger</li>
-<li><strong>Complex behaviors</strong>: Implement approach/avoid behaviors based on emotions</li>
-<li><strong>Social interactions</strong>: Add multiple companions that interact</li>
-<li><strong>Save/Load</strong>: Persist companion state between runs</li>
-<li><strong>Visual feedback</strong>: Change companion color based on dominant emotion</li>
-</ol>
-<h3 id="advanced-topics"><a class="header" href="#advanced-topics">Advanced Topics</a></h3>
+<p>The plan math follows the new positions: midpoint <code>((comp.x + enemy.x) / 2, (comp.y + enemy.y) / 2)</code>, and the move is two cells along each axis toward the enemy. Read the validator log to see whether <code>MoveTo</code> was applied.</p>
+<h2 id="5-turn-on-another-planner"><a class="header" href="#5-turn-on-another-planner">5. Turn on another planner</a></h2>
+<p>Classical is the default. The other flags are in <a href="../examples/hello-companion.html">Hello Companion</a>. The one that surprises people:</p>
+<pre><code class="language-bash">cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter
+</code></pre>
+<p>That flag calls <code>GoapOrchestrator</code>, not <code>AIArbiter</code>. The type <code>AIArbiter</code> is documented on the <a href="../core-systems/ai/arbiter.html">arbiter page</a>. It is not on the deterministic tick.</p>
+<p><code>--bt</code>, <code>--utility</code>, and <code>--ensemble</code> need the <code>llm</code> feature and do not open a socket. <code>--llm</code> and <code>--hybrid</code> need a local Ollama on loopback and <code>--features llm,ollama</code>. Those two flags use <code>qwen3.5:4b</code> (<code>DEFAULT_QWEN_INSTRUCT_MODEL</code> in <code>astraweave-llm/src/qwen3_ollama.rs</code>).</p>
+<h2 id="6-where-this-sits-in-a-game"><a class="header" href="#6-where-this-sits-in-a-game">6. Where this sits in a game</a></h2>
+<p>The same <code>World</code>, <code>RuleOrchestrator</code>, and <code>validate_and_execute</code> types are what you keep when you add dialogue, combat, or a window. That path is <a href="../game-dev/first-game.html">Building your first game</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="../ai/behavior-trees.html">Behavior Trees</a></li>
-<li><a href="../ai/emotions.html">Emotion Blending</a></li>
-<li><a href="../ai/multi-agent.html">Multi-Agent Systems</a></li>
-<li><a href="../optimization/ai-performance.html">Performance Optimization</a></li>
+<li><a href="./quick-start.html">Quick start</a></li>
+<li><a href="../examples/index.html">Examples index</a></li>
+<li><a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">Engine status</a></li>
 </ul>
-<h3 id="example-projects"><a class="header" href="#example-projects">Example Projects</a></h3>
-<p>Check out more examples in the repository:</p>
-<pre><code class="language-bash"># Clone AstraWeave
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
-
-# Run advanced examples
-cargo run --release --example companion_emotions
-cargo run --release --example multi_companion
-cargo run --release --example behavior_showcase
-</code></pre>
-<h3 id="join-the-community"><a class="header" href="#join-the-community">Join the Community</a></h3>
-<ul>
-<li><strong>Discord</strong>: <a href="https://discord.gg/astraweave">Join our server</a></li>
-<li><strong>GitHub</strong>: <a href="https://github.com/verdentlabs/astraweave">Open issues or discussions</a></li>
-<li><strong>Forum</strong>: <a href="https://community.verdentlabs.com">Community forums</a></li>
-</ul>
-<pre><code class="language-admonish tip">Share your companion creations in our Discord showcase channel!
-</code></pre>
-<p>Happy companion building!</p>
 
                     </main>
 

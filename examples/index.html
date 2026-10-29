@@ -45,7 +45,7 @@
         }
         </script>
 
-        <meta name="description" content="Comprehensive documentation for AstraWeave, the first AI-native game engine built in Rust with deterministic ECS architecture.">
+        <meta name="description" content="Documentation for AstraWeave, an AI-native game engine in Rust with a deterministic ECS.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -73,10 +73,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-feea12c7.js";
+            window.path_to_searchindex_js = "../searchindex-78e39919.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-3cd98da5.js"></script>
+        <script src="../toc-54baa81a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,282 +218,56 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="working-examples"><a class="header" href="#working-examples">Working Examples</a></h1>
-<p>AstraWeave includes over 20 examples demonstrating different aspects of the engine. This page focuses on the <strong>working examples</strong> that you can build and run to learn the engine.</p>
-<blockquote>
-<p><strong>Note</strong>: AstraWeave is under active development. Some examples have compilation issues due to API evolution. This page focuses on examples that are confirmed to work.</p>
-</blockquote>
-<h2 id="core-ai-examples"><a class="header" href="#core-ai-examples">Core AI Examples</a></h2>
-<p>These examples demonstrate the AI-native architecture:</p>
-<h3 id="hello-companion-"><a class="header" href="#hello-companion-">Hello Companion ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/hello_companion</code><br><strong>Status</strong>: ✅ Working (expected panic)</p>
-<p>The simplest example of AI perception, planning, and validation.</p>
-<pre><code class="language-bash">cargo run -p hello_companion --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>AI perception system capturing world state</li>
-<li>LLM-based planning generating intents</li>
-<li>Tool validation system (demonstrates failure case)</li>
-<li>Fixed-tick simulation loop</li>
-</ul>
-<p><strong>Expected behavior</strong>: Shows AI plan generation, then panics with “LosBlocked” error. This demonstrates that the AI cannot perform invalid actions.</p>
-<p><a href="./hello-companion.html">→ Detailed walkthrough</a></p>
-<h3 id="adaptive-boss-"><a class="header" href="#adaptive-boss-">Adaptive Boss ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/adaptive_boss</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Multi-phase boss with Director AI that adapts tactics based on player behavior.</p>
-<pre><code class="language-bash">cargo run -p adaptive_boss --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>BossDirector for dynamic encounter planning</li>
-<li>Budget-constrained AI decisions</li>
-<li>Telegraph system for attack warnings</li>
-<li>Phase-based combat behavior</li>
-</ul>
-<p><a href="./adaptive-boss.html">→ Detailed walkthrough</a></p>
-<h3 id="companion-profile-"><a class="header" href="#companion-profile-">Companion Profile ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/companion_profile</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Demonstrates persistent AI profiles that learn and adapt.</p>
-<pre><code class="language-bash">cargo run -p companion_profile --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>AI profile serialization/deserialization</li>
-<li>Learning from player interactions</li>
-<li>Personality trait adjustment</li>
-<li>Long-term memory systems</li>
-</ul>
-<h2 id="core-engine-examples"><a class="header" href="#core-engine-examples">Core Engine Examples</a></h2>
-<p>These examples showcase fundamental engine systems:</p>
-<h3 id="fluids-demo-"><a class="header" href="#fluids-demo-">Fluids Demo ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/fluids_demo</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Interactive fluid simulation with PCISPH physics and multiple scenarios.</p>
-<pre><code class="language-bash">cargo run -p fluids_demo --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>Real-time particle-based fluid simulation</li>
-<li>Multiple scenarios (laboratory, ocean, waterfall, splash)</li>
-<li>Interactive particle spawning (click to add water)</li>
-<li>LOD optimization for performance scaling</li>
-<li>egui debug panel with live parameters</li>
-</ul>
-<p><a href="./fluids-demo.html">→ Detailed walkthrough</a></p>
-<h3 id="unified-showcase-"><a class="header" href="#unified-showcase-">Unified Showcase ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/unified_showcase</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Comprehensive rendering demo with shadows, terrain, GLTF models, and skybox.</p>
-<pre><code class="language-bash">cargo run -p unified_showcase --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>Shadow mapping with 2048×2048 depth textures</li>
-<li>GLTF model loading with materials</li>
-<li>Procedural terrain with multi-texture blending</li>
-<li>HDR skybox rendering</li>
-<li>4× MSAA antialiasing</li>
-</ul>
-<p><a href="./unified-showcase.html">→ Detailed walkthrough</a></p>
-<h3 id="physics-demo-3d-"><a class="header" href="#physics-demo-3d-">Physics Demo 3D ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/physics_demo3d</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Demonstrates the Rapier3D physics integration with character controllers, destructibles, and environmental forces.</p>
-<pre><code class="language-bash">cargo run -p physics_demo3d --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>3D physics simulation with Rapier3D</li>
-<li>Character controller with slope handling</li>
-<li>Destructible objects that shatter</li>
-<li>Water buoyancy and wind forces</li>
-<li>Collision layer filtering</li>
-</ul>
-<p><a href="./physics-demo.html">→ Detailed walkthrough</a></p>
-<h3 id="navmesh-demo-"><a class="header" href="#navmesh-demo-">Navmesh Demo ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/navmesh_demo</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Shows navigation mesh baking and A* pathfinding.</p>
-<pre><code class="language-bash">cargo run -p navmesh_demo --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>NavMesh baking from triangle geometry</li>
-<li>Slope-based walkability filtering</li>
-<li>A* pathfinding with path visualization</li>
-<li>Agent radius margin calculation</li>
-</ul>
-<p><a href="./navmesh-demo.html">→ Detailed walkthrough</a></p>
-<h3 id="audio-spatial-demo-"><a class="header" href="#audio-spatial-demo-">Audio Spatial Demo ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/audio_spatial_demo</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Spatial audio system with 3D positioning and music crossfading.</p>
-<pre><code class="language-bash">cargo run -p audio_spatial_demo --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>3D positional audio (left/center/right beeps)</li>
-<li>Music playback with crossfading</li>
-<li>Listener tracking tied to camera</li>
-<li>Volume bus control (master/music/SFX)</li>
-</ul>
-<p><a href="./audio-spatial.html">→ Detailed walkthrough</a></p>
-<h2 id="networking-examples"><a class="header" href="#networking-examples">Networking Examples</a></h2>
-<p>These examples show multiplayer and IPC capabilities:</p>
-<h3 id="ipc-loopback-"><a class="header" href="#ipc-loopback-">IPC Loopback ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/ipc_loopback</code><br><strong>Status</strong>: ✅ Should work</p>
-<p>Demonstrates inter-process communication for AI models.</p>
-<pre><code class="language-bash">cargo run -p ipc_loopback --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>Local/cloud AI model switching</li>
-<li>Process isolation for AI</li>
-<li>IPC message passing</li>
-<li>AI model hot-swapping</li>
-</ul>
-<h3 id="coop-serverclient-"><a class="header" href="#coop-serverclient-">Coop Server/Client ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/coop_server</code>, <code>examples/coop_client</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Basic multiplayer client-server architecture.</p>
-<pre><code class="language-bash"># Terminal 1
-cargo run -p coop_server --release
-
-# Terminal 2  
-cargo run -p coop_client --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>Server-authoritative validation</li>
-<li>Intent-based networking</li>
-<li>AI agent synchronization</li>
-<li>Anti-cheat through determinism</li>
-</ul>
-<h2 id="tool-and-planning-examples"><a class="header" href="#tool-and-planning-examples">Tool and Planning Examples</a></h2>
-<p>These examples focus on AI planning and tool usage:</p>
-<h3 id="llm-tool-call-"><a class="header" href="#llm-tool-call-">LLM Tool Call ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/llm_toolcall</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Direct demonstration of LLM tool calling.</p>
-<pre><code class="language-bash">cargo run -p llm_toolcall --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>LLM integration</li>
-<li>Tool definition and usage</li>
-<li>Structured AI responses</li>
-<li>Planning validation</li>
-</ul>
-<h3 id="phase-director-"><a class="header" href="#phase-director-">Phase Director ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/phase_director</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Complex AI director managing multiple phases.</p>
-<pre><code class="language-bash">cargo run -p phase_director --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>Multi-phase AI behavior</li>
-<li>Director pattern implementation</li>
-<li>State machine management</li>
-<li>Complex AI coordination</li>
-</ul>
-<h2 id="development-examples"><a class="header" href="#development-examples">Development Examples</a></h2>
-<p>These examples help with engine development:</p>
-<h3 id="debug-overlay-"><a class="header" href="#debug-overlay-">Debug Overlay ❌</a></h3>
-<p><strong>Location</strong>: <code>examples/debug_overlay</code><br><strong>Status</strong>: ❌ Has compilation issues (egui API)</p>
-<p>Debug UI overlay for development.</p>
-<p><strong>Known issues</strong>: egui API mismatches with current version.</p>
-<h3 id="persona-loader-"><a class="header" href="#persona-loader-">Persona Loader ✅</a></h3>
-<p><strong>Location</strong>: <code>examples/persona_loader</code><br><strong>Status</strong>: ✅ Working</p>
-<p>Loading and managing AI personas from files.</p>
-<pre><code class="language-bash">cargo run -p persona_loader --release
-</code></pre>
-<p><strong>What it demonstrates:</strong></p>
-<ul>
-<li>AI persona definition files</li>
-<li>Dynamic persona loading</li>
-<li>Personality trait configuration</li>
-<li>Behavioral parameter tuning</li>
-</ul>
-<h2 id="known-compilation-issues"><a class="header" href="#known-compilation-issues">Known Compilation Issues</a></h2>
-<p>Some examples have known issues due to API evolution:</p>
-<h3 id="graphics-examples-"><a class="header" href="#graphics-examples-">Graphics Examples ❌</a></h3>
-<ul>
-<li><strong>visual_3d</strong>: winit API mismatches</li>
-<li><strong>ui_controls_demo</strong>: egui API compatibility issues</li>
-<li><strong>debug_overlay</strong>: egui API changes</li>
-</ul>
-<h3 id="authoring-examples-"><a class="header" href="#authoring-examples-">Authoring Examples ❌</a></h3>
-<ul>
-<li><strong>rhai_authoring</strong>: Depends on broken astraweave-author crate</li>
-<li>Issues with rhai sync/send traits</li>
-</ul>
-<h3 id="complex-demos-"><a class="header" href="#complex-demos-">Complex Demos ❌</a></h3>
-<ul>
-<li><strong>npc_town_demo</strong>: Multiple API mismatches</li>
-<li><strong>weaving_playground</strong>: Dependency issues</li>
-<li><strong>cutscene_render_demo</strong>: Graphics API issues</li>
-</ul>
-<h2 id="testing-examples"><a class="header" href="#testing-examples">Testing Examples</a></h2>
-<p>To verify your installation is working:</p>
-<h3 id="minimal-test-sequence"><a class="header" href="#minimal-test-sequence">Minimal Test Sequence</a></h3>
-<pre><code class="language-bash"># 1. Build core components
-cargo build -p astraweave-core -p astraweave-ai -p hello_companion
-
-# 2. Run the basic example
+                        <h1 id="working-examples"><a class="header" href="#working-examples">Working examples</a></h1>
+<p>Start here, from a clone of the repository, with Rust 1.89.0 (the pin in <code>rust-toolchain.toml</code>).</p>
+<pre><code class="language-bash">git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 cargo run -p hello_companion --release
-
-# 3. Run unit tests
-cargo test -p astraweave-input
 </code></pre>
-<h3 id="debugging-build-issues"><a class="header" href="#debugging-build-issues">Debugging Build Issues</a></h3>
-<p>If examples fail to compile:</p>
-<ol>
-<li><strong>Check Rust version</strong>: <code>rustc --version</code> should match <code>rust-toolchain.toml</code></li>
-<li><strong>Update dependencies</strong>: <code>cargo update</code></li>
-<li><strong>Clean build</strong>: <code>cargo clean &amp;&amp; cargo build</code></li>
-<li><strong>Check system dependencies</strong>: Ensure graphics and audio libraries are installed</li>
-</ol>
-<h3 id="reporting-issues"><a class="header" href="#reporting-issues">Reporting Issues</a></h3>
-<p>If you find compilation issues with examples marked as working:</p>
-<ol>
-<li>Check your platform and Rust version</li>
-<li>Ensure all system dependencies are installed</li>
-<li>Try a clean build</li>
-<li>Report the issue with full error output</li>
-</ol>
-<h2 id="building-your-own-examples"><a class="header" href="#building-your-own-examples">Building Your Own Examples</a></h2>
-<p>When creating new examples:</p>
-<h3 id="minimal-example-structure"><a class="header" href="#minimal-example-structure">Minimal Example Structure</a></h3>
-<pre class="playground"><code class="language-rust">// examples/my_example/src/main.rs
-use astraweave_core::*;
-use astraweave_ai::*;
-
-fn main() -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
-    // Initialize the engine
-    let mut world = World::new();
-    
-    // Add your systems
-    world.add_system(my_custom_system);
-    
-    // Run the simulation
-    world.run()?;
-    
-    Ok(())
-}</code></pre>
-<h3 id="cargotoml-template"><a class="header" href="#cargotoml-template">Cargo.toml Template</a></h3>
-<pre><code class="language-toml">[package]
-name = "my_example"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-astraweave-core = { path = "../../astraweave-core" }
-astraweave-ai = { path = "../../astraweave-ai" }
-anyhow.workspace = true
+<p>That is the headless companion. The next three commands are the rest of the <a href="../game-dev/first-game.html">first game</a> path: quest text, a physics swing, and the window.</p>
+<pre><code class="language-bash">cargo run -p quest_dialogue_demo --release
+cargo run -p combat_physics_demo --release
+cargo xtask fetch-assets
+cargo run -p aravath_runtime --bin aravath_greybox --release
 </code></pre>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
+<p><code>quest_dialogue_demo</code> reads <code>assets/dialogue_intro.toml</code> and <code>assets/quests_main.toml</code> from the current directory, so run it at the repo root.</p>
+<p>There is no <code>unified_showcase</code> package. The rendering walkthrough is <a href="./unified-showcase.html">Rendering showcase</a> (<code>shadow_csm_demo</code> and <code>aravath_greybox</code>).</p>
+<h2 id="walkthroughs"><a class="header" href="#walkthroughs">Walkthroughs</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Guide</th><th>Package</th><th>Command</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="./hello-companion.html">Hello Companion</a></td><td><code>hello_companion</code></td><td><code>cargo run -p hello_companion --release</code></td></tr>
+<tr><td><a href="../getting-started/first-companion.html">Your first companion</a></td><td>same binary, edited in place</td><td>same command after you edit <code>setup_world</code></td></tr>
+<tr><td><a href="./adaptive-boss.html">Adaptive boss</a></td><td><code>adaptive_boss</code></td><td><code>cargo run -p adaptive_boss --release</code></td></tr>
+<tr><td><a href="./physics-demo.html">Physics demo</a></td><td><code>physics_demo3d</code></td><td><code>cargo run -p physics_demo3d --release</code></td></tr>
+<tr><td><a href="./navmesh-demo.html">Navmesh demo</a></td><td><code>navmesh_demo</code></td><td><code>cargo run -p navmesh_demo --release</code></td></tr>
+<tr><td><a href="./audio-spatial.html">Audio</a></td><td><code>audio_spatial_demo</code></td><td><code>cargo run -p audio_spatial_demo --release</code></td></tr>
+<tr><td><a href="./fluids-demo.html">Fluids demo</a></td><td><code>fluids_demo</code></td><td><code>cargo run -p fluids_demo --release</code></td></tr>
+<tr><td><a href="./unified-showcase.html">Rendering showcase</a></td><td><code>shadow_csm_demo</code></td><td><code>cargo run -p shadow_csm_demo --release</code></td></tr>
+<tr><td><a href="../game-dev/first-game.html">First game</a></td><td>the four commands above</td><td>see that page</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>fluids_demo</code> uses <code>astraweave_fluids::FluidSystem</code>. The crate has no <code>PCISPHSystem</code>. <code>navmesh_demo</code> calls <code>NavMesh::find_path</code>. The replayed path query is <code>NavTiles::query_path</code>. <code>find_path</code> is not the hashed route.</p>
+<p><code>adaptive_boss --features veilweaver_slice</code> switches <code>BossDirector</code> to <code>OathboundWardenDirector</code> (<code>examples/adaptive_boss/src/main.rs</code>). The feature name is an identifier. The player-facing game is Aravath.</p>
+<h2 id="ai-flags-on-hello_companion"><a class="header" href="#ai-flags-on-hello_companion">AI flags on hello_companion</a></h2>
+<p>The default run is <code>RuleOrchestrator</code>. Other flags are on the <a href="./hello-companion.html">Hello Companion</a> page. <code>--arbiter</code> calls <code>GoapOrchestrator</code>, not <code>AIArbiter</code>. See <a href="../core-systems/ai/arbiter.html">AI Arbiter</a>.</p>
+<h2 id="more-packages"><a class="header" href="#more-packages">More packages</a></h2>
+<p>These names are also under <code>examples/</code> in the workspace <code>members</code> list. <code>cargo run -p &lt;name&gt; --release</code> is the command when the crate has a binary. This index does not claim a fresh run for every one of them:</p>
+<p><code>companion_profile</code>, <code>llm_toolcall</code>, <code>phase_director</code>, <code>persona_loader</code>, <code>ollama_probe</code>, <code>phi3_demo</code>, <code>ecs_ai_demo</code>, <code>ecs_ai_showcase</code>, <code>core_loop_bt_demo</code>, <code>core_loop_goap_demo</code>, <code>ipc_loopback</code>, <code>coop_server</code>, <code>coop_client</code>, <code>terrain_demo</code>, <code>visual_3d</code>, <code>ui_controls_demo</code>, <code>debug_overlay</code>, <code>rhai_authoring</code>, <code>npc_town_demo</code>, <code>weaving_playground</code>, <code>cutscene_render_demo</code>.</p>
+<p><code>core_loop_goap_demo</code> is not the deterministic tick. <code>sys_ai_planning</code> boxes <code>RuleOrchestrator</code> (<code>astraweave-ai/src/ecs_ai_plugin.rs</code>). The window from the commands above is <code>aravath_greybox</code>. Its tick calls <code>BridgeAgent::step</code> (<code>aravath_runtime/src/sim.rs</code>). <code>BridgeAgent::refresh</code> calls <code>NavTiles::query_path</code> (<code>aravath_runtime/src/bridge_agent.rs</code>).</p>
+<p>Snapshot net is JSON over WebSocket (<code>tokio-tungstenite</code>). Read the networking row on the <a href="https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md">engine status</a> page before treating <code>coop_server</code> as the security model.</p>
+<h2 id="add-an-example"><a class="header" href="#add-an-example">Add an example</a></h2>
+<p>Copy <code>examples/hello_companion</code> and add the new directory to the workspace <code>members</code> list in the root <code>Cargo.toml</code>. <code>astraweave_core::World</code> has <code>spawn(name, pos, team, hp, ammo)</code>. <code>astraweave_ecs::App</code> has <code>add_system</code> and <code>run_fixed</code>. It does not have <code>world.add_system</code> followed by <code>world.run()</code>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><strong>Start Simple</strong>: Begin with <a href="./hello-companion.html">Hello Companion</a></li>
-<li><strong>Learn Architecture</strong>: Read <a href="../architecture/ai-native.html">AI-Native Design</a></li>
-<li><strong>Build Something</strong>: Follow <a href="../game-dev/first-game.html">Building Your First Game</a></li>
-<li><strong>Contribute</strong>: Help fix broken examples in <a href="../dev/contributing.html">Contributing Guide</a></li>
+<li><a href="./troubleshooting.html">Troubleshooting</a></li>
+<li><a href="../dev/building.html">Building</a></li>
+<li><a href="../performance/benchmarks.html">Benchmarks</a></li>
 </ul>
-<hr>
-<p><em>The working examples are your best introduction to AstraWeave’s capabilities. Start with hello_companion and work your way up to more complex scenarios.</em></p>
 
                     </main>
 
