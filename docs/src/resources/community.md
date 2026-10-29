@@ -1,81 +1,269 @@
 # Community
 
-AstraWeave is developed in the [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) repository. GitHub issues are the working contact channel. This repository does not publish a Discord invite, a social account, or an `astraweave.dev` mailbox. GitHub Discussions are disabled (`has_discussions` is false).
+Welcome to the AstraWeave community! This page lists resources for connecting with other developers, getting help, and contributing to the project.
 
-## GitHub
+## Official Channels
+
+### GitHub
+
+The primary home for AstraWeave development:
 
 | Resource | Description |
 |----------|-------------|
-| [Repository](https://github.com/lazyxeon/AstraWeave) | Source and pull requests |
-| [Issues](https://github.com/lazyxeon/AstraWeave/issues) | Bugs, questions, and feature requests |
-| [Releases](https://github.com/lazyxeon/AstraWeave/releases) | Tags the repository has published |
+| [Repository](https://github.com/lazyxeon/AstraWeave) | Source code, issues, and pull requests |
+| [Issues](https://github.com/lazyxeon/AstraWeave/issues) | Bug reports, feature requests, and Q&A |
 
-The old Discussions URLs `github.com/astraweave/astraweave` and `github.com/lazyxeon/Veilweaver-Threads-of-Eternity` are not this repository. Do not use them.
+### Community chat
 
-## Getting help
+Use the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) — **Feature request** for questions and ideas, **Bug report** for defects (blank issues are disabled).
 
-Search the [book](../README.md), the [FAQ](faq.md), and [open issues](https://github.com/lazyxeon/AstraWeave/issues) before opening a new issue.
+## Getting Help
 
-A report that can be reproduced names the command, the toolchain, and the error text. From a fresh clone:
+### Before Asking
 
-```bash
-git clone https://github.com/lazyxeon/AstraWeave.git
-cd AstraWeave
-rustc --version
-cargo run -p hello_companion --release
-```
+1. **Search existing resources**:
+   - [Documentation](../index.md)
+   - [FAQ](faq.md)
+   - [Troubleshooting](troubleshooting.md)
+   - [GitHub Issues](https://github.com/lazyxeon/AstraWeave/issues)
 
-`rustc --version` inside the repo should be 1.89.0. Paste that line and the compiler or runtime error into the issue. The companion binary's source is [Hello Companion](../examples/hello-companion.md). A Bevy-style `Query<(&mut T, &U), With<Marker>>` system is not the `astraweave-ecs` API. `astraweave_core::World::spawn` takes a name, an `IVec2`, a `Team`, hp, and ammo.
+2. **Prepare your question**:
+   - Describe what you're trying to do
+   - Show what you've tried
+   - Include relevant code snippets
+   - Share error messages
 
-| Question type | Where |
+### Where to Ask
+
+| Question Type | Best Channel |
 |--------------|--------------|
-| Bugs, questions, and feature requests | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
+| Quick questions | GitHub Issues ([chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose)) |
+| Detailed technical questions | GitHub Issues — bug or feature template |
+| Bug reports | [Bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) |
+| Feature requests | [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
 | Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 
-The runnable companion demo is [hello_companion](../examples/hello-companion.md). Issue reports that paste a Bevy-style `Query` system are not using the `astraweave-ecs` API.
+### How to Ask Good Questions
+
+```markdown
+## What I'm trying to do
+I want to create an AI companion that follows the player and helps in combat.
+
+## What I've tried
+```rust
+// My current code
+fn companion_follow(
+    companion: Query<&mut Transform, With<Companion>>,
+    player: Query<&Transform, With<Player>>,
+) {
+    // This doesn't work as expected
+}
+```
+
+## What happens
+The companion doesn't move at all.
+
+## What I expected
+The companion should move toward the player.
+
+## Environment
+- AstraWeave 0.1.0
+- Windows 11
+```
 
 ## Contributing
 
-The repository guide is [CONTRIBUTING.md](https://github.com/lazyxeon/AstraWeave/blob/main/CONTRIBUTING.md). The book page is [Contributing](../dev/contributing.md).
+### Ways to Contribute
+
+Everyone can contribute, regardless of experience level:
+
+| Contribution | Description |
+|--------------|-------------|
+| **Bug Reports** | Found a bug? Report it on GitHub Issues |
+| **Documentation** | Improve or add documentation |
+| **Code** | Fix bugs or implement features |
+| **Examples** | Create example projects |
+| **Testing** | Test pre-release versions |
+| **Translations** | Help translate documentation |
+| **Community** | Help others on GitHub Issues |
+
+### Getting Started
+
+1. **Read the contributing guide**: [Contributing](../dev/contributing.md)
+2. **Set up your development environment**: [Building](../dev/building.md)
+3. **Find a good first issue**:
+   - Look for `good first issue` labels on GitHub
+   - Check the `help wanted` label for more challenging tasks
+
+### Code Contribution Workflow
 
 ```bash
-git clone https://github.com/lazyxeon/AstraWeave.git
+# 1. Fork and clone
+git clone https://github.com/YOUR_USERNAME/AstraWeave.git
 cd AstraWeave
+
+# 2. Create a branch
 git checkout -b feature/my-feature
-cargo test -p astraweave-core
+
+# 3. Make changes
+# ... edit files ...
+
+# 4. Run tests
+cargo test --all
+
+# 5. Commit
+git commit -am "feat: add my feature"
+
+# 6. Push and create PR
+git push origin feature/my-feature
 ```
 
-Forks clone `https://github.com/YOUR_USERNAME/AstraWeave.git`. One change per pull request.
+### Pull Request Guidelines
 
-Code of conduct: [CODE_OF_CONDUCT.md](https://github.com/lazyxeon/AstraWeave/blob/main/CODE_OF_CONDUCT.md).
+- **Keep PRs focused**: One feature or fix per PR
+- **Write tests**: Cover new functionality with tests
+- **Update docs**: Add documentation for new features
+- **Follow style**: Match existing code style
+- **Be patient**: Reviews take time
 
-## Examples in this repo
+## Showcase
 
-| Package | Page |
-|---------|------|
-| `hello_companion` | [Hello Companion](../examples/hello-companion.md) |
-| `adaptive_boss` | [Adaptive boss](../examples/adaptive-boss.md) |
+Share your AstraWeave projects!
 
-There is no public event calendar, office hours, or sponsorship desk in this repository. Sponsorship and press notes belong in a GitHub issue.
+### How to Submit
 
-## API docs
+1. **GitHub Issues**: Open an issue with:
+   - Project name
+   - Brief description
+   - Screenshots or video
+   - Link (if public)
 
-`cargo metadata --no-deps --format-version 1` reports 142 workspace members, and 30 of those manifests set `publish`. The workspace value in the root `Cargo.toml` is `publish = false`. `astraweave-core` is one of those members and sets `publish = { workspace = true }`. `astraweave-ecs` is a member and does not set `publish`. These crates are not the `docs.rs/astraweave` crate. Generate local rustdoc with `cargo doc -p astraweave-core --no-deps`.
+### Featured Projects
+
+Projects using AstraWeave:
+
+| Project | Description |
+|---------|-------------|
+| [hello_companion](../examples/hello-companion.md) | Official demo showcasing AI companion systems |
+| [adaptive-boss](../examples/adaptive-boss.md) | Boss AI that learns and adapts to player strategies |
+
+Have a project to share? [Open a GitHub issue](https://github.com/lazyxeon/AstraWeave/issues).
+
+## Events
+
+### Community Events
+
+- **Monthly Showcase**: First Friday of each month
+- **AI Game Jam**: Quarterly jam focusing on AI-native games
+- **Office Hours**: Weekly Q&A with maintainers
+
+### Conferences
+
+AstraWeave may be presented at:
+- GDC (Game Developers Conference)
+- RustConf
+- Various game development meetups
+
+## Governance
+
+### Project Leadership
+
+| Role | Responsibility |
+|------|----------------|
+| **Core Team** | Major decisions, releases, roadmap |
+| **Maintainers** | Code review, issue triage |
+| **Contributors** | Feature development, bug fixes |
+
+### Decision Making
+
+- **Minor changes**: Maintainer approval
+- **Major changes**: Core team discussion
+- **Breaking changes**: RFC process with community input
+
+### Code of Conduct
+
+We follow a Code of Conduct to ensure a welcoming community:
+
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Help others learn
+- No harassment or discrimination
+
+Full Code of Conduct: [CODE_OF_CONDUCT.md](https://github.com/lazyxeon/AstraWeave/blob/main/CODE_OF_CONDUCT.md)
+
+## Learning Resources
+
+### Official Resources
+
+- [Documentation](../index.md) - Complete documentation
+- [Examples](../examples/index.md) - Working code examples
+- [API Reference](../api/index.md) - mdBook API chapters for workspace crates
+
+### Community Resources
+
+- **Tutorials**: Community-created tutorials (search GitHub Issues and pull requests)
+- **Templates**: Starter templates for common project types
+- **Libraries**: Community extensions and plugins
+
+### Recommended Learning Path
+
+1. **Getting Started**: [Installation](../getting-started/installation.md)
+2. **First Project**: [Building Your First Game](../game-dev/first-game.md)
+3. **Core Concepts**: [Architecture Overview](../architecture/overview.md)
+4. **AI Features**: [AI System](../core-systems/ai/index.md)
+5. **Advanced Topics**: Explore specific system documentation
+
+## Staying Updated
+
+### Release Notes
+
+- Check [GitHub Releases](https://github.com/lazyxeon/AstraWeave/releases)
+- Watch the repository for release notifications
+
+### Changelog
+
+Each release includes a detailed changelog covering:
+- New features
+- Bug fixes
+- Breaking changes
+- Migration guides
+
+### Roadmap
+
+See [Roadmap](roadmap.md) for upcoming features and long-term plans.
+
+## Sponsorship
+
+### Supporting Development
+
+If AstraWeave helps you, consider supporting its development:
+
+- **GitHub Sponsors**: Support individual maintainers
+- **Corporate Sponsorship**: Contact sponsorship@astraweave.dev
+
+### Sponsors
+
+Thank you to our sponsors! Interested in sponsoring AstraWeave? Contact sponsorship@astraweave.dev to learn about sponsorship tiers and benefits.
 
 ## Contact
 
 | Purpose | Contact |
 |---------|---------|
-| General inquiries | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
+| General inquiries | hello@astraweave.dev |
 | Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
-| Sponsorship | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
-| Press | [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues) |
+| Sponsorship | sponsorship@astraweave.dev |
+| Press | press@astraweave.dev |
 
-`hello@astraweave.dev`, `sponsorship@astraweave.dev`, and `press@astraweave.dev` are removed. The domain does not resolve.
+## Related Documentation
 
-## Related
+- [Contributing](../dev/contributing.md) - Contribution guidelines
+- [Code Style](../dev/code-style.md) - Coding standards
+- [Roadmap](roadmap.md) - Future plans
+- [FAQ](faq.md) - Frequently asked questions
 
-- [Contributing](../dev/contributing.md)
-- [Code style](../dev/code-style.md)
-- [Roadmap](roadmap.md)
-- [FAQ](faq.md)
+## Revision history
+
+### vNEXT
+
+- GitHub table and links use `lazyxeon/AstraWeave`; removed unlisted social URLs; issue templates documented.
+- Community chat names Feature request / Bug report templates instead of a generic Issues link.

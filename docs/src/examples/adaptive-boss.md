@@ -1,6 +1,6 @@
 # Adaptive Boss Walkthrough
 
-The `adaptive_boss` example demonstrates AstraWeave's **Director System** - an AI-driven game master that orchestrates boss encounters with dynamic phase transitions, telegraphed attacks, and budget-constrained tactical decisions.
+The `adaptive_boss` example demonstrates AstraWeave's **Director System** - an AI-driven game master that orchestrates boss encounters with budget-constrained tactical decisions.
 
 ## Running the Example
 
@@ -8,32 +8,38 @@ The `adaptive_boss` example demonstrates AstraWeave's **Director System** - an A
 cargo run -p adaptive_boss --release
 ```
 
-For the full Veilweaver boss experience (requires `veilweaver_slice` feature):
-
-```bash
-cargo run -p adaptive_boss --release --features veilweaver_slice
-```
+The default build uses `BossDirector` from `astraweave-director`. The source also contains a `#[cfg(feature = "veilweaver_slice")]` branch for `OathboundWardenDirector`, but the example's empty `veilweaver_slice = []` feature does **not** enable `astraweave-director/veilweaver_slice`, so `cargo run -p adaptive_boss --features veilweaver_slice` does not compile today. The warden implementation lives in the director crate when that dependency feature is on (see `astraweave-director/src/veilweaver_warden.rs`).
 
 ## What It Demonstrates
 
-- **BossDirector**: AI that plans boss encounter actions
-- **Phase-based combat**: Boss behavior changes based on situation
+- **BossDirector**: Heuristic boss planner (default run)
 - **Director budget**: Limited resources for spawns, traps, and terrain edits
-- **Telegraph system**: Visual/audio warnings before powerful attacks
-- **OathboundWardenDirector**: Full Veilweaver boss with Fate-weaving mechanics
+- **DirectorPlan**: Tagged `ops` list applied through `apply_director_plan`
+- **OathboundWardenDirector** (director crate, `veilweaver_slice` feature): Three-phase warden with telegraphs — not wired from this example's Cargo features yet
 
 ## Expected Output
 
+Default run (BossDirector) prints JSON for `DirectorPlan` and a short apply log:
+
 ```
-Warden phase: Stalking
-Telegraphs: ["Thread gathering at position (5, 3)"]
 Director plan: {
-  "spawn": [{"enemy": "shade", "pos": [4, 1]}],
-  "traps": [{"type": "thread_snare", "pos": [6, 2]}],
-  "terrain": []
+  "ops": [
+    {
+      "op": "Fortify",
+      "rect": {
+        "x0": 7,
+        "y0": 1,
+        "x1": 9,
+        "y1": 3
+      }
+    }
+  ]
 }
-Remaining budget: traps=1, terrain_edits=2, spawns=1
+  [op0] Fortify rect=(7,1..9,3))
+Remaining budget: traps=2, terrain_edits=1, spawns=2
 ```
+
+When `astraweave-director` is built with `veilweaver_slice`, `OathboundWardenDirector` starts in `WardenPhase::Assessment` and may print telegraphs such as `Chains tense—the Warden studies your form.` Phase transitions use `Assessment`, `FulcrumShift`, and `DirectiveOverride` (not the older Stalking/Weaving names).
 
 ## Code Walkthrough
 
@@ -101,7 +107,7 @@ The budget prevents the Director from overwhelming the player. Each action consu
 
 The basic `BossDirector` analyzes the world state and generates a plan within budget.
 
-### 5. Veilweaver Director (Advanced)
+### 5. Oathbound Warden (source branch)
 
 ```rust
 #[cfg(feature = "veilweaver_slice")]
@@ -118,11 +124,11 @@ The basic `BossDirector` analyzes the world state and generates a plan within bu
 }
 ```
 
-The Oathbound Warden has distinct phases:
-- **Stalking**: Observing, placing traps, gathering threads
-- **Weaving**: Manipulating fate threads, buffing/debuffing
-- **Severing**: Aggressive attacks, breaking player connections
-- **Unraveling**: Desperate phase when low HP
+`OathboundWardenDirector` uses three phases defined in `veilweaver_warden.rs`:
+
+- **Assessment**: Observes the fight, may fortify a choke, telegraph `Chains tense—the Warden studies your form.`
+- **FulcrumShift**: Entered at or below two-thirds of starting boss HP; storm detection (`objective` strings or `storm_route` POIs) picks **Stabilize** vs **Redirect** for this phase's ops
+- **DirectiveOverride**: Entered at or below one-third of starting boss HP; picks an adaptive ability (`AntiRangedField` or `CounterShockAura`) from player orders
 
 ## Director System Architecture
 
@@ -137,28 +143,27 @@ The Oathbound Warden has distinct phases:
 │  │ Threat   │   │ Response │   │ Budget           │   │
 │  └──────────┘   └──────────┘   └──────────────────┘   │
 │                                                        │
-│  Output: DirectorPlan { spawns, traps, terrain }       │
+│  Output: DirectorPlan { ops: [ { op: ... }, ... ] }    │
 └────────────────────────────────────────────────────────┘
 ```
 
 ## Telegraph System
 
-Telegraphs provide fair warning to players before powerful attacks:
+When the warden branch is enabled, telegraphs are plain strings on `WardenDirective`:
 
 ```rust
 if !directive.telegraphs.is_empty() {
     for telegraph in &directive.telegraphs {
-        // Display visual/audio warning
-        // e.g., "Thread gathering at position (5, 3)"
+        println!("{}", telegraph);
     }
 }
 ```
 
-Telegraph types:
-- **Thread gathering**: Fate-weaving attack incoming
-- **Ground tremor**: Area attack warning
-- **Shadow forming**: Minion spawn location
-- **Pattern shift**: Phase transition imminent
+Examples from `veilweaver_warden.rs`:
+
+- `Chains tense—the Warden studies your form.` (Assessment)
+- `Storm calms—armor plates seal the Warden.` (FulcrumShift, Stabilize)
+- `Motes surge across the arena—vision falters.` (FulcrumShift, Redirect)
 
 ## Key Concepts
 
@@ -169,12 +174,9 @@ Unlike traditional boss AI that can spam abilities, the Director operates under 
 - **Fair encounters**: Players can anticipate resource depletion
 - **Dynamic difficulty**: Budget recharges over time
 
-### Phase-Based Behavior
+### Phase-Based Behavior (warden)
 
-The boss doesn't just cycle through attacks. Phases emerge from:
-- **HP thresholds**: Different behavior at 75%, 50%, 25% HP
-- **Player behavior**: Adapts to aggressive vs defensive playstyles
-- **Companion effectiveness**: Responds to ally threat level
+Phase transitions depend only on boss HP (`update_phase` in `veilweaver_warden.rs`): the director moves to **FulcrumShift** when current HP is at or below two-thirds of the HP captured on the first step, and to **DirectiveOverride** at or below one-third. Storm detection runs each step but only chooses **Stabilize** or **Redirect** for behavior inside **FulcrumShift**; it does not change phase.
 
 ## Related Examples
 
@@ -184,17 +186,23 @@ The boss doesn't just cycle through attacks. Phases emerge from:
 
 ## Troubleshooting
 
-### Missing veilweaver_slice feature
-The advanced Warden Director requires the Veilweaver game data:
-```bash
-cargo run -p adaptive_boss --release --features veilweaver_slice
-```
-
 ### Empty plan output
+
 If the Director returns an empty plan, the budget may already be exhausted or the boss doesn't see any targets.
+
+### Warden branch does not compile
+
+Enable `astraweave-director/veilweaver_slice` on the dependency (see `examples/veilweaver_demo/Cargo.toml` for a forwarding pattern). The example's local `veilweaver_slice` flag alone is not enough.
 
 ## Source Location
 
 - **Example**: `examples/adaptive_boss/src/main.rs`
 - **Director**: `astraweave-director/src/lib.rs`
-- **Warden**: `astraweave-director/src/oathbound_warden.rs` (feature-gated)
+- **Warden**: `astraweave-director/src/veilweaver_warden.rs` (`veilweaver_slice` feature on the director crate)
+
+## Revision history
+
+### vNEXT
+
+- Align run instructions, expected output, phases, and `DirectorPlan` JSON with `examples/adaptive_boss` and `astraweave-director` sources; document that the warden path is not enabled from this example's features today.
+- Warden phase prose: HP thresholds (≤⅔, ≤⅓) drive phases; storm choice affects FulcrumShift only.

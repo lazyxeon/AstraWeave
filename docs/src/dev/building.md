@@ -462,8 +462,14 @@ After successfully building AstraWeave:
 1. **Run the test suite**: See [Testing Guide](testing.md)
 2. **Try the examples**: `cargo run -p hello_companion --release`
 3. **Read the tutorials**: [Quick start](../getting-started/quick-start.md)
-4. **Questions**: [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues). See [Community](../resources/community.md).
+4. **Questions**: [Issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) — **Bug report** or **Feature request**. See [Community](../resources/community.md).
 
 ```admonish success
 Congratulations! You've successfully built AstraWeave from source. You're ready to start developing AI-native games.
 ```
+
+## Revision history
+
+### vNEXT
+
+- Next-steps questions link to the GitHub issue chooser and templates.

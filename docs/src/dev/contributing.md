@@ -390,7 +390,9 @@ Respond to all review comments, even if just to acknowledge them.
 
 ### Getting Help
 
-- **Issues**: [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues). Discussions are disabled on this repository.
+- **Bug reports**: [Bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md)
+- **Feature ideas and RFCs**: [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md)
+- **Security**: [Private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) (do not use a public issue)
 
 ### Stay Updated
 
@@ -398,3 +400,9 @@ Respond to all review comments, even if just to acknowledge them.
 - Watch [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) for release notifications
 
 Thank you for contributing to AstraWeave! Your efforts help make AI-native gaming better for everyone.
+
+## Revision history
+
+### vNEXT
+
+- Canonical clone directory and issue-template links for bugs, features, and security reports.

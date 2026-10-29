@@ -188,16 +188,22 @@ Yes! Both Apache 2.0 and MIT licenses permit commercial use. Attribution is appr
 
 ### Where can I get help?
 
-- **GitHub Issues**: Bug reports and feature requests
-- **GitHub Discussions**: Questions and community chat
+- **GitHub Issues**: Use the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) — **Bug report** for defects, **Feature request** for ideas (blank issues are disabled)
 - **Documentation**: This site
 - **Examples**: `examples/` directory in the repository
+- **Security**: [Private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new), not a public issue
 
 ### How do I report a bug?
 
-Open a GitHub issue with:
+Open a [bug report](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) with:
 1. AstraWeave version
 2. Operating system
 3. Steps to reproduce
 4. Expected vs actual behavior
 5. Error messages or logs
+
+## Revision history
+
+### vNEXT
+
+- Getting-help links use issue chooser and templates; security points to private advisories.

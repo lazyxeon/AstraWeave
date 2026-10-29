@@ -59,13 +59,19 @@ rustup show
 
 ## Issue Reporting
 
-- Use GitHub Issues for bug reports and feature requests.
+- Use the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) for **Bug report** or **Feature request** templates (blank issues are disabled).
 - Include reproduction steps, expected vs. actual results, and logs if available.
 - For security-related reports, follow `SECURITY.md` and report through GitHub private vulnerability reporting: https://github.com/lazyxeon/AstraWeave/security/advisories/new
 
 ## Communication
 
-- Use the discussion board or issue comments for design proposals and clarifications.
+- Use a **Feature request** issue or pull-request comments for design proposals and clarifications.
 - Keep conversations respectful and aligned with the `CODE_OF_CONDUCT.md`.
 
 We appreciate your contributions—together we are building the future of AI-native game development.
+
+## Revision history
+
+### vNEXT
+
+- Issue chooser and template links; security via private advisories.
