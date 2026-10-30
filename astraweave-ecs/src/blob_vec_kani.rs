@@ -255,3 +255,74 @@ fn blob_vec_swap_remove_raw_decrements_len() {
 
     kani::assert(blob.len() == initial_len - 1, "Length must decrease by 1");
 }
+
+/// Element dropped by [`BlobVec::clear`] / [`BlobVec::drop_last`].
+///
+/// `drops` is a harness-owned counter. `Drop` records the slot and rejects a
+/// second drop.
+struct DropProbe {
+    id: u8,
+    drops: *mut u8,
+}
+
+impl Drop for DropProbe {
+    fn drop(&mut self) {
+        unsafe {
+            let slot = &mut *self.drops.add(self.id as usize);
+            *slot = slot.saturating_add(1);
+            kani::assert(*slot == 1, "BlobVec drops each element exactly once");
+        }
+    }
+}
+
+/// Each live element is dropped once, including when a destructor panics.
+///
+/// `clear` is `drop_last(len)`. `drop_last` publishes the shorter `len` before
+/// `drop_fn`. A panic leaves `len` counting only elements that have not been
+/// dropped, and [`Drop`] for `BlobVec` calls `clear` on that tail. Kani does
+/// not implement `catch_unwind` (model-checking/kani#267), so the harness
+/// applies that split itself: `drop_last` runs through the panicking slot,
+/// then `clear` finishes the rest. `clear_panic_does_not_double_free` runs the
+/// real panic under Miri.
+#[kani::proof]
+#[kani::unwind(8)]
+fn blob_vec_drops_each_element_once_including_panicking_drop() {
+    const MAX: usize = 2;
+    let count: usize = kani::any();
+    kani::assume(count > 0 && count <= MAX);
+    // How many elements `clear` drops from the end before the panicking one,
+    // not counting the panicking slot itself.
+    let dropped_before_panic: usize = kani::any();
+    kani::assume(dropped_before_panic < count);
+
+    let mut drops = [0u8; MAX];
+    let ptr = drops.as_mut_ptr();
+    let mut blob = BlobVec::new::<DropProbe>();
+    let mut i = 0;
+    while i < count {
+        unsafe {
+            blob.push(DropProbe {
+                id: i as u8,
+                drops: ptr,
+            });
+        }
+        i += 1;
+    }
+
+    // The panicking destructor runs (the slot is committed) and then aborts
+    // the rest of that `clear`. `+ 1` is that slot.
+    blob.drop_last(dropped_before_panic + 1);
+    blob.clear();
+
+    i = 0;
+    while i < count {
+        unsafe {
+            kani::assert(
+                *ptr.add(i) == 1,
+                "each element is dropped exactly once, including after a panicking drop",
+            );
+        }
+        i += 1;
+    }
+    kani::assert(blob.len() == 0, "the tail clear empties the column");
+}
