@@ -3,7 +3,7 @@ schema_version: 1
 doc_kind: roadmap
 title: "AstraWeave team roadmap"
 description: "Vote 6 source of truth for Now / Next / Later lanes, owners, and review gates"
-doc_version: "1.1"
+doc_version: "1.2"
 content_owner: Astraea
 file_owner: Astranox
 last_verified_commit: 3b7fd1ee630595fff796da56dfb7ba6c38d70761
@@ -30,14 +30,14 @@ Lanes: **Astrix** fixes, merges, Aravath · **Astrid** RCA, supply chain, LLM pl
 ## Next: harden and finish what's half-wired
 | # | Item | Owner | Exit criterion | Issues |
 |---|---|---|---|---|
-| X1 | Run all 28 fuzz targets nightly with persistent corpora; fix the broken LLM targets | Astrix (fix), Annubis (harness) | 28/28 compile and run nightly; corpus survives one failing target | [#508](https://github.com/lazyxeon/AstraWeave/issues/508), [#545](https://github.com/lazyxeon/AstraWeave/issues/545), [#570](https://github.com/lazyxeon/AstraWeave/issues/570) |
+| X1 | Run all 28 fuzz targets nightly with persistent corpora; fix the broken LLM targets | Astrix (fix), Annubis (find/review) | 28/28 compile and run nightly; corpus survives one failing target | [#508](https://github.com/lazyxeon/AstraWeave/issues/508), [#545](https://github.com/lazyxeon/AstraWeave/issues/545), [#570](https://github.com/lazyxeon/AstraWeave/issues/570) |
 | X2 | Schema-constrained LLM plans; schema and parser agree | Astrid (design), Astrix (impl) | Ollama `format` + JSON Schema on; schema-legal tools parse; malformed-plan rate tracked | [#506](https://github.com/lazyxeon/AstraWeave/issues/506), [#569](https://github.com/lazyxeon/AstraWeave/issues/569) |
-| X3 | Net server correctness: rate limiter, room cap, tick owner, starvation tests | Astrix (fix), Annubis (tests) | [#524](https://github.com/lazyxeon/AstraWeave/pull/524) and [#526](https://github.com/lazyxeon/AstraWeave/pull/526) merged (done 2026-10-29); starvation guard test fails on the unfixed loop | [#547](https://github.com/lazyxeon/AstraWeave/issues/547), [#541](https://github.com/lazyxeon/AstraWeave/issues/541), [#542](https://github.com/lazyxeon/AstraWeave/issues/542), [#566](https://github.com/lazyxeon/AstraWeave/issues/566) |
+| X3 | Net server correctness: rate limiter, room cap, tick owner, starvation tests | Astrix (fix), Annubis (find/review) | [#524](https://github.com/lazyxeon/AstraWeave/pull/524) and [#526](https://github.com/lazyxeon/AstraWeave/pull/526) merged (done 2026-10-29); starvation guard test fails on the unfixed loop | [#547](https://github.com/lazyxeon/AstraWeave/issues/547), [#541](https://github.com/lazyxeon/AstraWeave/issues/541), [#542](https://github.com/lazyxeon/AstraWeave/issues/542), [#566](https://github.com/lazyxeon/AstraWeave/issues/566) |
 | X4 | Cap every untrusted asset and image read | Astrix | All import paths capped on decoded size; fuzz covers GLB and images | [#530](https://github.com/lazyxeon/AstraWeave/issues/530), [#465](https://github.com/lazyxeon/AstraWeave/issues/465), [#399](https://github.com/lazyxeon/AstraWeave/issues/399), [#408](https://github.com/lazyxeon/AstraWeave/issues/408), [#564](https://github.com/lazyxeon/AstraWeave/issues/564) |
 | X5 | Remaining P1 deferred CI failures (Windows, editor, SDK, benches) | Astrix | Each fixed or deferred with a dated plan; Windows Test full under 60 min | [#433](https://github.com/lazyxeon/AstraWeave/issues/433), [#391](https://github.com/lazyxeon/AstraWeave/issues/391), [#434](https://github.com/lazyxeon/AstraWeave/issues/434), [#265](https://github.com/lazyxeon/AstraWeave/issues/265), [#266](https://github.com/lazyxeon/AstraWeave/issues/266), [#240](https://github.com/lazyxeon/AstraWeave/issues/240), [#239](https://github.com/lazyxeon/AstraWeave/issues/239), [#222](https://github.com/lazyxeon/AstraWeave/issues/222), [#220](https://github.com/lazyxeon/AstraWeave/issues/220), [#221](https://github.com/lazyxeon/AstraWeave/issues/221), [#224](https://github.com/lazyxeon/AstraWeave/issues/224), [#554](https://github.com/lazyxeon/AstraWeave/issues/554) |
 | X6 | Supply chain: unmaintained crates, cargo-deny as errors | Astrid | `cargo deny` fails on advisories; each RUSTSEC item fixed or waived with a reason | [#303](https://github.com/lazyxeon/AstraWeave/issues/303), [#305](https://github.com/lazyxeon/AstraWeave/issues/305), [#309](https://github.com/lazyxeon/AstraWeave/issues/309), [#310](https://github.com/lazyxeon/AstraWeave/issues/310), [#321](https://github.com/lazyxeon/AstraWeave/issues/321), [#322](https://github.com/lazyxeon/AstraWeave/issues/322), [#323](https://github.com/lazyxeon/AstraWeave/issues/323) |
 | X7 | SDK bench leak and the perf dashboard off gh-pages | Astrix (bench), Astranox (dashboard) | Bench stays flat in memory; dashboard publishes from `benchmark-data` | [#573](https://github.com/lazyxeon/AstraWeave/issues/573), [#540](https://github.com/lazyxeon/AstraWeave/issues/540), [#184](https://github.com/lazyxeon/AstraWeave/issues/184) |
-| X8 | GPU runner for frame-budget and real-model LLM eval | **Andrew** (machine), Annubis (wire-up) | gpu-frame-budget and LLM eval run on real hardware each night | [#371](https://github.com/lazyxeon/AstraWeave/issues/371), [#241](https://github.com/lazyxeon/AstraWeave/issues/241) |
+| X8 | GPU runner for frame-budget and real-model LLM eval | Astrix (fix), Annubis (find/review) | gpu-frame-budget and LLM eval run on real hardware each night | [#371](https://github.com/lazyxeon/AstraWeave/issues/371), [#241](https://github.com/lazyxeon/AstraWeave/issues/241) |
 | X9 | First numbered release v0.1.0, with doc versions and changelog bumped once at merge time (Vote 5) | **Andrew** (go/no-go), Astranox (notes) | Tag cut from a green main; release notes published | [#536](https://github.com/lazyxeon/AstraWeave/issues/536) |
 | X10 | Docs truth: rustdoc and README claims match the code | Astranox | doc-truth-lint is clean; HNSW, broadphase and arbiter claims fixed | [#514](https://github.com/lazyxeon/AstraWeave/issues/514), [#515](https://github.com/lazyxeon/AstraWeave/issues/515), [#516](https://github.com/lazyxeon/AstraWeave/issues/516), [#534](https://github.com/lazyxeon/AstraWeave/issues/534), [#537](https://github.com/lazyxeon/AstraWeave/issues/537), [#483](https://github.com/lazyxeon/AstraWeave/issues/483), [#496](https://github.com/lazyxeon/AstraWeave/issues/496) |
 
@@ -49,7 +49,7 @@ Lanes: **Astrix** fixes, merges, Aravath · **Astrid** RCA, supply chain, LLM pl
 | L3 | Unify the deterministic AI tick: GOAP/Arbiter into HTN, then retire AIArbiter | Astrid | Benches use the deterministic path; AIArbiter deleted | [#383](https://github.com/lazyxeon/AstraWeave/issues/383), [#334](https://github.com/lazyxeon/AstraWeave/issues/334) |
 | L4 | Production networking: one wire stack, replay protection, signed messages | Astrix (impl), Astrid (design) | One proto stack; ENGINE_STATUS no longer lists these gaps | ENGINE_STATUS L168, [#552](https://github.com/lazyxeon/AstraWeave/issues/552) |
 | L5 | Aravath determinism and Windows lanes trustworthy | Astrix | aravath-determinism and aravath-windows are required and green | [#549](https://github.com/lazyxeon/AstraWeave/issues/549), [#313](https://github.com/lazyxeon/AstraWeave/issues/313) |
-| L6 | Restore editor UI tests and clear editor clippy | Annubis (tests), Astrix (lints) | Click tests back; aw_editor clippy clean | [#366](https://github.com/lazyxeon/AstraWeave/issues/366), [#248](https://github.com/lazyxeon/AstraWeave/issues/248) |
+| L6 | Restore editor UI tests and clear editor clippy | Astrix (fix), Annubis (find/review) | Click tests back; aw_editor clippy clean | [#366](https://github.com/lazyxeon/AstraWeave/issues/366), [#248](https://github.com/lazyxeon/AstraWeave/issues/248) |
 
 ## Done since the v1.0 draft
 
@@ -67,6 +67,10 @@ Every Now item merges only after: a fresh-agent review where reverting the fix m
 ---
 
 ## Revision history
+
+### v1.2 (2026-10-30) — Annubis lane roles ([#617](https://github.com/lazyxeon/AstraWeave/issues/617))
+
+Astraea ruled yes on [#617](https://github.com/lazyxeon/AstraWeave/issues/617). Owner cells on X1, X3, X8, and L6: `Astrix (fix), Annubis (find/review)`.
 
 ### v1.1 (2026-10-30) — stale-item rulings
 
