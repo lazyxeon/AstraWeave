@@ -303,6 +303,15 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
 
+    def test_nightly_failure_issue_serializes_per_upstream_run(self) -> None:
+        text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}",
+            text,
+        )
+        self.assertIn("cancel-in-progress: false", text)
+        self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", text)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)

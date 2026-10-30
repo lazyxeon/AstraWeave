@@ -22,9 +22,11 @@ on:
       - Allocation Measurement
     types: [completed]
 
+# One workflow_run webhook per upstream failure; key by that run id so the 13
+# watched workflows never cancel each other's pending reports (BS-011 / #576).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
