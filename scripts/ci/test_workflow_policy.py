@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
+sys.path.insert(0, str(ROOT / "scripts" / "ci"))
+import mutation_ai_outcomes  # noqa: E402
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
 CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
@@ -400,12 +403,36 @@ class WorkflowPolicyTest(unittest.TestCase):
         text = (WORKFLOWS / "mutation-testing.yml").read_text(encoding="utf-8")
         ai = text.split("  mutants-ai:\n", 1)[1].split("\n  mutants-behavior:\n", 1)[0]
         self.assertIn("ulimit -v 6291456", ai)
-        self.assertIn("--jobs 1", ai)
-        self.assertIn("--shard ${{ matrix.shard }}/8", ai)
+        self.assertIn("--in-place", ai)
+        self.assertNotIn("--jobs 1", ai)
+        self.assertIn("Verify astraweave-ai shard outcomes", ai)
+        self.assertIn("mutation_ai_outcomes.py", ai)
         report = ai.split("Generate mutation report", 1)[1].split("Upload mutation results", 1)[0]
         upload = ai.split("Upload mutation results", 1)[1]
         self.assertIn("if: always()", report)
         self.assertIn("if: always()", upload)
+
+    def test_mutation_ai_outcomes_excludes_cap_oom_from_caught(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_cap_oom"
+        counts = mutation_ai_outcomes.count_outcomes(root / "outcomes.json")
+        self.assertEqual(counts.cap_oom, 1)
+        self.assertEqual(counts.caught, 0)
+        self.assertEqual(counts.decided, 0)
+
+    def test_mutation_ai_outcomes_counts_real_caught(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_real_caught"
+        counts = mutation_ai_outcomes.count_outcomes(root / "outcomes.json")
+        self.assertEqual(counts.caught, 1)
+        self.assertEqual(counts.cap_oom, 0)
+        self.assertEqual(counts.score_percent, 100)
+
+    def test_mutation_ai_outcomes_verify_shard_requires_baseline_and_mutants(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_real_caught"
+        self.assertEqual(mutation_ai_outcomes.verify_shard_outcomes(root / "outcomes.json"), [])
+
+        missing = mutation_ai_outcomes.verify_shard_outcomes(root / "missing.json")
+        self.assertTrue(missing)
+        self.assertIn("missing outcomes", missing[0])
 
 
 if __name__ == "__main__":

@@ -178,7 +178,6 @@ jobs:
             --package astraweave-ai \
             --all-features \
             --in-place \
-            --jobs 1 \
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --exclude-re "fn metrics\b" \
             --sharding round-robin \
@@ -186,6 +185,12 @@ jobs:
             --output mutants-ai-results \
             --json
         continue-on-error: true
+      
+      - name: Verify astraweave-ai shard outcomes
+        if: always()
+        run: |
+          outcomes=mutants-ai-results/mutants.out/outcomes.json
+          python3 scripts/ci/mutation_ai_outcomes.py --verify-shard "$outcomes"
       
       - name: Generate mutation report
         if: always()
@@ -195,24 +200,24 @@ jobs:
           if [ -f "$outcomes" ]; then
             echo "## Mutation Testing: astraweave-ai" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            
-            CAUGHT=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' "$outcomes")
-            MISSED=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' "$outcomes")
-            TIMEOUT=$(jq '[.outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' "$outcomes")
-            DECIDED=$((CAUGHT + MISSED))
+            eval "$(python3 scripts/ci/mutation_ai_outcomes.py "$outcomes")"
 
             echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| Caught | $CAUGHT |" >> $GITHUB_STEP_SUMMARY
             echo "| Missed | $MISSED |" >> $GITHUB_STEP_SUMMARY
             echo "| Timeout | $TIMEOUT |" >> $GITHUB_STEP_SUMMARY
+            echo "| Cap OOM (excluded) | $CAP_OOM |" >> $GITHUB_STEP_SUMMARY
             if [ "$DECIDED" -gt 0 ]; then
               # Same score the summary gates on: caught / (caught + missed). Timeouts are not caught.
-              SCORE=$(( CAUGHT * 100 / DECIDED ))
               echo "| **Shard score** | **${SCORE}%** (${CAUGHT}/${DECIDED}, target 70%) |" >> $GITHUB_STEP_SUMMARY
             else
-              echo "| **Shard score** | no caught or missed mutants |" >> $GITHUB_STEP_SUMMARY
+              echo "::error::astraweave-ai shard has no caught or missed mutants after cap-OOM exclusion (timeouts ${TIMEOUT})"
+              exit 1
             fi
+          else
+            echo "::error::missing astraweave-ai outcomes at $outcomes"
+            exit 1
           fi
       
       - name: Upload mutation results
@@ -342,20 +347,15 @@ jobs:
               echo "::error::Expected 8 astraweave-ai shard outcomes, found ${#ai_files[@]}"
               exit 1
             fi
-            # cargo-mutants 27.1.0 writes summary as CaughtMutant, MissedMutant, or Timeout.
-            CAUGHT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "CaughtMutant")] | length' "${ai_files[@]}")
-            MISSED=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "MissedMutant")] | length' "${ai_files[@]}")
-            TIMEOUT=$(jq -s '[.[] | .outcomes[] | select(.scenario != "Baseline") | select(.summary == "Timeout")] | length' "${ai_files[@]}")
-            DECIDED=$((CAUGHT + MISSED))
+            eval "$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}")"
             if [ "$DECIDED" -le 0 ]; then
-              echo "::error::astraweave-ai has no caught or missed mutants (timeouts ${TIMEOUT})"
+              echo "::error::astraweave-ai has no caught or missed mutants after cap-OOM exclusion (timeouts ${TIMEOUT})"
               exit 1
             fi
             # Timeouts are not caught. The 70% gate is killed / (killed + missed).
-            SCORE=$(( CAUGHT * 100 / DECIDED ))
-            echo "| astraweave-ai | ${SCORE}% | P1 AI, 8 shards, caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, target 70% |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| astraweave-ai | ${SCORE}% | P1 AI, 8 shards, caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, cap-OOM ${CAP_OOM}, target 70% |" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "astraweave-ai combined score: ${SCORE}% (target 70%). Caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}." >> "$GITHUB_STEP_SUMMARY"
+            echo "astraweave-ai combined score: ${SCORE}% (target 70%). Caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, cap-OOM excluded ${CAP_OOM}." >> "$GITHUB_STEP_SUMMARY"
             if [ "$SCORE" -lt 70 ]; then
               echo "::error::astraweave-ai mutation score ${SCORE}% is below the 70% target"
               exit 1
