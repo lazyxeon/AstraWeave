@@ -56,9 +56,9 @@ jobs:
         if: always()
         run: |
           python - <<'PY'
-          import json, pathlib, sys
+          import json, os, pathlib, sys
           summary_path = pathlib.Path("coverage/summary.json")
-          with open("${{ github.step_summary }}", "a", encoding="utf-8") as fh:
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
               fh.write("## Workspace coverage (non-blocking)\n\n")
               if not summary_path.exists():
                   fh.write("Coverage summary JSON was not generated.\n")
