@@ -2120,12 +2120,10 @@ impl OllamaChatClient {
                         "[ollama] assembled assistant_acc length = {}",
                         candidate.len()
                     );
-                    if let Some((start_snip, end_snip)) = ollama_assembled_debug_snippets(&candidate)
+                    if let Some((start_snip, end_snip)) =
+                        ollama_assembled_debug_snippets(&candidate)
                     {
-                        debug!(
-                            "[ollama] assembled snippet (start): {}",
-                            start_snip
-                        );
+                        debug!("[ollama] assembled snippet (start): {}", start_snip);
                         debug!("[ollama] assembled snippet (end): {}", end_snip);
                     } else {
                         debug!("[ollama] assembled content: {}", candidate);
