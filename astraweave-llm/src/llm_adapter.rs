@@ -232,10 +232,14 @@ mod tests {
 
     #[test]
     fn test_truncate_prompt_multibyte_at_boundary() {
-        let prompt = format!("{}tail", "é".repeat(2048));
+        let mut prompt = "x".repeat(MAX_PROMPT_LENGTH - 1);
+        prompt.push('é');
+        prompt.push_str("tail");
         assert!(prompt.len() > MAX_PROMPT_LENGTH);
+        assert!(!prompt.is_char_boundary(MAX_PROMPT_LENGTH));
         let result = truncate_prompt(&prompt);
         assert!(result.len() <= MAX_PROMPT_LENGTH);
+        assert!(prompt.starts_with(&result));
         assert!(std::str::from_utf8(result.as_bytes()).is_ok());
     }
 

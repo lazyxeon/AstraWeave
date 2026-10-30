@@ -6,6 +6,7 @@ Helper functions and utilities for embedding operations.
 
 use crate::{Memory, MemoryCategory};
 use anyhow::Result;
+use astraweave_core::{byte_prefix, ceil_char_boundary, floor_char_boundary};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -23,7 +24,7 @@ impl TextPreprocessor {
 
         // Limit length (most embedding models have token limits)
         if text.len() > 8192 {
-            text[..8192].to_string()
+            byte_prefix(&text, 8192).to_string()
         } else {
             text
         }
@@ -39,15 +40,17 @@ impl TextPreprocessor {
         let mut start = 0;
 
         while start < text.len() {
-            let end = (start + max_chunk_size).min(text.len());
-            let chunk = &text[start..end];
-            chunks.push(chunk.to_string());
+            let end = floor_char_boundary(text, (start + max_chunk_size).min(text.len()));
+            if end <= start {
+                break;
+            }
+            chunks.push(text[start..end].to_string());
 
             if end >= text.len() {
                 break;
             }
 
-            start = end.saturating_sub(overlap);
+            start = ceil_char_boundary(text, end.saturating_sub(overlap));
         }
 
         chunks
@@ -435,6 +438,18 @@ mod tests {
         let text = "a".repeat(10000);
         let processed = TextPreprocessor::preprocess(&text);
         assert_eq!(processed.len(), 8192);
+    }
+
+    #[test]
+    fn test_text_preprocessing_cjk_at_byte_limit() {
+        let unit = "日";
+        let text = format!("{}{unit}", "x".repeat(8190));
+        assert!(text.len() > 8192);
+        assert!(!text.is_char_boundary(8192));
+        let processed = TextPreprocessor::preprocess(&text);
+        assert!(processed.len() <= 8192);
+        assert!(text.starts_with(&processed));
+        assert!(std::str::from_utf8(processed.as_bytes()).is_ok());
     }
 
     #[test]
