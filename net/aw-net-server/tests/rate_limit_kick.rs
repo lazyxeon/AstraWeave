@@ -272,9 +272,11 @@ async fn ping_at_tick_rate_still_receives_snapshots() {
     server.shutdown();
 }
 
-/// Two protocol pings, then 5 ms. That is well above the 64/s refill and
-/// well under a back-to-back flood. Thirty-two unpaid frames inside one
-/// second still close the socket, and a paid frame does not clear that window.
+/// Eight protocol pings, then 5 ms. That keeps the send rate above the ~256/s
+/// floor the reply cap assumes even when `sleep(5 ms)` overshoots on coarse
+/// timers (Windows). The pace is still well above the 64/s refill and well
+/// under a back-to-back flood. Thirty-two unpaid frames inside one second
+/// still close the socket, and a paid frame does not clear that window.
 #[tokio::test]
 async fn steady_over_limit_closes_with_1008() {
     let server = spawn_test_server(SigningKey::dev_default(), SignatureFailurePolicy::Kick).await;
@@ -285,7 +287,7 @@ async fn steady_over_limit_closes_with_1008() {
     let mut nano = 0u128;
     while start.elapsed() < window {
         let mut stopped = false;
-        for _ in 0..2 {
+        for _ in 0..8 {
             if client
                 .try_send_msg(&ClientToServer::Ping { nano })
                 .await
