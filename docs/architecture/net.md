@@ -217,8 +217,8 @@ Optional TLS path (feature = "tls")
 **Inputs:** A `tokio::net::TcpStream`.
 **Outputs:** A long-running task pair (writer + reader) until close or error.
 **Notes:**
-- The writer task ends if the broadcast receiver returns `Err(Lagged(_))` it continues (lib.rs:634); other errors break the loop.
-- `ServerEvent::ForceSnapshot` (lib.rs:637-686) is the path used after `ClientHello` to give a brand-new client an immediate full snapshot regardless of normal broadcast cadence.
+- The writer task continues on `Err(Lagged(_))` (lib.rs:635); other receive errors break the loop (lib.rs:636).
+- `ServerEvent::ForceSnapshot` (lib.rs:639-687) is the path used after `ClientHello` to give a brand-new client an immediate full snapshot regardless of normal broadcast cadence.
 - Five `Msg` variants are explicitly server-side-only (`ServerWelcome`, `ServerSnapshot`, `ServerDelta`, `ServerApplyResult`, `ServerAck`); the server ignores them if received from a client (lib.rs:907-913).
 - Errors during writes use `let _ = tx.send(...)` (lib.rs:681-683, 759-761, 767-773, 777-783) — write failures are not surfaced beyond stdout logging.
 
