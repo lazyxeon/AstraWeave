@@ -13,68 +13,61 @@ concurrency:
 
 jobs:
   coverage:
-    name: Generate Code Coverage
+    name: Workspace coverage (non-blocking)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    # Coverage may fail on some configurations - non-blocking
+    timeout-minutes: 120
     continue-on-error: true
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
-      
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --version 0.35.2 --locked
-      
-      - name: Generate coverage
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install Linux dependencies
         run: |
-          cd tools/astraweave-assets
-          cargo tarpaulin --out Xml --output-dir coverage --exclude-files 'src/main.rs' --exclude-files 'tests/*'
-      
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev libasound2-dev
+
+      - name: Generate workspace coverage summary
+        run: |
+          rm -rf coverage
+          mkdir -p coverage
+          cargo llvm-cov --workspace --lib --summary-only --json --output-path coverage/summary.json
+
+      - name: Generate workspace lcov
+        run: cargo llvm-cov --workspace --lib --lcov --output-path coverage/workspace.lcov
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: ./tools/astraweave-assets/coverage/cobertura.xml
-          flags: astraweave-assets
-          name: astraweave-assets-coverage
+          files: ./coverage/workspace.lcov
+          flags: workspace
+          name: workspace-coverage
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-      
-      - name: Generate HTML report
-        if: always()
-        run: |
-          cd tools/astraweave-assets
-          cargo tarpaulin --out Html --output-dir coverage-html --exclude-files 'src/main.rs' --exclude-files 'tests/*'
-      
-      - name: Upload HTML coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: tools/astraweave-assets/coverage-html
-          retention-days: 30
-      
+
       - name: Coverage summary
         if: always()
         run: |
-          cd tools/astraweave-assets
-          echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f coverage/cobertura.xml ]; then
-            COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf "%.1f", $1*100}')
-            echo "**Overall Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Target: 80%+ (Production Ready)" >> $GITHUB_STEP_SUMMARY
-            
-            if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
-              echo "✅ **Status:** PASS (meets target)" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "⚠️ **Status:** Below target (needs improvement)" >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "⚠️ Coverage data not generated" >> $GITHUB_STEP_SUMMARY
-          fi
+          python - <<'PY'
+          import json, pathlib, sys
+          summary_path = pathlib.Path("coverage/summary.json")
+          with open("${{ github.step_summary }}", "a", encoding="utf-8") as fh:
+              fh.write("## Workspace coverage (non-blocking)\n\n")
+              if not summary_path.exists():
+                  fh.write("Coverage summary JSON was not generated.\n")
+                  sys.exit(0)
+              data = json.loads(summary_path.read_text())
+              totals = data["data"][0]["totals"]
+              for metric in ("lines", "functions", "regions"):
+                  entry = totals[metric]
+                  pct = (entry["percent"] if "percent" in entry else
+                         (entry["covered"] / entry["count"] * 100 if entry["count"] else 0.0))
+                  fh.write(f"- {metric.title()}: {pct:.2f}% ({entry['covered']}/{entry['count']})\n")
+          PY

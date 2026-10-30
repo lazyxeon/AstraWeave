@@ -314,6 +314,25 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertNotIn("continue-on-error: true", text)
         self.assertFalse(has_pull_request(text))
 
+    def test_aw_editor_tests_is_a_real_gate_off_prs(self) -> None:
+        text = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertIn("schedule:", text)
+        self.assertIn("astraweave-llm", text)
+        self.assertIn("cargo clippy -p astraweave-llm --no-deps -- -D warnings", text)
+        self.assertNotIn("continue-on-error: true", text)
+        self.assertFalse(has_pull_request(text))
+
+    def test_editor_and_sdk_ci_stay_non_blocking(self) -> None:
+        for name in ("editor-ci.yml", "sdk-ci.yml"):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            self.assertIn("continue-on-error: true", text, msg=name)
+
+    def test_workspace_coverage_stays_non_blocking(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertIn("continue-on-error: true", text)
+        self.assertIn("cargo llvm-cov --workspace --lib", text)
+        self.assertFalse(has_pull_request(text))
+
 
 if __name__ == "__main__":
     unittest.main()
