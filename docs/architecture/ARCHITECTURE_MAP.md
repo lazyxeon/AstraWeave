@@ -838,7 +838,7 @@ Frame Start
 
 ### Fuzz Targets
 
-- `.github/workflows/fuzz-nightly.yml` runs every cargo-fuzz `[[bin]]` for 120 seconds. It is not on pull requests. Each target's corpus is the newest successful `fuzz-corpus-<target>` artifact from this workflow on the default branch of this repository, and crash files are uploaded (`net.md` §10).
+- `.github/workflows/fuzz-nightly.yml` runs every cargo-fuzz `[[bin]]` for 120 seconds. It is not on pull requests. Each target's corpus is the newest `fuzz-corpus-<target>` artifact from a completed run (conclusion `success` or `failure`, not `cancelled`) of this workflow on the default branch of this repository, and crash files are uploaded (`net.md` §10).
 - `astraweave-ecs/fuzz`: excluded from the workspace build. The nightly workflow builds it on its own.
 
 ---

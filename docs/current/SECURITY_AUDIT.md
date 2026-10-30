@@ -33,7 +33,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 
 The compressed save cap is 4 MiB, not the 16 MiB sketch below, because the proof claims 8 MiB and must fail closed. The LZ4 message cap is 4 MiB for the same reason (the proof claims 16 MiB).
 
-Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Every cargo-fuzz `[[bin]]` runs for 120 seconds. Each target's corpus is restored from the newest successful `fuzz-corpus-<target>` artifact of this workflow on the default branch of this repository, and uploaded again. Crash files under that target's `artifacts/` directory are uploaded. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`.
+Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Every cargo-fuzz `[[bin]]` runs for 120 seconds. Each target's corpus is restored from the newest `fuzz-corpus-<target>` artifact from a completed run (conclusion `success` or `failure`, not `cancelled`) of this workflow on the default branch of this repository, and uploaded again. A failed run list, artifact list, or corpus download fails the job instead of fuzzing with an empty corpus. Crash files under that target's `artifacts/` directory are uploaded. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`. The fuzz checkout sets `persist-credentials: false`.
 
 ## Findings, ranked
 
