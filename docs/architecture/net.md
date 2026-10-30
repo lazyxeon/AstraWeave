@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: example_only
 summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-net::GameServer/Msg/Snapshot has no non-example engine/tool caller (ex-only). Real multiplayer wire-up is DEFERRED to v1.1 (a conscious deferral, not a drop). net.md §1"
 owns: [astraweave-net]
-doc_version: "1.13"
-last_verified_commit: bf01197b
+doc_version: "1.14"
+last_verified_commit: 0e7774e5adc5696b819b873c7096013ff7ed6d36
 ---
 
 # Architecture Trace: Net (Snapshot-Based Game Server)
@@ -27,11 +27,11 @@ last_verified_commit: bf01197b
 |---|---|
 | **System name** | Net (snapshot-based game server) |
 | **Primary crates** | `astraweave-net` (sole crate in this subsystem) |
-| **Document version** | 1.13 |
-| **Last verified against commit** | `bf01197b` |
+| **Document version** | 1.14 |
+| **Last verified against commit** | `ab986536` |
 | **Last verified date** | 2026-10-30 |
 | **Status** | Active |
-| **Revision history** | 1.13 (2026-10-30): Corpus restore accepts workflow runs with conclusion `success` or `failure` (not `cancelled`). A failed `gh` run list, artifact list, or corpus download fails the job instead of fuzzing with an empty corpus. The fuzz checkout sets `persist-credentials: false`. Verified at `bf01197b`. 1.12 (2026-10-29): The fuzz job inherits the workflow token (`contents: read` and `actions: read`) and does not set `actions: write`. `upload-artifact` uses the runner artifact token, so that write is unused, and a job-level `actions: write` fails Scorecard. The list job stays `contents: read`. Verified at `040c31f1`. 1.11 named `22aadde2`, which is `e9cb22b5` after the rebase onto `f24ce31c`. 1.11 (2026-10-29): Corpus restore keeps a `fuzz-corpus-<target>` artifact only when the run is `.github/workflows/fuzz-nightly.yml`, conclusion `success`, head branch the repository default, and head repository this repository. The fuzz job token is `actions: write` so `upload-artifact` can save the corpus and crash files. The list job stays `contents: read`. Verified at `22aadde2`. 1.10 (2026-10-29): Stage 2 ranges include the closing line. Cites that still named main's line numbers move with the `lib.rs` insertions (`+7` after the interest helpers, `+16` after `diff_snapshots`). The Q-section names `7b1c0e52`. `last_verified_commit` is the parent `ba561c7d`. That parent still ends Stage 2 one line early and leaves those cites on main's numbers. 1.9 (2026-10-28): The nightly corpus is a `fuzz-corpus-<target>` workflow artifact from the newest previous run, uploaded again at the end of the job. The workflow token is `contents: read` and `actions: read`. `e0e87c00` is not an ancestor after the rebase onto `75486dcf`. `last_verified_commit` is the parent `7b1c0e52`. That parent still grants job-level `actions: write` and saves the corpus with `actions/cache`. 1.8 (2026-10-28): `FovInterest` and `FovLosInterest` subtract tile positions in `i128` before the `f32` cast. `has_los` takes the absolute delta in `i64`, so a delta of `i32::MIN` does not call `i32::abs`. 1.7 (2026-10-28): The four cargo-fuzz targets run from `.github/workflows/fuzz-nightly.yml` for 120 seconds each. Corpora are cached. Crash artifacts are uploaded. Pull-request CI does not run them. `RadiusTeamInterest` measures distance in `i128`. `diff_snapshots` keeps the last copy of a repeated id.<br><br>1.6 (2026-10-16): Workspace `tokio` does not enable `net`. This crate opts in with `features = ["net"]`.<br><br>1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
+| **Revision history** | 1.14 (2026-10-30): Restamped `astraweave-net/src/lib.rs` line cites (replay, hello token, `ValidateCfg`, server-only ignore arm) and the SEC-NET-2 row in `docs/current/SECURITY_AUDIT.md`. Verified at `ab986536`. 1.13 (2026-10-30): Corpus restore accepts workflow runs with conclusion `success` or `failure` (not `cancelled`). A failed `gh` run list, artifact list, or corpus download fails the job instead of fuzzing with an empty corpus. The fuzz checkout sets `persist-credentials: false`. Verified at `bf01197b`. 1.12 (2026-10-29): The fuzz job inherits the workflow token (`contents: read` and `actions: read`) and does not set `actions: write`. `upload-artifact` uses the runner artifact token, so that write is unused, and a job-level `actions: write` fails Scorecard. The list job stays `contents: read`. Verified at `040c31f1`. 1.11 named `22aadde2`, which is `e9cb22b5` after the rebase onto `f24ce31c`. 1.11 (2026-10-29): Corpus restore keeps a `fuzz-corpus-<target>` artifact only when the run is `.github/workflows/fuzz-nightly.yml`, conclusion `success`, head branch the repository default, and head repository this repository. The fuzz job token is `actions: write` so `upload-artifact` can save the corpus and crash files. The list job stays `contents: read`. Verified at `22aadde2`. 1.10 (2026-10-29): Stage 2 ranges include the closing line. Cites that still named main's line numbers move with the `lib.rs` insertions (`+7` after the interest helpers, `+16` after `diff_snapshots`). The Q-section names `7b1c0e52`. `last_verified_commit` is the parent `ba561c7d`. That parent still ends Stage 2 one line early and leaves those cites on main's numbers. 1.9 (2026-10-28): The nightly corpus is a `fuzz-corpus-<target>` workflow artifact from the newest previous run, uploaded again at the end of the job. The workflow token is `contents: read` and `actions: read`. `e0e87c00` is not an ancestor after the rebase onto `75486dcf`. `last_verified_commit` is the parent `7b1c0e52`. That parent still grants job-level `actions: write` and saves the corpus with `actions/cache`. 1.8 (2026-10-28): `FovInterest` and `FovLosInterest` subtract tile positions in `i128` before the `f32` cast. `has_los` takes the absolute delta in `i64`, so a delta of `i32::MIN` does not call `i32::abs`. 1.7 (2026-10-28): The four cargo-fuzz targets run from `.github/workflows/fuzz-nightly.yml` for 120 seconds each. Corpora are cached. Crash artifacts are uploaded. Pull-request CI does not run them. `RadiusTeamInterest` measures distance in `i128`. `diff_snapshots` keeps the last copy of a repeated id.<br><br>1.6 (2026-10-16): Workspace `tokio` does not enable `net`. This crate opts in with `features = ["net"]`.<br><br>1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
 | **Owner notes** | Self-contained snapshot-server library. Three direct production consumers (`examples/coop_server`, `examples/coop_client`, `examples/net_headless_sim`). Optional `tls` feature for secure WebSocket. Dedicated `.github/workflows/net-tests.yml` workflow. Not an ECS-Plugin — `astraweave-net` predates and operates parallel to the ECS-Plugin networking in `astraweave-net-ecs`. |
 
 ---
@@ -110,9 +110,9 @@ GPU particle fluid state (`astraweave-fluids` `FluidSystem`/`PcisphSystem`) is n
 Client → Server (JSON over WebSocket text frames; lib.rs:789-912)
     │
     ├── ClientHello { name, token, policy }
-    │     · name → viewer_id (player/comp/enemy mapped at lib.rs:807-812)
-    │     · token: must equal "dev" to be "authenticated" (lib.rs:801-805, logs only)
-    │     · policy: "radius" | "fov" | "fovlos" → InterestPolicy (lib.rs:817-832)
+    │     · name is logged only; the connection actor stays `GameServer.player_id` (lib.rs:617-618, 807)
+    │     · token: `hello_token_accepted` at lib.rs:802-805 (`hello_token_accepted` at lib.rs:936-953)
+    │     · policy: "radius" | "fov" | "fovlos" → InterestPolicy (lib.rs:810-825)
     │     · Sends ServerEvent::ForceSnapshot via broadcast → writer task picks it up
     │
     ├── ClientProposePlan { actor_id, intent }
@@ -139,7 +139,7 @@ Client side (consumers — only example consumers exist)
 ──────────────────────────────────────────────────────────────────────
 Deterministic replay path
     │
-    │ replay_from(world, events)            (lib.rs:927-948)
+    │ replay_from(world, events)            (lib.rs:976-997)
     ▼
 [Sort events by (tick, seq)]
     │
@@ -219,14 +219,14 @@ Optional TLS path (feature = "tls")
 **Notes:**
 - The writer task ends if the broadcast receiver returns `Err(Lagged(_))` it continues (lib.rs:634); other errors break the loop.
 - `ServerEvent::ForceSnapshot` (lib.rs:637-686) is the path used after `ClientHello` to give a brand-new client an immediate full snapshot regardless of normal broadcast cadence.
-- Five `Msg` variants are explicitly server-side-only (`ServerWelcome`, `ServerSnapshot`, `ServerDelta`, `ServerApplyResult`, `ServerAck`); the server ignores them if received from a client (lib.rs:901-907).
+- Five `Msg` variants are explicitly server-side-only (`ServerWelcome`, `ServerSnapshot`, `ServerDelta`, `ServerApplyResult`, `ServerAck`); the server ignores them if received from a client (lib.rs:907-913).
 - Errors during writes use `let _ = tx.send(...)` (lib.rs:681-683, 759-761, 767-773, 777-783) — write failures are not surfaced beyond stdout logging.
 
-#### Stage 7: Replay determinism (`lib.rs:917-948`)
+#### Stage 7: Replay determinism (`lib.rs:976-997`)
 **Role:** Given a `World` and a list of `ReplayEvent`s, replay them deterministically and return the final `world_hash`.
 **Inputs:** Owned `World`, `&[ReplayEvent]`.
 **Outputs:** `Result<u64>` (the final hash).
-**Notes:** Events are sorted by `(tick, seq)` before replay. The world's `dt = 1/60` matches the live server's tick rate. `validate_and_execute`'s `Result` is *discarded* inside the replay loop (lib.rs:944: `let _ = ...`) — replay does not bail on a single failing input, matching the server's tolerant behavior.
+**Notes:** Events are sorted by `(tick, seq)` before replay. The world's `dt = 1/60` matches the live server's tick rate. `validate_and_execute`'s `Result` is *discarded* inside the replay loop (lib.rs:993: `let _ = ...`) — replay does not bail on a single failing input, matching the server's tolerant behavior.
 
 #### Stage 8: TLS configuration (`tls.rs`, feature `tls`)
 **Role:** Build rustls `ServerConfig` from PEM files (server) or a default `ClientConfig` trusting webpki roots (client).
@@ -250,14 +250,14 @@ Optional TLS path (feature = "tls")
 | **Msg** | Wire-frame enum serialized as JSON; tagged via `#[serde(tag = "type")]`. 8 variants. | `lib.rs:463-499` |
 | **ServerEvent** | Internal broadcast channel payload; 4 variants. Not on the wire — the writer task translates these into `Msg` frames. | `lib.rs:501-508` |
 | **GameServer** | The server runtime: world Mutex + viewer ids + broadcast tx + tick counter + replay log + obstacles cache. | `lib.rs:510-519` |
-| **ReplayEvent** | Recorded input for deterministic replay: `{ tick, seq, actor_id, intent: PlanIntent, world_hash }`. | `lib.rs:917-924` |
-| **ValidateCfg** | World-bounds config passed into `validate_and_execute` — hardcoded as `(0, 0, 19, 9)` everywhere in `astraweave-net`. | `lib.rs:842-844, 873-875` |
+| **ReplayEvent** | Recorded input for deterministic replay: `{ tick, seq, actor_id, intent: PlanIntent, world_hash }`. | `lib.rs:923-930` |
+| **ValidateCfg** | World-bounds config passed into `validate_and_execute` — hardcoded as `(0, 0, 19, 9)` everywhere in `astraweave-net`. | `lib.rs:843-845, 879-881, 990-992` |
 
 ### Terms to NOT confuse
 
 - **`Msg::ServerSnapshot` (wire) vs. `ServerEvent::Snapshot` (internal):** The broadcast channel emits `ServerEvent`s. The per-connection writer task **translates** these into `Msg::ServerSnapshot` (for full sends) or `Msg::ServerDelta` (when a base exists). Five `Msg::Server*` variants exist on the wire; only four `ServerEvent` variants exist internally — `Msg::ServerSnapshot` and `Msg::ServerDelta` both map from `ServerEvent::Snapshot`.
 
-- **`ServerEvent::Snapshot` vs. `ServerEvent::ForceSnapshot`:** Both deliver a `Snapshot` to the writer task. `Snapshot` participates in the diff-when-possible logic (writer compares against `last_sent`); `ForceSnapshot` always emits a full `Msg::ServerSnapshot` and skips the diff path entirely. Used by `ClientHello` to bootstrap a new client (lib.rs:837).
+- **`ServerEvent::Snapshot` vs. `ServerEvent::ForceSnapshot`:** Both deliver a `Snapshot` to the writer task. `Snapshot` participates in the diff-when-possible logic (writer compares against `last_sent`); `ForceSnapshot` always emits a full `Msg::ServerSnapshot` and skips the diff path entirely. Used by `ClientHello` to bootstrap a new client (lib.rs:830).
 
 - **`stable_hash_snapshot` (entities + obstacles) vs. `subset_hash` (entities only):** `stable_hash_snapshot` is used at `build_snapshot` time and includes the world's obstacle layout. `subset_hash` is used at `filter_snapshot_for_viewer` time and in `diff_snapshots`'s `head_hash` — it omits obstacles, since the filtering result depends only on the visible entity set.
 
@@ -361,11 +361,11 @@ Optional TLS path (feature = "tls")
 
 - **Trap:** Five `Msg::Server*` variants are accepted by the server but silently ignored.
   - **Why it's confusing:** `Msg` is a single enum; one might assume all variants are equally valid.
-  - **What's actually true:** `lib.rs:901-907` catches `Msg::ServerWelcome | Msg::ServerSnapshot | Msg::ServerDelta | Msg::ServerApplyResult | Msg::ServerAck` and falls through — they are "server-only" and a client sending them is treated as a benign protocol error.
+  - **What's actually true:** `lib.rs:907-913` catches `Msg::ServerWelcome | Msg::ServerSnapshot | Msg::ServerDelta | Msg::ServerApplyResult | Msg::ServerAck` and falls through — they are "server-only" and a client sending them is treated as a benign protocol error.
 
 - **Trap:** `ValidateCfg::world_bounds` is hardcoded as `(0, 0, 19, 9)` at two call sites.
   - **Why it's confusing:** Looks like a configurable parameter.
-  - **What's actually true:** `lib.rs:842-844` and `lib.rs:873-875` both inline the constant. The test world (`GameServer::new`, lib.rs:528-547) places obstacles up to `(6, 8)`, fitting this bound. Changing the world size in `GameServer::new` requires updating these constants too.
+  - **What's actually true:** `lib.rs:843-845` and `lib.rs:879-881` both inline the constant. The test world (`GameServer::new`, lib.rs:528-547) places obstacles up to `(6, 8)`, fitting this bound. Changing the world size in `GameServer::new` requires updating these constants too.
 
 - **Trap:** `let _ = tx.send(...)` on the broadcast channel ignores send failures.
   - **Why it's confusing:** It looks like message delivery is being suppressed.
@@ -373,7 +373,7 @@ Optional TLS path (feature = "tls")
 
 - **Trap:** `replay_from` discards `validate_and_execute`'s `Result`.
   - **Why it's confusing:** Replay seemingly silently swallows command-validation failures.
-  - **What's actually true:** `lib.rs:944`: `let _ = validate_and_execute(...)`. Matches the server's tolerance: the live server also accepts invalid plans (validation result is reported as `Msg::ServerApplyResult { ok: false }` and replay-logged anyway — `lib.rs:852-860, 882-890`). Replay determinism is about reaching the same world state given the same inputs in order, not about consistent validation outcomes.
+  - **What's actually true:** `lib.rs:993`: `let _ = validate_and_execute(...)`. Matches the server's tolerance: the live server also accepts invalid plans (validation result is reported as `Msg::ServerApplyResult { ok: false }` and replay-logged anyway — `lib.rs:854-860, 882-890`). Replay determinism is about reaching the same world state given the same inputs in order, not about consistent validation outcomes.
 
 ---
 
@@ -422,7 +422,7 @@ Optional TLS path (feature = "tls")
 
 ### Decision: `ValidateCfg::world_bounds = (0, 0, 19, 9)` hardcoded
 - **Date:** 2025-09-04, commit `ba52548b3` (initial implementation; both call sites added together). Empty commit body.
-- **Status:** Accepted (`lib.rs:842-844, 873-875`)
+- **Status:** Accepted (`lib.rs:843-845, 879-881`)
 - **Context:** Two call sites in `Msg::ClientProposePlan` and `Msg::ClientInput` handlers.
 - **Decision:** Hardcode the validation bounds inline at both call sites.
 - **Alternatives considered:** [Reasoning not recovered from available sources]
@@ -465,7 +465,7 @@ Optional TLS path (feature = "tls")
 | 8 | Full snapshots are broadcast at minimum every 60 ticks (~1 Hz floor) | Yes | `lib.rs:590-592`: `if tick - last_full >= 60`. |
 | 9 | Delta-eligible snapshots broadcast every 3 ticks when no full is due | Yes | `lib.rs:593-596`: `else if tick - last_broadcast >= 3`. |
 | 10 | `Interest::include(viewer, viewer)` returns true for all four impls (a viewer always sees themselves) | Yes — implicitly | `FullInterest`: always true. `RadiusTeamInterest`: same team check (viewer.team == viewer.team). `FovInterest` / `FovLosInterest`: distance from self is 0 and same-team check applies. Tested at `tests/interest_coverage_tests.rs`. |
-| 11 | `replay_from` returns the same `world_hash` for the same `(World, events)` sorted by `(tick, seq)` | Yes | `lib.rs:927-948`; verified by `examples/net_headless_sim` which prints both `baseline` and `final` hashes for a fixed event log. |
+| 11 | `replay_from` returns the same `world_hash` for the same `(World, events)` sorted by `(tick, seq)` | Yes | `lib.rs:976-997`; verified by `examples/net_headless_sim` which prints both `baseline` and `final` hashes for a fixed event log. |
 | 12 | `validate_and_execute`'s `Result` is reported back over the wire as `Msg::ServerApplyResult` for client input | Yes | `lib.rs:846-847, 863, 877-878, 894`. |
 | 13 | `replay_from` does NOT bail on per-event validation failures | Yes (intentional contract) | `lib.rs:944`: `let _ = validate_and_execute(...)`. |
 | 14 | `ServerWelcome` is sent immediately after WebSocket upgrade, before any other server message | Yes | `lib.rs:617-620` — synchronous send before the writer-task spawn at `lib.rs:628`. |
@@ -486,7 +486,7 @@ Optional TLS path (feature = "tls")
 
 - **Connection accept + WebSocket upgrade** (`tokio_tungstenite::accept_async`, `lib.rs:612`) — once per client connect.
 - **TLS handshake** (when `tls` feature is wired by an external caller) — once per client connect; rustls handshake is well-known to take milliseconds.
-- **`replay_from`** (`lib.rs:927-948`) — batch determinism check, not a per-frame path. Run once on demand.
+- **`replay_from`** (`lib.rs:976-997`) — batch determinism check, not a per-frame path. Run once on demand.
 
 ### Resource ownership
 
@@ -596,7 +596,7 @@ Optional TLS path (feature = "tls")
 - `astraweave-net/tests/property_tests_extended.proptest-regressions` — checked-in shrunk failing inputs; deleting hides a real bug.
 
 **Common mistakes when changing this system:**
-- **Adding a new `Msg` variant without updating the "server-only ignore" arm** at `lib.rs:901-907`. New `Server*` variants belong in that ignore list if clients shouldn't send them.
+- **Adding a new `Msg` variant without updating the "server-only ignore" arm** at `lib.rs:907-913`. New `Server*` variants belong in that ignore list if clients shouldn't send them.
 - **Changing `EntityState` fields without updating both `EntityDeltaMask` constants AND `EntityDelta` fields AND `diff_snapshots` AND `apply_delta`.** All four are coupled; the mask bits are tied to specific fields.
 - **Adding a third `Interest` impl without updating the `InterestPolicy` enum, both writer-task match blocks, AND the `ClientHello.policy` string-to-enum mapping** at `lib.rs:817-832`.
 - **Assuming `world_hash` and `Delta.head_hash` are comparable.** They aren't after filtering — `world_hash` includes obstacles (via `stable_hash_snapshot`), `head_hash` does not (via `subset_hash`).
