@@ -143,6 +143,38 @@ if parsed != 1:
     raise SystemExit("benchmark_history.jsonl has no JSON line")
 """
 
+_PAGES_VERIFY_FIELDS_NO_WINDOW = """\
+import json
+from pathlib import Path
+
+root = Path("docs/book/dashboard")
+meta = json.loads(
+    (root / "benchmark_data/metadata.json").read_text(encoding="utf-8")
+)
+if not meta:
+    raise SystemExit("metadata.json is empty")
+thresholds = json.loads(
+    (root / "benchmark_thresholds.json").read_text(encoding="utf-8")
+)
+if not isinstance(thresholds, dict):
+    raise SystemExit("benchmark_thresholds.json must be a JSON object")
+history_path = root / "benchmark_data/benchmark_history.jsonl"
+valid_rows = 0
+for line in history_path.read_text(encoding="utf-8").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    row = json.loads(line)
+    ts = row.get("timestamp") or row.get("date")
+    if row.get("benchmark_name") and row.get("value") is not None and ts:
+        valid_rows += 1
+        break
+if valid_rows < 1:
+    raise SystemExit(
+        "benchmark_history.jsonl has no row with benchmark_name, value, and timestamp"
+    )
+"""
+
 _SUFFIX_THRESHOLD_EXPECTED = {
     "world_creation": "astraweave-core::ecs_benchmarks/world_creation",
     "character_full_tick": "astraweave-physics::character_controller/character_full_tick",
@@ -562,7 +594,15 @@ class WorkflowPolicyTest(unittest.TestCase):
                 THRESHOLDS_JSON.read_text(encoding="utf-8"), encoding="utf-8"
             )
             (data / "metadata.json").write_text(
-                ARCHIVE_METADATA.read_text(encoding="utf-8"), encoding="utf-8"
+                json.dumps(
+                    {
+                        "oldest": "2025-01-01T00:00:00Z",
+                        "newest": "2025-01-02T00:00:00Z",
+                        "generated_at": "2025-01-02T00:00:00Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
             )
             invalid_history = '{"foo": 1}\n'
             (data / "benchmark_history.jsonl").write_text(invalid_history, encoding="utf-8")
@@ -580,6 +620,45 @@ class WorkflowPolicyTest(unittest.TestCase):
             (data / "benchmark_history.jsonl").write_text(valid_row, encoding="utf-8")
             code, err = run_pages_verify(script, book)
             self.assertEqual(code, 0, err)
+
+    def test_pages_verify_rejects_rows_outside_dashboard_window(self) -> None:
+        if not PAGES_YML.exists():
+            self.skipTest("pages.yml not present")
+        script = pages_verify_script()
+        with tempfile.TemporaryDirectory() as tmp:
+            book = Path(tmp)
+            dash = book / "dashboard"
+            data = dash / "benchmark_data"
+            data.mkdir(parents=True)
+            (dash / "benchmark_thresholds.json").write_text(
+                THRESHOLDS_JSON.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (data / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "oldest": "2026-01-01T00:00:00Z",
+                        "newest": "2026-01-15T00:00:00Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            stale_row = (
+                '{"benchmark_name":"world_creation","value":1.0,'
+                '"timestamp":"2025-06-01T00:00:00Z"}\n'
+            )
+            (data / "benchmark_history.jsonl").write_text(stale_row, encoding="utf-8")
+
+            code, err = run_pages_verify(script, book)
+            self.assertNotEqual(code, 0)
+            self.assertIn("time window", err)
+
+            code_fields, _ = run_pages_verify(_PAGES_VERIFY_FIELDS_NO_WINDOW, book)
+            self.assertEqual(
+                code_fields,
+                0,
+                "field-only check must pass without the dashboard window filter",
+            )
 
     def test_dashboard_threshold_lookup_has_no_tail_fallback(self) -> None:
         if not DASHBOARD_HTML.exists():

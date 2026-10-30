@@ -186,7 +186,65 @@ jobs:
           test -f docs/book/dashboard/benchmark_thresholds.json
           python3 - <<'PY'
           import json
+          import math
+          from datetime import datetime, timezone, timedelta
           from pathlib import Path
+
+          def parse_dt(value):
+              if value is None or not isinstance(value, str):
+                  return None
+              text = value
+              if text.endswith("Z"):
+                  text = text[:-1] + "+00:00"
+              return datetime.fromisoformat(text).astimezone(timezone.utc)
+
+          def entry_timestamp(row):
+              return parse_dt(row.get("date") or row.get("timestamp"))
+
+          def row_has_required_fields(row):
+              ts = row.get("timestamp") or row.get("date")
+              return (
+                  row.get("benchmark_name")
+                  and row.get("value") is not None
+                  and ts
+              )
+
+          def default_time_range_days(metadata, rows):
+              now = datetime.now(timezone.utc)
+              oldest = newest = None
+              if metadata.get("oldest"):
+                  oldest = parse_dt(metadata["oldest"])
+              if metadata.get("newest"):
+                  newest = parse_dt(metadata["newest"])
+              if oldest is None and rows:
+                  dates = [
+                      d
+                      for d in (entry_timestamp(r) for r in rows)
+                      if d is not None
+                  ]
+                  if dates:
+                      oldest = min(dates)
+                      newest = max(dates)
+              if oldest is None:
+                  return 365
+              days_since_oldest = math.ceil((now - oldest).total_seconds() / 86400) + 1
+              default_days = days_since_oldest
+              if newest is not None:
+                  archive_span = math.ceil((newest - oldest).total_seconds() / 86400) + 1
+                  default_days = max(days_since_oldest, archive_span)
+              return default_days
+
+          def rows_visible_on_load(metadata, rows):
+              days = default_time_range_days(metadata, rows)
+              cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+              visible = 0
+              for row in rows:
+                  if not row_has_required_fields(row):
+                      continue
+                  entry_date = entry_timestamp(row)
+                  if entry_date is not None and entry_date >= cutoff:
+                      visible += 1
+              return visible
 
           root = Path("docs/book/dashboard")
           meta = json.loads(
@@ -200,23 +258,16 @@ jobs:
           if not isinstance(thresholds, dict):
               raise SystemExit("benchmark_thresholds.json must be a JSON object")
           history_path = root / "benchmark_data/benchmark_history.jsonl"
-          valid_rows = 0
+          rows = []
           for line in history_path.read_text(encoding="utf-8").splitlines():
               line = line.strip()
               if not line:
                   continue
-              row = json.loads(line)
-              ts = row.get("timestamp") or row.get("date")
-              if (
-                  row.get("benchmark_name")
-                  and row.get("value") is not None
-                  and ts
-              ):
-                  valid_rows += 1
-                  break
-          if valid_rows < 1:
+              rows.append(json.loads(line))
+          if rows_visible_on_load(meta, rows) < 1:
               raise SystemExit(
-                  "benchmark_history.jsonl has no row with benchmark_name, value, and timestamp"
+                  "benchmark_history.jsonl has no row with benchmark_name, value, timestamp, "
+                  "and a date inside the dashboard time window used on load"
               )
           PY
           tar -C docs/book -cf /tmp/pages-artifact.tar \
