@@ -33,8 +33,10 @@ struct PendingFenceErrors {
     saw_separator: bool,
     saw_closer: bool,
     in_conflict: bool,
-    /// When set, `errors[..len]` belong to the first balanced exempt example only.
-    exempt_quiet_len: Option<usize>,
+    /// Index in `errors` where the first exempt example's `<<<<<<<` will be recorded.
+    exempt_example_start: Option<usize>,
+    /// Inclusive start, exclusive end of the first balanced exempt example in `errors`.
+    exempt_quiet_range: Option<(usize, usize)>,
     errors: Vec<String>,
 }
 
@@ -76,7 +78,8 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
                         saw_separator: false,
                         saw_closer: false,
                         in_conflict: false,
-                        exempt_quiet_len: None,
+                        exempt_example_start: None,
+                        exempt_quiet_range: None,
                         errors: Vec::new(),
                     },
                 ));
@@ -89,14 +92,7 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
         if let Some((_, block)) = fence_stack.last_mut() {
             apply_line_markers(path, line_num + 1, line, block);
         } else {
-            push_line_markers(
-                path,
-                line_num + 1,
-                line,
-                &mut in_conflict,
-                &mut errors,
-                false,
-            );
+            push_line_markers(path, line_num + 1, line, &mut in_conflict, &mut errors);
         }
     }
 
@@ -108,10 +104,9 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
 }
 
 fn flush_fence_block(errors: &mut Vec<String>, block: PendingFenceErrors) {
-    if let Some(quiet_len) = block.exempt_quiet_len {
-        if block.errors.len() > quiet_len {
-            errors.extend(block.errors[quiet_len..].iter().cloned());
-        }
+    if let Some((start, end)) = block.exempt_quiet_range {
+        errors.extend(block.errors[..start].iter().cloned());
+        errors.extend(block.errors[end..].iter().cloned());
     } else {
         errors.extend(block.errors);
     }
@@ -151,28 +146,31 @@ fn backtick_fence_info_has_backtick(line: &str, parsed: ParsedFence) -> bool {
     line[idx + parsed.len..].trim_start().contains('`')
 }
 
-fn maybe_note_exempt_quiet_prefix(block: &mut PendingFenceErrors) {
+fn maybe_note_exempt_quiet_range(block: &mut PendingFenceErrors) {
     if block.exempt_candidate
         && block.saw_opener
         && block.saw_separator
         && block.saw_closer
         && !block.in_conflict
-        && block.exempt_quiet_len.is_none()
+        && block.exempt_quiet_range.is_none()
     {
-        block.exempt_quiet_len = Some(block.errors.len());
+        if let Some(start) = block.exempt_example_start {
+            block.exempt_quiet_range = Some((start, block.errors.len()));
+        }
     }
 }
 
 fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut PendingFenceErrors) {
+    if block.exempt_candidate
+        && !block.in_conflict
+        && block.exempt_quiet_range.is_none()
+        && block.exempt_example_start.is_none()
+        && starts_conflict_marker(line, "<<<<<<<")
+    {
+        block.exempt_example_start = Some(block.errors.len());
+    }
     let mut scratch = Vec::new();
-    push_line_markers(
-        path,
-        line_num,
-        line,
-        &mut block.in_conflict,
-        &mut scratch,
-        true,
-    );
+    push_line_markers(path, line_num, line, &mut block.in_conflict, &mut scratch);
     for msg in &scratch {
         if msg.contains("<<<<<<<") {
             block.saw_opener = true;
@@ -187,7 +185,7 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
         }
     }
     block.errors.extend(scratch);
-    maybe_note_exempt_quiet_prefix(block);
+    maybe_note_exempt_quiet_range(block);
 }
 
 fn push_line_markers(
@@ -196,7 +194,6 @@ fn push_line_markers(
     line: &str,
     in_conflict: &mut bool,
     errors: &mut Vec<String>,
-    in_fence: bool,
 ) {
     if starts_conflict_marker(line, "<<<<<<<") {
         errors.push(format!("{path}:{line_num}: git conflict marker `<<<<<<<`"));
@@ -212,7 +209,7 @@ fn push_line_markers(
         errors.push(format!("{path}:{line_num}: git conflict marker `|||||||`"));
         return;
     }
-    if line == "=======" && (*in_conflict || in_fence) {
+    if *in_conflict && line == "=======" {
         errors.push(format!("{path}:{line_num}: git conflict marker `=======`"));
     }
 }
@@ -463,6 +460,34 @@ mod tests {
     }
 
     #[test]
+    fn stray_marker_before_exempt_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n```\n",
+            closer("x"),
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2], "{errors:?}");
+    }
+
+    #[test]
+    fn stray_markers_before_and_after_exempt_example_are_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n{}\n{}\n```\n",
+            closer("x"),
+            opener(),
+            separator(),
+            closer("b"),
+            opener(),
+            closer("y")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 6, 7], "{errors:?}");
+    }
+
+    #[test]
     fn stray_closer_after_exempt_example_is_flagged() {
         let body = format!(
             "```text\n{}\n{}\n{}\n{}\n```\n",
@@ -488,7 +513,8 @@ mod tests {
     }
 
     #[test]
-    fn orphan_separator_and_closer_after_exempt_example_are_flagged() {
+    #[test]
+    fn orphan_closer_after_exempt_example_is_flagged() {
         let body = format!(
             "```text\n{}\n{}\n{}\n{}\n{}\n```\n",
             opener(),
@@ -498,7 +524,7 @@ mod tests {
             closer("c")
         );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(error_lines(&errors), [5, 6], "{errors:?}");
+        assert_eq!(error_lines(&errors), [6], "{errors:?}");
     }
 
     #[test]
@@ -514,6 +540,13 @@ mod tests {
         );
         let errors = conflict_marker_errors("doc.md", &body);
         assert_eq!(error_lines(&errors), [5, 6, 7], "{errors:?}");
+    }
+
+    #[test]
+    fn setext_heading_inside_markdown_fence_is_not_flagged() {
+        let body = "```markdown\nTitle\n=======\n```\n";
+        let errors = conflict_marker_errors("doc.md", body);
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]

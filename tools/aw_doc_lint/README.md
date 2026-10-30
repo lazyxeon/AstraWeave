@@ -17,7 +17,7 @@ cargo run -p aw_doc_lint -- --mode warn
 
 **Files:** every `git ls-files` path with a known text extension (`.md`, `.html`, `.yml`, `.json`, `.rs`, `.toml`, …) or a small set of extensionless names (`README`, `LICENSE`, …). Skips `.vs/`, `vendor/`, `node_modules/`, `target/`, invalid UTF-8, and NUL bytes. This includes `docs/archive/` (for example the benchmark dashboard HTML #538 publishes) and other paths excluded from vocabulary lint.
 
-**Markers:** column-0 git conflict lines: `<<<<<<<` / `>>>>>>>` / `|||||||` (marker plus space or end of line), and `=======` in prose only while a conflict is open, or anywhere inside a fenced block (setext underlines in prose stay allowed).
+**Markers:** column-0 git conflict lines: `<<<<<<<` / `>>>>>>>` / `|||||||` (marker plus space or end of line). A `=======` line is reported only while a conflict is open (after `<<<<<<<` and before the matching `>>>>>>>`), in prose and in fences; a setext underline or a fenced Markdown heading line of seven equals is not flagged on its own.
 
 **Inside `` ```diff `` / `` ```text `` / `` ```console `` fences only:** the first balanced `<<<<<<<` … `=======` … `>>>>>>>` example in that fence is omitted from the report when the fence closes cleanly. Any later marker in the same fence (including a stray `>>>>>>>`, `|||||||`, orphan `=======`, a second full conflict, or a trailing `<<<<<<<`) is still reported. A backtick fence whose info string contains `` ` `` is not a CommonMark fence and is scanned like normal lines.
 
