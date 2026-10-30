@@ -213,11 +213,12 @@ jobs:
           PY
           tar -C docs/book -cf /tmp/pages-artifact.tar \
             --exclude=.git --exclude=.github '--exclude=.[^/]*' .
+          tar tf /tmp/pages-artifact.tar > /tmp/pages-list.txt
           for p in \
             dashboard/benchmark_data/benchmark_history.jsonl \
             dashboard/benchmark_data/metadata.json \
             dashboard/benchmark_thresholds.json; do
-            tar tf /tmp/pages-artifact.tar | grep -qx "./$p" || {
+            grep -qxF "./$p" /tmp/pages-list.txt || {
               echo "missing $p in packed artifact" >&2
               exit 1
             }
