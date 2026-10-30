@@ -591,6 +591,8 @@ jobs:
         run: |
           cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
           cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib ollama_assembled
+
+  test-full-windows-part:
     name: Test full (windows, ${{ matrix.partition }}/3)
     runs-on: windows-latest
     needs: [changes, gate, test-full-windows-build]
