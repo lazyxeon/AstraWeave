@@ -374,7 +374,7 @@
             </div>
             <div class="control-group">
                 <label for="timeRange">Time Range (Days)</label>
-                <input type="number" id="timeRange" min="1" max="365" value="30">
+                <input type="number" id="timeRange" min="1" max="730" value="365">
             </div>
             <div class="control-group">
                 <label for="smoothing">Smoothing</label>
@@ -426,8 +426,78 @@
         // Global state
         let benchmarkData = [];
         let thresholdData = {};
+        let thresholdByTail = new Map();
         let activeBenchmarks = new Set();
         let chart = null;
+
+        function rebuildThresholdIndex() {
+            thresholdByTail = new Map();
+            Object.entries(thresholdData).forEach(([key, value]) => {
+                const tail = key.split('/').pop();
+                if (!thresholdByTail.has(tail)) {
+                    thresholdByTail.set(tail, []);
+                }
+                thresholdByTail.get(tail).push({ key, value });
+            });
+        }
+
+        /** Map archived Criterion names onto `.github/benchmark_thresholds.json` keys. */
+        function lookupThreshold(benchName) {
+            if (!benchName) {
+                return null;
+            }
+            if (thresholdData[benchName]) {
+                return thresholdData[benchName];
+            }
+            for (const key of Object.keys(thresholdData)) {
+                if (key.endsWith('/' + benchName) || key.endsWith('::' + benchName)) {
+                    return thresholdData[key];
+                }
+            }
+            const tail = benchName.split('/').pop();
+            const matches = thresholdByTail.get(tail) || [];
+            if (matches.length === 1) {
+                return matches[0].value;
+            }
+            return null;
+        }
+
+        function applyDefaultTimeRange(metadata) {
+            const input = document.getElementById('timeRange');
+            let oldest = null;
+            let newest = null;
+
+            if (metadata?.oldest) {
+                oldest = new Date(metadata.oldest);
+            }
+            if (metadata?.newest) {
+                newest = new Date(metadata.newest);
+            }
+
+            if ((!oldest || Number.isNaN(oldest.getTime())) && benchmarkData.length) {
+                const dates = benchmarkData
+                    .map(entryTimestamp)
+                    .filter(d => !Number.isNaN(d.getTime()));
+                if (dates.length) {
+                    oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+                    newest = new Date(Math.max(...dates.map(d => d.getTime())));
+                }
+            }
+
+            if (!oldest || Number.isNaN(oldest.getTime())) {
+                return;
+            }
+
+            const daysSinceOldest = Math.ceil((Date.now() - oldest.getTime()) / 86400000) + 1;
+            let defaultDays = daysSinceOldest;
+            if (newest && !Number.isNaN(newest.getTime())) {
+                const archiveSpan = Math.ceil((newest.getTime() - oldest.getTime()) / 86400000) + 1;
+                defaultDays = Math.max(daysSinceOldest, archiveSpan);
+            }
+
+            input.max = Math.max(730, defaultDays);
+            input.value = defaultDays;
+        }
 
         function isFlatBenchmarkRow(entry) {
             return Boolean(entry && entry.benchmark_name && !entry.benchmarks);
@@ -460,20 +530,23 @@
                     const thresholdResponse = await fetch('../benchmark_thresholds.json');
                     const thresholdJson = await thresholdResponse.json();
                     thresholdData = thresholdJson.benchmarks || {};
+                    rebuildThresholdIndex();
                 } catch (e) {
                     console.warn('Could not load threshold data:', e);
                 }
 
                 // Load metadata
+                let metadata = null;
                 try {
                     const metadataResponse = await fetch('../benchmark_data/metadata.json');
-                    const metadata = await metadataResponse.json();
+                    metadata = await metadataResponse.json();
                     document.getElementById('lastUpdated').textContent = 
                         new Date(metadata.generated_at).toLocaleString();
                 } catch (e) {
                     document.getElementById('lastUpdated').textContent = 'Unknown';
                 }
 
+                applyDefaultTimeRange(metadata);
                 initializeDashboard();
             } catch (error) {
                 showError(`Failed to load benchmark data: ${error.message}`);
@@ -623,7 +696,7 @@
                 const changePercent = ((latest - earliest) / earliest * 100).toFixed(1);
                 const trend = latest < earliest ? 'positive' : 'negative';
 
-                const threshold = thresholdData[benchName];
+                const threshold = lookupThreshold(benchName);
                 const baselineValue = threshold?.baseline;
 
                 const card = document.createElement('div');
@@ -750,7 +823,7 @@
                     .style('opacity', 1);
 
                 // Threshold line
-                const threshold = thresholdData[benchName];
+                const threshold = lookupThreshold(benchName);
                 if (threshold && threshold.max_allowed) {
                     g.append('line')
                         .attr('class', 'threshold-line')
