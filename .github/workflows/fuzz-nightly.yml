@@ -61,10 +61,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@2c76c034f9e32a5d6e2c104dc4df23a22476db04 # nightly
+      - name: Install pinned Rust nightly
+        uses: ./.github/actions/rust-nightly
         with:
-          toolchain: nightly
           components: llvm-tools-preview
 
       - name: Install cargo-fuzz
@@ -111,8 +110,9 @@ jobs:
         working-directory: ${{ matrix.dir }}
         env:
           FUZZ_TARGET: ${{ matrix.target }}
-        # cargo-fuzz passes -Z, which stable rejects.
-        run: cargo +nightly fuzz run "$FUZZ_TARGET" -- -max_total_time=120
+        # cargo-fuzz passes -Z, which stable rejects. AW_NIGHTLY is the
+        # dated channel in .github/rust-nightly-channel (#560).
+        run: cargo +$AW_NIGHTLY fuzz run "$FUZZ_TARGET" -- -max_total_time=120
 
       - name: Upload crash artifacts
         if: failure()

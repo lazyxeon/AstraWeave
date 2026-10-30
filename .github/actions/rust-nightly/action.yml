@@ -1,0 +1,37 @@
+name: Pinned Rust nightly
+description: >
+  Install the dated nightly named in .github/rust-nightly-channel (#560).
+  The caller must checkout the repository first. Exports AW_NIGHTLY for
+  later `cargo +$AW_NIGHTLY` steps.
+
+inputs:
+  components:
+    description: Comma-separated rustup components
+    required: true
+
+outputs:
+  channel:
+    description: Pinned nightly channel
+    value: ${{ steps.pin.outputs.channel }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read pinned nightly channel
+      id: pin
+      shell: bash
+      run: |
+        channel=$(grep -v '^[[:space:]]*#' .github/rust-nightly-channel | tr -d '[:space:]')
+        if [ -z "$channel" ]; then
+          echo "rust-nightly-channel is empty"
+          exit 1
+        fi
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+        echo "AW_NIGHTLY=$channel" >> "$GITHUB_ENV"
+        echo "Pinned nightly: $channel"
+
+    - name: Install pinned nightly
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ steps.pin.outputs.channel }}
+        components: ${{ inputs.components }}

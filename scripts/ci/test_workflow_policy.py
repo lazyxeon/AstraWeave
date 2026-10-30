@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,40 @@ CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request
 
 def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
+
+
+def workflow_display_names() -> set[str]:
+    names: set[str] = set()
+    name_re = re.compile(r"^name:\s*(.+?)\s*$")
+    for text in workflow_texts().values():
+        for line in text.splitlines():
+            match = name_re.match(line)
+            if not match:
+                continue
+            value = match.group(1).strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            names.add(value)
+            break
+    return names
+
+
+def nightly_failure_watched_workflows(text: str) -> list[str]:
+    watched: list[str] = []
+    in_list = False
+    for line in text.splitlines():
+        if re.match(r"^\s+workflows:\s*$", line):
+            in_list = True
+            continue
+        if not in_list:
+            continue
+        item = re.match(r"^\s+-\s+(.+)\s*$", line)
+        if item:
+            watched.append(item.group(1).strip())
+            continue
+        if line.strip():
+            break
+    return watched
 
 
 def has_pull_request(text: str) -> bool:
@@ -315,6 +350,8 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("scripts/ci/fuzz_targets.py", text)
         self.assertIn("scripts/ci/fuzz_corpus_artifact.py", text)
+        self.assertIn("./.github/actions/rust-nightly", text)
+        self.assertIn("cargo +$AW_NIGHTLY fuzz run", text)
         self.assertIn("-max_total_time=120", text)
         self.assertIn(
             "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2",
@@ -519,6 +556,38 @@ class WorkflowPolicyTest(unittest.TestCase):
             )
             self.assertEqual(bad.returncode, 2)
 
+    def test_nightly_failure_issue_serializes_per_upstream_run(self) -> None:
+        text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
+        self.assertIn(
+            "group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}",
+            text,
+        )
+        self.assertIn("cancel-in-progress: false", text)
+        self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", text)
+
+    def test_nightly_failure_issue_watched_names_match_workflows(self) -> None:
+        text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
+        watched = nightly_failure_watched_workflows(text)
+        known = workflow_display_names()
+        self.assertEqual(len(watched), 13)
+        missing = [name for name in watched if name not in known]
+        self.assertEqual(missing, [])
+        self.assertIn("determinism-replay", watched)
+        self.assertNotIn("Determinism Replay", watched)
+
+    def test_nightly_failure_issue_job_skips_fork_and_pull_request_runs(self) -> None:
+        text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
+        self.assertIn("head_repository.full_name == github.repository", text)
+        self.assertIn("github.event.workflow_run.event == 'schedule'", text)
+        self.assertIn("github.event.workflow_run.event == 'push'", text)
+        self.assertIn("github.event.workflow_run.event == 'workflow_dispatch'", text)
+        self.assertNotIn("github.event.workflow_run.event == 'pull_request'", text)
+        self.assertNotIn(
+            "github.event.workflow_run.event == 'schedule' ||\n"
+            "       github.event.workflow_run.head_branch == 'main')",
+            text,
+        )
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
@@ -529,6 +598,21 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("[self-hosted, gpu]", text)
         self.assertNotIn("continue-on-error: true", text)
         self.assertFalse(has_pull_request(text))
+
+    def test_pinned_nightly_steps_follow_the_experimental_flag(self) -> None:
+        text = (WORKFLOWS / "toolchain-management.yml").read_text(encoding="utf-8")
+        self.assertIn("toolchain: pinned-nightly", text)
+        self.assertNotIn("toolchain: nightly\n", text)
+        fmt = text.split("name: Check code formatting compatibility", 1)[1].split(
+            "name: Run clippy with toolchain", 1
+        )[0]
+        self.assertIn("if: ${{ !matrix.experimental }}", fmt)
+        self.assertNotIn("'nightly'", fmt)
+        nightly = text.split("name: Test nightly features (if nightly)", 1)[1].split(
+            "\n  msrv-check:", 1
+        )[0]
+        self.assertIn("if: matrix.experimental", nightly)
+        self.assertNotIn("'nightly'", nightly)
 
 
 if __name__ == "__main__":
