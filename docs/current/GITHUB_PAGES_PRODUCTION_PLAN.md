@@ -29,8 +29,8 @@ AstraWeave has a **documentation foundation** with 1,078+ files and 2M+ words of
 |-----------|--------|-------|
 | **mdBook Framework** | Working | docs/book.toml configured |
 | **54 Source Pages** | docs/src/ | SUMMARY.md navigation |
-| **Benchmark Dashboard** | Working | tools/benchmark-dashboard/ |
-| **Cargo Doc Integration** | Partial | 5 core crates documented |
+| **Benchmark Dashboard** | Working | `docs/archive/benchmark_dashboard/` plus `docs/archive/benchmark_data/` (published under `/dashboard/`) |
+| **Cargo Doc Integration** | Partial | 10 crates (`cargo doc --no-deps`, `pages.yml`) |
 | **GitHub Actions** | `pages.yml` | Artifact deploy. `benchmark-dashboard.yml` still pushes the `gh-pages` branch. |
 | **gh-pages Branch** | Legacy | Still updated by `benchmark-dashboard.yml` and `benchmark_alert.yml` until the first successful `pages.yml` deploy replaces the live site. |
 
@@ -78,9 +78,9 @@ Critical Stubs (All Core Systems):
 
 ### Task 0.1: Unify GitHub Pages Deployment Actions
 
-**Problem (historical)**: The removed `docs.yml` used `JamesIves/github-pages-deploy-action@v4` while `benchmark-dashboard.yml` used `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, causing mutual destruction. The live publisher is `pages.yml`.
+**Problem (historical)**: The removed `docs.yml` used `peaceiris/actions-gh-pages@v4` with `keep_files: true` while `benchmark-dashboard.yml` also pushed `gh-pages` (without `force_orphan` in this repository). Branch publishers could overwrite each other's paths. The live publisher is `pages.yml`.
 
-**Solution**: Standardize on `peaceiris/actions-gh-pages@v4` with `keep_files: true` and use subdirectory deployment.
+**Solution (historical — superseded by `pages.yml`)**: The January plan was to standardize branch pushes on `peaceiris/actions-gh-pages@v4` with `keep_files: true` and subdirectory deployment. The Actions artifact workflow replaces the whole site each deploy and does not use `keep_files`.
 
 **Changes Required**:
 

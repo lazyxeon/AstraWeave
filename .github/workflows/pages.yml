@@ -3,7 +3,8 @@ name: Pages
 # The repository Pages source is GitHub Actions. Each deployment replaces the
 # site, so this workflow builds every public path into one directory:
 # the mdBook, rustdoc under /api/, the workspace map at /architecture/,
-# and the benchmark dashboard at /dashboard/benchmark_dashboard/.
+# and the benchmark dashboard at /dashboard/benchmark_dashboard/ with
+# docs/archive/benchmark_data/ and .github/benchmark_thresholds.json.
 
 on:
   push:
@@ -13,6 +14,7 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'docs/archive/benchmark_dashboard/**'
+      - '.github/benchmark_thresholds.json'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '**/Cargo.toml'
@@ -25,10 +27,10 @@ on:
       - '**/*.md'
       - 'docs/**'
       - 'docs/archive/benchmark_dashboard/**'
+      - '.github/benchmark_thresholds.json'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '**/Cargo.toml'
-      - 'tools/benchmark-dashboard/**'
       - '.github/actions/rust-ci-setup/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -106,6 +108,12 @@ jobs:
           rm -rf "$dest"
           mkdir -p "$dest"
           cp -a docs/archive/benchmark_dashboard/. "$dest/"
+          data=docs/book/dashboard/benchmark_data
+          rm -rf "$data"
+          mkdir -p "$data"
+          cp -a docs/archive/benchmark_data/. "$data/"
+          mkdir -p docs/book/.github
+          cp .github/benchmark_thresholds.json docs/book/.github/benchmark_thresholds.json
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -173,6 +181,39 @@ jobs:
           test -f docs/book/sitemap.xml
           grep -q "AstraWeave Workspace Architecture Map" docs/book/architecture/index.html
           test -f docs/book/dashboard/benchmark_dashboard/index.html
+          test -f docs/book/dashboard/benchmark_data/benchmark_history.jsonl
+          test -s docs/book/dashboard/benchmark_data/benchmark_history.jsonl
+          test -f docs/book/dashboard/benchmark_data/metadata.json
+          test -f docs/book/.github/benchmark_thresholds.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("docs/book/dashboard")
+          meta = json.loads(
+              (root / "benchmark_data/metadata.json").read_text(encoding="utf-8")
+          )
+          if not meta:
+              raise SystemExit("metadata.json is empty")
+          thresholds = json.loads(
+              Path("docs/book/.github/benchmark_thresholds.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          if not isinstance(thresholds, dict):
+              raise SystemExit("benchmark_thresholds.json must be a JSON object")
+          history_path = root / "benchmark_data/benchmark_history.jsonl"
+          parsed = 0
+          for line in history_path.read_text(encoding="utf-8").splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              json.loads(line)
+              parsed += 1
+              break
+          if parsed != 1:
+              raise SystemExit("benchmark_history.jsonl has no JSON line")
+          PY
           test -f docs/book/api/index.html
           test -f docs/book/api/astraweave_core/index.html
           echo "Pages site: $(find docs/book -name '*.html' | wc -l) HTML files"
