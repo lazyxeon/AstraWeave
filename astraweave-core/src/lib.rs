@@ -58,6 +58,7 @@ pub use tool_vocabulary::*;
 pub use tools::{
     astar_path, find_cover_positions, glam_to_schema, los_clear, path_exists, schema_to_glam,
 };
+pub use util::{byte_prefix, floor_char_boundary};
 pub use validation::*;
 pub use world::*;
 

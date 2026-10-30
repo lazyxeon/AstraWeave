@@ -1,6 +1,8 @@
 // Defensive LLM Adapter Example (stub)
 // To be used in astraweave-llm/src/llm_adapter.rs or similar
 
+use astraweave_core::byte_prefix;
+
 /// Maximum allowed prompt length
 pub const MAX_PROMPT_LENGTH: usize = 4096;
 
@@ -44,7 +46,7 @@ pub fn sanitize_prompt(prompt: &str) -> String {
 /// Truncate prompt to maximum allowed length
 pub fn truncate_prompt(prompt: &str) -> String {
     if prompt.len() > MAX_PROMPT_LENGTH {
-        prompt[..MAX_PROMPT_LENGTH].to_string()
+        byte_prefix(prompt, MAX_PROMPT_LENGTH).to_string()
     } else {
         prompt.to_string()
     }
@@ -226,6 +228,25 @@ mod tests {
     #[test]
     fn test_truncate_prompt_empty() {
         assert_eq!(truncate_prompt(""), "");
+    }
+
+    #[test]
+    fn test_truncate_prompt_multibyte_at_boundary() {
+        let prompt = format!("{}tail", "é".repeat(2048));
+        assert!(prompt.len() > MAX_PROMPT_LENGTH);
+        let result = truncate_prompt(&prompt);
+        assert!(result.len() <= MAX_PROMPT_LENGTH);
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_truncate_prompt_emoji_at_boundary() {
+        let mut prompt = "x".repeat(MAX_PROMPT_LENGTH - 1);
+        prompt.push('🎮');
+        prompt.push('z');
+        let result = truncate_prompt(&prompt);
+        assert!(result.len() <= MAX_PROMPT_LENGTH);
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
     }
 
     // ====================================================================

@@ -155,21 +155,9 @@ proptest! {
     }
 
     /// Property: truncate_input never panics
-    /// NOTE: Using catch_unwind as truncate_input has a known Unicode boundary bug
-    /// (discovered by this proptest) that should be fixed in production code.
     #[test]
     fn prop_truncate_never_panics(input in ".*", max_length in 0usize..10000) {
-        // Use catch_unwind to detect panics without failing the test
-        // This documents the known issue while allowing the test suite to pass
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            truncate_input(&input, max_length)
-        }));
-        // We document that panics can occur with Unicode boundary issues
-        // For ASCII-only inputs, it should never panic
-        if input.is_ascii() {
-            prop_assert!(result.is_ok(), "Should not panic for ASCII input");
-        }
-        // For non-ASCII, we accept that it may panic (known bug to fix)
+        let _ = truncate_input(&input, max_length);
     }
 }
 
