@@ -4,7 +4,8 @@
 //! inside fenced code blocks. The only suppression is an intentional
 //! documentation example: a fenced block whose info string is exactly `diff`,
 //! `text`, or `console` and that contains a complete conflict sequence
-//! (`<<<<<<<` … `=======` … `>>>>>>>`) before the fence closes.
+//! (`<<<<<<<` … `=======` … `>>>>>>>`) before the fence closes, and the fence
+//! ends with no unclosed conflict still open.
 //!
 //! Fence lines follow CommonMark: up to three spaces of indent, an opening run
 //! of three or more `` ` `` or `~` characters (optional info string), and a
@@ -90,8 +91,11 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
 }
 
 fn flush_fence_block(errors: &mut Vec<String>, block: PendingFenceErrors) {
-    let suppress =
-        block.exempt_candidate && block.saw_opener && block.saw_separator && block.saw_closer;
+    let suppress = block.exempt_candidate
+        && block.saw_opener
+        && block.saw_separator
+        && block.saw_closer
+        && !block.in_conflict;
     if !suppress {
         errors.extend(block.errors);
     }
@@ -391,6 +395,22 @@ mod tests {
         );
         let errors = conflict_marker_errors("doc.md", &body);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn stray_marker_after_exempt_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b"),
+            opener()
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert!(!errors.is_empty(), "{errors:?}");
+        assert!(errors
+            .iter()
+            .any(|e| e.contains(":5:") && e.contains("<<<<<<<")));
     }
 
     #[test]
