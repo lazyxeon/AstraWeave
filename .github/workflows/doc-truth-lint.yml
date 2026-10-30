@@ -52,17 +52,7 @@ name: Doc-Truth Lint
 on:
   push:
     branches: [ "main" ]
-    paths:
-      - '**/*.md'
-      - 'gh-pages/**'
-      - 'tools/aw_doc_lint/**'
-      - '.github/workflows/doc-truth-lint.yml'
   pull_request:
-    paths:
-      - '**/*.md'
-      - 'gh-pages/**'
-      - 'tools/aw_doc_lint/**'
-      - '.github/workflows/doc-truth-lint.yml'
   workflow_dispatch:
 
 # Per pull-request ref. Another PR does not cancel this run. Run 39793896957

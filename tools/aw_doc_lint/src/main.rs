@@ -91,7 +91,14 @@
 //! `is_invisible_frame_char`. Player-facing docs must not use the retired game
 //! title. A failed read of a scanned file, including
 //! `docs/current/PROJECT_BRIEF.md`, fails the process.
+//!
+//! Merge/rebase conflict markers (`<<<<<<<`, `|||||||`, `=======` between
+//! open and close, `>>>>>>>`) are always hard errors outside intentional
+//! `diff`/`text`/`console` examples; see `conflict_markers.rs` and
+//! `tools/aw_doc_lint/README.md`. The conflict scan walks every `git ls-files`
+//! path; closed-vocabulary scope is unchanged.
 
+mod conflict_markers;
 mod html_entities;
 mod html_legacy;
 mod rendered;
@@ -281,6 +288,29 @@ fn in_scope(path: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Tracked paths for the always-enforced conflict-marker scan (wider than
+/// closed-vocabulary scope). Every `git ls-files` entry is scanned; `third_party/`
+/// is included because vendored trees can carry merge markers. Only NUL-byte
+/// binaries and invalid UTF-8 are skipped at read time (see `read_conflict_scan_text`).
+fn in_conflict_scan_scope(_path: &str) -> bool {
+    true
+}
+
+fn is_probably_binary(content: &[u8]) -> bool {
+    content.contains(&0)
+}
+
+fn read_conflict_scan_text(root: &Path, rel: &str) -> Result<Option<String>> {
+    let bytes = std::fs::read(root.join(rel)).with_context(|| format!("reading {rel}"))?;
+    if is_probably_binary(&bytes) {
+        return Ok(None);
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => Ok(Some(text)),
+        Err(_) => Ok(None),
+    }
 }
 
 fn tracked_files(root: &Path) -> Result<Vec<String>> {
@@ -873,6 +903,13 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
     let mut violations: Vec<(String, usize, String, &'static str)> = Vec::new();
     let mut total_matches = 0usize;
     let mut scanned = 0usize;
+    let mut conflict = Vec::new();
+
+    for f in tracked.iter().filter(|f| in_conflict_scan_scope(f)) {
+        if let Some(content) = read_conflict_scan_text(root, f)? {
+            conflict.extend(conflict_markers::conflict_marker_errors(f, &content));
+        }
+    }
 
     for f in &files {
         let content = read_repo_file(root, f)?;
@@ -921,10 +958,24 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
         }
     }
 
+    conflict.sort();
+    for e in &conflict {
+        println!("{e}");
+        if in_ci {
+            println!("::error::{e}");
+        }
+    }
+
     if !front.is_empty() {
         bail!(
             "{} front-door documentation error(s) (always enforced)",
             front.len()
+        );
+    }
+    if !conflict.is_empty() {
+        bail!(
+            "{} git conflict marker(s) in tracked prose (always enforced)",
+            conflict.len()
         );
     }
     if should_fail(mode, k) {
@@ -1128,6 +1179,44 @@ mod tests {
         // backslash paths normalize
         assert!(in_scope("docs\\current\\PROJECT_STATUS.md"));
         assert!(!in_scope("docs\\journey\\x.md"));
+    }
+
+    #[test]
+    fn conflict_scan_scope_includes_all_tracked_path_shapes() {
+        assert!(in_conflict_scan_scope("astraweave-core/src/lib.rs"));
+        assert!(in_conflict_scan_scope("scripts/install.ps1"));
+        assert!(in_conflict_scan_scope("config/schema.ron"));
+        assert!(in_conflict_scan_scope(".github/CODEOWNERS"));
+        assert!(in_conflict_scan_scope("third_party/foo/LICENSE"));
+        assert!(in_conflict_scan_scope(".gitignore"));
+    }
+
+    #[test]
+    fn is_probably_binary_detects_nul_byte() {
+        assert!(is_probably_binary(b"text\0more"));
+        assert!(!is_probably_binary(b"plain text"));
+    }
+
+    #[test]
+    fn read_conflict_scan_text_skips_nul_byte_files() {
+        let dir = std::env::temp_dir().join(format!("aw_doc_lint_conflict_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("blob.bin"), b"prefix\0suffix").unwrap();
+        let got = read_conflict_scan_text(&dir, "blob.bin").unwrap();
+        assert!(got.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn conflict_scan_scope_is_wider_than_vocabulary_scope() {
+        assert!(!in_scope("docs/archive/benchmark_dashboard/index.html"));
+        assert!(in_conflict_scan_scope(
+            "docs/archive/benchmark_dashboard/index.html"
+        ));
+        assert!(!in_scope("astraweave-core/src/lib.rs"));
+        assert!(in_conflict_scan_scope("astraweave-core/src/lib.rs"));
+        assert!(in_conflict_scan_scope("target/debug/deps/foo.rs"));
+        assert!(in_conflict_scan_scope("vendor/foo/bar.rs"));
     }
 
     #[test]
