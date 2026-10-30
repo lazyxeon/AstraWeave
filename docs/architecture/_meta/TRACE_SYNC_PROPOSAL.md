@@ -12,7 +12,7 @@
 - **Shipped:** front-matter contract (schema below) on all 26 traces; `tools/aw_trace_sync` with `--validate-only` / `--list-untraced` / `--write` / `--check`; CLAUDE.md `TRACE-TABLE` marker-block generation; `workspace_map.html` per-crate `trace`-link sync (in-place, byte-stable); the two prose enumerations retired to pointers; CI `trace-sync.yml` `--check` gate; 9 unit tests.
 - **Scope refinement (deferred from §7):** v1 syncs the map's per-crate **`trace` link only**, NOT the map's `statusCategory`/`statusEvidence` — those stay curated. Map **status** sync is moved to **v1.1** (with the overlay + `runtime_edges`), because deriving the map's status taxonomy from `lifecycle_status`/`integration_status` is editorial and better done alongside the overlay extraction.
 - **`--list-untraced`** excludes `examples/` crates (demos, not subsystems); it reports the genuinely untraced library/subsystem crates.
-- **`docs.yml` was intentionally NOT modified:** the `--check` gate guarantees the committed `workspace_map.html` is always in sync, so the existing "copy `workspace_map.html` → Pages" step already publishes a current map. A pre-build `--write` would be redundant.
+- **`pages.yml` was intentionally NOT modified for trace sync:** the `--check` gate guarantees the committed `workspace_map.html` is always in sync, so the existing "copy `workspace_map.html` → Pages" step already publishes a current map. A pre-build `--write` would be redundant.
 - **Determinism confirmed:** the Rust serializer (compact `serde_json` with `preserve_order` + `\uXXXX` non-ASCII escaping) reproduces the existing map blob byte-for-byte, so `--check` is clean and future edits produce minimal diffs.
 
 ## v1.1 implementation notes (2026-06-25)
@@ -151,7 +151,7 @@ The map's data is the `textContent` of `<script id="workspace-data" type="applic
 
 **Externalizing the JSON to a fetched `workspace_data.json` is rejected for v1.** Browsers block `fetch()` from `file://` (CORS), so a fetched model breaks opening `workspace_map.html` directly — a common quick-look workflow. The hosted Pages copy would work, but the local-file regression is not worth it. Revisit only if docs become server-only.
 
-**GitHub Pages requires no tool-specific step:** `.github/workflows/pages.yml` already copies `docs/architecture/workspace_map.html` → the published `/architecture/` page on every push to `main`. Running `--write` (or `--check`) in that workflow before `mdbook build` keeps the published map current even if a contributor forgets locally.
+**GitHub Pages requires no tool-specific step:** `.github/workflows/pages.yml` copies `docs/architecture/workspace_map.html` → the published `/architecture/` page when its path filter matches (Rust, docs, lockfiles, rust-ci-setup, or this workflow). Running `--write` (or `--check`) in that workflow before `mdbook build` keeps the published map current even if a contributor forgets locally.
 
 ## 9. Curated overlay — `docs/architecture/_meta/map_overlay.json`
 

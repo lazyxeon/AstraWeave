@@ -32,7 +32,7 @@ AstraWeave has a **documentation foundation** with 1,078+ files and 2M+ words of
 | **Benchmark Dashboard** | Working | tools/benchmark-dashboard/ |
 | **Cargo Doc Integration** | Partial | 5 core crates documented |
 | **GitHub Actions** | `pages.yml` | Artifact deploy. `benchmark-dashboard.yml` still pushes the `gh-pages` branch. |
-| **gh-pages Branch** | Exists | Active deployment target |
+| **gh-pages Branch** | Legacy | Still updated by `benchmark-dashboard.yml` and `benchmark_alert.yml` until the first successful `pages.yml` deploy replaces the live site. |
 
 ### Critical Issues Identified
 

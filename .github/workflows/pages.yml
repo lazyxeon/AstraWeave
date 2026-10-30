@@ -12,10 +12,10 @@ on:
       - '**/*.rs'
       - '**/*.md'
       - 'docs/**'
+      - 'docs/archive/benchmark_dashboard/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '**/Cargo.toml'
-      - 'tools/benchmark-dashboard/**'
       - '.github/actions/rust-ci-setup/**'
       - '.github/workflows/pages.yml'
   pull_request:
@@ -24,6 +24,7 @@ on:
       - '**/*.rs'
       - '**/*.md'
       - 'docs/**'
+      - 'docs/archive/benchmark_dashboard/**'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '**/Cargo.toml'
@@ -62,6 +63,9 @@ jobs:
     name: Build Pages site
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      pages: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -101,8 +105,7 @@ jobs:
           dest=docs/book/dashboard/benchmark_dashboard
           rm -rf "$dest"
           mkdir -p "$dest"
-          cp -a tools/benchmark-dashboard/index.html tools/benchmark-dashboard/dashboard.js "$dest/"
-          cp -a tools/benchmark-dashboard/benchmark-data tools/benchmark-dashboard/static-data tools/benchmark-dashboard/graphs "$dest/"
+          cp -a docs/archive/benchmark_dashboard/. "$dest/"
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -170,12 +173,6 @@ jobs:
           test -f docs/book/sitemap.xml
           grep -q "AstraWeave Workspace Architecture Map" docs/book/architecture/index.html
           test -f docs/book/dashboard/benchmark_dashboard/index.html
-          test -f docs/book/dashboard/benchmark_dashboard/dashboard.js
-          test -f docs/book/dashboard/benchmark_dashboard/benchmark-data/history.jsonl
-          test -f docs/book/dashboard/benchmark_dashboard/static-data/history.jsonl
-          test -f docs/book/dashboard/benchmark_dashboard/graphs/heatmap.png
-          test -f docs/book/dashboard/benchmark_dashboard/graphs/distribution_latest.png
-          test -f docs/book/dashboard/benchmark_dashboard/graphs/top_series_time.png
           test -f docs/book/api/index.html
           test -f docs/book/api/astraweave_core/index.html
           echo "Pages site: $(find docs/book -name '*.html' | wc -l) HTML files"
