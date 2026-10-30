@@ -3,7 +3,12 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -337,6 +342,219 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn('--base "HEAD^1"', changes)
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
+
+    def test_fuzz_nightly_runs_every_bin_off_pull_requests(self) -> None:
+        text = (WORKFLOWS / "fuzz-nightly.yml").read_text(encoding="utf-8")
+        self.assertFalse(has_pull_request(text), "fuzz-nightly.yml")
+        self.assertIn("schedule:", text)
+        self.assertIn("workflow_dispatch:", text)
+        self.assertIn("scripts/ci/fuzz_targets.py", text)
+        self.assertIn("scripts/ci/fuzz_corpus_artifact.py", text)
+        self.assertIn("./.github/actions/rust-nightly", text)
+        self.assertIn("cargo +$AW_NIGHTLY fuzz run", text)
+        self.assertIn("-max_total_time=120", text)
+        self.assertIn(
+            "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2",
+            text,
+        )
+        self.assertNotIn("actions/checkout@v5", text)
+        self.assertNotIn("actions/cache", text)
+        self.assertIn("artifacts/**", text)
+        self.assertNotIn("continue-on-error", text)
+        self.assertNotIn("pull_request:", text)
+        top, _, jobs = text.partition("\njobs:")
+        _, _, perms = top.partition("permissions:")
+        self.assertIn("contents: read", perms)
+        self.assertIn("actions: read", perms)
+        self.assertNotIn("actions: write", text)
+        self.assertIn(
+            "permissions:\n      contents: read\n    outputs:",
+            jobs,
+        )
+        # The list job narrows to contents: read. The fuzz job inherits
+        # the workflow token and does not grant actions: write.
+        self.assertEqual(jobs.count("permissions:"), 1)
+        self.assertIn("exclude_pull_requests=true", text)
+        self.assertIn("github.event.repository.default_branch", text)
+
+        spec = importlib.util.spec_from_file_location(
+            "fuzz_targets", ROOT / "scripts" / "ci" / "fuzz_targets.py"
+        )
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        rows = module.matrix()
+        declared = 0
+        for cargo in ROOT.glob("**/fuzz/Cargo.toml"):
+            if "target" in cargo.parts:
+                continue
+            for line in cargo.read_text(encoding="utf-8").splitlines():
+                if line.strip() == "[[bin]]":
+                    declared += 1
+        self.assertEqual(len(rows), declared)
+        self.assertGreaterEqual(len(rows), 28)
+        targets = [row["target"] for row in rows]
+        self.assertEqual(len(targets), len(set(targets)))
+        for required in (
+            "fuzz_awsv",
+            "fuzz_vitals",
+            "fuzz_gltf_json",
+            "fuzz_cell_ron",
+            "fuzz_decode_msg",
+            "fuzz_json_plan_parsing",
+            "fuzz_packet_parsing",
+            "fuzz_event_system",
+            "fuzz_asset_headers",
+            "fuzz_path",
+        ):
+            self.assertIn(required, targets)
+
+    def test_corpus_artifact_picks_the_newest_previous_run(self) -> None:
+        script = ROOT / "scripts" / "ci" / "fuzz_corpus_artifact.py"
+        spec = importlib.util.spec_from_file_location("fuzz_corpus_artifact", script)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        repo = "lazyxeon/AstraWeave"
+        branch = "main"
+
+        def run(run_id: int, **overrides: object) -> dict:
+            body = {
+                "id": run_id,
+                "conclusion": "success",
+                "status": "completed",
+                "head_branch": branch,
+                "path": ".github/workflows/fuzz-nightly.yml",
+                "event": "schedule",
+                "head_repository": {"full_name": repo},
+                "repository": {"full_name": repo},
+            }
+            body.update(overrides)
+            return body
+
+        def art(
+            run_id: int,
+            created: str,
+            *,
+            expired: bool = False,
+            head_branch: str = branch,
+            repository_id: int = 1,
+            head_repository_id: int = 1,
+        ) -> dict:
+            return {
+                "expired": expired,
+                "created_at": created,
+                "workflow_run": {
+                    "id": run_id,
+                    "head_branch": head_branch,
+                    "repository_id": repository_id,
+                    "head_repository_id": head_repository_id,
+                },
+            }
+
+        runs = {
+            "workflow_runs": [
+                run(2),
+                run(3),
+                run(4),
+                run(5),
+                run(7),
+                run(8),
+                run(11),
+                run(12),
+                run(20, conclusion="failure"),
+                run(21, head_branch="topic"),
+                run(22, path=".github/workflows/ci.yml"),
+                run(23, head_repository={"full_name": "fork/AstraWeave"}),
+                run(24, event="pull_request"),
+            ]
+        }
+        payload = {
+            "artifacts": [
+                art(9, "2026-10-28T03:00:00Z", expired=True),
+                art(3, "2026-10-27T00:00:00Z"),
+                art(5, "2026-10-28T01:00:00Z"),
+                art(7, "2026-10-28T02:00:00Z"),
+                {
+                    "created_at": "2026-10-28T04:00:00Z",
+                    "workflow_run": {"id": "not-a-run"},
+                },
+                art(23, "2026-10-28T05:00:00Z", head_repository_id=99),
+                art(20, "2026-10-28T06:00:00Z"),
+            ]
+        }
+        kwargs = {
+            "branch": branch,
+            "repository": repo,
+            "run_pages": [runs],
+        }
+        self.assertEqual(module.select_corpus_run([payload], "7", **kwargs), "20")
+        self.assertIsNone(
+            module.select_corpus_run([{"artifacts": []}], "1", **kwargs)
+        )
+        self.assertIsNone(
+            module.select_corpus_run(
+                [{"artifacts": [art(4, "2026-10-28T00:00:00Z")]}],
+                "4",
+                **kwargs,
+            )
+        )
+        tied = {
+            "artifacts": [
+                art(2, "2026-10-28T00:00:00Z"),
+                art(8, "2026-10-28T00:00:00Z"),
+            ]
+        }
+        self.assertEqual(module.select_corpus_run([tied], "1", **kwargs), "8")
+        poisoned = {
+            "artifacts": [
+                art(5, "2026-10-28T01:00:00Z"),
+                art(23, "2026-10-29T00:00:00Z", head_repository_id=99),
+                art(21, "2026-10-29T01:00:00Z", head_branch="topic"),
+                art(22, "2026-10-29T02:00:00Z"),
+                art(20, "2026-10-29T03:00:00Z"),
+                art(24, "2026-10-29T04:00:00Z"),
+            ]
+        }
+        self.assertEqual(
+            module.select_corpus_run([poisoned], "1", **kwargs), "20"
+        )
+        self.assertIsNone(
+            module.select_corpus_run(
+                [poisoned], "1", branch="", repository=repo, run_pages=[runs]
+            )
+        )
+
+        older = {"artifacts": [art(11, "2026-10-01T00:00:00Z")]}
+        newer = {"artifacts": [art(12, "2026-10-02T00:00:00Z")]}
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as runs_file:
+            json.dump(runs, runs_file)
+            runs_file.flush()
+            proc = subprocess.run(
+                [sys.executable, str(script), "12", branch, repo, runs_file.name],
+                input=json.dumps(older) + "\n" + json.dumps(newer),
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(proc.stdout, "11\n")
+            empty = subprocess.run(
+                [sys.executable, str(script), "1", branch, repo, runs_file.name],
+                input='{"artifacts":[]}',
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(empty.stdout, "")
+            bad = subprocess.run(
+                [sys.executable, str(script), "1"],
+                input="{}",
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(bad.returncode, 2)
 
     def test_nightly_failure_issue_serializes_per_upstream_run(self) -> None:
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")

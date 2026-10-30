@@ -33,7 +33,7 @@ These are in the caps pull request. Valid fixtures still decode to the same byte
 
 The compressed save cap is 4 MiB, not the 16 MiB sketch below, because the proof claims 8 MiB and must fail closed. The LZ4 message cap is 4 MiB for the same reason (the proof claims 16 MiB).
 
-Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Each target runs for 120 seconds: `fuzz_awsv`, `fuzz_vitals`, `fuzz_gltf_json`, `fuzz_cell_ron`, `fuzz_decode_msg`.
+Nightly fuzzing is `.github/workflows/fuzz-nightly.yml`. It is not on pull requests. Every cargo-fuzz `[[bin]]` runs for 120 seconds. Each target's corpus is restored from the newest `fuzz-corpus-<target>` artifact from a completed run (conclusion `success` or `failure`, not `cancelled`) of this workflow on the default branch of this repository, and uploaded again. A failed run list, artifact list, or corpus download fails the job instead of fuzzing with an empty corpus. Crash files under that target's `artifacts/` directory are uploaded. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`. The fuzz checkout sets `persist-credentials: false`.
 
 ## Findings, ranked
 
@@ -42,7 +42,7 @@ Severity is impact if the reachable caller is given a hostile file or socket, no
 | ID | Sev | Status | Where | Wired on `main`? | One-line |
 |---|---|---|---|---|---|
 | SEC-NET-1 | Critical | Closed on main | `aw-net-server` default config | Yes, `spawn_server` | Binds `127.0.0.1:8788` and `:8789` (`net/aw-net-server/src/lib.rs:196-197`). Release `spawn_server` refuses `PUBLISHED_DEV_KEY` (`:342-347`). `ServerConfig::default` still holds `dev_default()` on every build (`:202`). `db_path` is `:201`. `admin_token` is `:204`. `--ws-listen` and `--http-listen` can opt into non-loopback (`net/aw-net-server/src/main.rs:78-88`) |
-| SEC-NET-2 | High | Closed on main | `astraweave-net` `GameServer` | Yes, examples | `actor_id` is ignored (`astraweave-net/src/lib.rs:817`, `:851`). `hello_token_accepted` applies (`:920-936`). `handle_conn` accepts with `engine_ws_config()` (`:596-597`): message and frame are 1 MiB (`MAX_ENGINE_WS_MESSAGE` at `:951`, `:955-956`) |
+| SEC-NET-2 | High | Closed on main | `astraweave-net` `GameServer` | Yes, examples | Client `actor_id` is ignored (`astraweave-net/src/lib.rs:833-834`, `:867-868`). `hello_token_accepted` gates hello and plan/input handlers (`:802-805`, `:936-953`). `handle_conn` accepts with `engine_ws_config()` (`:611-613`): message and frame are 1 MiB (`MAX_ENGINE_WS_MESSAGE` at `:967`, `:971-972`) |
 | SEC-SAVE-1 | High | Closed on main | `aw-save` `read_any_version` | Yes, `aw_save_cli` | `data_len` above 4 MiB is rejected before allocation (`persistence/aw-save/src/lib.rs:367-371`). LZ4 output above 16 MiB is rejected before decompress (`:446-456`) |
 | SEC-NET-3 | High | Closed on main | `aw-net-proto` `decode_msg` | Yes, matchmaking server | An LZ4-declared output above 4 MiB is rejected in `decompress_lz4_capped` (`net/aw-net-proto/src/lib.rs:268`; cap at `:10`). The `Codec::PostcardLz4` arm is `:296-300` |
 | SEC-ASSET-1 | High | Closed on main | glTF URI + cell `load_asset` | Yes, editor and scene streaming | `../` is rejected by `safe_under` before the read (`astraweave-asset/src/lib.rs:837-838`, `cell_loader.rs:224-225`) |
@@ -274,9 +274,9 @@ PoC `poc_postcard_lz4_rejects_oversized_declared_output` gets `declared uncompre
 
 ### In-engine `astraweave-net`
 
-`#![forbid(unsafe_code)]`. `GameServer::run_ws` binds whatever address the caller passes (`astraweave-net/src/lib.rs:533-535`). Examples use `127.0.0.1`. `handle_conn` (`:595`) accepts with `accept_async_with_config(stream, Some(engine_ws_config()))` (`:596-597`). `MAX_ENGINE_WS_MESSAGE` is `1024 * 1024` (`:951`). Both `max_message_size` and `max_frame_size` are that value (`:955-956`). `tests/security_followup.rs` asserts that pair. `serde_json::from_str` of the text frame is `:779`. A message above 1 MiB does not reach `from_str`.
+`#![forbid(unsafe_code)]`. `GameServer::run_ws` binds whatever address the caller passes (`astraweave-net/src/lib.rs:549-551`). Examples use `127.0.0.1`. `handle_conn` (`:611`) accepts with `accept_async_with_config(stream, Some(engine_ws_config()))` (`:612-613`). `MAX_ENGINE_WS_MESSAGE` is `1024 * 1024` (`:967`). Both `max_message_size` and `max_frame_size` are that value (`:971-972`). `tests/security_followup.rs` asserts that pair. `serde_json::from_str` of the text frame is `:795`. A message above 1 MiB does not reach `from_str`.
 
-**SEC-NET-2.** `ClientProposePlan` and `ClientInput` discard the client `actor_id` and execute `self.player_id` (`astraweave-net/src/lib.rs:817-824`, `:851-860`). The comment at `:792-793` says the client name does not select player, companion, or enemy. `ClientHello`'s policy string is still applied to `InterestPolicy` (`astraweave-net/src/lib.rs:794-809`): `radius`, `fov`, and `fovlos`, each with radius 6. That string does not select the actor. `hello_token_accepted` (`:920-936`) rejects a missing or empty token. The literal `dev` is accepted only when `cfg!(any(test, debug_assertions))` is set (`:927-928`). Every other build requires `AW_GAME_TOKEN` to be non-empty, different from `dev`, and equal to the presented token (`:930-936`). `validate_and_execute` remains a gameplay check (bounds `(0,0)-(19,9)` in this server). The per-message and per-frame cap is 1 MiB. There is no running total of bytes across messages on the connection.
+**SEC-NET-2.** `ClientProposePlan` and `ClientInput` discard the client `actor_id` and execute `self.player_id` (`astraweave-net/src/lib.rs:833-834`, `:867-868`). The comment at `:808-809` says the client name does not select player, companion, or enemy. `ClientHello`'s policy string is still applied to `InterestPolicy` (`astraweave-net/src/lib.rs:810-825`): `radius`, `fov`, and `fovlos`, each with radius 6. That string does not select the actor. `hello_token_accepted` (`:936-953`) rejects a missing or empty token. The literal `dev` is accepted only when `cfg!(any(test, debug_assertions))` is set (`:943-944`). Every other build requires `AW_GAME_TOKEN` to be non-empty, different from `dev`, and equal to the presented token (`:946-952`). `validate_and_execute` remains a gameplay check (bounds `(0,0)-(19,9)` in this server). The per-message and per-frame cap is 1 MiB. There is no running total of bytes across messages on the connection.
 
 ### IPC
 
@@ -318,7 +318,7 @@ GitHub secret scanning and push protection are enabled on this repository. No wo
 
 ### Fuzz targets that already exist
 
-`cargo-fuzz` targets already live under `astraweave-asset/fuzz`, `astraweave-llm/fuzz`, `astraweave-net/fuzz`, `astraweave-ecs/fuzz`, and `crates/astraweave-blend/fuzz`. No workflow invokes them. They do not cover `aw-save`, combat vitals, mod manifests, or weave TOML.
+`cargo-fuzz` targets already live under `astraweave-asset/fuzz`, `astraweave-llm/fuzz`, `astraweave-net/fuzz`, `astraweave-ecs/fuzz`, and `crates/astraweave-blend/fuzz`. `.github/workflows/fuzz-nightly.yml` runs every `[[bin]]` in these crates and in `persistence/aw-save/fuzz`, `astraweave-combat/fuzz`, and `net/aw-net-proto/fuzz`. Mod manifests and weave TOML have no target.
 
 ---
 
@@ -360,7 +360,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 1. `ServerConfig::default` binds `127.0.0.1`. Starting on `0.0.0.0` requires an explicit flag. `SigningKey::dev_default` refuses to boot unless a `--dev-key` flag is set. Production loads the key from the environment or the secrets crate. This changes who can connect. It does not change the bytes of a signed frame produced with a real key. On main the default bind is loopback and release `spawn_server` refuses `dev_default()`. `ServerConfig::default` still holds that key on every build. There is no `--dev-key` flag. `--ws-listen` and `--http-listen` can opt into non-loopback.
 2. `decode_msg` uses the same uncompressed cap as `aw-save`. On main the message cap is 4 MiB. `aw-save`'s uncompressed cap stays 16 MiB.
-3. `GameServer::handle_conn` sets `WebSocketConfig.max_message_size` to 1 MiB, requires a real authenticator before any `ClientInput`, and ignores `actor_id` that is not the id bound at hello. The `"dev"` string check goes away. On main `actor_id` is ignored and `hello_token_accepted` applies. `handle_conn` accepts with `engine_ws_config()` (`astraweave-net/src/lib.rs:596-597`). `MAX_ENGINE_WS_MESSAGE` is 1 MiB (`:951`) for both the message and the frame (`:955-956`). `tests/security_followup.rs` locks that pair. There is no running total of bytes across messages on the connection.
+3. `GameServer::handle_conn` sets `WebSocketConfig.max_message_size` to 1 MiB, requires a real authenticator before any `ClientInput`, and ignores `actor_id` that is not the id bound at hello. The `"dev"` string check goes away. On main `actor_id` is ignored and `hello_token_accepted` applies. `handle_conn` accepts with `engine_ws_config()` (`astraweave-net/src/lib.rs:611-613`). `MAX_ENGINE_WS_MESSAGE` is 1 MiB (`:967`) for both the message and the frame (`:971-972`). `tests/security_followup.rs` locks that pair. There is no running total of bytes across messages on the connection.
 4. `astraweave-ipc::handle_conn` uses the same 1 MiB cap. On main it accepts with `ipc_ws_config()` (`astraweave-ipc/src/lib.rs:27-28`). `MAX_IPC_MESSAGE` is 1 MiB (`:18-24`). `run_ws_server` binds whatever address the caller passes (`:8-10`). The example passes `127.0.0.1:8088`.
 
 ### Supply chain
@@ -372,9 +372,9 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ## Fuzzing plan
 
-PR CI does not run fuzzing today, and it should stay that way. The existing `fuzz/` crates are not referenced by any workflow. Adding them to `pull_request` would add a non-deterministic, open-ended job to every review.
+This section is the original proposal. The nightly workflow has landed; the current description is the paragraph under "Landed on main". `.github/workflows/fuzz-nightly.yml` runs on `schedule` (`30 7 * * *`) and `workflow_dispatch`, not on pull requests. Each of the 28 `[[bin]]` targets runs for 120 seconds. The corpus is a `fuzz-corpus-<target>` artifact from a completed run (conclusion `success` or `failure`, not `cancelled`) of this workflow on the default branch of this repository, not an `actions/cache` entry. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`. The list job times out at 5 minutes and the fuzz job at 45 minutes. Pull-request CI still does not run fuzzing.
 
-Add `.github/workflows/fuzz-nightly.yml` only:
+Original proposal:
 
 - Triggers: `schedule` (nightly) and `workflow_dispatch`. Not `pull_request`, not `push`.
 - One job, `ubuntu-latest`, `timeout-minutes: 30`.
@@ -423,7 +423,7 @@ Open feature PRs that touch the same files, and the order to use:
 
 1. **Review this draft.** Open the issues in the table below. The user turns on secret scanning and push protection.
 2. **PR #217 / issue #219** merged as `a66304dc`. The openssl ban stayed. The lockfile no longer contains the package. A later security change can edit `deny.toml` without fighting that branch.
-3. **Small `main` PR: parsers that exist today.** `aw-save` length cap, `decode_vitals` count cap, `decode_msg` LZ4 cap, `safe_under` on glTF URIs and `load_asset`, `ScriptLoader` path reject, loopback check on the LLM clients, `GameServer` message cap. No sandbox rewrite. Re-run replay fixtures. Those caps are on main, including the `GameServer` 1 MiB message and frame cap (`astraweave-net/src/lib.rs:596-597`, `:951-956`).
+3. **Small `main` PR: parsers that exist today.** `aw-save` length cap, `decode_vitals` count cap, `decode_msg` LZ4 cap, `safe_under` on glTF URIs and `load_asset`, `ScriptLoader` path reject, loopback check on the LLM clients, `GameServer` message cap. No sandbox rewrite. Re-run replay fixtures. Those caps are on main, including the `GameServer` 1 MiB message and frame cap (`astraweave-net/src/lib.rs:611-613`, `:967-972`).
 4. **PR #214 before any new sandbox work.** Fix SEC-MOD-2 (id cast) and keep the old `script_system` from reading the disk, on that branch. It already has the fuel limit, the allowlist, and `timeout_ms = 0`.
 5. **PR #252 rebases onto #214** if both are still open, because both carry `astraweave-weaving/src/mod_queue.rs`. Fix SEC-WEAVE-1 (origin range) once, on the branch that owns `push_ice` after the rebase. Do not fork `parse_template_toml`.
 6. **PR #205 rebases onto step 3** so the greybox checkpoint inherits the container cap. Its edit-log parser is already bounded. Add the scar-cell cap (SEC-SAVE-3) on #205, not on `main`. Child branches of #205 (#275, #264, #263, #244) rebase after #205 does.

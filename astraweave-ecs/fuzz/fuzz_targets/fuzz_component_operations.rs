@@ -1,10 +1,10 @@
 #![no_main]
 
-use libfuzzer_sys::fuzz_target;
 use astraweave_ecs::World;
+use libfuzzer_sys::fuzz_target;
 
 /// Fuzz Target 2: Component Operations
-/// 
+///
 /// Tests random sequences of component insert/get/remove operations to find:
 /// - Panics during component insertion
 /// - Memory corruption during component removal

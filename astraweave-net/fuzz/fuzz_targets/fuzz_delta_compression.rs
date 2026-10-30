@@ -4,11 +4,13 @@
 
 #![no_main]
 
+use std::collections::BTreeMap;
+
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 
 use astraweave_core::IVec2;
-use astraweave_net::{apply_delta, diff_snapshots, EntityState, Snapshot};
+use astraweave_net::{apply_delta, diff_snapshots, EntityState, FullInterest, Snapshot};
 
 #[derive(Debug, Arbitrary)]
 struct FuzzInput {
@@ -52,31 +54,37 @@ fn build_snapshot(tick: u64, entities: &[FuzzEntity]) -> Snapshot {
 }
 
 fuzz_target!(|input: FuzzInput| {
-    // Build base and target snapshots
-    let base = build_snapshot(input.base_tick, &input.entities_base);
+    let mut base = build_snapshot(input.base_tick, &input.entities_base);
     let target = build_snapshot(input.target_tick, &input.entities_target);
+    let viewer = target
+        .entities
+        .first()
+        .cloned()
+        .or_else(|| base.entities.first().cloned())
+        .unwrap_or(EntityState {
+            id: 0,
+            pos: IVec2 { x: 0, y: 0 },
+            hp: 0,
+            team: 0,
+            ammo: 0,
+        });
 
-    // Generate delta between snapshots
-    let delta = diff_snapshots(&base, &target);
+    // FullInterest keeps every entity. apply_delta writes into `base`.
+    // Duplicate ids collapse to the last value, matching the diff map.
+    let delta = diff_snapshots(&base, &target, &FullInterest, &viewer);
+    apply_delta(&mut base, &delta);
 
-    // Apply delta back to base
-    let reconstructed = apply_delta(&base, &delta);
-
-    // Verify reconstruction matches target for entities that exist in both
-    // Note: IDs that don't exist in base can't be fully reconstructed
-    for target_entity in &target.entities {
-        if let Some(recon_entity) = reconstructed.entities.iter().find(|e| e.id == target_entity.id)
-        {
-            if input.entities_base.iter().any(|e| e.id == target_entity.id) {
-                assert_eq!(
-                    recon_entity.pos, target_entity.pos,
-                    "Position mismatch for entity {}", target_entity.id
-                );
-                assert_eq!(
-                    recon_entity.hp, target_entity.hp,
-                    "HP mismatch for entity {}", target_entity.id
-                );
-            }
-        }
+    let mut expected: BTreeMap<u32, &EntityState> = BTreeMap::new();
+    for entity in &target.entities {
+        expected.insert(entity.id, entity);
+    }
+    let got: BTreeMap<u32, EntityState> = base.entities.iter().map(|e| (e.id, *e)).collect();
+    assert_eq!(got.len(), expected.len());
+    for (id, want) in expected {
+        let got = got.get(&id).expect("entity missing after apply_delta");
+        assert_eq!(got.pos, want.pos);
+        assert_eq!(got.hp, want.hp);
+        assert_eq!(got.team, want.team);
+        assert_eq!(got.ammo, want.ammo);
     }
 });

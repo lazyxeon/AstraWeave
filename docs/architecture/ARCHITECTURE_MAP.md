@@ -358,7 +358,7 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 |---|---|---|
 | `auto_save_system` drops a failed serialize and the first save error | `astraweave-persistence-ecs/src/lib.rs` `auto_save_system` | `persistence_ecs.md` §6 |
 | `replay_system` records non-`health` events and does not apply them | `astraweave-persistence-ecs/src/lib.rs` `apply_replay_event` | `persistence_ecs.md` §6 |
-| `apply_delta` silent no-op on tick mismatch | `astraweave-net/src/lib.rs:404-406` | `net.md` §6 |
+| `apply_delta` silent no-op on tick mismatch | `astraweave-net/src/lib.rs:420-422` | `net.md` §6 |
 | `process_destructible_hits` deleted in #406 | was an empty `PhysicsWorld` method in `lib.rs`, not `destruction.rs` | `physics.md` §6 |
 | `add_water_aabb` registers an AABB (`lib.rs:1522`) | `astraweave-physics/src/lib.rs:1522` | `physics.md` §6 |
 | `compute_poses_stub` checks components but doesn't write poses | `astraweave-scene/src/lib.rs:941` | `animation.md` §6 |
@@ -521,7 +521,7 @@ Treat `docs/src/` content as **historical/aspirational** unless cross-validated 
 |---|---|---|---|
 | `docs/src/core-systems/audio.md` + `docs/src/api/audio.md` | `AudioConfig`, `AudioBackend`, `AudioListener`, `SpatialSound`, `AttenuationModel`, `ReverbZone`, `AudioOcclusion`, `MusicManager`, `MusicLayer`, `SfxManager`, `SoundPool`, `AudioMixer`, `Bus` | **None exist** in `astraweave-audio/src/lib.rs` re-exports. The actual API is ~30 lines of `lib.rs` + the source it re-exports (`AudioEngine`, `DialoguePlayer`, `VoiceBank`, `EmitterId`, `ListenerPose`). | `audio.md` §6 |
 | `docs/src/core-systems/input.md` | `InputSystem`, `InputConfig`, `ActionMap`, `BindingRecorder`, `BindingProfile`, `ContextPriority`, `InputBuffer`, `InputPredictor`, `InputRecorder`, `mapping::ActionMap`, `rebinding::BindingRecorder`, `replay::InputRecorder`, `buffer::InputBuffer`, `device::MouseButton` | **None exist** in `astraweave-input/src/lib.rs` re-exports. Actual API is `Action`, `Binding`, `BindingSet`, `InputManager`, `Axis2`. | `input.md` §6 |
-| `docs/src/core-systems/networking.md` | Claims **QUIC (via Quinn)** transport with "UDP-based reliable/unreliable messaging," 0-RTT, multiplexed. Plus submodules `replication`, `state`, `delta`, `serialization`, `prediction` and types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`. | Actual `astraweave-net` uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:18-19`, `lib.rs:596`). **No `quinn` dependency exists**. Architectural-class mismatch (TCP+WS vs UDP+QUIC), not just type-name mismatch. None of the submodules exist. | `net.md` §6 |
+| `docs/src/core-systems/networking.md` | Claims **QUIC (via Quinn)** transport with "UDP-based reliable/unreliable messaging," 0-RTT, multiplexed. Plus submodules `replication`, `state`, `delta`, `serialization`, `prediction` and types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`. | Actual `astraweave-net` uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:18-19`, `lib.rs:612`). **No `quinn` dependency exists**. Architectural-class mismatch (TCP+WS vs UDP+QUIC), not just type-name mismatch. None of the submodules exist. | `net.md` §6 |
 
 ### 7.2 Doc-comment migration drift (target state ahead of runtime wiring)
 
@@ -837,10 +837,10 @@ Frame Start
 
 `aw_editor`: **9,425 `#[test]` annotations** total (4,103 inline + 5,322 in `tests/`; live count 2026-06-10, superseding the ~9,397 of 2026-05-12 per `aw_editor.md` §10). 66 files in `tools/aw_editor/tests/` including 46+ `wave2_*` suites and 16 `mutation_resistant_*.rs` per-subsystem files.
 
-### Fuzz Targets (off-CI)
+### Fuzz Targets
 
-- `astraweave-net/fuzz/fuzz_targets/`: 4 cargo-fuzz targets (`fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`). Not in any workflow as of `a2474c5b7` (`net.md` §10).
-- `astraweave-ecs/fuzz`: excluded from workspace.
+- `.github/workflows/fuzz-nightly.yml` runs every cargo-fuzz `[[bin]]` for 120 seconds. It is not on pull requests. Each target's corpus is the newest `fuzz-corpus-<target>` artifact from a completed run (conclusion `success` or `failure`, not `cancelled`) of this workflow on the default branch of this repository, and crash files are uploaded (`net.md` §10).
+- `astraweave-ecs/fuzz`: excluded from the workspace build. The nightly workflow builds it on its own.
 
 ---
 

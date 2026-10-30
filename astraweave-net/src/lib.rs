@@ -93,6 +93,11 @@ impl Interest for FullInterest {
     }
 }
 
+fn radius_sq_f32(radius: i32) -> f32 {
+    let sq = i64::from(radius) * i64::from(radius);
+    sq as f32
+}
+
 pub struct RadiusTeamInterest {
     pub radius: i32,
 }
@@ -101,9 +106,10 @@ impl Interest for RadiusTeamInterest {
         if viewer.team == e.team {
             return true;
         }
-        let dx = e.pos.x - viewer.pos.x;
-        let dy = e.pos.y - viewer.pos.y;
-        (dx * dx + dy * dy) <= self.radius * self.radius
+        let dx = i128::from(e.pos.x) - i128::from(viewer.pos.x);
+        let dy = i128::from(e.pos.y) - i128::from(viewer.pos.y);
+        let radius = i128::from(self.radius);
+        dx * dx + dy * dy <= radius * radius
     }
 }
 
@@ -117,10 +123,10 @@ impl Interest for FovInterest {
         if viewer.team == e.team {
             return true;
         }
-        let dx = (e.pos.x - viewer.pos.x) as f32;
-        let dy = (e.pos.y - viewer.pos.y) as f32;
+        let dx = (i128::from(e.pos.x) - i128::from(viewer.pos.x)) as f32;
+        let dy = (i128::from(e.pos.y) - i128::from(viewer.pos.y)) as f32;
         let dist2 = dx * dx + dy * dy;
-        if dist2 > (self.radius * self.radius) as f32 {
+        if dist2 > radius_sq_f32(self.radius) {
             return false;
         }
         let fx = self.facing.x as f32;
@@ -151,9 +157,10 @@ fn has_los(a: IVec2, b: IVec2, obstacles: &BTreeSet<(i32, i32)>) -> bool {
     // Bresenham's line algorithm; return false if any obstacle cell intersects
     let (mut x0, mut y0) = (a.x, a.y);
     let (x1, y1) = (b.x, b.y);
-    let dx = (x1 - x0).abs();
+    // `i32::abs` panics in debug when the delta is `i32::MIN`.
+    let dx = (i64::from(x1) - i64::from(x0)).abs();
     let sx = if x0 < x1 { 1 } else { -1 };
-    let dy = -(y1 - y0).abs();
+    let dy = -(i64::from(y1) - i64::from(y0)).abs();
     let sy = if y0 < y1 { 1 } else { -1 };
     let mut err = dx + dy;
     loop {
@@ -184,10 +191,10 @@ impl Interest for FovLosInterest {
         if viewer.team == e.team {
             return true;
         }
-        let dx = (e.pos.x - viewer.pos.x) as f32;
-        let dy = (e.pos.y - viewer.pos.y) as f32;
+        let dx = (i128::from(e.pos.x) - i128::from(viewer.pos.x)) as f32;
+        let dy = (i128::from(e.pos.y) - i128::from(viewer.pos.y)) as f32;
         let dist2 = dx * dx + dy * dy;
-        if dist2 > (self.radius * self.radius) as f32 {
+        if dist2 > radius_sq_f32(self.radius) {
             return false;
         }
         let fx = self.facing.x as f32;
@@ -333,8 +340,17 @@ pub fn diff_snapshots(
     }
     let mut changed = Vec::new();
     let mut present: BTreeSet<u32> = BTreeSet::new();
-    for e in &head.entities {
-        if !interest.include(viewer, e) {
+    // One row per id. A repeated id keeps the last copy so apply_delta
+    // does not merge fields from earlier copies.
+    let mut last_index: BTreeMap<u32, usize> = BTreeMap::new();
+    for (index, entity) in head.entities.iter().enumerate() {
+        if interest.include(viewer, entity) {
+            last_index.insert(entity.id, index);
+        }
+    }
+    let emit_at: BTreeSet<usize> = last_index.into_values().collect();
+    for (index, e) in head.entities.iter().enumerate() {
+        if !emit_at.contains(&index) {
             continue;
         }
         present.insert(e.id);
@@ -978,4 +994,135 @@ pub fn replay_from(mut world: World, events: &[ReplayEvent]) -> Result<u64> {
     }
     let snap = build_snapshot(&world, current_tick, 0);
     Ok(snap.world_hash)
+}
+
+#[cfg(test)]
+mod interest_and_delta_regressions {
+    use super::{
+        apply_delta, diff_snapshots, has_los, radius_sq_f32, EntityState, FovInterest,
+        FovLosInterest, FullInterest, RadiusTeamInterest, Snapshot,
+    };
+    use crate::Interest;
+    use astraweave_core::IVec2;
+    use std::collections::BTreeSet;
+
+    fn entity(id: u32, x: i32, team: u8) -> EntityState {
+        EntityState {
+            id,
+            pos: IVec2 { x, y: 0 },
+            hp: 1,
+            team,
+            ammo: 0,
+        }
+    }
+
+    fn snap(entities: Vec<EntityState>) -> Snapshot {
+        Snapshot {
+            version: 1,
+            tick: 1,
+            t: 0.0,
+            seq: 1,
+            world_hash: 0,
+            entities,
+        }
+    }
+
+    #[test]
+    fn duplicate_head_id_keeps_the_last_entity() {
+        let base = snap(vec![entity(1, 0, 0)]);
+        let head = snap(vec![entity(1, 5, 9), entity(1, 7, 0)]);
+        let viewer = entity(1, 0, 0);
+        let delta = diff_snapshots(&base, &head, &FullInterest, &viewer);
+        assert_eq!(delta.changed.len(), 1);
+        assert_eq!(delta.changed[0].pos, Some(IVec2 { x: 7, y: 0 }));
+        assert_eq!(delta.changed[0].team, None);
+        let mut applied = base.clone();
+        apply_delta(&mut applied, &delta);
+        assert_eq!(applied.entities.len(), 1);
+        assert_eq!(applied.entities[0].pos, IVec2 { x: 7, y: 0 });
+        assert_eq!(applied.entities[0].team, 0);
+    }
+
+    #[test]
+    fn radius_interest_does_not_overflow_on_distant_tiles() {
+        let interest = RadiusTeamInterest { radius: 1 };
+        let viewer = entity(1, i32::MIN, 1);
+        let target = EntityState {
+            id: 2,
+            pos: IVec2 {
+                x: i32::MAX,
+                y: i32::MAX,
+            },
+            hp: 1,
+            team: 2,
+            ammo: 0,
+        };
+        assert!(!interest.include(&viewer, &target));
+        assert!(radius_sq_f32(i32::MAX).is_finite());
+    }
+
+    fn far_pair() -> (EntityState, EntityState) {
+        (
+            entity(1, i32::MIN, 1),
+            EntityState {
+                id: 2,
+                pos: IVec2 {
+                    x: i32::MAX,
+                    y: i32::MAX,
+                },
+                hp: 1,
+                team: 2,
+                ammo: 0,
+            },
+        )
+    }
+
+    #[test]
+    fn fov_interest_does_not_overflow_on_distant_tiles() {
+        let interest = FovInterest {
+            radius: 1,
+            half_angle_deg: 180.0,
+            facing: IVec2 { x: 1, y: 0 },
+        };
+        let (viewer, target) = far_pair();
+        assert!(!interest.include(&viewer, &target));
+
+        let near = FovInterest {
+            radius: 5,
+            half_angle_deg: 45.0,
+            facing: IVec2 { x: 1, y: 0 },
+        };
+        assert!(near.include(&entity(1, 0, 1), &entity(2, 2, 2)));
+    }
+
+    #[test]
+    fn fov_los_interest_does_not_overflow_on_distant_tiles() {
+        let interest = FovLosInterest {
+            radius: 1,
+            half_angle_deg: 180.0,
+            facing: IVec2 { x: 1, y: 0 },
+            obstacles: BTreeSet::new(),
+        };
+        let (viewer, target) = far_pair();
+        assert!(!interest.include(&viewer, &target));
+
+        let near = FovLosInterest {
+            radius: 5,
+            half_angle_deg: 45.0,
+            facing: IVec2 { x: 1, y: 0 },
+            obstacles: BTreeSet::new(),
+        };
+        assert!(near.include(&entity(1, 0, 1), &entity(2, 2, 2)));
+    }
+
+    #[test]
+    fn has_los_abs_does_not_overflow_at_i32_min() {
+        let mut obstacles = BTreeSet::new();
+        obstacles.insert((-1, 0));
+        assert!(!has_los(
+            IVec2 { x: 0, y: 0 },
+            IVec2 { x: i32::MIN, y: 0 },
+            &obstacles,
+        ));
+    }
 }
