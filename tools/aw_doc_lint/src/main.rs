@@ -91,7 +91,12 @@
 //! `is_invisible_frame_char`. Player-facing docs must not use the retired game
 //! title. A failed read of a scanned file, including
 //! `docs/current/PROJECT_BRIEF.md`, fails the process.
+//!
+//! Merge/rebase conflict markers (`<<<<<<<`, `|||||||`, `=======` between
+//! open and close, `>>>>>>>`) are always hard errors outside fenced code
+//! blocks; see `conflict_markers.rs` and `tools/aw_doc_lint/README.md`.
 
+mod conflict_markers;
 mod html_entities;
 mod html_legacy;
 mod rendered;
@@ -873,10 +878,12 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
     let mut violations: Vec<(String, usize, String, &'static str)> = Vec::new();
     let mut total_matches = 0usize;
     let mut scanned = 0usize;
+    let mut conflict = Vec::new();
 
     for f in &files {
         let content = read_repo_file(root, f)?;
         scanned += 1;
+        conflict.extend(conflict_markers::conflict_marker_errors(f, &content));
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
                 total_matches += 1;
@@ -921,10 +928,24 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
         }
     }
 
+    conflict.sort();
+    for e in &conflict {
+        println!("{e}");
+        if in_ci {
+            println!("::error::{e}");
+        }
+    }
+
     if !front.is_empty() {
         bail!(
             "{} front-door documentation error(s) (always enforced)",
             front.len()
+        );
+    }
+    if !conflict.is_empty() {
+        bail!(
+            "{} git conflict marker(s) in tracked prose (always enforced)",
+            conflict.len()
         );
     }
     if should_fail(mode, k) {
