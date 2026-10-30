@@ -121,12 +121,29 @@ $passedBenchmarks = 0
 $failedBenchmarks = 0
 $newBenchmarks = 0
 $regressions = @()
+$matchedThresholds = @{}
+
+# History rows use the Criterion id (`goap_planning_simple`).
+# benchmark.yml prefixes `package::`. Either form hits the same key.
+function Resolve-ThresholdKey {
+    param([string]$ResultName)
+    if (-not $script:useThresholds) { return $null }
+    $names = @($script:thresholds.benchmarks.PSObject.Properties.Name)
+    if ($names -contains $ResultName) { return $ResultName }
+    $sep = $ResultName.LastIndexOf("::")
+    if ($sep -ge 0) {
+        $tail = $ResultName.Substring($sep + 2)
+        if ($names -contains $tail) { return $tail }
+    }
+    return $null
+}
 
 Write-Header "Validating Benchmark Results"
 
 foreach ($result in $benchmarkResults) {
     $totalBenchmarks++
-    $benchmarkName = $result.name
+    $benchmarkName = [string]$result.name
+    $thresholdKey = Resolve-ThresholdKey $benchmarkName
     $currentValue = [double]$result.value
     $unit = $result.unit
     
@@ -136,8 +153,9 @@ foreach ($result in $benchmarkResults) {
     }
     
     # Check if threshold exists for this benchmark
-    if ($thresholds.benchmarks.PSObject.Properties.Name -contains $benchmarkName) {
-        $threshold = $thresholds.benchmarks.$benchmarkName
+    if ($null -ne $thresholdKey) {
+        $matchedThresholds[$thresholdKey] = $true
+        $threshold = $thresholds.benchmarks.$thresholdKey
         $baselineValue = [double]$threshold.baseline
         $maxValue = [double]$threshold.max_allowed
         $warnValue = if ($threshold.PSObject.Properties.Name -contains "warn_threshold") { 
@@ -187,11 +205,11 @@ foreach ($result in $benchmarkResults) {
         
         # Update baseline if requested
         if ($UpdateBaseline) {
-            $thresholds.benchmarks.$benchmarkName.baseline = $currentValue
+            $thresholds.benchmarks.$thresholdKey.baseline = $currentValue
             # Keep max_allowed as 150% of new baseline (default policy)
-            $thresholds.benchmarks.$benchmarkName.max_allowed = $currentValue * 1.5
-            $thresholds.benchmarks.$benchmarkName.warn_threshold = $currentValue * 1.25
-            $thresholds.benchmarks.$benchmarkName.last_updated = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            $thresholds.benchmarks.$thresholdKey.max_allowed = $currentValue * 1.5
+            $thresholds.benchmarks.$thresholdKey.warn_threshold = $currentValue * 1.25
+            $thresholds.benchmarks.$thresholdKey.last_updated = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
         }
         
     } else {
@@ -226,6 +244,30 @@ if ($failedBenchmarks -gt 0) {
 }
 if ($newBenchmarks -gt 0) {
     Write-ColorOutput "New: $newBenchmarks" $ColorYellow
+}
+
+# A threshold with no result used to pass: the old keys never occurred in
+# history, so -Strict had nothing to compare. Without -Strict that is a
+# warning. -Strict fails the check.
+$missingThresholds = @()
+if ($useThresholds) {
+    foreach ($key in @($thresholds.benchmarks.PSObject.Properties.Name)) {
+        if (-not $matchedThresholds.ContainsKey($key)) {
+            $missingThresholds += $key
+            if ($Strict) {
+                Write-Error "No benchmark result for threshold '$key'"
+            } else {
+                Write-Warning "No benchmark result for threshold '$key'"
+            }
+        }
+    }
+}
+if ($missingThresholds.Count -gt 0) {
+    if ($Strict) {
+        Write-Error "Missing threshold results: $($missingThresholds.Count)"
+    } else {
+        Write-Warning "Missing threshold results: $($missingThresholds.Count) (warn; -Strict fails)"
+    }
 }
 
 # Detailed regression report
@@ -338,7 +380,13 @@ if ($CreateIssue -and $failedBenchmarks -gt 0) {
     }
 }
 
-# Exit code logic
+# Exit code logic. A missing key fails only under -Strict. An over-limit
+# value still fails only under -Strict, which benchmark.yml and the
+# dashboard pass on main.
+if ($Strict -and $missingThresholds.Count -gt 0) {
+    Write-Error "`nThreshold keys with no matching result fail the check"
+    exit 1
+}
 if ($failedBenchmarks -gt 0) {
     if ($Strict) {
         Write-Error "`n🚨 STRICT MODE: Exiting with failure due to performance regressions"

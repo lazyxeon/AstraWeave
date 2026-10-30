@@ -42,10 +42,23 @@ jobs:
           cache-targets: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       
+      - name: Install bench build dependencies
+        # terrain_generation and input_benchmarks link libudev. benchmark.yml
+        # installs pkg-config and libudev-dev via rust-ci-setup. Without them
+        # this job's export omits heightmap_generation_64x64,
+        # world_chunk_generation, binding_creation, and binding_lookup, and
+        # -Strict fails on the missing keys.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libudev-dev
+
       - name: Run Benchmarks (Subset)
         run: |
           # Run core benchmarks (limit to 30 min)
-          cargo bench -p astraweave-core --bench ecs_benchmarks || true
+          # core_benchmarks is the astraweave-core target. ecs_benchmarks
+          # lives on astraweave-ecs and is not this package, so the old
+          # invocation wrote no world_creation row.
+          cargo bench -p astraweave-core --bench core_benchmarks || true
           cargo bench -p astraweave-ai --bench ai_core_loop || true
           cargo bench -p astraweave-behavior --bench goap_planning || true
           cargo bench -p astraweave-behavior --bench behavior_tree || true
@@ -96,11 +109,58 @@ jobs:
       
       - name: Check for Regressions
         id: regression-check
+        # benchmark.yml writes benchmark_results/benchmarks.json. This job
+        # writes target/benchmark-data/history.jsonl. Run 39532631733 logged
+        # "Benchmark results not found" and continue-on-error hid the exit.
         run: |
-          pwsh -File scripts/check_benchmark_thresholds.ps1 -ShowDetails
-        continue-on-error: true
+          set -euo pipefail
+          hist="target/benchmark-data/history.jsonl"
+          out="target/benchmark-data/threshold-input.json"
+          mkdir -p target/benchmark-data
+          if [ ! -s "$hist" ]; then
+            echo "Benchmark results not found: $hist" | tee target/benchmark-data/regression-report.txt
+            exit 1
+          fi
+          python3 - "$hist" "$out" <<'PY'
+          import json
+          import sys
+
+          hist, out = sys.argv[1], sys.argv[2]
+          latest = {}
+          with open(hist, encoding="utf-8") as handle:
+              for line in handle:
+                  line = line.strip()
+                  if not line:
+                      continue
+                  row = json.loads(line)
+                  name = row.get("benchmark_name")
+                  if not name or "value" not in row:
+                      continue
+                  latest[name] = row
+          payload = [
+              {
+                  "name": row["benchmark_name"],
+                  "value": row["value"],
+                  "unit": row.get("unit") or "ns",
+              }
+              for row in latest.values()
+          ]
+          if not payload:
+              sys.exit("Benchmark results not found: " + hist)
+          with open(out, "w", encoding="utf-8") as handle:
+              json.dump(payload, handle)
+          print(f"Checking {len(payload)} benchmark result(s) from {hist}")
+          PY
+          set +e
+          pwsh -File scripts/check_benchmark_thresholds.ps1 -BenchmarkJsonPath "$out" -ShowDetails -Strict \
+            > target/benchmark-data/regression-report.txt 2>&1
+          code=$?
+          set -e
+          cat target/benchmark-data/regression-report.txt
+          exit "$code"
       
       - name: Prepare Dashboard Assets
+        if: ${{ !cancelled() }}
         run: |
           mkdir -p gh-pages
           cp tools/benchmark-dashboard/index.html gh-pages/
@@ -135,6 +195,7 @@ jobs:
           fi
 
       - name: Verify deployed assets
+        if: ${{ !cancelled() }}
         run: |
           echo "=== gh-pages contents ==="
           find gh-pages -type f | head -30
@@ -182,6 +243,7 @@ jobs:
           EOF
       
       - name: Deploy to GitHub Pages
+        if: ${{ !cancelled() }}
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -192,45 +254,49 @@ jobs:
           commit_message: 'Update benchmark dashboard: ${{ github.sha }}'
       
       - name: Create Regression Issue (if needed)
-        if: steps.regression-check.outcome == 'failure'
+        if: failure() && steps.regression-check.outcome == 'failure'
         uses: actions/github-script@v8
         with:
           script: |
-            const title = '⚠️ Benchmark Regression Detected';
-            const body = `## Automated Regression Alert
-            
+            const fs = require('fs');
+            const { parseBenchmarkReport, issueTitle, issueBullets } = require('./scripts/ci/benchmark_issue_title.js');
+            const reportPath = 'target/benchmark-data/regression-report.txt';
+            const report = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, 'utf8') : '';
+            const parsed = parseBenchmarkReport(report);
+            const title = issueTitle(parsed, context.sha);
+            const named = issueBullets(parsed);
+            const excerpt = report.length > 6000 ? report.slice(0, 6000) + '\n…' : report;
+            const body = `## Automated benchmark check
+
             **Date**: ${new Date().toISOString()}
             **Commit**: ${context.sha}
             **Branch**: ${context.ref}
-            
-            One or more benchmarks exceeded the 10% regression threshold.
-            
-            ### Next Steps
-            1. Review benchmark results: [View Dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/)
-            2. Check recent commits for performance-impacting changes
-            3. Run local benchmarks: \`cargo bench\`
-            4. Validate thresholds: \`./scripts/check_benchmark_thresholds.ps1 -ShowDetails\`
-            
-            ### Investigation Checklist
-            - [ ] Identify regressed benchmark(s)
-            - [ ] Bisect commits to find culprit
-            - [ ] Profile hot paths with \`cargo flamegraph\`
-            - [ ] Fix or update threshold if intentional
-            - [ ] Verify fix with local benchmarks
-            
-            **Auto-generated by benchmark-dashboard.yml workflow**
+
+            ${named || 'The regression check failed. The report is below.'}
+
+            max_allowed is 1.5 times the baseline. This is not a fixed 10% rule.
+
+            \`\`\`
+            ${excerpt || '(no regression-report.txt)'}
+            \`\`\`
+
+            [View Dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/)
+
+            **Auto-generated by benchmark-dashboard.yml**
             `;
-            
-            // Check if issue already exists
-            const issues = await github.rest.issues.listForRepo({
+
+            // Issue #184 is open under "Benchmark Regression Detected". A new
+            // failure uses a title that names the benches, or a separate title
+            // when the history file or threshold keys are missing. The same
+            // title gets a comment; a different failure opens a new issue.
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
-              labels: 'performance,regression'
+              labels: 'performance,regression',
+              per_page: 100,
             });
-            
-            const existingIssue = issues.data.find(issue => issue.title === title);
-            
+            const existingIssue = issues.find((issue) => issue.title === title);
             if (!existingIssue) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
@@ -239,9 +305,15 @@ jobs:
                 body: body,
                 labels: ['performance', 'regression', 'automated']
               });
-              console.log('Created new regression issue');
+              console.log('Created regression issue: ' + title);
             } else {
-              console.log('Regression issue already exists: #' + existingIssue.number);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: body,
+              });
+              console.log('Updated regression issue #' + existingIssue.number);
             }
       
       - name: Summary

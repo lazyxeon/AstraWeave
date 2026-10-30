@@ -246,11 +246,35 @@ jobs:
             $thresholds = Get-Content ".github/benchmark_thresholds.json" | ConvertFrom-Json
             
             $regressions = @()
+            $names = @($thresholds.benchmarks.PSObject.Properties.Name)
             foreach ($result in $results) {
-              $threshold = $thresholds.benchmarks.($result.name)
+              $key = [string]$result.name
+              if ($names -notcontains $key) {
+                $sep = $key.LastIndexOf("::")
+                if ($sep -ge 0) {
+                  $tail = $key.Substring($sep + 2)
+                  if ($names -contains $tail) { $key = $tail }
+                }
+              }
+              $threshold = $thresholds.benchmarks.$key
               if ($threshold -and $result.value -gt $threshold.max_allowed) {
                 $overPercent = [math]::Round((($result.value - $threshold.max_allowed) / $threshold.max_allowed) * 100, 1)
                 $regressions += "- **$($result.name)**: $($result.value) ns (baseline: $($threshold.baseline) ns, max: $($threshold.max_allowed) ns, **+$overPercent% over limit**)"
+              }
+            }
+            $seen = @{}
+            foreach ($result in $results) {
+              $key = [string]$result.name
+              if ($names -contains $key) { $seen[$key] = $true; continue }
+              $sep = $key.LastIndexOf("::")
+              if ($sep -ge 0) {
+                $tail = $key.Substring($sep + 2)
+                if ($names -contains $tail) { $seen[$tail] = $true }
+              }
+            }
+            foreach ($key in $names) {
+              if (-not $seen.ContainsKey($key)) {
+                $regressions += "- **$key**: no result for this threshold key"
               }
             }
             
@@ -262,7 +286,7 @@ jobs:
             $lines = @(
               '## Performance Regression Detected'
               ''
-              'Automated benchmark validation found performance regressions in the following benchmarks:'
+              'The threshold check failed. Each line is an over-limit sample or a threshold key with no result:'
               ''
               $regressionList
               ''
