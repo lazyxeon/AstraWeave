@@ -18,6 +18,19 @@ const FLOOD: u32 = 200;
 /// replies plus a little refill. It cannot earn one reply per frame.
 const REPLY_CAP: u32 = 96;
 const CLOSE_DEADLINE: Duration = Duration::from_secs(5);
+const BUCKET_START: u32 = 64;
+const REFILL_PER_SEC: u32 = 64;
+/// Pacing jitter slop for `steady_over_limit_closes_with_1008`.
+const STEADY_REPLY_SLOP: u32 = 2;
+
+/// Paid replies must stay within the starting bucket plus refill earned by
+/// `elapsed`, plus slop. Catches loosened bucket/refill without assuming a
+/// fixed send rate (Windows timer granularity).
+fn steady_reply_cap(elapsed: Duration) -> u32 {
+    let micros = elapsed.as_micros();
+    let refill = (u128::from(REFILL_PER_SEC) * micros + 999_999) / 1_000_000;
+    BUCKET_START + u32::try_from(refill).expect("refill fits in u32") + STEADY_REPLY_SLOP
+}
 
 async fn flood_until_close(client: &mut TestClient) -> (u16, String, u32, u32) {
     let deadline = tokio::time::Instant::now() + CLOSE_DEADLINE;
@@ -64,6 +77,82 @@ async fn flood_until_close(client: &mut TestClient) -> (u16, String, u32, u32) {
             Ok(None) => panic!("stream ended without a Close frame"),
         }
     }
+}
+
+async fn flood_until_close_steady(
+    client: &mut TestClient,
+    since: tokio::time::Instant,
+) -> (u16, String, u32, u32, Duration) {
+    let deadline = tokio::time::Instant::now() + CLOSE_DEADLINE;
+    let mut replies = 0u32;
+    let mut rate_limited = 0u32;
+    loop {
+        if tokio::time::Instant::now() >= deadline {
+            panic!("flood produced no Close within {CLOSE_DEADLINE:?}");
+        }
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let next =
+            tokio::time::timeout(left.min(Duration::from_millis(200)), client.recv_raw()).await;
+        match next {
+            Err(_) => continue,
+            Ok(Some(Message::Binary(bytes))) => {
+                if let Ok(msg) = aw_net_proto::decode_msg::<ServerToClient>(TEST_CODEC, &bytes) {
+                    match msg {
+                        ServerToClient::Pong { .. } | ServerToClient::RateLimited => {
+                            if matches!(msg, ServerToClient::RateLimited) {
+                                rate_limited += 1;
+                            }
+                            replies += 1;
+                            let cap = steady_reply_cap(since.elapsed());
+                            assert!(
+                                replies <= cap,
+                                "steady overrun produced {replies} replies; cap {cap} at {:?}",
+                                since.elapsed()
+                            );
+                        }
+                        ServerToClient::Snapshot { .. } | ServerToClient::ProtocolError { .. } => {}
+                        other => panic!("unexpected server frame during flood: {other:?}"),
+                    }
+                }
+            }
+            Ok(Some(Message::Close(Some(frame)))) => {
+                return (
+                    u16::from(frame.code),
+                    frame.reason.to_string(),
+                    replies,
+                    rate_limited,
+                    since.elapsed(),
+                );
+            }
+            Ok(Some(Message::Close(None))) => panic!("close frame had no code"),
+            Ok(Some(Message::Ping(_))) | Ok(Some(Message::Pong(_))) => {}
+            Ok(Some(other)) => panic!("unexpected websocket frame: {other:?}"),
+            Ok(None) => panic!("stream ended without a Close frame"),
+        }
+    }
+}
+
+fn assert_steady_rate_close(
+    code: u16,
+    reason: &str,
+    replies: u32,
+    rate_limited: u32,
+    elapsed: Duration,
+) {
+    assert_eq!(
+        code, 1008,
+        "rate-limit kick must use Close 1008, reason {reason}"
+    );
+    assert!(
+        reason.contains("rate limited"),
+        "close reason must say rate limited, got {reason}"
+    );
+    assert_eq!(rate_limited, 0, "over-limit frames must not be answered");
+    let cap = steady_reply_cap(elapsed);
+    assert!(
+        replies <= cap,
+        "steady overrun produced {replies} replies; cap {cap} for {elapsed:?}"
+    );
 }
 
 fn assert_rate_close(code: u16, reason: &str, replies: u32, rate_limited: u32) {
@@ -272,20 +361,21 @@ async fn ping_at_tick_rate_still_receives_snapshots() {
     server.shutdown();
 }
 
-/// Two protocol pings, then 5 ms. That is well above the 64/s refill and
-/// well under a back-to-back flood. Thirty-two unpaid frames inside one
-/// second still close the socket, and a paid frame does not clear that window.
+/// Eight protocol pings, then 5 ms. That keeps the send rate high even when
+/// `sleep(5 ms)` overshoots on coarse timers (Windows). Paid replies must stay
+/// within `steady_reply_cap` for elapsed time since join, not a flat cap.
+/// Thirty-two unpaid frames inside one second still close the socket.
 #[tokio::test]
 async fn steady_over_limit_closes_with_1008() {
     let server = spawn_test_server(SigningKey::dev_default(), SignatureFailurePolicy::Kick).await;
     let (mut client, _) =
         TestClient::connect_and_join(server.ws_addr(), "us-east", "rate-steady").await;
+    let t0 = tokio::time::Instant::now();
     let window = Duration::from_secs(2);
-    let start = tokio::time::Instant::now();
     let mut nano = 0u128;
-    while start.elapsed() < window {
+    while t0.elapsed() < window {
         let mut stopped = false;
-        for _ in 0..2 {
+        for _ in 0..8 {
             if client
                 .try_send_msg(&ClientToServer::Ping { nano })
                 .await
@@ -301,8 +391,9 @@ async fn steady_over_limit_closes_with_1008() {
         }
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    let (code, reason, replies, rate_limited) = flood_until_close(&mut client).await;
-    assert_rate_close(code, &reason, replies, rate_limited);
+    let (code, reason, replies, rate_limited, elapsed) =
+        flood_until_close_steady(&mut client, t0).await;
+    assert_steady_rate_close(code, &reason, replies, rate_limited, elapsed);
     server.shutdown();
 }
 
