@@ -171,10 +171,14 @@ jobs:
       
       - name: Run mutation testing on astraweave-ai
         run: |
+          # Cap virtual memory so a single mutant cannot OOM-kill the hosted runner
+          # (see lazyxeon/AstraWeave#605). 6291456 KiB ≈ 6 GiB on ubuntu-latest.
+          ulimit -v 6291456
           cargo mutants \
             --package astraweave-ai \
             --all-features \
             --in-place \
+            --jobs 1 \
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --exclude-re "fn metrics\b" \
             --sharding round-robin \
@@ -184,6 +188,7 @@ jobs:
         continue-on-error: true
       
       - name: Generate mutation report
+        if: always()
         run: |
           # cargo-mutants 27.1.0 writes outcomes under mutants.out, not next to --output.
           outcomes=mutants-ai-results/mutants.out/outcomes.json
@@ -211,6 +216,7 @@ jobs:
           fi
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mutants-ai-results-${{ matrix.shard }}

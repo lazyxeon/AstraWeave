@@ -396,6 +396,17 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("if: matrix.experimental", nightly)
         self.assertNotIn("'nightly'", nightly)
 
+    def test_mutation_ai_caps_memory_and_uploads_on_failure(self) -> None:
+        text = (WORKFLOWS / "mutation-testing.yml").read_text(encoding="utf-8")
+        ai = text.split("  mutants-ai:\n", 1)[1].split("\n  mutants-behavior:\n", 1)[0]
+        self.assertIn("ulimit -v 6291456", ai)
+        self.assertIn("--jobs 1", ai)
+        self.assertIn("--shard ${{ matrix.shard }}/8", ai)
+        report = ai.split("Generate mutation report", 1)[1].split("Upload mutation results", 1)[0]
+        upload = ai.split("Upload mutation results", 1)[1]
+        self.assertIn("if: always()", report)
+        self.assertIn("if: always()", upload)
+
 
 if __name__ == "__main__":
     unittest.main()
