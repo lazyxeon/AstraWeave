@@ -452,7 +452,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             "repository": repo,
             "run_pages": [runs],
         }
-        self.assertEqual(module.select_corpus_run([payload], "7", **kwargs), "5")
+        self.assertEqual(module.select_corpus_run([payload], "7", **kwargs), "20")
         self.assertIsNone(
             module.select_corpus_run([{"artifacts": []}], "1", **kwargs)
         )
@@ -481,7 +481,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            module.select_corpus_run([poisoned], "1", **kwargs), "5"
+            module.select_corpus_run([poisoned], "1", **kwargs), "20"
         )
         self.assertIsNone(
             module.select_corpus_run(

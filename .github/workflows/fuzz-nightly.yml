@@ -1,8 +1,10 @@
 # Nightly parser fuzzing. Not on pull requests.
 # The matrix is every [[bin]] in a fuzz/Cargo.toml (scripts/ci/fuzz_targets.py).
 # Each target is capped at 120 seconds. The corpus is a workflow artifact
-# named fuzz-corpus-<target>, restored from the newest successful run of
-# this workflow on the default branch of this repository.
+# named fuzz-corpus-<target>, restored from the newest qualifying run of
+# this workflow on the default branch of this repository. A run may be
+# failed overall when another matrix cell crashed; per-target corpora still
+# restore from that run.
 # Crash reproducers are uploaded. The workflow token is contents: read and
 # actions: read. upload-artifact uses the runner artifact token, and the
 # fuzz job inherits that token.
@@ -89,14 +91,8 @@ jobs:
           runs_payload="$(mktemp)"
           payload="$(mktemp)"
           branch_q="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["CORPUS_BRANCH"], safe=""))')"
-          if ! gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/workflows/fuzz-nightly.yml/runs?per_page=100&status=success&branch=${branch_q}&exclude_pull_requests=true" >"$runs_payload"; then
-            echo "Workflow run list failed; starting with an empty corpus."
-            exit 0
-          fi
-          if ! gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/artifacts?per_page=100&name=${name}" >"$payload"; then
-            echo "Artifact list failed; starting with an empty corpus."
-            exit 0
-          fi
+          gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/workflows/fuzz-nightly.yml/runs?per_page=100&status=completed&branch=${branch_q}&exclude_pull_requests=true" >"$runs_payload"
+          gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/artifacts?per_page=100&name=${name}" >"$payload"
           run_id="$(python3 scripts/ci/fuzz_corpus_artifact.py "$THIS_RUN" "$CORPUS_BRANCH" "$CORPUS_REPOSITORY" "$runs_payload" <"$payload")"
           if [ -z "$run_id" ]; then
             echo "No previous corpus artifact; starting empty."
@@ -106,10 +102,7 @@ jobs:
             *[!0-9]*) echo "refusing run id" >&2; exit 1 ;;
           esac
           tmp="$(mktemp -d)"
-          if ! gh run download "$run_id" --name "$name" --dir "$tmp/out"; then
-            echo "Corpus download failed; starting empty."
-            exit 0
-          fi
+          gh run download "$run_id" --name "$name" --dir "$tmp/out"
           find "$tmp/out" -type f -exec cp {} "$FUZZ_DIR/corpus/$FUZZ_TARGET/" \;
 
       - name: Fuzz for two minutes

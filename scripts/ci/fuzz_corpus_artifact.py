@@ -6,10 +6,11 @@ stdin is the GitHub Actions artifacts list for one artifact name. `gh api
 default branch, the base repository (`owner/name`), and a file of workflow
 runs for `.github/workflows/fuzz-nightly.yml`.
 
-A candidate must be a successful run of that workflow, on the default
-branch, whose head repository is the base repository. Fork pull requests,
-other branches, other workflows, and failed runs are skipped, as are this
-run and expired artifacts. Prints nothing when no corpus qualifies.
+A candidate must be a completed run of that workflow on the default branch
+whose head repository is the base repository. The workflow conclusion may be
+success or failure when this matrix cell still uploaded a corpus. Fork pull
+requests, other branches, other workflows, and cancelled runs are skipped, as
+are this run and expired artifacts. Prints nothing when no corpus qualifies.
 """
 
 from __future__ import annotations
@@ -66,7 +67,8 @@ def run_allowed(
     run_id = _run_id(run.get("id"))
     if run_id is None or run_id == this_run:
         return False
-    if run.get("conclusion") != "success":
+    conclusion = run.get("conclusion")
+    if conclusion not in ("success", "failure"):
         return False
     status = run.get("status")
     if status is not None and status != "completed":
