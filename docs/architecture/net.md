@@ -110,7 +110,7 @@ GPU particle fluid state (`astraweave-fluids` `FluidSystem`/`PcisphSystem`) is n
 Client → Server (JSON over WebSocket text frames; lib.rs:789-912)
     │
     ├── ClientHello { name, token, policy }
-    │     · name is logged only; the connection actor stays `GameServer.player_id` (lib.rs:617-618, 807)
+    │     · name is logged only; the connection actor stays `GameServer.player_id` (lib.rs:808-809, 617-620)
     │     · token: `hello_token_accepted` at lib.rs:802-805 (`hello_token_accepted` at lib.rs:936-953)
     │     · policy: "radius" | "fov" | "fovlos" → InterestPolicy (lib.rs:810-825)
     │     · Sends ServerEvent::ForceSnapshot via broadcast → writer task picks it up
@@ -169,7 +169,7 @@ Optional TLS path (feature = "tls")
     │
    *Note:* The doc-comment examples (tls.rs:7-21) show how callers would wire this into
    `tokio-tungstenite::accept_async_with_tls_acceptor` / `connect_async_tls_with_config`, but
-   `GameServer::run_ws_on_listener` uses plain `tokio_tungstenite::accept_async` (lib.rs:612) —
+   `GameServer::run_ws_on_listener` uses `tokio_tungstenite::accept_async_with_config(stream, Some(engine_ws_config()))` (lib.rs:612-613) —
    no TLS wiring inside `GameServer`. TLS is exposed as a library primitive; callers must
    wire it themselves outside `astraweave-net`.
 ```
@@ -232,7 +232,7 @@ Optional TLS path (feature = "tls")
 **Role:** Build rustls `ServerConfig` from PEM files (server) or a default `ClientConfig` trusting webpki roots (client).
 **Inputs:** `cert.pem` + `key.pem` paths (server); none (client).
 **Outputs:** `TlsAcceptor` / `TlsConnector`.
-**Notes:** Uses `ring` crypto backend (`Cargo.toml:24` features `["ring"]`). No default-features on rustls (line 25 `default-features = false`) to ensure ring is the sole crypto provider for Windows compatibility. The module is consumed only via doc-comment examples (`tls.rs:7-21`); `GameServer::run_ws_on_listener` uses plain `accept_async` and does not invoke any TLS path. Callers wanting TLS must wire the acceptor/connector themselves.
+**Notes:** Uses `ring` crypto backend (`Cargo.toml:24` features `["ring"]`). No default-features on rustls (line 25 `default-features = false`) to ensure ring is the sole crypto provider for Windows compatibility. The module is consumed only via doc-comment examples (`tls.rs:7-21`); `GameServer::run_ws_on_listener` uses plain `accept_async_with_config` with `engine_ws_config()` and does not invoke any TLS path. Callers wanting TLS must wire the acceptor/connector themselves.
 
 ---
 
@@ -271,7 +271,7 @@ Optional TLS path (feature = "tls")
 
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
-| `astraweave-core` (direct dep, `Cargo.toml:20`) | `World`, `IVec2`, `Team`, `PlanIntent`, `ActionStep`, `ValidateCfg`, `validate_and_execute(&mut World, actor_id, &PlanIntent, &ValidateCfg, &mut log)` | Tick-driven grid world; movement / action validation | `GameServer::new` (lib.rs:528-547) constructs a hardcoded test world with three entities (P, C, E) and a wall of obstacles at x=6. `validate_and_execute` is called from both `ClientProposePlan` and `ClientInput` handlers (lib.rs:845, 876). |
+| `astraweave-core` (direct dep, `Cargo.toml:20`) | `World`, `IVec2`, `Team`, `PlanIntent`, `ActionStep`, `ValidateCfg`, `validate_and_execute(&mut World, actor_id, &PlanIntent, &ValidateCfg, &mut log)` | Tick-driven grid world; movement / action validation | `GameServer::new` (lib.rs:528-547) constructs a hardcoded test world with three entities (P, C, E) and a wall of obstacles at x=6. `validate_and_execute` is called from both `ClientProposePlan` and `ClientInput` handlers (lib.rs:846, 882). |
 | Filesystem (TLS certs) | `TlsServerConfig::from_pem_files("cert.pem", "key.pem")` (`tls.rs:56-`) | PEM-encoded X.509 cert chain + private key | Feature-gated (`tls`). Webpki trust roots for client side embedded via `webpki-roots` crate. |
 | WebSocket client connections | `tokio_tungstenite::accept_async_with_config(TcpStream, engine_ws_config())` | JSON-encoded `Msg::Client*` frames as `Message::Text` | Server uses plain TCP. `max_message_size` and `max_frame_size` are 1 MiB. TLS-wrapping is library-exposed but not wired inside `GameServer`. |
 
@@ -338,10 +338,10 @@ Optional TLS path (feature = "tls")
 | `astraweave-net::EntityState { pos: IVec2, hp, team, ammo }` vs. `astraweave-net-ecs::EntityState { position: Vec3, health }` | `astraweave-net/src/lib.rs:38-44` vs. `astraweave-net-ecs/src/lib.rs:43-47` | Parallel data models | The two networking subsystems use disjoint per-entity state types. `astraweave-net` models grid-aligned 2D positions (`IVec2`, tile coordinates) plus team + ammo; `astraweave-net-ecs` models continuous 3D positions and tracks only health. Neither crate imports the other. |
 | `astraweave-net::Msg` (JSON) vs. `aw-net-proto::{ClientToServer, ServerToClient}` (postcard + lz4) | `astraweave-net/src/lib.rs:463-499` vs. `net/aw-net-proto/src/lib.rs:22-` | Parallel wire formats | `astraweave-net` uses `serde_json::to_string` + `Message::Text` (lib.rs:618, 682, 737, 750, 760, 770, 781). `aw-net-proto` defines a postcard-encoded enum with optional lz4 compression and crc32 framing. Distinct envelopes; no shared dispatcher. |
 | `GameServer` (this crate) vs. `net/aw-net-server` standalone binary | `astraweave-net/src/lib.rs:510-915` vs. `net/aw-net-server/src/main.rs` (852 lines) | Two server implementations | This crate provides a library `GameServer` consumed by `examples/coop_server`. `net/aw-net-server` is a standalone binary with matchmaking + room management using `aw-net-proto`. They are completely independent processes. |
-| `astraweave-net::tls` vs. `GameServer::run_ws_on_listener` | `astraweave-net/src/tls.rs` vs. `astraweave-net/src/lib.rs:612` | TLS available but not wired | `tls.rs` exposes `TlsAcceptor` / `TlsConnector` library primitives. `GameServer` uses plain `tokio_tungstenite::accept_async`. The doc comment at `tls.rs:7-21` shows how a caller would compose them, but no production code in `astraweave-net` itself does this wiring. The optional `webpki-roots` dep (`Cargo.toml:27`) is server-config-only and unused by client code in this crate (`coop_client`). |
+| `astraweave-net::tls` vs. `GameServer::run_ws_on_listener` | `astraweave-net/src/tls.rs` vs. `astraweave-net/src/lib.rs:612-613` | TLS available but not wired | `tls.rs` exposes `TlsAcceptor` / `TlsConnector` library primitives. `GameServer` uses `tokio_tungstenite::accept_async_with_config` with `engine_ws_config()`. The doc comment at `tls.rs:7-21` shows how a caller would compose them, but no production code in `astraweave-net` itself does this wiring. The optional `webpki-roots` dep (`Cargo.toml:27`) is server-config-only and unused by client code in this crate (`coop_client`). |
 | Two hashing strategies (`stable_hash_snapshot` vs. `subset_hash`) | `lib.rs:235-263` | Intentional split | `stable_hash_snapshot` includes obstacles; used in `build_snapshot` (lib.rs:303) for the canonical `world_hash`. `subset_hash` omits obstacles; used in `filter_snapshot_for_viewer` (lib.rs:327) and in `diff_snapshots`'s `head_hash` (lib.rs:409). Filtering produces a different hash than the source snapshot's hash, which means a delta's `head_hash` is not directly comparable to a snapshot's `world_hash` after filtering. |
 | Aspirational `docs/src/core-systems/networking.md` API surface (`Server`, `ServerConfig`, `Client`, `ClientConfig`, `ClientId`, `ClientEvent`, `replication::{NetEntity, ReplicationMode}`, `state::{WorldState, EntityState}`, `delta::{DeltaEncoder, DeltaDecoder}`, `serialization::{BitWriter, BitReader}`, `prediction::{PredictionSystem, InputBuffer}`) | `docs/src/core-systems/networking.md` | Reference-only, code-absent | None of these submodules exist in `astraweave-net`. Origin: commit `28bc94f21` (2025-09-08, "Create comprehensive bespoke wiki with 51-section documentation structure (#34)") authored by `Copilot <198982749+Copilot@users.noreply.github.com>` — the same bulk AI-generated documentation sweep that introduced aspirational audio/input/net-ecs docs (per their respective traces). |
-| Architectural mismatch in same aspirational doc: claims **QUIC (via Quinn)** transport | `docs/src/core-systems/networking.md:28-33` | Doc-vs-code architectural disagreement | The aspirational doc states: "Transport Layer: UDP-based reliable/unreliable messaging with Quinn (QUIC)" and "AstraWeave uses QUIC (via Quinn) for modern, secure, and multiplexed networking with built-in congestion control and 0-RTT connection establishment." The actual `astraweave-net` implementation uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:18-19`, `lib.rs:612`). No `quinn` dependency exists in `astraweave-net/Cargo.toml`. This is more than a type-name mismatch — it's an architectural-class disagreement (TCP+WS vs UDP+QUIC). |
+| Architectural mismatch in same aspirational doc: claims **QUIC (via Quinn)** transport | `docs/src/core-systems/networking.md:28-33` | Doc-vs-code architectural disagreement | The aspirational doc states: "Transport Layer: UDP-based reliable/unreliable messaging with Quinn (QUIC)" and "AstraWeave uses QUIC (via Quinn) for modern, secure, and multiplexed networking with built-in congestion control and 0-RTT connection establishment." The actual `astraweave-net` implementation uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:18-19`, `lib.rs:612-613`). No `quinn` dependency exists in `astraweave-net/Cargo.toml`. This is more than a type-name mismatch — it's an architectural-class disagreement (TCP+WS vs UDP+QUIC). |
 
 ### Naming collisions
 
@@ -466,8 +466,8 @@ Optional TLS path (feature = "tls")
 | 9 | Delta-eligible snapshots broadcast every 3 ticks when no full is due | Yes | `lib.rs:593-596`: `else if tick - last_broadcast >= 3`. |
 | 10 | `Interest::include(viewer, viewer)` returns true for all four impls (a viewer always sees themselves) | Yes — implicitly | `FullInterest`: always true. `RadiusTeamInterest`: same team check (viewer.team == viewer.team). `FovInterest` / `FovLosInterest`: distance from self is 0 and same-team check applies. Tested at `tests/interest_coverage_tests.rs`. |
 | 11 | `replay_from` returns the same `world_hash` for the same `(World, events)` sorted by `(tick, seq)` | Yes | `lib.rs:976-997`; verified by `examples/net_headless_sim` which prints both `baseline` and `final` hashes for a fixed event log. |
-| 12 | `validate_and_execute`'s `Result` is reported back over the wire as `Msg::ServerApplyResult` for client input | Yes | `lib.rs:846-847, 863, 877-878, 894`. |
-| 13 | `replay_from` does NOT bail on per-event validation failures | Yes (intentional contract) | `lib.rs:944`: `let _ = validate_and_execute(...)`. |
+| 12 | `validate_and_execute`'s `Result` is reported back over the wire as `Msg::ServerApplyResult` for client input | Yes | `lib.rs:846-848, 864` (plan) and `lib.rs:882-884, 900` (input). |
+| 13 | `replay_from` does NOT bail on per-event validation failures | Yes (intentional contract) | `lib.rs:993`: `let _ = validate_and_execute(...)`. |
 | 14 | `ServerWelcome` is sent immediately after WebSocket upgrade, before any other server message | Yes | `lib.rs:617-620` — synchronous send before the writer-task spawn at `lib.rs:628`. |
 | 15 | `GameServer::tick` uses `AtomicU64::fetch_add(1, Ordering::Relaxed)` | Yes | `lib.rs:575`. The relaxed ordering is sufficient because all reads happen on the same task that incremented. |
 | 16 | TLS feature is opt-in (default features = `[]`) | Yes (compile-time) | `Cargo.toml:8`: `default = []`; `tls = ["tokio-rustls", "rustls", "webpki-roots"]` at line 9. |
@@ -484,7 +484,7 @@ Optional TLS path (feature = "tls")
 
 ### Cold paths
 
-- **Connection accept + WebSocket upgrade** (`tokio_tungstenite::accept_async`, `lib.rs:612`) — once per client connect.
+- **Connection accept + WebSocket upgrade** (`tokio_tungstenite::accept_async_with_config` + `engine_ws_config()`, `lib.rs:612-613`) — once per client connect.
 - **TLS handshake** (when `tls` feature is wired by an external caller) — once per client connect; rustls handshake is well-known to take milliseconds.
 - **`replay_from`** (`lib.rs:976-997`) — batch determinism check, not a per-frame path. Run once on demand.
 
@@ -598,7 +598,7 @@ Optional TLS path (feature = "tls")
 **Common mistakes when changing this system:**
 - **Adding a new `Msg` variant without updating the "server-only ignore" arm** at `lib.rs:907-913`. New `Server*` variants belong in that ignore list if clients shouldn't send them.
 - **Changing `EntityState` fields without updating both `EntityDeltaMask` constants AND `EntityDelta` fields AND `diff_snapshots` AND `apply_delta`.** All four are coupled; the mask bits are tied to specific fields.
-- **Adding a third `Interest` impl without updating the `InterestPolicy` enum, both writer-task match blocks, AND the `ClientHello.policy` string-to-enum mapping** at `lib.rs:817-832`.
+- **Adding a third `Interest` impl without updating the `InterestPolicy` enum, both writer-task match blocks, AND the `ClientHello.policy` string-to-enum mapping** at `lib.rs:810-825`.
 - **Assuming `world_hash` and `Delta.head_hash` are comparable.** They aren't after filtering — `world_hash` includes obstacles (via `stable_hash_snapshot`), `head_hash` does not (via `subset_hash`).
 - **Adding hashing logic with non-canonical iteration order.** `stable_hash_snapshot` carefully iterates pre-sorted entities + a `BTreeSet` of obstacles; any HashMap/HashSet iteration here will break determinism.
 
