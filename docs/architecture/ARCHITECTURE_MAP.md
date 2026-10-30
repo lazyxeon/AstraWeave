@@ -94,7 +94,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 | `astraweave-dialogue` | llm, embeddings, context, prompts, rag, persona |
 | `astraweave-embeddings` | _(LLM foundation)_ |
 | `astraweave-context` | _(LLM foundation)_ |
-| `astraweave-prompts` | _(LLM foundation)_ |
+| `astraweave-prompts` | core, llm |
 | `astraweave-rag` | _(LLM foundation)_ |
 | `astraweave-persona` | _(LLM foundation)_ |
 

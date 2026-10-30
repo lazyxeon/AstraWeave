@@ -34,6 +34,7 @@ rand = "0.9"
 jsonschema = "0.33"
 
 # Integration with other AstraWeave crates
+astraweave-core = { path = "../astraweave-core" }
 astraweave-llm = { path = "../astraweave-llm" }
 
 [dev-dependencies]

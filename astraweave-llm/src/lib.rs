@@ -2,6 +2,8 @@
 #[cfg(feature = "ollama")]
 use anyhow::Context;
 use anyhow::{bail, Result};
+#[cfg(feature = "ollama")]
+use astraweave_core::{byte_prefix, byte_suffix};
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
@@ -480,6 +482,30 @@ mod body_limit_tests {
         assert!(err.to_string().contains("ceiling"), "{err}");
         assert!(accept_body_limit(MAX_MODEL_JSON_BYTES).is_ok());
         assert!(accept_body_limit(0).is_err());
+    }
+}
+
+#[cfg(all(test, feature = "ollama"))]
+mod assembled_debug_snippet_tests {
+    use super::*;
+
+    #[test]
+    fn ollama_assembled_snippets_match_char_safe_helpers() {
+        let candidate = "日".repeat(200);
+        assert!(candidate.len() > 500);
+        let (start, end) =
+            ollama_assembled_debug_snippets(&candidate).expect("long assembled text");
+        assert_eq!(start, byte_prefix(&candidate, 200));
+        assert_eq!(end, byte_suffix(&candidate, 200));
+        let raw_tail_start = candidate.len().saturating_sub(200);
+        assert!(!candidate.is_char_boundary(raw_tail_start));
+    }
+
+    #[test]
+    fn ollama_assembled_snippets_short_text_omitted() {
+        assert!(ollama_assembled_debug_snippets("short").is_none());
+        assert!(ollama_assembled_debug_snippets(&"x".repeat(500)).is_none());
+        assert!(ollama_assembled_debug_snippets(&"x".repeat(501)).is_some());
     }
 }
 
@@ -2094,15 +2120,11 @@ impl OllamaChatClient {
                         "[ollama] assembled assistant_acc length = {}",
                         candidate.len()
                     );
-                    if candidate.len() > 500 {
-                        debug!(
-                            "[ollama] assembled snippet (start): {}",
-                            &candidate[..200.min(candidate.len())]
-                        );
-                        debug!(
-                            "[ollama] assembled snippet (end): {}",
-                            &candidate[candidate.len().saturating_sub(200)..]
-                        );
+                    if let Some((start_snip, end_snip)) =
+                        ollama_assembled_debug_snippets(&candidate)
+                    {
+                        debug!("[ollama] assembled snippet (start): {}", start_snip);
+                        debug!("[ollama] assembled snippet (end): {}", end_snip);
                     } else {
                         debug!("[ollama] assembled content: {}", candidate);
                     }
@@ -2746,6 +2768,18 @@ fn extract_json_object(s: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Char-safe 200-byte start/end previews for long assembled Ollama stream text.
+#[cfg(feature = "ollama")]
+pub(crate) fn ollama_assembled_debug_snippets(candidate: &str) -> Option<(String, String)> {
+    if candidate.len() <= 500 {
+        return None;
+    }
+    Some((
+        byte_prefix(candidate, 200).to_string(),
+        byte_suffix(candidate, 200).to_string(),
+    ))
 }
 
 /// Extract the last balanced JSON object in a string, if any.

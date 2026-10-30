@@ -326,32 +326,31 @@ mod truncate_input_tests {
     }
 
     #[test]
-    fn truncate_to_zero_returns_ellipsis() {
+    fn truncate_to_zero_returns_empty() {
         let result = truncate_input("hello", 0);
-        // Implementation truncates to max_length, then adds "..."
-        // For max_length=0, it takes "" and adds "...", resulting in "..."
-        assert_eq!(result, "...", "Truncate to 0 should return just ellipsis");
+        assert_eq!(result, "");
+        assert!(result.len() <= 0);
     }
 
     #[test]
-    fn truncate_to_1_returns_truncated_plus_ellipsis() {
+    fn truncate_to_1_respects_byte_cap() {
         let result = truncate_input("hello", 1);
-        // Takes first 1 char "h", then adds "...", result is "h..."
-        assert_eq!(result, "h...", "Truncate to 1 should return 'h...'");
+        assert_eq!(result, "h");
+        assert!(result.len() <= 1);
     }
 
     #[test]
-    fn truncate_to_2_returns_truncated_plus_ellipsis() {
+    fn truncate_to_2_respects_byte_cap() {
         let result = truncate_input("hello", 2);
-        // Takes first 2 chars "he", then adds "...", result is "he..."
-        assert_eq!(result, "he...", "Truncate to 2 should return 'he...'");
+        assert_eq!(result, "he");
+        assert!(result.len() <= 2);
     }
 
     #[test]
-    fn truncate_to_3_returns_truncated_plus_ellipsis() {
+    fn truncate_to_3_respects_byte_cap() {
         let result = truncate_input("hello", 3);
-        // Takes first 3 chars "hel", then adds "...", result is "hel..."
-        assert_eq!(result, "hel...", "Truncate to 3 should return 'hel...'");
+        assert_eq!(result, "hel");
+        assert!(result.len() <= 3);
     }
 
     #[test]

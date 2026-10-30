@@ -4,6 +4,7 @@
 //! and other LLM manipulation attempts.
 
 use anyhow::{bail, Result};
+use astraweave_core::byte_prefix;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
@@ -430,8 +431,17 @@ pub fn truncate_input(input: &str, max_length: usize) -> String {
         return input.to_string();
     }
 
+    if max_length == 0 {
+        return String::new();
+    }
+
+    // Ellipsis is three bytes; below that budget return a char-safe prefix only.
+    if max_length <= 3 {
+        return byte_prefix(input, max_length).to_string();
+    }
+
     // Try to break at last word boundary
-    let truncated = &input[..max_length];
+    let truncated = byte_prefix(input, max_length);
     if let Some(last_space) = truncated.rfind(|c: char| c.is_whitespace()) {
         if last_space > max_length / 2 {
             // Good break point found
@@ -871,6 +881,51 @@ mod tests {
 
         let result = truncate_input(input, 100);
         assert_eq!(result, input);
+    }
+
+    #[test]
+    fn test_truncate_input_multibyte_accent_at_boundary() {
+        let result = truncate_input("éX", 1);
+        assert_eq!(result, "");
+        assert!(result.len() <= 1);
+    }
+
+    #[test]
+    fn test_truncate_input_cjk_at_boundary() {
+        let result = truncate_input("日本語", 4);
+        assert_eq!(result, "日...");
+    }
+
+    #[test]
+    fn test_truncate_input_emoji_at_boundary() {
+        let input = "hello 🎮 world";
+        let cut = "hello 🎮".len() - 1;
+        let result = truncate_input(input, cut);
+        assert!(result.ends_with("..."));
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_truncate_input_combining_mark_at_boundary() {
+        let input = "e\u{0301}X";
+        let cut = "e\u{0301}".len() - 1;
+        let result = truncate_input(input, cut);
+        assert!(result.len() <= cut);
+        assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_truncate_input_small_limits_respect_byte_cap() {
+        let input = "hello world";
+        for limit in 0..=3 {
+            let result = truncate_input(input, limit);
+            assert!(
+                result.len() <= limit,
+                "limit {limit}: len {} > {limit}",
+                result.len()
+            );
+            assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+        }
     }
 
     #[test]
