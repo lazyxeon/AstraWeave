@@ -372,7 +372,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ## Fuzzing plan
 
-This section is the original proposal. The nightly workflow has landed; the current description is the paragraph under "Landed on main". `.github/workflows/fuzz-nightly.yml` runs on `schedule` (`30 7 * * *`) and `workflow_dispatch`, not on pull requests. Each of the 28 `[[bin]]` targets runs for 120 seconds. The corpus is a `fuzz-corpus-<target>` artifact from a successful run of this workflow on the default branch of this repository, not an `actions/cache` entry. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`. The list job times out at 5 minutes and the fuzz job at 45 minutes. Pull-request CI still does not run fuzzing.
+This section is the original proposal. The nightly workflow has landed; the current description is the paragraph under "Landed on main". `.github/workflows/fuzz-nightly.yml` runs on `schedule` (`30 7 * * *`) and `workflow_dispatch`, not on pull requests. Each of the 28 `[[bin]]` targets runs for 120 seconds. The corpus is a `fuzz-corpus-<target>` artifact from a completed run (conclusion `success` or `failure`, not `cancelled`) of this workflow on the default branch of this repository, not an `actions/cache` entry. The workflow token is `contents: read` and `actions: read`. The fuzz job inherits that token. `upload-artifact` does not need `actions: write`. The list job times out at 5 minutes and the fuzz job at 45 minutes. Pull-request CI still does not run fuzzing.
 
 Original proposal:
 
