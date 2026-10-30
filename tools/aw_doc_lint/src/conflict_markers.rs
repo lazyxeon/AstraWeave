@@ -68,19 +68,19 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
                 in_conflict = block.in_conflict;
                 flush_fence_block(&mut errors, block, true);
             } else if fence_stack.is_empty() && parsed.len >= 3 {
-                in_conflict = false;
                 let info = fence_info_string(line, parsed);
+                let exempt = is_exempt_fence_info(info.as_deref()) && !in_conflict;
                 fence_stack.push((
                     OpenFence {
                         marker: parsed.marker,
                         len: parsed.len,
                     },
                     PendingFenceErrors {
-                        exempt_candidate: is_exempt_fence_info(info.as_deref()),
+                        exempt_candidate: exempt,
                         saw_opener: false,
                         saw_separator: false,
                         saw_closer: false,
-                        in_conflict: false,
+                        in_conflict,
                         exempt_example_start: None,
                         exempt_quiet_range: None,
                         errors: Vec::new(),
@@ -216,6 +216,7 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
             block.in_conflict = false;
             if block.exempt_candidate && block.saw_opener && !block.saw_separator {
                 invalidate_exempt_example_tracking(block);
+                block.exempt_candidate = false;
             }
         } else if msg.contains("|||||||") {
             block.saw_opener = true;
@@ -642,7 +643,7 @@ mod tests {
             closer("b")
         );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(error_lines(&errors), [2, 3], "{errors:?}");
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5, 6], "{errors:?}");
     }
 
     #[test]
@@ -656,7 +657,7 @@ mod tests {
             closer("b")
         );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(error_lines(&errors), [2, 3, 4], "{errors:?}");
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5, 6, 7], "{errors:?}");
     }
 
     #[test]
@@ -696,6 +697,55 @@ mod tests {
         let body = format!("```text\n{}\n{}\n{}\n", opener(), separator(), closer("b"));
         let errors = conflict_marker_errors("doc.md", &body);
         assert_eq!(error_lines(&errors), [2, 3, 4], "{errors:?}");
+    }
+
+    #[test]
+    fn misaligned_close_clears_exempt_candidate_before_later_balanced_block() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            closer("decoy"),
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5, 6], "{errors:?}");
+        let inner_only = format!(
+            "```text\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b")
+        );
+        assert!(
+            conflict_marker_errors("doc.md", &inner_only).is_empty(),
+            "isolated balanced example remains exempt"
+        );
+    }
+
+    #[test]
+    fn prose_open_conflict_disables_exempt_fence_suppression() {
+        let body = format!(
+            "{}\n```text\n{}\n{}\n{}\n```\n",
+            opener(),
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [1, 3, 4, 5], "{errors:?}");
+    }
+
+    #[test]
+    fn prose_open_conflict_flags_separator_inside_exempt_fence() {
+        let body = format!(
+            "{}\n```text\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [1, 3, 4], "{errors:?}");
     }
 
     #[test]
