@@ -1318,17 +1318,17 @@ The NPC subsystem provides **town/civilian/quest-giver AI** with dialogue, role-
     Output: NpcPlan { actions: Vec<NpcAction> }
     │
     ▼
-[N2 — Plan queuing on Npc.c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef]
+[N2 — Plan queuing on Npc.pending]
     file: runtime.rs:159 (utterance path) or implicit (idle path uses no LLM)
-    Npc.c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef.extend(plan.actions)
+    Npc.pending.extend(plan.actions)
     npc.mode = NpcMode::Conversing (on utterance path)
     npc.cooldown_talk = 0.5 (utterance gate at runtime.rs:153-155)
     │
     ▼
 [N3 — Per-tick execution]
     file: runtime.rs:100-144
-    For each NPC: c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef.first() popped per tick (one action per tick)
-                  If no c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef: idle micro-behavior (Guard: step aside when player_dist < 2.0)
+    For each NPC: pending.first() popped per tick (one action per tick)
+                  If no pending: idle micro-behavior (Guard: step aside when player_dist < 2.0)
     │
     ▼
 [N4 — Action execution via CommandSink (NOT via validate_and_execute)]
@@ -1360,7 +1360,7 @@ Known limitations documented in code:
 | Term | Definition | File |
 |---|---|---|
 | **`NpcId`** | `pub type NpcId = u64`. Distinct from `astraweave-ecs::Entity` (which is `{ id: u32, generation: u32 }` — see foundation trace) and `astraweave-core::Entity` (which is `u32`). | `runtime.rs:10` |
-| **`Npc`** | `{ id: NpcId, profile: NpcProfile, body: BodyId, mode: NpcMode, c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef: Vec<NpcAction>, cooldown_talk: f32 }`. The per-instance NPC record. | `runtime.rs:57-64` |
+| **`Npc`** | `{ id: NpcId, profile: NpcProfile, body: BodyId, mode: NpcMode, pending: Vec<NpcAction>, cooldown_talk: f32 }`. The per-instance NPC record. | `runtime.rs:57-64` |
 | **`NpcManager`** | `{ next_id: NpcId, npcs: HashMap<NpcId, Npc>, planner: Box<dyn LlmAdapter> }`. Owns all NPCs + the planning trait object. | `runtime.rs:66-70` |
 | **`NpcAction`** | `#[non_exhaustive]` 6-variant enum: `Say { text }`, `MoveTo { pos: Vec3, speed }`, `Emote { kind: EmoteKind }`, `OpenShop`, `GiveQuest { id }`, `CallGuards { reason }`. NPC's parallel to canonical `ActionStep`. | `behavior.rs:13-22` |
 | **`NpcPlan`** | `{ actions: Vec<NpcAction> }`. NPC's parallel to canonical `PlanIntent`. No `plan_id` field. | `behavior.rs:24-27` |
@@ -1428,7 +1428,7 @@ The NPC crate **does not import any canonical AI types** and is therefore not co
 
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
-| N1 | `NpcManager::update` executes at most one c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef action per NPC per tick | Yes | `runtime.rs:114-121` — `c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef.first()` cloned, then `c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef.remove(0)`. No loop |
+| N1 | `NpcManager::update` executes at most one pending action per NPC per tick | Yes | `runtime.rs:114-121` — `pending.first()` cloned, then `pending.remove(0)`. No loop |
 | N2 | `cooldown_talk` decays at `dt` per tick, clamped to `≥ 0.0` | Yes | `runtime.rs:111` — `(npc.cooldown_talk - dt).max(0.0)` |
 | N3 | `handle_player_utterance` is gated by `cooldown_talk > 0.0` (silently returns) | Yes | `runtime.rs:153-155` |
 | N4 | After a successful utterance plan, `cooldown_talk` is reset to `0.5` and `mode` to `NpcMode::Conversing` | Yes | `runtime.rs:160-162` |
@@ -1437,7 +1437,7 @@ The NPC crate **does not import any canonical AI types** and is therefore not co
 | N7 | `MoveTo` direction calculation uses a documented placeholder (`Vec3::new(pos.x - 0.0, 0.0, pos.z - 0.0)`) because `CommandSink` does not expose position queries | Yes (code) | `runtime.rs:175-180` (comment documents the limitation) |
 | N8 | `CallGuards` position parameter is a placeholder `Vec3::ZERO` for the same reason | Yes (code) | `runtime.rs:188-190` |
 | N9 | Default NPC capsule half-extents are `(0.4, 0.9, 0.4)` for all spawned NPCs | Yes | `runtime.rs:84` |
-| N10 | Newly spawned NPCs start in `NpcMode::Idle` with empty `c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef` and `cooldown_talk = 0.0` | Yes | `runtime.rs:88-96` |
+| N10 | Newly spawned NPCs start in `NpcMode::Idle` with empty `pending` and `cooldown_talk = 0.0` | Yes | `runtime.rs:88-96` |
 | N11 | `NpcProfile.persona.voice_speaker` is `Option<String>` — `MockLlm` does not currently read it, but it's authored in TOML | Yes (compile-time) | `profile.rs:21` |
 | N12 | `NpcProfile.schedule: Vec<ScheduleEntry>` is loaded from TOML but never read by `NpcManager::update` | Yes (workspace grep, verified 2026-05-12) | Zero read sites in `astraweave-npc/src` for `schedule:` — only construction at `profile.rs:48,80,183`, `llm.rs:152`, `runtime.rs:298`. |
 | N13 | `MockLlm`'s patrol step uses `rand::rng().random_range(-1.0..1.0)` for jitter — this introduces non-determinism into the NPC subsystem | Yes | `llm.rs:80-88`. **Distinct from the canonical AI loop's RNG-determinism story** which uses `astraweave-ecs::Rng` (parent §3 vocabulary) |
@@ -1488,7 +1488,7 @@ Dialogue provides **branching dialogue graphs** for player↔NPC and player↔co
 [D2 — Runner instantiation]
     file: astraweave-dialogue/src/runner.rs:63-74 (DialogueRunner::new)
     state: graph + current_node_id: Option<String> + state: RunnerState (Idle/WaitingForChoice/Finished)
-           + c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef_events: Vec<DialogueEvent> + history: Vec<String>
+           + pending_events: Vec<DialogueEvent> + history: Vec<String>
     │
     │ Game loop or scene event: runner.start(start_node_id)
     │   file: runner.rs:81-91
@@ -1543,7 +1543,7 @@ Dialogue provides **branching dialogue graphs** for player↔NPC and player↔co
 | **`DialogueNode`** | `{ id: String, text: String, responses: Vec<DialogueResponse> }`. The unit of dialogue. Builder methods: `new`, `with_responses`, `with_response`. Predicates: `is_terminal`, `is_choice`, `is_linear`, `has_responses`, `leads_to(node_id)`, `text_contains(substr)`. | `lib.rs:11-147` |
 | **`DialogueResponse`** | `{ text: String, next_id: Option<String> }`. Builder: `new`, `with_next`, `next`. Predicates: `has_next`, `is_terminal`, `has_next_id(id)`. | `lib.rs:171-266` |
 | **`DialogueGraph`** | `{ nodes: Vec<DialogueNode> }`. Operations: `add_node`, `get_node`, `validate` (returns `Err` if any `DialogueResponse.next_id` references a non-existent node — see `tests/dialogue.rs:26-38`). | `lib.rs:278-…` |
-| **`DialogueRunner`** | State machine: `{ graph, current_node_id: Option<String>, state: RunnerState, c56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef_events: Vec<DialogueEvent>, history: Vec<String> }`. API: `new(graph)`, `start(start_node_id)`, `choose(choice_index)`, `drain_events()`. | `runner.rs:52-…` |
+| **`DialogueRunner`** | State machine: `{ graph, current_node_id: Option<String>, state: RunnerState, pending_events: Vec<DialogueEvent>, history: Vec<String> }`. API: `new(graph)`, `start(start_node_id)`, `choose(choice_index)`, `drain_events()`. | `runner.rs:52-…` |
 | **`RunnerState`** | `Idle` / `WaitingForChoice` / `Finished`. | `runner.rs:35-43` |
 | **`DialogueEvent`** | `NodeEntered { node_id, text, choices: Vec<String> }` / `ChoiceMade { node_id, choice_index, choice_text, next_node_id: Option<String> }` / `Ended { last_node_id }`. **Distinct from** any canonical AI-loop event types. | `runner.rs:14-30` |
 | **`LoadedDialogue`** | `{ dialogue_id: String, start_node: String, graph: DialogueGraph }`. Result of `load_dialogue_from_toml`. | `toml_loader.rs:72-79` |
@@ -2627,7 +2627,7 @@ InjectionResult{enhanced_prompt, injected_memories, context_tokens, metadata:
 7. **`Memory::category` defaults to `Gameplay`.** Both `add_memory` (`pipeline.rs:232`) and `add_memory_async` (`:632`) hardcode `MemoryCategory::Gameplay`. Consumers wanting categorical memories must call `add_memory_obj(Memory{...})` (`pipeline.rs:241`) directly with the desired category.
 8. **`Memory::importance` defaults to 1.0.** Same two add_memory functions hardcode `importance: 1.0` (`pipeline.rs:230, :629`). Forgetting decay calculation: high importance → very slow decay. Default 1.0 means default memories are essentially un-forgettable until max_memory_age (30 days). See §13.8.7.
 9. **`current_timestamp()` uses UNIX epoch seconds.** `lib.rs:438-444` uses `SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()`. Memory ordering by `RecencyDesc` / `RecencyAsc` is therefore based on wall-clock seconds, NOT game-tick or deterministic time. Replay systems / determinism systems CANNOT use `RagPipeline` retrieval as a deterministic input.
-10. **The `RagPipeline::summarize_memories` triggers only if `enable_summarization && llm_client.is_some()`.** `pipeline.rs:452-454`. If consumers construct the pipeline with `llm_client: None` AND a memory list exceeds `max_context_tokens`, the pipeline falls back to `token_counter.truncate_to_tokens` (lossy truncation). Consumers dec56e2e78b0bc4bc947d04c98ec7d0fe0fd77f4ef on summarization MUST provide an `LlmClient`.
+10. **The `RagPipeline::summarize_memories` triggers only if `enable_summarization && llm_client.is_some()`.** `pipeline.rs:452-454`. If consumers construct the pipeline with `llm_client: None` AND a memory list exceeds `max_context_tokens`, the pipeline falls back to `token_counter.truncate_to_tokens` (lossy truncation). Consumers depending on summarization MUST provide an `LlmClient`.
 11. **All RAG cache state uses `parking_lot::RwLock` not `tokio::sync::RwLock`.** `pipeline.rs:15` imports `parking_lot::RwLock`. This is a deliberate choice for performance, but it means cache reads cannot be `.await`'d — the contract is "lock guards never held across await boundaries." Verified at `pipeline.rs:644-647` and `:656-660` where lock-then-drop patterns are explicit.
 12. **`VectorStore::insert` returns `Err` at capacity.** `astraweave-embeddings/src/store.rs:83-88` rejects insert when `vectors.len() >= max_vectors` (default 100,000). Production deployments approaching this limit silently fail every new memory until forgetting reclaims slots. Forgetting is not auto-triggered (see invariant 1), so this is a real risk for long-running consumer instances.
 13. **`MockEmbeddingClient` is deterministic.** `astraweave-embeddings/src/client.rs` uses hash-to-vector with fixed seed. Tests are reproducible; production deployments using `MockEmbeddingClient` would have semantically meaningless embeddings (hash collisions are random-but-deterministic).
