@@ -1287,6 +1287,7 @@ name = "astraweave-prompts"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "astraweave-core",
  "astraweave-llm",
  "chrono",
  "criterion 0.7.0",

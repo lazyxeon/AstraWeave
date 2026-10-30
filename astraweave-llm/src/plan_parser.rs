@@ -606,6 +606,38 @@ mod tests {
     }
 
     #[test]
+    fn truncate_at_150_mid_multibyte_scalar_does_not_panic() {
+        let s = "é".repeat(76);
+        assert!(s.len() > 150);
+        assert!(!s.is_char_boundary(151));
+        let out = truncate(&s, 151);
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn object_extraction_preview_at_200_bytes_avoids_mid_scalar() {
+        let obj_str = "日".repeat(67);
+        assert!(obj_str.len() > 200);
+        assert!(!obj_str.is_char_boundary(200));
+        let preview = byte_prefix(&obj_str, 200);
+        assert!(std::str::from_utf8(preview.as_bytes()).is_ok());
+        assert_eq!(preview.len(), 198);
+    }
+
+    #[test]
+    fn object_extraction_debug_previews_respect_char_boundaries() {
+        let reg = create_test_registry();
+        let pad = "é".repeat(120);
+        let text = format!(
+            r#"{{"plan_id":"preview-test","pad":"{pad}","steps":[{{"act":"FlyToMoon"}}]}}"#
+        );
+        assert!(text.len() > 200);
+        let mut warnings = Vec::new();
+        let result = try_object_extraction(&text, &reg, &mut warnings);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_code_fence_extraction() {
         let reg = create_test_registry();
         let text = r#"

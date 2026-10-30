@@ -431,6 +431,15 @@ pub fn truncate_input(input: &str, max_length: usize) -> String {
         return input.to_string();
     }
 
+    if max_length == 0 {
+        return String::new();
+    }
+
+    // Ellipsis is three bytes; below that budget return a char-safe prefix only.
+    if max_length <= 3 {
+        return byte_prefix(input, max_length).to_string();
+    }
+
     // Try to break at last word boundary
     let truncated = byte_prefix(input, max_length);
     if let Some(last_space) = truncated.rfind(|c: char| c.is_whitespace()) {
@@ -877,7 +886,8 @@ mod tests {
     #[test]
     fn test_truncate_input_multibyte_accent_at_boundary() {
         let result = truncate_input("éX", 1);
-        assert_eq!(result, "...");
+        assert_eq!(result, "");
+        assert!(result.len() <= 1);
     }
 
     #[test]
@@ -900,8 +910,22 @@ mod tests {
         let input = "e\u{0301}X";
         let cut = "e\u{0301}".len() - 1;
         let result = truncate_input(input, cut);
-        assert!(result.ends_with("..."));
+        assert!(result.len() <= cut);
         assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn test_truncate_input_small_limits_respect_byte_cap() {
+        let input = "hello world";
+        for limit in 0..=3 {
+            let result = truncate_input(input, limit);
+            assert!(
+                result.len() <= limit,
+                "limit {limit}: len {} > {limit}",
+                result.len()
+            );
+            assert!(std::str::from_utf8(result.as_bytes()).is_ok());
+        }
     }
 
     #[test]

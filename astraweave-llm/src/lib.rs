@@ -2,6 +2,8 @@
 #[cfg(feature = "ollama")]
 use anyhow::Context;
 use anyhow::{bail, Result};
+#[cfg(feature = "ollama")]
+use astraweave_core::byte_prefix;
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
@@ -2097,11 +2099,11 @@ impl OllamaChatClient {
                     if candidate.len() > 500 {
                         debug!(
                             "[ollama] assembled snippet (start): {}",
-                            &candidate[..200.min(candidate.len())]
+                            byte_prefix(&candidate, 200)
                         );
                         debug!(
                             "[ollama] assembled snippet (end): {}",
-                            &candidate[candidate.len().saturating_sub(200)..]
+                            byte_prefix(&candidate[candidate.len().saturating_sub(200)..], 200)
                         );
                     } else {
                         debug!("[ollama] assembled content: {}", candidate);
