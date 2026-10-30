@@ -5,8 +5,10 @@
 //! documentation example: a fenced block whose info string is exactly `diff`,
 //! `text`, or `console` and that contains a complete conflict sequence
 //! (`<<<<<<<` … `=======` … `>>>>>>>`) before the fence closes, and the fence
-//! ends with no unclosed conflict still open. Only the first balanced example
-//! in such a fence is suppressed; any later marker in that fence is reported.
+//! ends with no unclosed conflict still open. Only the first balanced example in
+//! such a fence is suppressed when the fence **closes** with a valid closing line;
+//! an unclosed fence that runs to EOF never suppresses markers. Any later marker
+//! in that fence is reported.
 //!
 //! Fence lines follow CommonMark: up to three spaces of indent, an opening run
 //! of three or more `` ` `` or `~` characters (optional info string), and a
@@ -63,7 +65,7 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
             if closes_top {
                 let (_, block) = fence_stack.pop().expect("closes_top implied a frame");
                 in_conflict = block.in_conflict;
-                flush_fence_block(&mut errors, block);
+                flush_fence_block(&mut errors, block, true);
             } else if fence_stack.is_empty() && parsed.len >= 3 {
                 in_conflict = false;
                 let info = fence_info_string(line, parsed);
@@ -97,17 +99,23 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
     }
 
     while let Some((_, block)) = fence_stack.pop() {
-        flush_fence_block(&mut errors, block);
+        flush_fence_block(&mut errors, block, false);
     }
 
     errors
 }
 
-fn flush_fence_block(errors: &mut Vec<String>, block: PendingFenceErrors) {
-    if let Some((start, end)) = block.exempt_quiet_range {
-        errors.extend(block.errors[..start].iter().cloned());
-        errors.extend(block.errors[end..].iter().cloned());
+fn flush_fence_block(errors: &mut Vec<String>, block: PendingFenceErrors, fence_closed: bool) {
+    if fence_closed {
+        if let Some((start, end)) = block.exempt_quiet_range {
+            errors.extend(block.errors[..start].iter().cloned());
+            errors.extend(block.errors[end..].iter().cloned());
+        } else {
+            errors.extend(block.errors);
+        }
     } else {
+        // CommonMark: an unclosed fence runs to EOF; do not treat EOF as a clean close
+        // for documentation-example suppression.
         errors.extend(block.errors);
     }
 }
@@ -156,8 +164,19 @@ fn maybe_note_exempt_quiet_range(block: &mut PendingFenceErrors) {
     {
         if let Some(start) = block.exempt_example_start {
             block.exempt_quiet_range = Some((start, block.errors.len()));
+            block.exempt_example_start = None;
+            block.saw_opener = false;
+            block.saw_separator = false;
+            block.saw_closer = false;
         }
     }
+}
+
+fn invalidate_exempt_example_tracking(block: &mut PendingFenceErrors) {
+    block.exempt_example_start = None;
+    block.saw_opener = false;
+    block.saw_separator = false;
+    block.saw_closer = false;
 }
 
 fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut PendingFenceErrors) {
@@ -166,7 +185,8 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
         && block.exempt_quiet_range.is_none()
         && starts_conflict_marker(line, "<<<<<<<")
     {
-        block.exempt_example_start = None;
+        invalidate_exempt_example_tracking(block);
+        block.exempt_candidate = false;
     }
     if block.exempt_candidate
         && !block.in_conflict
@@ -187,6 +207,9 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
         } else if msg.contains(">>>>>>>") {
             block.saw_closer = true;
             block.in_conflict = false;
+            if block.exempt_candidate && block.saw_opener && !block.saw_separator {
+                invalidate_exempt_example_tracking(block);
+            }
         } else if msg.contains("|||||||") {
             block.saw_opener = true;
         }
@@ -587,6 +610,73 @@ mod tests {
         assert_eq!(errors.len(), 1, "{errors:?}");
         assert!(errors[0].contains(":2:"));
         assert!(errors[0].contains("<<<<<<<"));
+    }
+
+    #[test]
+    fn partial_opener_closer_without_separator_then_balanced_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            closer("x"),
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3], "{errors:?}");
+    }
+
+    #[test]
+    fn diff3_without_separator_then_balanced_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n||||||| parent\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            closer("x"),
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 4], "{errors:?}");
+    }
+
+    #[test]
+    fn second_conflict_after_misaligned_openers_is_fully_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n\n{}\n{}\n{}\n```\n",
+            opener(),
+            opener(),
+            separator(),
+            closer("b"),
+            opener(),
+            separator(),
+            closer("c")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5, 7, 8, 9], "{errors:?}");
+    }
+
+    #[test]
+    fn nested_opener_clears_exempt_candidate() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            opener(),
+            separator(),
+            closer("b"),
+            opener(),
+            separator(),
+            closer("c")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5, 6, 7, 8], "{errors:?}");
+    }
+
+    #[test]
+    fn balanced_example_in_unclosed_exempt_fence_is_flagged_at_eof() {
+        let body = format!("```text\n{}\n{}\n{}\n", opener(), separator(), closer("b"));
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 4], "{errors:?}");
     }
 
     #[test]
