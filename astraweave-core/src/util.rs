@@ -136,6 +136,10 @@ mod tests {
         let head = "x".repeat(198);
         let s = format!("{head}{unit}{unit}");
         assert_eq!(byte_suffix(&s, 2), unit);
+        let raw_start = s.len().saturating_sub(1);
+        assert!(!s.is_char_boundary(raw_start));
+        let suffix = byte_suffix(&s, 1);
+        assert!(s.is_char_boundary(s.len() - suffix.len()));
     }
 
     #[test]

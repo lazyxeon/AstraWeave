@@ -7,6 +7,16 @@ Helper functions and utilities for embedding operations.
 use crate::{Memory, MemoryCategory};
 use anyhow::Result;
 use astraweave_core::{byte_prefix, ceil_char_boundary, floor_char_boundary};
+
+fn byte_after_char(s: &str, start: usize) -> usize {
+    if start >= s.len() {
+        return s.len();
+    }
+    match s[start..].chars().next() {
+        Some(ch) => start + ch.len_utf8(),
+        None => s.len(),
+    }
+}
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -32,6 +42,9 @@ impl TextPreprocessor {
 
     /// Split long text into chunks
     pub fn chunk_text(text: &str, max_chunk_size: usize, overlap: usize) -> Vec<String> {
+        if text.is_empty() {
+            return Vec::new();
+        }
         if text.len() <= max_chunk_size {
             return vec![text.to_string()];
         }
@@ -40,7 +53,10 @@ impl TextPreprocessor {
         let mut start = 0;
 
         while start < text.len() {
-            let end = floor_char_boundary(text, (start + max_chunk_size).min(text.len()));
+            let mut end = floor_char_boundary(text, (start + max_chunk_size).min(text.len()));
+            if end <= start {
+                end = byte_after_char(text, start);
+            }
             if end <= start {
                 break;
             }
@@ -50,7 +66,13 @@ impl TextPreprocessor {
                 break;
             }
 
-            start = ceil_char_boundary(text, end.saturating_sub(overlap));
+            let prev_start = start;
+            let next_from_overlap = ceil_char_boundary(text, end.saturating_sub(overlap));
+            let min_advance = byte_after_char(text, prev_start);
+            start = next_from_overlap.max(min_advance);
+            if start <= prev_start {
+                start = end;
+            }
         }
 
         chunks
@@ -491,6 +513,82 @@ mod tests {
         // Start at 5-2=3, next chunk: DEFGH (3-8)
         // Start at 8-2=6, next chunk: GHIJ (6-10)
         assert!(chunks.len() >= 2);
+    }
+
+    #[test]
+    fn test_text_chunking_cjk_overlap_near_max_does_not_hang() {
+        let text = "a日日日日";
+        let chunks = TextPreprocessor::chunk_text(text, 4, 3);
+        assert!(!chunks.is_empty());
+        assert!(chunks.len() < 1000);
+        for chunk in &chunks {
+            assert!(std::str::from_utf8(chunk.as_bytes()).is_ok());
+        }
+        assert_bytes_covered(text, &chunks);
+    }
+
+    #[test]
+    fn test_text_chunking_cjk_large_overlap_near_max() {
+        let text = "日".repeat(400);
+        let chunks = TextPreprocessor::chunk_text(&text, 512, 510);
+        assert!(!chunks.is_empty());
+        assert!(chunks.len() < 1000);
+        assert_bytes_covered(&text, &chunks);
+    }
+
+    #[test]
+    fn test_text_chunking_max_smaller_than_one_char() {
+        let text = "日日日日";
+        let chunks = TextPreprocessor::chunk_text(text, 2, 0);
+        assert_eq!(chunks.len(), 4);
+        assert_eq!(chunks.join(""), text);
+    }
+
+    #[test]
+    fn test_text_chunking_max_smaller_than_one_char_with_ascii_prefix() {
+        let text = "ab日日日日";
+        let chunks = TextPreprocessor::chunk_text(text, 2, 0);
+        assert_eq!(chunks.join(""), text);
+    }
+
+    #[test]
+    fn test_text_chunking_mid_char_boundaries_at_floor_and_ceil() {
+        let unit = "日";
+        let text = format!("{}{}{}", "x".repeat(10), unit, unit);
+        let max = 10 + unit.len() + 1;
+        let overlap = 1;
+        let chunks = TextPreprocessor::chunk_text(&text, max, overlap);
+        assert!(chunks.len() >= 2);
+        for chunk in &chunks {
+            assert!(std::str::from_utf8(chunk.as_bytes()).is_ok());
+        }
+        assert!(text.starts_with(&chunks[0]));
+        assert_eq!(chunks.last().unwrap(), unit);
+        assert_eq!(&text[13..], unit);
+    }
+
+    fn assert_bytes_covered(text: &str, chunks: &[String]) {
+        assert!(!chunks.is_empty());
+        let mut covered = vec![false; text.len()];
+        let mut search_from = 0usize;
+        for chunk in chunks {
+            let Some(rel) = text[search_from..].find(chunk) else {
+                panic!("chunk {chunk:?} not found from byte {search_from} in {text:?}");
+            };
+            let start = search_from + rel;
+            for i in start..start + chunk.len() {
+                covered[i] = true;
+            }
+            search_from = if start + 1 >= text.len() {
+                text.len()
+            } else {
+                ceil_char_boundary(text, start + 1)
+            };
+        }
+        assert!(
+            covered.iter().all(|&b| b),
+            "not all bytes covered in {text:?}"
+        );
     }
 
     #[test]
