@@ -429,6 +429,14 @@
         let activeBenchmarks = new Set();
         let chart = null;
 
+        function isFlatBenchmarkRow(entry) {
+            return Boolean(entry && entry.benchmark_name && !entry.benchmarks);
+        }
+
+        function entryTimestamp(entry) {
+            return new Date(entry.date || entry.timestamp);
+        }
+
         // Load data
         async function loadData() {
             try {
@@ -479,11 +487,13 @@
         }
 
         function initializeDashboard() {
-            // Extract unique benchmarks
+            // Extract unique benchmarks (nested snapshots or flat Criterion JSONL rows)
             const benchmarks = new Set();
             benchmarkData.forEach(entry => {
                 if (entry.benchmarks) {
                     entry.benchmarks.forEach(b => benchmarks.add(b.name));
+                } else if (entry.benchmark_name) {
+                    benchmarks.add(entry.benchmark_name);
                 }
             });
 
@@ -516,8 +526,8 @@
 
             // Filter data
             let filteredData = benchmarkData.filter(entry => {
-                const entryDate = new Date(entry.date);
-                return entryDate >= cutoffDate;
+                const entryDate = entryTimestamp(entry);
+                return !Number.isNaN(entryDate.getTime()) && entryDate >= cutoffDate;
             });
 
             // Process data for chart
@@ -534,22 +544,40 @@
             const grouped = {};
 
             data.forEach(entry => {
-                if (!entry.benchmarks) return;
+                if (entry.benchmarks) {
+                    entry.benchmarks.forEach(bench => {
+                        if (selectedBenchmark !== 'all' && bench.name !== selectedBenchmark) return;
+                        if (!activeBenchmarks.has(bench.name)) return;
 
-                entry.benchmarks.forEach(bench => {
-                    if (selectedBenchmark !== 'all' && bench.name !== selectedBenchmark) return;
-                    if (!activeBenchmarks.has(bench.name)) return;
+                        if (!grouped[bench.name]) {
+                            grouped[bench.name] = [];
+                        }
 
-                    if (!grouped[bench.name]) {
-                        grouped[bench.name] = [];
-                    }
-
-                    grouped[bench.name].push({
-                        date: new Date(entry.date),
-                        value: bench.value,
-                        unit: bench.unit,
-                        commit: entry.commit?.substring(0, 7) || 'unknown'
+                        grouped[bench.name].push({
+                            date: entryTimestamp(entry),
+                            value: bench.value,
+                            unit: bench.unit,
+                            commit: entry.commit?.substring(0, 7) || 'unknown'
+                        });
                     });
+                    return;
+                }
+
+                if (!isFlatBenchmarkRow(entry)) return;
+
+                const benchName = entry.benchmark_name;
+                if (selectedBenchmark !== 'all' && benchName !== selectedBenchmark) return;
+                if (!activeBenchmarks.has(benchName)) return;
+
+                if (!grouped[benchName]) {
+                    grouped[benchName] = [];
+                }
+
+                grouped[benchName].push({
+                    date: entryTimestamp(entry),
+                    value: entry.value,
+                    unit: entry.unit,
+                    commit: entry.git_sha?.substring(0, 7) || 'unknown'
                 });
             });
 
