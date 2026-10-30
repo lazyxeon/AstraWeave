@@ -57,7 +57,7 @@ These pulls are not on main.
 
 ## Docs
 
-- [Team roadmap](docs/ROADMAP.md) (Vote 6 source of truth; mirrored on the [sitrep page](https://astraweave-sitrep-and-roadmap-7wkx.pages.grok.bot/))
+- [Team roadmap](docs/ROADMAP.md) (Vote 6 source of truth; team's internal sitrep page, sign-in required, at [astraweave-sitrep-and-roadmap](https://astraweave-sitrep-and-roadmap-7wkx.pages.grok.bot/))
 - [Engine status](docs/current/ENGINE_STATUS.md)
 - [Architecture map](docs/architecture/ARCHITECTURE_MAP.md)
 - [Contributing](CONTRIBUTING.md)
