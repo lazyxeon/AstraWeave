@@ -200,7 +200,9 @@ jobs:
           if [ -f "$outcomes" ]; then
             echo "## Mutation Testing: astraweave-ai" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            eval "$(python3 scripts/ci/mutation_ai_outcomes.py "$outcomes")"
+            counts=$(python3 scripts/ci/mutation_ai_outcomes.py "$outcomes") || exit 1
+            eval "$counts"
+            : "${DECIDED:?}" "${SCORE:?}"
 
             echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
@@ -318,6 +320,8 @@ jobs:
     needs: [mutants-ecs, mutants-core, mutants-ai, mutants-behavior, mutants-nav]
     if: always()
     steps:
+      - uses: actions/checkout@v5
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -347,7 +351,9 @@ jobs:
               echo "::error::Expected 8 astraweave-ai shard outcomes, found ${#ai_files[@]}"
               exit 1
             fi
-            eval "$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}")"
+            counts=$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}") || exit 1
+            eval "$counts"
+            : "${DECIDED:?}" "${SCORE:?}"
             if [ "$DECIDED" -le 0 ]; then
               echo "::error::astraweave-ai has no caught or missed mutants after cap-OOM exclusion (timeouts ${TIMEOUT})"
               exit 1
