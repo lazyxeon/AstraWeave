@@ -553,7 +553,7 @@ class WorkflowPolicyTest(unittest.TestCase):
         if not PAGES_YML.exists():
             self.skipTest("pages.yml not present")
         script = pages_verify_script()
-        with tempfile.TemporaryDirectory(dir=ROOT / "target") as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             book = Path(tmp)
             dash = book / "dashboard"
             data = dash / "benchmark_data"
