@@ -5,7 +5,8 @@
 //! documentation example: a fenced block whose info string is exactly `diff`,
 //! `text`, or `console` and that contains a complete conflict sequence
 //! (`<<<<<<<` … `=======` … `>>>>>>>`) before the fence closes, and the fence
-//! ends with no unclosed conflict still open.
+//! ends with no unclosed conflict still open. Only the first balanced example
+//! in such a fence is suppressed; any later marker in that fence is reported.
 //!
 //! Fence lines follow CommonMark: up to three spaces of indent, an opening run
 //! of three or more `` ` `` or `~` characters (optional info string), and a
@@ -32,10 +33,12 @@ struct PendingFenceErrors {
     saw_separator: bool,
     saw_closer: bool,
     in_conflict: bool,
+    /// When set, `errors[..len]` belong to the first balanced exempt example only.
+    exempt_quiet_len: Option<usize>,
     errors: Vec<String>,
 }
 
-/// Report `path:line: …` messages for conflict markers outside fenced code blocks.
+/// Report `path:line: …` messages for conflict markers in tracked text.
 pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
     let mut errors = Vec::new();
     let mut fence_stack: Vec<(OpenFence, PendingFenceErrors)> = Vec::new();
@@ -43,7 +46,13 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
 
     for (line_num, raw) in content.lines().enumerate() {
         let line = raw.trim_end();
-        if let Some(parsed) = parse_code_fence_line(line) {
+        let parsed_fence = parse_code_fence_line(line);
+        let opens_backtick_with_backtick_info = parsed_fence.is_some_and(|parsed| {
+            fence_stack.is_empty()
+                && parsed.marker == '`'
+                && backtick_fence_info_has_backtick(line, parsed)
+        });
+        if let Some(parsed) = parsed_fence.filter(|_| !opens_backtick_with_backtick_info) {
             let closes_top = fence_stack.last().is_some_and(|(open, _)| {
                 parsed.marker == open.marker
                     && parsed.len >= open.len
@@ -67,6 +76,7 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
                         saw_separator: false,
                         saw_closer: false,
                         in_conflict: false,
+                        exempt_quiet_len: None,
                         errors: Vec::new(),
                     },
                 ));
@@ -79,24 +89,30 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
         if let Some((_, block)) = fence_stack.last_mut() {
             apply_line_markers(path, line_num + 1, line, block);
         } else {
-            push_line_markers(path, line_num + 1, line, &mut in_conflict, &mut errors);
+            push_line_markers(
+                path,
+                line_num + 1,
+                line,
+                &mut in_conflict,
+                &mut errors,
+                false,
+            );
         }
     }
 
     while let Some((_, block)) = fence_stack.pop() {
-        errors.extend(block.errors);
+        flush_fence_block(&mut errors, block);
     }
 
     errors
 }
 
 fn flush_fence_block(errors: &mut Vec<String>, block: PendingFenceErrors) {
-    let suppress = block.exempt_candidate
-        && block.saw_opener
-        && block.saw_separator
-        && block.saw_closer
-        && !block.in_conflict;
-    if !suppress {
+    if let Some(quiet_len) = block.exempt_quiet_len {
+        if block.errors.len() > quiet_len {
+            errors.extend(block.errors[quiet_len..].iter().cloned());
+        }
+    } else {
         errors.extend(block.errors);
     }
 }
@@ -123,9 +139,40 @@ fn fence_info_string(line: &str, parsed: ParsedFence) -> Option<String> {
     Some(token)
 }
 
+fn backtick_fence_info_has_backtick(line: &str, parsed: ParsedFence) -> bool {
+    if parsed.marker != '`' {
+        return false;
+    }
+    let bytes = line.as_bytes();
+    let mut idx = 0usize;
+    while idx < bytes.len() && idx < 3 && bytes[idx] == b' ' {
+        idx += 1;
+    }
+    line[idx + parsed.len..].trim_start().contains('`')
+}
+
+fn maybe_note_exempt_quiet_prefix(block: &mut PendingFenceErrors) {
+    if block.exempt_candidate
+        && block.saw_opener
+        && block.saw_separator
+        && block.saw_closer
+        && !block.in_conflict
+        && block.exempt_quiet_len.is_none()
+    {
+        block.exempt_quiet_len = Some(block.errors.len());
+    }
+}
+
 fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut PendingFenceErrors) {
     let mut scratch = Vec::new();
-    push_line_markers(path, line_num, line, &mut block.in_conflict, &mut scratch);
+    push_line_markers(
+        path,
+        line_num,
+        line,
+        &mut block.in_conflict,
+        &mut scratch,
+        true,
+    );
     for msg in &scratch {
         if msg.contains("<<<<<<<") {
             block.saw_opener = true;
@@ -140,6 +187,7 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
         }
     }
     block.errors.extend(scratch);
+    maybe_note_exempt_quiet_prefix(block);
 }
 
 fn push_line_markers(
@@ -148,6 +196,7 @@ fn push_line_markers(
     line: &str,
     in_conflict: &mut bool,
     errors: &mut Vec<String>,
+    in_fence: bool,
 ) {
     if starts_conflict_marker(line, "<<<<<<<") {
         errors.push(format!("{path}:{line_num}: git conflict marker `<<<<<<<`"));
@@ -163,7 +212,7 @@ fn push_line_markers(
         errors.push(format!("{path}:{line_num}: git conflict marker `|||||||`"));
         return;
     }
-    if *in_conflict && line == "=======" {
+    if line == "=======" && (*in_conflict || in_fence) {
         errors.push(format!("{path}:{line_num}: git conflict marker `=======`"));
     }
 }
@@ -411,6 +460,72 @@ mod tests {
         assert!(errors
             .iter()
             .any(|e| e.contains(":5:") && e.contains("<<<<<<<")));
+    }
+
+    #[test]
+    fn stray_closer_after_exempt_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b"),
+            closer("stray")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [5], "{errors:?}");
+    }
+
+    #[test]
+    fn stray_diff3_parent_after_exempt_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n||||||| parent\n```\n",
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [5], "{errors:?}");
+    }
+
+    #[test]
+    fn orphan_separator_and_closer_after_exempt_example_are_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b"),
+            separator(),
+            closer("c")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [5, 6], "{errors:?}");
+    }
+
+    #[test]
+    fn second_conflict_after_exempt_example_is_flagged() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b"),
+            opener(),
+            separator(),
+            closer("c")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [5, 6, 7], "{errors:?}");
+    }
+
+    #[test]
+    fn backtick_in_backtick_fence_info_is_not_exempt() {
+        let body = format!(
+            "```text look `here`\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(errors.len(), 3, "{errors:?}");
     }
 
     #[test]
