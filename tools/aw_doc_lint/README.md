@@ -19,7 +19,7 @@ cargo run -p aw_doc_lint -- --mode warn
 
 **Markers:** column-0 git conflict lines: `<<<<<<<` / `>>>>>>>` / `|||||||` (marker plus space or end of line). A `=======` line is reported only while a conflict is open (after `<<<<<<<` and before the matching `>>>>>>>`), in prose and in fences; a setext underline or a fenced Markdown heading line of seven equals is not flagged on its own.
 
-**Inside `` ```diff `` / `` ```text `` / `` ```console `` fences only:** the first balanced `<<<<<<<` … `=======` … `>>>>>>>` example in that fence is omitted from the report when the fence closes cleanly. Any later marker in the same fence (including a stray `>>>>>>>`, `|||||||`, orphan `=======`, a second full conflict, or a trailing `<<<<<<<`) is still reported. A backtick fence whose info string contains `` ` `` is not a CommonMark fence and is scanned like normal lines.
+**Inside `` ```diff `` / `` ```text `` / `` ```console `` fences only:** the first balanced `<<<<<<<` … `=======` … `>>>>>>>` example in that fence is omitted from the report when the fence closes cleanly. A second `<<<<<<<` while a conflict is still open cancels that exemption, so an earlier unclosed opener is reported. Any later marker in the same fence (including a stray `>>>>>>>`, `|||||||`, a second full conflict, or a trailing `<<<<<<<`) is still reported. A backtick fence whose info string contains `` ` `` is not a CommonMark fence and is scanned like normal lines.
 
 **Fences:** CommonMark rules — up to three spaces of indent; closing run uses the same `` ` `` or `~` character, length ≥ the opener, and only whitespace after the run (no info string on the closing line).
 

@@ -162,6 +162,13 @@ fn maybe_note_exempt_quiet_range(block: &mut PendingFenceErrors) {
 
 fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut PendingFenceErrors) {
     if block.exempt_candidate
+        && block.in_conflict
+        && block.exempt_quiet_range.is_none()
+        && starts_conflict_marker(line, "<<<<<<<")
+    {
+        block.exempt_example_start = None;
+    }
+    if block.exempt_candidate
         && !block.in_conflict
         && block.exempt_quiet_range.is_none()
         && block.exempt_example_start.is_none()
@@ -513,6 +520,18 @@ mod tests {
     }
 
     #[test]
+    fn unclosed_opener_before_balanced_example_is_flagged_when_second_opener_arrives() {
+        let body = format!(
+            "```text\n{}\n{}\n{}\n{}\n```\n",
+            opener(),
+            opener(),
+            separator(),
+            closer("b")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5], "{errors:?}");
+    }
+
     #[test]
     fn orphan_closer_after_exempt_example_is_flagged() {
         let body = format!(
