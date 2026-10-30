@@ -426,20 +426,8 @@
         // Global state
         let benchmarkData = [];
         let thresholdData = {};
-        let thresholdByTail = new Map();
         let activeBenchmarks = new Set();
         let chart = null;
-
-        function rebuildThresholdIndex() {
-            thresholdByTail = new Map();
-            Object.entries(thresholdData).forEach(([key, value]) => {
-                const tail = key.split('/').pop();
-                if (!thresholdByTail.has(tail)) {
-                    thresholdByTail.set(tail, []);
-                }
-                thresholdByTail.get(tail).push({ key, value });
-            });
-        }
 
         /** Map archived Criterion names onto `.github/benchmark_thresholds.json` keys. */
         function lookupThreshold(benchName) {
@@ -449,15 +437,14 @@
             if (thresholdData[benchName]) {
                 return thresholdData[benchName];
             }
+            const suffixMatches = [];
             for (const key of Object.keys(thresholdData)) {
                 if (key.endsWith('/' + benchName) || key.endsWith('::' + benchName)) {
-                    return thresholdData[key];
+                    suffixMatches.push(thresholdData[key]);
                 }
             }
-            const tail = benchName.split('/').pop();
-            const matches = thresholdByTail.get(tail) || [];
-            if (matches.length === 1) {
-                return matches[0].value;
+            if (suffixMatches.length === 1) {
+                return suffixMatches[0];
             }
             return null;
         }
@@ -530,7 +517,6 @@
                     const thresholdResponse = await fetch('../benchmark_thresholds.json');
                     const thresholdJson = await thresholdResponse.json();
                     thresholdData = thresholdJson.benchmarks || {};
-                    rebuildThresholdIndex();
                 } catch (e) {
                     console.warn('Could not load threshold data:', e);
                 }

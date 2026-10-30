@@ -1,0 +1,3 @@
+# Dated nightly for Miri, sanitizers, fuzz, and the toolchain-management
+# nightly row (#560). Bump this file on purpose. One line, no floating @nightly.
+nightly-2026-10-28

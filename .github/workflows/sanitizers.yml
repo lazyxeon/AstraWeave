@@ -7,6 +7,8 @@
 #
 # Miri testing is handled by the dedicated miri.yml workflow — not duplicated here.
 #
+# Nightly is the dated channel in `.github/rust-nightly-channel` (#560).
+#
 # === Nightly-failure hardening (February 2026) ===
 # Previous nightly failures were traced to:
 #   1. Caching `target/` with un-pinned nightly (stale ABI artifacts)
@@ -108,8 +110,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libudev-dev
 
-      - name: Install Rust Nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install pinned Rust nightly
+        uses: ./.github/actions/rust-nightly
         with:
           components: rust-src
 
@@ -127,7 +129,7 @@ jobs:
 
       - name: Run ASan on astraweave-ecs
         run: |
-          RUSTFLAGS="-Zsanitizer=address" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test \
             -p astraweave-ecs \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -135,7 +137,7 @@ jobs:
 
       - name: Run ASan on astraweave-physics
         run: |
-          RUSTFLAGS="-Zsanitizer=address" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test \
             -p astraweave-physics \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -143,7 +145,7 @@ jobs:
 
       - name: Run ASan on astraweave-core
         run: |
-          RUSTFLAGS="-Zsanitizer=address" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test \
             -p astraweave-core \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -175,8 +177,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libudev-dev
 
-      - name: Install Rust Nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install pinned Rust nightly
+        uses: ./.github/actions/rust-nightly
         with:
           components: rust-src
 
@@ -235,7 +237,7 @@ jobs:
           for crate in "${P0_CRATES[@]}"; do
             echo ""
             echo "::group::[P0 CRITICAL] Testing $crate with ASan"
-            if RUSTFLAGS="-Zsanitizer=address" cargo +nightly test \
+            if RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test \
               -p "$crate" \
               --target x86_64-unknown-linux-gnu \
               --lib \
@@ -253,7 +255,7 @@ jobs:
           for crate in "${P1_CRATES[@]}" "${P2_CRATES[@]}"; do
             echo ""
             echo "::group::[Advisory] Testing $crate with ASan"
-            if RUSTFLAGS="-Zsanitizer=address" cargo +nightly test \
+            if RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test \
               -p "$crate" \
               --target x86_64-unknown-linux-gnu \
               --lib \
@@ -311,8 +313,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libudev-dev
 
-      - name: Install Rust Nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install pinned Rust nightly
+        uses: ./.github/actions/rust-nightly
         with:
           components: rust-src
 
@@ -328,7 +330,7 @@ jobs:
 
       - name: Run LSan on astraweave-ecs
         run: |
-          RUSTFLAGS="-Zsanitizer=leak" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=leak" cargo +$AW_NIGHTLY test \
             -p astraweave-ecs \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -336,7 +338,7 @@ jobs:
 
       - name: Run LSan on astraweave-core
         run: |
-          RUSTFLAGS="-Zsanitizer=leak" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=leak" cargo +$AW_NIGHTLY test \
             -p astraweave-core \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -344,7 +346,7 @@ jobs:
 
       - name: Run LSan on astraweave-physics
         run: |
-          RUSTFLAGS="-Zsanitizer=leak" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=leak" cargo +$AW_NIGHTLY test \
             -p astraweave-physics \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -352,7 +354,7 @@ jobs:
 
       - name: Run LSan on persistence (aw-save)
         run: |
-          RUSTFLAGS="-Zsanitizer=leak" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=leak" cargo +$AW_NIGHTLY test \
             -p aw-save \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -379,8 +381,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y pkg-config libudev-dev
 
-      - name: Install Rust Nightly
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install pinned Rust nightly
+        uses: ./.github/actions/rust-nightly
         with:
           components: rust-src
 
@@ -395,7 +397,7 @@ jobs:
       - name: Run TSan on astraweave-ai
         run: |
           echo "⚠️ TSan is ADVISORY — failures may be false positives"
-          RUSTFLAGS="-Zsanitizer=thread" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
             -p astraweave-ai \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -404,7 +406,7 @@ jobs:
 
       - name: Run TSan on astraweave-coordination
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
             -p astraweave-coordination \
             --target x86_64-unknown-linux-gnu \
             --lib \
@@ -413,7 +415,7 @@ jobs:
 
       - name: Run TSan on astraweave-ecs
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +nightly test \
+          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
             -p astraweave-ecs \
             --target x86_64-unknown-linux-gnu \
             --lib \

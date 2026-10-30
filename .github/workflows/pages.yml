@@ -200,16 +200,24 @@ jobs:
           if not isinstance(thresholds, dict):
               raise SystemExit("benchmark_thresholds.json must be a JSON object")
           history_path = root / "benchmark_data/benchmark_history.jsonl"
-          parsed = 0
+          valid_rows = 0
           for line in history_path.read_text(encoding="utf-8").splitlines():
               line = line.strip()
               if not line:
                   continue
-              json.loads(line)
-              parsed += 1
-              break
-          if parsed != 1:
-              raise SystemExit("benchmark_history.jsonl has no JSON line")
+              row = json.loads(line)
+              ts = row.get("timestamp") or row.get("date")
+              if (
+                  row.get("benchmark_name")
+                  and row.get("value") is not None
+                  and ts
+              ):
+                  valid_rows += 1
+                  break
+          if valid_rows < 1:
+              raise SystemExit(
+                  "benchmark_history.jsonl has no row with benchmark_name, value, and timestamp"
+              )
           PY
           tar -C docs/book -cf /tmp/pages-artifact.tar \
             --exclude=.git --exclude=.github '--exclude=.[^/]*' .
