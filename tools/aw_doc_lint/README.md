@@ -19,7 +19,7 @@ cargo run -p aw_doc_lint -- --mode warn
 
 **Markers:** lines starting with `<<<<<<<` or `>>>>>>>` (followed by a space or end of line), `|||||||` diff3 markers, and `=======` only while a conflict block is open. Setext underlines stay allowed.
 
-**Inside fenced code blocks:** markers are reported like prose, except a complete example inside a fence whose info string is exactly `diff`, `text`, or `console` (opening line `` ```diff ``, `` ```text ``, `` ```console `` with a full `<<<<<<<` … `=======` … `>>>>>>>` sequence before the fence closes).
+**Inside fenced code blocks:** markers are reported like prose, except a balanced complete example inside a fence whose opening info string is exactly `diff`, `text`, or `console` (full `<<<<<<<` … `=======` … `>>>>>>>` with no unclosed opener when the fence closes). A stray marker after an example block is still flagged. A real balanced conflict inside those three info strings is indistinguishable from an intentional example.
 
 **Fences:** CommonMark rules — up to three spaces of indent; closing run uses the same `` ` `` or `~` character, length ≥ the opener, and only whitespace after the run (no info string on the closing line).
 
