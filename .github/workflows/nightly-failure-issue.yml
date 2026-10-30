@@ -39,8 +39,11 @@ jobs:
     timeout-minutes: 10
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       (github.event.workflow_run.event == 'schedule' ||
-       github.event.workflow_run.head_branch == 'main')
+       (github.event.workflow_run.head_branch == 'main' &&
+        (github.event.workflow_run.event == 'push' ||
+         github.event.workflow_run.event == 'workflow_dispatch')))
     steps:
       - name: Open or update the issue
         uses: actions/github-script@v7
@@ -102,46 +105,97 @@ jobs:
               core.notice(`Updated issue #${issueNumber}`);
             };
 
-            const findByTitle = (issues) => issues.find((issue) => issue.title === title);
+            const REPORTER_MARKER =
+              "Opened by `.github/workflows/nightly-failure-issue.yml`";
 
-            let match = findByTitle(await listOpenIssues());
-            if (match) {
-              await commentOnIssue(match.number);
+            const isReportableIssue = (issue) =>
+              issue.title === title && !issue.pull_request;
+
+            const pickKeeper = (issues) => {
+              const matches = issues.filter(isReportableIssue);
+              if (matches.length === 0) {
+                return undefined;
+              }
+              matches.sort((a, b) => a.number - b.number);
+              return matches[0];
+            };
+
+            const issueBodyMatches = async (issue) => {
+              if (issue.body && issue.body.includes(REPORTER_MARKER)) {
+                return true;
+              }
+              const full = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+              });
+              return full.data.body.includes(REPORTER_MARKER);
+            };
+
+            const closeAsDuplicateOf = async (issueNumber, keeperNumber) => {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `Duplicate of #${keeperNumber}. Closing in favor of the canonical nightly issue.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: "closed",
+                state_reason: "not_planned",
+              });
+            };
+
+            const syncKeeper = async () => {
+              const open = await listOpenIssues();
+              const keeper = pickKeeper(open);
+              if (!keeper) {
+                return undefined;
+              }
+              await commentOnIssue(keeper.number);
+              for (const issue of open) {
+                if (!isReportableIssue(issue) || issue.number === keeper.number) {
+                  continue;
+                }
+                if (!(await issueBodyMatches(issue))) {
+                  continue;
+                }
+                await closeAsDuplicateOf(issue.number, keeper.number);
+              }
+              return keeper;
+            };
+
+            let keeper = await syncKeeper();
+            if (!keeper) {
+              keeper = await syncKeeper();
+            }
+            if (keeper) {
+              core.notice(`Updated issue #${keeper.number}`);
             } else {
-              match = findByTitle(await listOpenIssues());
-              if (match) {
-                await commentOnIssue(match.number);
-              } else {
-                const created = await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title,
-                  body,
-                  labels: labelReady ? ["ci-nightly"] : [],
-                });
-                const sameTitle = (await listOpenIssues()).filter(
-                  (issue) => issue.title === title,
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: labelReady ? ["ci-nightly"] : [],
+              });
+              const open = await listOpenIssues();
+              const reportable = open.filter(isReportableIssue);
+              const older = reportable.find(
+                (issue) => issue.number < created.data.number,
+              );
+              if (older) {
+                await closeAsDuplicateOf(created.data.number, older.number);
+                await commentOnIssue(older.number);
+                core.notice(
+                  `Closed duplicate #${created.data.number}; kept #${older.number}`,
                 );
-                sameTitle.sort((a, b) => a.number - b.number);
-                const keep = sameTitle[0] ?? created.data;
-                if (keep.number !== created.data.number) {
-                  await github.rest.issues.createComment({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: created.data.number,
-                    body: `Duplicate of #${keep.number}. Closing in favor of the earlier open issue.`,
-                  });
-                  await github.rest.issues.update({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: created.data.number,
-                    state: "closed",
-                    state_reason: "not_planned",
-                  });
-                  await commentOnIssue(keep.number);
-                  core.notice(
-                    `Closed duplicate #${created.data.number}; kept #${keep.number}`,
-                  );
+              } else {
+                keeper = await syncKeeper();
+                if (keeper) {
+                  core.notice(`Opened issue #${keeper.number}`);
                 } else {
                   core.notice(`Opened issue #${created.data.number}`);
                 }

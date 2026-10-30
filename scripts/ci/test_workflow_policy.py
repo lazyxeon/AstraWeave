@@ -357,6 +357,19 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("determinism-replay", watched)
         self.assertNotIn("Determinism Replay", watched)
 
+    def test_nightly_failure_issue_job_skips_fork_and_pull_request_runs(self) -> None:
+        text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
+        self.assertIn("head_repository.full_name == github.repository", text)
+        self.assertIn("github.event.workflow_run.event == 'schedule'", text)
+        self.assertIn("github.event.workflow_run.event == 'push'", text)
+        self.assertIn("github.event.workflow_run.event == 'workflow_dispatch'", text)
+        self.assertNotIn("github.event.workflow_run.event == 'pull_request'", text)
+        self.assertNotIn(
+            "github.event.workflow_run.event == 'schedule' ||\n"
+            "       github.event.workflow_run.head_branch == 'main')",
+            text,
+        )
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
