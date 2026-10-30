@@ -4,7 +4,7 @@ name: Pages
 # site, so this workflow builds every public path into one directory:
 # the mdBook, rustdoc under /api/, the workspace map at /architecture/,
 # and the benchmark dashboard at /dashboard/benchmark_dashboard/ with
-# docs/archive/benchmark_data/ and .github/benchmark_thresholds.json.
+# docs/archive/benchmark_data/ and dashboard/benchmark_thresholds.json.
 
 on:
   push:
@@ -112,8 +112,7 @@ jobs:
           rm -rf "$data"
           mkdir -p "$data"
           cp -a docs/archive/benchmark_data/. "$data/"
-          mkdir -p docs/book/.github
-          cp .github/benchmark_thresholds.json docs/book/.github/benchmark_thresholds.json
+          cp .github/benchmark_thresholds.json docs/book/dashboard/benchmark_thresholds.json
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -184,7 +183,7 @@ jobs:
           test -f docs/book/dashboard/benchmark_data/benchmark_history.jsonl
           test -s docs/book/dashboard/benchmark_data/benchmark_history.jsonl
           test -f docs/book/dashboard/benchmark_data/metadata.json
-          test -f docs/book/.github/benchmark_thresholds.json
+          test -f docs/book/dashboard/benchmark_thresholds.json
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -196,9 +195,7 @@ jobs:
           if not meta:
               raise SystemExit("metadata.json is empty")
           thresholds = json.loads(
-              Path("docs/book/.github/benchmark_thresholds.json").read_text(
-                  encoding="utf-8"
-              )
+              (root / "benchmark_thresholds.json").read_text(encoding="utf-8")
           )
           if not isinstance(thresholds, dict):
               raise SystemExit("benchmark_thresholds.json must be a JSON object")
@@ -214,6 +211,17 @@ jobs:
           if parsed != 1:
               raise SystemExit("benchmark_history.jsonl has no JSON line")
           PY
+          tar -C docs/book -cf /tmp/pages-artifact.tar \
+            --exclude=.git --exclude=.github '--exclude=.[^/]*' .
+          for p in \
+            dashboard/benchmark_data/benchmark_history.jsonl \
+            dashboard/benchmark_data/metadata.json \
+            dashboard/benchmark_thresholds.json; do
+            tar tf /tmp/pages-artifact.tar | grep -qx "./$p" || {
+              echo "missing $p in packed artifact" >&2
+              exit 1
+            }
+          done
           test -f docs/book/api/index.html
           test -f docs/book/api/astraweave_core/index.html
           echo "Pages site: $(find docs/book -name '*.html' | wc -l) HTML files"

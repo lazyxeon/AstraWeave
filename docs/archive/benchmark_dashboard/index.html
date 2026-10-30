@@ -449,7 +449,7 @@
 
                 // Load thresholds
                 try {
-                    const thresholdResponse = await fetch('../../.github/benchmark_thresholds.json');
+                    const thresholdResponse = await fetch('../benchmark_thresholds.json');
                     const thresholdJson = await thresholdResponse.json();
                     thresholdData = thresholdJson.benchmarks || {};
                 } catch (e) {
