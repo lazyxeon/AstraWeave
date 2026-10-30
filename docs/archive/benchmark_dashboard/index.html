@@ -374,7 +374,7 @@
             </div>
             <div class="control-group">
                 <label for="timeRange">Time Range (Days)</label>
-                <input type="number" id="timeRange" min="1" max="365" value="30">
+                <input type="number" id="timeRange" min="1" max="730" value="365">
             </div>
             <div class="control-group">
                 <label for="smoothing">Smoothing</label>
@@ -429,6 +429,71 @@
         let activeBenchmarks = new Set();
         let chart = null;
 
+        /** Map archived Criterion names onto `.github/benchmark_thresholds.json` keys. */
+        function lookupThreshold(benchName) {
+            if (!benchName) {
+                return null;
+            }
+            if (thresholdData[benchName]) {
+                return thresholdData[benchName];
+            }
+            const suffixMatches = [];
+            for (const key of Object.keys(thresholdData)) {
+                if (key.endsWith('/' + benchName) || key.endsWith('::' + benchName)) {
+                    suffixMatches.push(thresholdData[key]);
+                }
+            }
+            if (suffixMatches.length === 1) {
+                return suffixMatches[0];
+            }
+            return null;
+        }
+
+        function applyDefaultTimeRange(metadata) {
+            const input = document.getElementById('timeRange');
+            let oldest = null;
+            let newest = null;
+
+            if (metadata?.oldest) {
+                oldest = new Date(metadata.oldest);
+            }
+            if (metadata?.newest) {
+                newest = new Date(metadata.newest);
+            }
+
+            if ((!oldest || Number.isNaN(oldest.getTime())) && benchmarkData.length) {
+                const dates = benchmarkData
+                    .map(entryTimestamp)
+                    .filter(d => !Number.isNaN(d.getTime()));
+                if (dates.length) {
+                    oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+                    newest = new Date(Math.max(...dates.map(d => d.getTime())));
+                }
+            }
+
+            if (!oldest || Number.isNaN(oldest.getTime())) {
+                return;
+            }
+
+            const daysSinceOldest = Math.ceil((Date.now() - oldest.getTime()) / 86400000) + 1;
+            let defaultDays = daysSinceOldest;
+            if (newest && !Number.isNaN(newest.getTime())) {
+                const archiveSpan = Math.ceil((newest.getTime() - oldest.getTime()) / 86400000) + 1;
+                defaultDays = Math.max(daysSinceOldest, archiveSpan);
+            }
+
+            input.max = Math.max(730, defaultDays);
+            input.value = defaultDays;
+        }
+
+        function isFlatBenchmarkRow(entry) {
+            return Boolean(entry && entry.benchmark_name && !entry.benchmarks);
+        }
+
+        function entryTimestamp(entry) {
+            return new Date(entry.date || entry.timestamp);
+        }
+
         // Load data
         async function loadData() {
             try {
@@ -449,7 +514,7 @@
 
                 // Load thresholds
                 try {
-                    const thresholdResponse = await fetch('../../.github/benchmark_thresholds.json');
+                    const thresholdResponse = await fetch('../benchmark_thresholds.json');
                     const thresholdJson = await thresholdResponse.json();
                     thresholdData = thresholdJson.benchmarks || {};
                 } catch (e) {
@@ -457,15 +522,17 @@
                 }
 
                 // Load metadata
+                let metadata = null;
                 try {
                     const metadataResponse = await fetch('../benchmark_data/metadata.json');
-                    const metadata = await metadataResponse.json();
+                    metadata = await metadataResponse.json();
                     document.getElementById('lastUpdated').textContent = 
                         new Date(metadata.generated_at).toLocaleString();
                 } catch (e) {
                     document.getElementById('lastUpdated').textContent = 'Unknown';
                 }
 
+                applyDefaultTimeRange(metadata);
                 initializeDashboard();
             } catch (error) {
                 showError(`Failed to load benchmark data: ${error.message}`);
@@ -479,11 +546,13 @@
         }
 
         function initializeDashboard() {
-            // Extract unique benchmarks
+            // Extract unique benchmarks (nested snapshots or flat Criterion JSONL rows)
             const benchmarks = new Set();
             benchmarkData.forEach(entry => {
                 if (entry.benchmarks) {
                     entry.benchmarks.forEach(b => benchmarks.add(b.name));
+                } else if (entry.benchmark_name) {
+                    benchmarks.add(entry.benchmark_name);
                 }
             });
 
@@ -516,8 +585,8 @@
 
             // Filter data
             let filteredData = benchmarkData.filter(entry => {
-                const entryDate = new Date(entry.date);
-                return entryDate >= cutoffDate;
+                const entryDate = entryTimestamp(entry);
+                return !Number.isNaN(entryDate.getTime()) && entryDate >= cutoffDate;
             });
 
             // Process data for chart
@@ -534,22 +603,40 @@
             const grouped = {};
 
             data.forEach(entry => {
-                if (!entry.benchmarks) return;
+                if (entry.benchmarks) {
+                    entry.benchmarks.forEach(bench => {
+                        if (selectedBenchmark !== 'all' && bench.name !== selectedBenchmark) return;
+                        if (!activeBenchmarks.has(bench.name)) return;
 
-                entry.benchmarks.forEach(bench => {
-                    if (selectedBenchmark !== 'all' && bench.name !== selectedBenchmark) return;
-                    if (!activeBenchmarks.has(bench.name)) return;
+                        if (!grouped[bench.name]) {
+                            grouped[bench.name] = [];
+                        }
 
-                    if (!grouped[bench.name]) {
-                        grouped[bench.name] = [];
-                    }
-
-                    grouped[bench.name].push({
-                        date: new Date(entry.date),
-                        value: bench.value,
-                        unit: bench.unit,
-                        commit: entry.commit?.substring(0, 7) || 'unknown'
+                        grouped[bench.name].push({
+                            date: entryTimestamp(entry),
+                            value: bench.value,
+                            unit: bench.unit,
+                            commit: entry.commit?.substring(0, 7) || 'unknown'
+                        });
                     });
+                    return;
+                }
+
+                if (!isFlatBenchmarkRow(entry)) return;
+
+                const benchName = entry.benchmark_name;
+                if (selectedBenchmark !== 'all' && benchName !== selectedBenchmark) return;
+                if (!activeBenchmarks.has(benchName)) return;
+
+                if (!grouped[benchName]) {
+                    grouped[benchName] = [];
+                }
+
+                grouped[benchName].push({
+                    date: entryTimestamp(entry),
+                    value: entry.value,
+                    unit: entry.unit,
+                    commit: entry.git_sha?.substring(0, 7) || 'unknown'
                 });
             });
 
@@ -595,7 +682,7 @@
                 const changePercent = ((latest - earliest) / earliest * 100).toFixed(1);
                 const trend = latest < earliest ? 'positive' : 'negative';
 
-                const threshold = thresholdData[benchName];
+                const threshold = lookupThreshold(benchName);
                 const baselineValue = threshold?.baseline;
 
                 const card = document.createElement('div');
@@ -722,7 +809,7 @@
                     .style('opacity', 1);
 
                 // Threshold line
-                const threshold = thresholdData[benchName];
+                const threshold = lookupThreshold(benchName);
                 if (threshold && threshold.max_allowed) {
                     g.append('line')
                         .attr('class', 'threshold-line')

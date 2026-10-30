@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import re
+import json
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -104,6 +107,188 @@ def jobs_missing_timeout(text: str) -> list[str]:
             has_timeout = True
     flush()
     return missing
+
+
+PAGES_YML = WORKFLOWS / "pages.yml"
+DASHBOARD_HTML = ROOT / "docs" / "archive" / "benchmark_dashboard" / "index.html"
+THRESHOLDS_JSON = ROOT / ".github" / "benchmark_thresholds.json"
+ARCHIVE_HISTORY = ROOT / "docs" / "archive" / "benchmark_data" / "benchmark_history.jsonl"
+ARCHIVE_METADATA = ROOT / "docs" / "archive" / "benchmark_data" / "metadata.json"
+
+_PAGES_VERIFY_OLD = """\
+import json
+from pathlib import Path
+
+root = Path("docs/book/dashboard")
+meta = json.loads(
+    (root / "benchmark_data/metadata.json").read_text(encoding="utf-8")
+)
+if not meta:
+    raise SystemExit("metadata.json is empty")
+thresholds = json.loads(
+    (root / "benchmark_thresholds.json").read_text(encoding="utf-8")
+)
+if not isinstance(thresholds, dict):
+    raise SystemExit("benchmark_thresholds.json must be a JSON object")
+history_path = root / "benchmark_data/benchmark_history.jsonl"
+parsed = 0
+for line in history_path.read_text(encoding="utf-8").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    json.loads(line)
+    parsed += 1
+    break
+if parsed != 1:
+    raise SystemExit("benchmark_history.jsonl has no JSON line")
+"""
+
+_PAGES_VERIFY_FIELDS_NO_WINDOW = """\
+import json
+from pathlib import Path
+
+root = Path("docs/book/dashboard")
+meta = json.loads(
+    (root / "benchmark_data/metadata.json").read_text(encoding="utf-8")
+)
+if not meta:
+    raise SystemExit("metadata.json is empty")
+thresholds = json.loads(
+    (root / "benchmark_thresholds.json").read_text(encoding="utf-8")
+)
+if not isinstance(thresholds, dict):
+    raise SystemExit("benchmark_thresholds.json must be a JSON object")
+history_path = root / "benchmark_data/benchmark_history.jsonl"
+valid_rows = 0
+for line in history_path.read_text(encoding="utf-8").splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    row = json.loads(line)
+    ts = row.get("timestamp") or row.get("date")
+    if row.get("benchmark_name") and row.get("value") is not None and ts:
+        valid_rows += 1
+        break
+if valid_rows < 1:
+    raise SystemExit(
+        "benchmark_history.jsonl has no row with benchmark_name, value, and timestamp"
+    )
+"""
+
+_SUFFIX_THRESHOLD_EXPECTED = {
+    "world_creation": "astraweave-core::ecs_benchmarks/world_creation",
+    "character_full_tick": "astraweave-physics::character_controller/character_full_tick",
+    "character_move_diagonal": "astraweave-physics::character_controller/character_move_diagonal",
+    "character_move_straight": "astraweave-physics::character_controller/character_move_straight",
+    "raycast_batch_8_rays": "astraweave-physics::raycast/raycast_batch_8_rays",
+    "raycast_empty_scene": "astraweave-physics::raycast/raycast_empty_scene",
+    "raycast_ground_plane": "astraweave-physics::raycast/raycast_ground_plane",
+    "rigid_body_batch_step/1": "astraweave-physics::rigid_body/rigid_body_batch_step/1",
+    "rigid_body_creation": "astraweave-physics::rigid_body/rigid_body_creation",
+    "rigid_body_single_step": "astraweave-physics::rigid_body/rigid_body_single_step",
+}
+
+
+def pages_verify_script() -> str:
+    text = PAGES_YML.read_text(encoding="utf-8")
+    marker = "python3 - <<'PY'\n"
+    start = text.index(marker) + len(marker)
+    end = text.index("\n          PY\n", start)
+    block = text[start:end]
+    lines = []
+    for line in block.splitlines():
+        if line.startswith("          "):
+            lines.append(line[10:])
+        else:
+            lines.append(line)
+    return "\n".join(lines) + "\n"
+
+
+def run_pages_verify(script: str, book_root: Path) -> tuple[int, str]:
+    wrapped = (
+        "import os\n"
+        f"os.chdir({book_root.as_posix()!r})\n"
+        + script.replace('Path("docs/book/dashboard")', 'Path("dashboard")')
+    )
+    proc = subprocess.run(
+        ["python3", "-c", wrapped],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    err = (proc.stderr or proc.stdout or "").strip()
+    return proc.returncode, err
+
+
+def _threshold_benchmarks() -> dict:
+    payload = json.loads(THRESHOLDS_JSON.read_text(encoding="utf-8"))
+    benchmarks = payload.get("benchmarks")
+    if not isinstance(benchmarks, dict):
+        raise AssertionError("benchmark_thresholds.json benchmarks must be an object")
+    return benchmarks
+
+
+def lookup_threshold(bench_name: str, threshold_data: dict, *, tail_fallback: bool) -> object | None:
+    if not bench_name:
+        return None
+    if bench_name in threshold_data:
+        return threshold_data[bench_name]
+    suffix_matches = []
+    for key in threshold_data:
+        if key.endswith("/" + bench_name) or key.endswith("::" + bench_name):
+            suffix_matches.append(threshold_data[key])
+    if len(suffix_matches) == 1:
+        return suffix_matches[0]
+    if not tail_fallback:
+        return None
+    tail = bench_name.split("/")[-1]
+    threshold_by_tail: dict[str, list[tuple[str, object]]] = {}
+    for key, value in threshold_data.items():
+        tail_key = key.split("/")[-1]
+        threshold_by_tail.setdefault(tail_key, []).append((key, value))
+    matches = threshold_by_tail.get(tail, [])
+    if len(matches) == 1:
+        return matches[0][1]
+    return None
+
+
+def suffix_resolved_keys(threshold_data: dict, *, tail_fallback: bool) -> dict[str, str]:
+    resolved: dict[str, str] = {}
+    for line in ARCHIVE_HISTORY.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        bench_name = json.loads(line).get("benchmark_name")
+        if not isinstance(bench_name, str) or bench_name in threshold_data:
+            continue
+        if lookup_threshold(bench_name, threshold_data, tail_fallback=tail_fallback) is None:
+            continue
+        for key in threshold_data:
+            if key.endswith("/" + bench_name) or key.endswith("::" + bench_name):
+                resolved[bench_name] = key
+                break
+        else:
+            if tail_fallback:
+                tail = bench_name.split("/")[-1]
+                for key in threshold_data:
+                    if key.split("/")[-1] == tail:
+                        resolved[bench_name] = key
+                        break
+    return resolved
+
+
+def benchmark_names_with_threshold(threshold_data: dict, *, tail_fallback: bool) -> set[str]:
+    names: set[str] = set()
+    for line in ARCHIVE_HISTORY.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        bench_name = json.loads(line).get("benchmark_name")
+        if not isinstance(bench_name, str):
+            continue
+        if lookup_threshold(bench_name, threshold_data, tail_fallback=tail_fallback) is not None:
+            names.add(bench_name)
+    return names
 
 
 class WorkflowPolicyTest(unittest.TestCase):
@@ -395,6 +580,103 @@ class WorkflowPolicyTest(unittest.TestCase):
         )[0]
         self.assertIn("if: matrix.experimental", nightly)
         self.assertNotIn("'nightly'", nightly)
+
+    def test_pages_verify_requires_a_valid_benchmark_row(self) -> None:
+        if not PAGES_YML.exists():
+            self.skipTest("pages.yml not present")
+        script = pages_verify_script()
+        with tempfile.TemporaryDirectory() as tmp:
+            book = Path(tmp)
+            dash = book / "dashboard"
+            data = dash / "benchmark_data"
+            data.mkdir(parents=True)
+            (dash / "benchmark_thresholds.json").write_text(
+                THRESHOLDS_JSON.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (data / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "oldest": "2025-01-01T00:00:00Z",
+                        "newest": "2025-01-02T00:00:00Z",
+                        "generated_at": "2025-01-02T00:00:00Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            invalid_history = '{"foo": 1}\n'
+            (data / "benchmark_history.jsonl").write_text(invalid_history, encoding="utf-8")
+
+            code, err = run_pages_verify(script, book)
+            self.assertNotEqual(code, 0)
+            self.assertIn("benchmark_name", err)
+
+            code_old, _ = run_pages_verify(_PAGES_VERIFY_OLD, book)
+            self.assertEqual(code_old, 0, "mutation must accept invalid history rows")
+
+            valid_row = (
+                '{"benchmark_name":"world_creation","value":1.0,"timestamp":"2025-01-01T00:00:00Z"}\n'
+            )
+            (data / "benchmark_history.jsonl").write_text(valid_row, encoding="utf-8")
+            code, err = run_pages_verify(script, book)
+            self.assertEqual(code, 0, err)
+
+    def test_pages_verify_rejects_rows_outside_dashboard_window(self) -> None:
+        if not PAGES_YML.exists():
+            self.skipTest("pages.yml not present")
+        script = pages_verify_script()
+        with tempfile.TemporaryDirectory() as tmp:
+            book = Path(tmp)
+            dash = book / "dashboard"
+            data = dash / "benchmark_data"
+            data.mkdir(parents=True)
+            (dash / "benchmark_thresholds.json").write_text(
+                THRESHOLDS_JSON.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            (data / "metadata.json").write_text(
+                json.dumps(
+                    {
+                        "oldest": "2026-01-01T00:00:00Z",
+                        "newest": "2026-01-15T00:00:00Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            stale_row = (
+                '{"benchmark_name":"world_creation","value":1.0,'
+                '"timestamp":"2025-06-01T00:00:00Z"}\n'
+            )
+            (data / "benchmark_history.jsonl").write_text(stale_row, encoding="utf-8")
+
+            code, err = run_pages_verify(script, book)
+            self.assertNotEqual(code, 0)
+            self.assertIn("time window", err)
+
+            code_fields, _ = run_pages_verify(_PAGES_VERIFY_FIELDS_NO_WINDOW, book)
+            self.assertEqual(
+                code_fields,
+                0,
+                "field-only check must pass without the dashboard window filter",
+            )
+
+    def test_dashboard_threshold_lookup_has_no_tail_fallback(self) -> None:
+        if not DASHBOARD_HTML.exists():
+            self.skipTest("archived dashboard not present")
+        html = DASHBOARD_HTML.read_text(encoding="utf-8")
+        self.assertNotIn("thresholdByTail", html)
+        self.assertNotIn("rebuildThresholdIndex", html)
+        self.assertNotIn("benchName.split('/').pop()", html)
+
+        threshold_data = _threshold_benchmarks()
+        resolved = suffix_resolved_keys(threshold_data, tail_fallback=False)
+        self.assertEqual(resolved, _SUFFIX_THRESHOLD_EXPECTED)
+
+        without_tail = benchmark_names_with_threshold(threshold_data, tail_fallback=False)
+        with_tail = benchmark_names_with_threshold(threshold_data, tail_fallback=True)
+        self.assertEqual(len(with_tail), 16)
+        self.assertEqual(len(with_tail - without_tail), 6)
+        self.assertIn("character_move_batch/1", with_tail - without_tail)
 
 
 if __name__ == "__main__":
