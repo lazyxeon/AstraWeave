@@ -93,8 +93,10 @@
 //! `docs/current/PROJECT_BRIEF.md`, fails the process.
 //!
 //! Merge/rebase conflict markers (`<<<<<<<`, `|||||||`, `=======` between
-//! open and close, `>>>>>>>`) are always hard errors outside fenced code
-//! blocks; see `conflict_markers.rs` and `tools/aw_doc_lint/README.md`.
+//! open and close, `>>>>>>>`) are always hard errors outside intentional
+//! `diff`/`text`/`console` examples; see `conflict_markers.rs` and
+//! `tools/aw_doc_lint/README.md`. The conflict scan covers all tracked text
+//! files (see `in_conflict_scan_scope`); closed-vocabulary scope is unchanged.
 
 mod conflict_markers;
 mod html_entities;
@@ -286,6 +288,87 @@ fn in_scope(path: &str) -> bool {
         return true;
     }
     false
+}
+
+/// Tracked text paths for the always-enforced conflict-marker scan (wider than
+/// closed-vocabulary scope). Skips vendored trees and extensionless/binary paths.
+fn in_conflict_scan_scope(path: &str) -> bool {
+    let p = path.replace('\\', "/");
+    const SKIP_PREFIXES: &[&str] = &[
+        ".vs/",
+        "vendor/",
+        "third_party/",
+        "node_modules/",
+        "target/",
+    ];
+    for prefix in SKIP_PREFIXES {
+        if p.starts_with(prefix) {
+            return false;
+        }
+    }
+    if p.contains("/vendor/") || p.contains("/node_modules/") {
+        return false;
+    }
+    const TEXT_EXTENSIONS: &[&str] = &[
+        "md",
+        "mdx",
+        "html",
+        "htm",
+        "xhtml",
+        "xml",
+        "yml",
+        "yaml",
+        "json",
+        "rs",
+        "toml",
+        "txt",
+        "sh",
+        "bash",
+        "zsh",
+        "css",
+        "scss",
+        "js",
+        "jsx",
+        "mjs",
+        "cjs",
+        "ts",
+        "tsx",
+        "wgsl",
+        "glsl",
+        "vert",
+        "frag",
+        "rhai",
+        "py",
+        "sql",
+        "csv",
+        "ini",
+        "cfg",
+        "properties",
+        "dockerignore",
+        "editorconfig",
+        "lock",
+        "svg",
+    ];
+    if let Some((_, ext)) = p.rsplit_once('.') {
+        let lower = ext.to_ascii_lowercase();
+        return TEXT_EXTENSIONS.contains(&lower.as_str());
+    }
+    matches!(
+        p.rsplit('/').next(),
+        Some("README" | "LICENSE" | "Makefile" | "Dockerfile" | "CODEOWNERS" | "CONTRIBUTING")
+    )
+}
+
+fn is_probably_binary(content: &[u8]) -> bool {
+    content.contains(&0)
+}
+
+fn read_conflict_scan_text(root: &Path, rel: &str) -> Option<String> {
+    let bytes = std::fs::read(root.join(rel)).ok()?;
+    if is_probably_binary(&bytes) {
+        return None;
+    }
+    String::from_utf8(bytes).ok()
 }
 
 fn tracked_files(root: &Path) -> Result<Vec<String>> {
@@ -880,10 +963,16 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
     let mut scanned = 0usize;
     let mut conflict = Vec::new();
 
+    for f in tracked.iter().filter(|f| in_conflict_scan_scope(f)) {
+        let Some(content) = read_conflict_scan_text(root, f) else {
+            continue;
+        };
+        conflict.extend(conflict_markers::conflict_marker_errors(f, &content));
+    }
+
     for f in &files {
         let content = read_repo_file(root, f)?;
         scanned += 1;
-        conflict.extend(conflict_markers::conflict_marker_errors(f, &content));
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
                 total_matches += 1;
@@ -1149,6 +1238,18 @@ mod tests {
         // backslash paths normalize
         assert!(in_scope("docs\\current\\PROJECT_STATUS.md"));
         assert!(!in_scope("docs\\journey\\x.md"));
+    }
+
+    #[test]
+    fn conflict_scan_scope_is_wider_than_vocabulary_scope() {
+        assert!(!in_scope("docs/archive/benchmark_dashboard/index.html"));
+        assert!(in_conflict_scan_scope(
+            "docs/archive/benchmark_dashboard/index.html"
+        ));
+        assert!(!in_scope("astraweave-core/src/lib.rs"));
+        assert!(in_conflict_scan_scope("astraweave-core/src/lib.rs"));
+        assert!(!in_conflict_scan_scope("target/debug/deps/foo.rs"));
+        assert!(!in_conflict_scan_scope("vendor/foo/bar.rs"));
     }
 
     #[test]
