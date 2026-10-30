@@ -1,3 +1,5 @@
+> **Canonical team roadmap (Vote 6):** [docs/ROADMAP.md](https://github.com/lazyxeon/AstraWeave/blob/main/docs/ROADMAP.md) — Astraea owns the content; the [sitrep page](https://astraweave-sitrep-and-roadmap-7wkx.pages.grok.bot/) mirrors it. The sections below are a dated project-status snapshot from the architecture trace campaign, not the live lane table.
+
 <!--
   Roadmap page — replaced 2026-05-15 as part of the post-trace-campaign
   reconciliation.
