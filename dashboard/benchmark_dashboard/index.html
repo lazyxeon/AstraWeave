@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AstraWeave Performance Dashboard</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        :root {
+            --astra-bg: #f4efe7;
+            --astra-bg-alt: #efe7db;
+            --astra-panel: rgba(255, 252, 247, 0.86);
+            --astra-panel-strong: #fffaf2;
+            --astra-ink: #122430;
+            --astra-muted: #425460;
+            --astra-line: rgba(18, 36, 48, 0.12);
+            --astra-navy: #15394a;
+            --astra-teal: #0e7c74;
+            --astra-teal-deep: #0a5f59;
+            --astra-copper: #b96d35;
+            --astra-shadow: 0 20px 60px rgba(15, 35, 48, 0.12);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --astra-bg: #1a2332;
+                --astra-bg-alt: #141c28;
+                --astra-panel: rgba(30, 40, 55, 0.86);
+                --astra-panel-strong: #1e2838;
+                --astra-ink: #e2dfd8;
+                --astra-muted: #9caab4;
+                --astra-line: rgba(226, 223, 216, 0.12);
+                --astra-navy: #0e2a38;
+                --astra-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+            }
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--astra-bg);
+            color: var(--astra-ink);
+            padding: clamp(1rem, 3vw, 2.5rem);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: var(--astra-panel-strong);
+            border-radius: 16px;
+            box-shadow: var(--astra-shadow);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--astra-navy), var(--astra-teal));
+            color: #fffaf2;
+            padding: 40px 40px 36px;
+            border-bottom: none;
+        }
+
+        header .kicker {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: rgba(255, 250, 242, 0.7);
+            margin-bottom: 0.5rem;
+        }
+
+        h1 {
+            font-family: Georgia, 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+            font-size: clamp(1.8rem, 4vw, 2.6rem);
+            margin-bottom: 10px;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        .subtitle {
+            font-size: 1.05em;
+            opacity: 0.85;
+            margin-top: 8px;
+        }
+
+        .controls {
+            background: var(--astra-bg-alt);
+            padding: 25px 40px;
+            border-bottom: 1px solid var(--astra-line);
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            color: var(--astra-muted);
+            font-size: 0.85em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        select, input[type="number"] {
+            padding: 10px 14px;
+            border: 1px solid var(--astra-line);
+            border-radius: 8px;
+            font-size: 1em;
+            background: var(--astra-panel-strong);
+            color: var(--astra-ink);
+            transition: all 0.2s;
+        }
+
+        select:hover, input[type="number"]:hover {
+            border-color: var(--astra-teal);
+        }
+
+        select:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--astra-teal);
+            box-shadow: 0 0 0 3px rgba(14, 124, 116, 0.15);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            padding: 30px 40px;
+            background: var(--astra-bg-alt);
+        }
+
+        .stat-card {
+            background: var(--astra-panel-strong);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(15, 35, 48, 0.06);
+            border-left: 4px solid var(--astra-teal);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(15, 35, 48, 0.1);
+        }
+
+        .stat-label {
+            font-size: 0.85em;
+            color: var(--astra-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-family: Georgia, 'Palatino Linotype', serif;
+            font-size: 2em;
+            font-weight: 700;
+            color: var(--astra-ink);
+        }
+
+        .stat-change {
+            font-size: 0.9em;
+            margin-top: 6px;
+            font-weight: 600;
+        }
+
+        .stat-change.positive {
+            color: var(--astra-teal);
+        }
+
+        .stat-change.negative {
+            color: var(--astra-copper);
+        }
+
+        .chart-container {
+            padding: 40px;
+            background: var(--astra-panel-strong);
+        }
+
+        .chart-title {
+            font-family: Georgia, 'Palatino Linotype', serif;
+            font-size: 1.5em;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--astra-ink);
+        }
+
+        #performanceChart {
+            width: 100%;
+            height: 500px;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: var(--astra-navy);
+            color: #fffaf2;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            box-shadow: 0 8px 16px rgba(15, 35, 48, 0.3);
+            max-width: 300px;
+        }
+
+        .tooltip.show {
+            opacity: 1;
+        }
+
+        .tooltip-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+            font-size: 1.1em;
+        }
+
+        .tooltip-content {
+            font-size: 0.95em;
+            line-height: 1.5;
+        }
+
+        .axis {
+            font-size: 12px;
+            color: var(--astra-muted);
+        }
+
+        .axis text, .axis-label {
+            fill: var(--astra-muted);
+        }
+
+        .axis-label {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .grid line {
+            stroke: var(--astra-line);
+            stroke-opacity: 0.7;
+        }
+
+        .benchmark-line {
+            fill: none;
+            stroke-width: 2.5;
+            transition: stroke-width 0.2s;
+        }
+
+        .benchmark-line:hover {
+            stroke-width: 4;
+        }
+
+        .benchmark-dot {
+            r: 4;
+            transition: r 0.2s;
+        }
+
+        .benchmark-dot:hover {
+            r: 6;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-top: 20px;
+            padding: 20px;
+            background: var(--astra-bg-alt);
+            border-radius: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .legend-item:hover {
+            background: var(--astra-panel);
+        }
+
+        .legend-item.inactive {
+            opacity: 0.4;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 4px;
+            border-radius: 2px;
+        }
+
+        .legend-label {
+            font-size: 0.9em;
+            font-weight: 500;
+            color: var(--astra-ink);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px;
+            font-size: 1.2em;
+            color: var(--astra-muted);
+        }
+
+        .error {
+            background: #fef2f2;
+            color: #991b1b;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--astra-copper);
+        }
+
+        footer {
+            background: linear-gradient(135deg, var(--astra-navy), var(--astra-teal-deep));
+            color: #fffaf2;
+            padding: 20px 40px;
+            text-align: center;
+            font-size: 0.9em;
+        }
+
+        footer a {
+            color: rgba(255, 250, 242, 0.8);
+            text-decoration: none;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+            color: #fffaf2;
+        }
+
+        .threshold-line {
+            stroke: var(--astra-copper);
+            stroke-width: 2;
+            stroke-dasharray: 5, 5;
+        }
+
+        .threshold-label {
+            fill: var(--astra-copper);
+            font-size: 11px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <p class="kicker">Performance Observatory</p>
+            <h1>AstraWeave Benchmark Dashboard</h1>
+            <p class="subtitle">AI-Native Game Engine &bull; Real-time Performance Tracking</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="benchmarkSelect">Benchmark</label>
+                <select id="benchmarkSelect">
+                    <option value="all">All Benchmarks</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label for="timeRange">Time Range (Days)</label>
+                <input type="number" id="timeRange" min="1" max="365" value="30">
+            </div>
+            <div class="control-group">
+                <label for="smoothing">Smoothing</label>
+                <select id="smoothing">
+                    <option value="0">None</option>
+                    <option value="3">3-point</option>
+                    <option value="5" selected>5-point</option>
+                    <option value="7">7-point</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+            <div class="loading">Loading benchmark data...</div>
+        </div>
+
+        <div class="chart-container">
+            <h2 class="chart-title">Performance Trends</h2>
+            <div id="performanceChart"></div>
+            <div class="legend" id="legend"></div>
+        </div>
+
+        <footer>
+            <p>Generated by AstraWeave CI Pipeline • 
+               <a href="https://github.com/lazyxeon/AstraWeave-AI-Native-Gaming-Engine" target="_blank">GitHub Repository</a> •
+               <a href="../benchmark_data/benchmark_history.jsonl" target="_blank">Raw Data (JSONL)</a>
+            </p>
+            <p style="margin-top: 8px; opacity: 0.7;">Last updated: <span id="lastUpdated">Loading...</span></p>
+        </footer>
+    </div>
+
+    <div class="tooltip" id="tooltip">
+        <div class="tooltip-title"></div>
+        <div class="tooltip-content"></div>
+    </div>
+
+    <script>
+        // Dashboard configuration
+        const config = {
+            margin: { top: 20, right: 120, bottom: 60, left: 80 },
+            colors: [
+                '#0e7c74', '#b96d35', '#15394a', '#0a5f59',
+                '#c98a4e', '#1a5c6e', '#3a8f87', '#d4a46a',
+                '#2a7080', '#8b5e3c'
+            ],
+            animationDuration: 750
+        };
+
+        // Global state
+        let benchmarkData = [];
+        let thresholdData = {};
+        let activeBenchmarks = new Set();
+        let chart = null;
+
+        // Load data
+        async function loadData() {
+            try {
+                // Load benchmark history
+                const historyResponse = await fetch('../benchmark_data/benchmark_history.jsonl');
+                const historyText = await historyResponse.text();
+                
+                if (!historyText.trim()) {
+                    showError('No benchmark data available yet. Run benchmarks to populate the dashboard.');
+                    return;
+                }
+                
+                // Parse JSONL (one JSON object per line)
+                benchmarkData = historyText
+                    .split('\n')
+                    .filter(line => line.trim())
+                    .map(line => JSON.parse(line));
+
+                // Load thresholds
+                try {
+                    const thresholdResponse = await fetch('../../.github/benchmark_thresholds.json');
+                    const thresholdJson = await thresholdResponse.json();
+                    thresholdData = thresholdJson.benchmarks || {};
+                } catch (e) {
+                    console.warn('Could not load threshold data:', e);
+                }
+
+                // Load metadata
+                try {
+                    const metadataResponse = await fetch('../benchmark_data/metadata.json');
+                    const metadata = await metadataResponse.json();
+                    document.getElementById('lastUpdated').textContent = 
+                        new Date(metadata.generated_at).toLocaleString();
+                } catch (e) {
+                    document.getElementById('lastUpdated').textContent = 'Unknown';
+                }
+
+                initializeDashboard();
+            } catch (error) {
+                showError(`Failed to load benchmark data: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        function showError(message) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `<div class="error" style="grid-column: 1/-1">${message}</div>`;
+        }
+
+        function initializeDashboard() {
+            // Extract unique benchmarks
+            const benchmarks = new Set();
+            benchmarkData.forEach(entry => {
+                if (entry.benchmarks) {
+                    entry.benchmarks.forEach(b => benchmarks.add(b.name));
+                }
+            });
+
+            activeBenchmarks = new Set(benchmarks);
+
+            // Populate benchmark selector
+            const select = document.getElementById('benchmarkSelect');
+            Array.from(benchmarks).sort().forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+
+            // Set up event listeners
+            document.getElementById('benchmarkSelect').addEventListener('change', updateDashboard);
+            document.getElementById('timeRange').addEventListener('change', updateDashboard);
+            document.getElementById('smoothing').addEventListener('change', updateDashboard);
+
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            const selectedBenchmark = document.getElementById('benchmarkSelect').value;
+            const timeRangeDays = parseInt(document.getElementById('timeRange').value);
+            const smoothing = parseInt(document.getElementById('smoothing').value);
+
+            const now = new Date();
+            const cutoffDate = new Date(now - timeRangeDays * 24 * 60 * 60 * 1000);
+
+            // Filter data
+            let filteredData = benchmarkData.filter(entry => {
+                const entryDate = new Date(entry.date);
+                return entryDate >= cutoffDate;
+            });
+
+            // Process data for chart
+            const chartData = processChartData(filteredData, selectedBenchmark, smoothing);
+
+            // Update stats
+            updateStats(chartData, selectedBenchmark);
+
+            // Update chart
+            updateChart(chartData, selectedBenchmark);
+        }
+
+        function processChartData(data, selectedBenchmark, smoothing) {
+            const grouped = {};
+
+            data.forEach(entry => {
+                if (!entry.benchmarks) return;
+
+                entry.benchmarks.forEach(bench => {
+                    if (selectedBenchmark !== 'all' && bench.name !== selectedBenchmark) return;
+                    if (!activeBenchmarks.has(bench.name)) return;
+
+                    if (!grouped[bench.name]) {
+                        grouped[bench.name] = [];
+                    }
+
+                    grouped[bench.name].push({
+                        date: new Date(entry.date),
+                        value: bench.value,
+                        unit: bench.unit,
+                        commit: entry.commit?.substring(0, 7) || 'unknown'
+                    });
+                });
+            });
+
+            // Sort by date and apply smoothing
+            Object.keys(grouped).forEach(benchName => {
+                grouped[benchName].sort((a, b) => a.date - b.date);
+
+                if (smoothing > 0) {
+                    grouped[benchName] = applyMovingAverage(grouped[benchName], smoothing);
+                }
+            });
+
+            return grouped;
+        }
+
+        function applyMovingAverage(data, window) {
+            if (data.length < window) return data;
+
+            return data.map((point, i) => {
+                const start = Math.max(0, i - Math.floor(window / 2));
+                const end = Math.min(data.length, i + Math.ceil(window / 2));
+                const subset = data.slice(start, end);
+                const avg = subset.reduce((sum, p) => sum + p.value, 0) / subset.length;
+
+                return { ...point, value: avg };
+            });
+        }
+
+        function updateStats(chartData, selectedBenchmark) {
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = '';
+
+            if (Object.keys(chartData).length === 0) {
+                statsGrid.innerHTML = '<div class="loading" style="grid-column: 1/-1">No data available for selected filters</div>';
+                return;
+            }
+
+            Object.entries(chartData).forEach(([benchName, points]) => {
+                if (points.length === 0) return;
+
+                const latest = points[points.length - 1].value;
+                const earliest = points[0].value;
+                const changePercent = ((latest - earliest) / earliest * 100).toFixed(1);
+                const trend = latest < earliest ? 'positive' : 'negative';
+
+                const threshold = thresholdData[benchName];
+                const baselineValue = threshold?.baseline;
+
+                const card = document.createElement('div');
+                card.className = 'stat-card';
+                card.innerHTML = `
+                    <div class="stat-label">${benchName}</div>
+                    <div class="stat-value">${formatValue(latest, points[0].unit)}</div>
+                    <div class="stat-change ${trend}">
+                        ${trend === 'positive' ? '↓' : '↑'} ${Math.abs(changePercent)}% vs ${points.length} runs ago
+                    </div>
+                    ${baselineValue ? `<div style="margin-top: 8px; font-size: 0.85em; color: var(--astra-muted);">
+                        Baseline: ${formatValue(baselineValue, points[0].unit)}
+                    </div>` : ''}
+                `;
+                statsGrid.appendChild(card);
+            });
+        }
+
+        function updateChart(chartData, selectedBenchmark) {
+            const container = document.getElementById('performanceChart');
+            container.innerHTML = '';
+
+            if (Object.keys(chartData).length === 0) return;
+
+            const width = container.clientWidth;
+            const height = 500;
+            const { margin } = config;
+
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+
+            const g = svg.append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const chartWidth = width - margin.left - margin.right;
+            const chartHeight = height - margin.top - margin.bottom;
+
+            // Scales
+            const allDates = Object.values(chartData).flat().map(d => d.date);
+            const allValues = Object.values(chartData).flat().map(d => d.value);
+
+            const xScale = d3.scaleTime()
+                .domain(d3.extent(allDates))
+                .range([0, chartWidth]);
+
+            const yScale = d3.scaleLinear()
+                .domain([0, d3.max(allValues) * 1.1])
+                .range([chartHeight, 0]);
+
+            // Grid
+            g.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${chartHeight})`)
+                .call(d3.axisBottom(xScale).tickSize(-chartHeight).tickFormat(''));
+
+            g.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(yScale).tickSize(-chartWidth).tickFormat(''));
+
+            // Axes
+            g.append('g')
+                .attr('class', 'axis')
+                .attr('transform', `translate(0,${chartHeight})`)
+                .call(d3.axisBottom(xScale).tickFormat(d3.timeFormat('%m/%d')));
+
+            g.append('g')
+                .attr('class', 'axis')
+                .call(d3.axisLeft(yScale).tickFormat(d => formatValue(d, 'ns')));
+
+            // Axis labels
+            g.append('text')
+                .attr('class', 'axis-label')
+                .attr('x', chartWidth / 2)
+                .attr('y', chartHeight + 45)
+                .style('text-anchor', 'middle')
+                .text('Date');
+
+            g.append('text')
+                .attr('class', 'axis-label')
+                .attr('transform', 'rotate(-90)')
+                .attr('x', -chartHeight / 2)
+                .attr('y', -60)
+                .style('text-anchor', 'middle')
+                .text('Time (nanoseconds)');
+
+            // Lines
+            const line = d3.line()
+                .x(d => xScale(d.date))
+                .y(d => yScale(d.value))
+                .curve(d3.curveMonotoneX);
+
+            const colorScale = d3.scaleOrdinal(config.colors);
+
+            Object.entries(chartData).forEach(([benchName, points], index) => {
+                const color = colorScale(benchName);
+
+                // Line
+                g.append('path')
+                    .datum(points)
+                    .attr('class', 'benchmark-line')
+                    .attr('d', line)
+                    .style('stroke', color)
+                    .style('opacity', 0)
+                    .transition()
+                    .duration(config.animationDuration)
+                    .style('opacity', 1);
+
+                // Dots
+                g.selectAll(`.dot-${index}`)
+                    .data(points)
+                    .enter()
+                    .append('circle')
+                    .attr('class', `benchmark-dot dot-${index}`)
+                    .attr('cx', d => xScale(d.date))
+                    .attr('cy', d => yScale(d.value))
+                    .style('fill', color)
+                    .style('opacity', 0)
+                    .on('mouseover', (event, d) => showTooltip(event, d, benchName))
+                    .on('mouseout', hideTooltip)
+                    .transition()
+                    .duration(config.animationDuration)
+                    .style('opacity', 1);
+
+                // Threshold line
+                const threshold = thresholdData[benchName];
+                if (threshold && threshold.max_allowed) {
+                    g.append('line')
+                        .attr('class', 'threshold-line')
+                        .attr('x1', 0)
+                        .attr('x2', chartWidth)
+                        .attr('y1', yScale(threshold.max_allowed))
+                        .attr('y2', yScale(threshold.max_allowed));
+
+                    g.append('text')
+                        .attr('class', 'threshold-label')
+                        .attr('x', chartWidth - 5)
+                        .attr('y', yScale(threshold.max_allowed) - 5)
+                        .style('text-anchor', 'end')
+                        .text(`Threshold: ${formatValue(threshold.max_allowed, 'ns')}`);
+                }
+            });
+
+            updateLegend(chartData, colorScale);
+        }
+
+        function updateLegend(chartData, colorScale) {
+            const legend = document.getElementById('legend');
+            legend.innerHTML = '';
+
+            Object.keys(chartData).forEach(benchName => {
+                const item = document.createElement('div');
+                item.className = 'legend-item';
+                item.innerHTML = `
+                    <div class="legend-color" style="background: ${colorScale(benchName)}"></div>
+                    <div class="legend-label">${benchName}</div>
+                `;
+                item.addEventListener('click', () => toggleBenchmark(benchName));
+                legend.appendChild(item);
+            });
+        }
+
+        function toggleBenchmark(benchName) {
+            if (activeBenchmarks.has(benchName)) {
+                activeBenchmarks.delete(benchName);
+            } else {
+                activeBenchmarks.add(benchName);
+            }
+            updateDashboard();
+        }
+
+        function showTooltip(event, data, benchName) {
+            const tooltip = document.getElementById('tooltip');
+            const titleEl = tooltip.querySelector('.tooltip-title');
+            const contentEl = tooltip.querySelector('.tooltip-content');
+
+            titleEl.textContent = benchName;
+            contentEl.innerHTML = `
+                <strong>Value:</strong> ${formatValue(data.value, data.unit)}<br>
+                <strong>Date:</strong> ${data.date.toLocaleDateString()}<br>
+                <strong>Commit:</strong> ${data.commit}
+            `;
+
+            tooltip.style.left = `${event.pageX + 10}px`;
+            tooltip.style.top = `${event.pageY - 10}px`;
+            tooltip.classList.add('show');
+        }
+
+        function hideTooltip() {
+            document.getElementById('tooltip').classList.remove('show');
+        }
+
+        function formatValue(value, unit) {
+            if (unit === 'ns') {
+                if (value < 1000) return `${value.toFixed(2)} ns`;
+                if (value < 1000000) return `${(value / 1000).toFixed(2)} µs`;
+                return `${(value / 1000000).toFixed(2)} ms`;
+            }
+            return `${value.toFixed(2)} ${unit}`;
+        }
+
+        // Initialize on load
+        loadData();
+    </script>
+</body>
+</html>
