@@ -123,7 +123,7 @@ jobs:
                   (issue) => issue.title === title,
                 );
                 sameTitle.sort((a, b) => a.number - b.number);
-                const keep = sameTitle[0];
+                const keep = sameTitle[0] ?? created.data;
                 if (keep.number !== created.data.number) {
                   await github.rest.issues.createComment({
                     owner: context.repo.owner,
