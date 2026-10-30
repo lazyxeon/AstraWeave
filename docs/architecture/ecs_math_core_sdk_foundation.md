@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
 doc_version: "1.17"
-last_verified_commit: e2884a69
+last_verified_commit: b1166808
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -21,12 +21,12 @@ last_verified_commit: e2884a69
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
 | **Document version** | 1.17 |
-| **Last verified against commit** | `e2884a69` |
+| **Last verified against commit** | `b1166808` |
 | **Last verified date** | 2026-10-29 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
-> **Revision notice — 2026-10-29 (v1.17).** `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0, before the next decrement. A destructor that reaches the same column needs a second pointer aliasing the live `&mut self`, which is undefined behavior. Checked at `e2884a69`.
+> **Revision notice — 2026-10-29 (v1.17).** `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0, before the next decrement. A destructor that reaches the same column needs a second pointer aliasing the live `&mut self`, which is undefined behavior. Checked at `3c65ca7f`.
 >
 > **Revision notice — 2026-10-29 (v1.16).** `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec::clear` drops from the last index toward the first. `drop_last` publishes the shorter `len` before `drop_fn`, and `swap_remove_raw` / `swap_remove_raw_to` drop through that path. A panicking destructor leaves `len` counting only elements that have not been dropped; `Drop` for `BlobVec` calls `clear` and finishes them. Each element is dropped once. Checked at `0bc6c675`. Kani: `blob_vec_drops_each_element_once_including_panicking_drop` (Kani has no `catch_unwind`, so the harness splits `drop_last` at the panicking slot and then `clear`s the tail). Miri: `clear_panic_does_not_double_free`, `clear_panic_drops_each_element_once`.
 >
@@ -580,14 +580,9 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
-<<<<<<< HEAD
+| 1.17 | 2026-10-29 | `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0 (invariant 19). |
 | 1.16 | 2026-10-29 | `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec` commits `len` before `drop_fn` and drops each element once, including when a destructor panics (invariant 19). |
 | 1.15 | 2026-10-28 | `BlobVec` does not allocate a zero-sized column. `reserve` uses `checked_mul`. Stamp names `129ccac4`. |
-=======
-| 1.17 | 2026-10-29 | `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0 (invariant 19). |
-| 1.16 | 2026-10-29 | `BlobVec` commits `len` before `drop_fn` and drops each element once, including when a destructor panics (invariant 19). |
-| 1.15 | 2026-10-28 | A zero-sized `BlobVec` column is not allocated. `reserve` panics `capacity overflow`. |
->>>>>>> b3209cd25 (docs(ecs): record that drop_fn must not re-enter BlobVec)
 | 1.14 | 2026-10-23 | Continue-on-error removal is `0784b204`. Log capture is `7b7a21e4` (parent `039b031a`). Stamp names `d4e1ffab`. The date row is 2026-10-23. |
 | 1.13 | 2026-10-22 | That version paired `46be9024` with the log-capture commit. The continue-on-error removal is `0784b204`. `46be9024` and `a0d4a690` are not ancestors. |
 | 1.12 | 2026-10-22 | That version named `46be9024` and `a0d4a690`. Neither is an ancestor. `33abffa1` and `36e1e450` are not ancestors. |
