@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -12,9 +13,22 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
 CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
 
+CONTINUE_ON_ERROR = re.compile(
+    r"continue-on-error\s*:\s*("
+    r"true"
+    r"|['\"]true['\"]"
+    r"|\$\{\{\s*true\s*\}\}"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
+
+
+def has_continue_on_error(text: str) -> bool:
+    return bool(CONTINUE_ON_ERROR.search(text))
 
 
 def has_pull_request(text: str) -> bool:
@@ -22,12 +36,30 @@ def has_pull_request(text: str) -> bool:
     in_on = False
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped in {"on:", '"on":'}:
+        if stripped.startswith("on:") or stripped.startswith('"on":'):
             in_on = True
+            rest = stripped.split(":", 1)[1].strip()
+            if rest and not rest.startswith("#"):
+                if rest.startswith("pull_request:") or rest.startswith(
+                    "pull_request_target:"
+                ):
+                    return True
+                if re.search(
+                    r"(?:^|\[|,)\s*pull_request(?:\s|,|\]|$)", rest
+                ):
+                    return True
+            if stripped in {"on:", '"on":'}:
+                continue
             continue
         if in_on and line and not line.startswith(" ") and not line.startswith("#"):
             in_on = False
         if in_on and stripped.startswith("pull_request:"):
+            return True
+        if in_on and stripped.startswith("pull_request_target:"):
+            return True
+        if in_on and re.search(
+            r"(?:^|\[|,)\s*pull_request(?:\s|,|\]|$)", stripped
+        ):
             return True
     return False
 
@@ -303,6 +335,33 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
 
+    def test_continue_on_error_helper_catches_common_bypasses(self) -> None:
+        samples = (
+            "continue-on-error: true",
+            "continue-on-error: 'true'",
+            'continue-on-error: "true"',
+            "continue-on-error:${{ true }}",
+            "continue-on-error:  true",
+        )
+        for sample in samples:
+            self.assertTrue(has_continue_on_error(sample), sample)
+        self.assertFalse(
+            has_continue_on_error(
+                "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
+            )
+        )
+
+    def test_has_pull_request_catches_target_and_list_forms(self) -> None:
+        self.assertTrue(
+            has_pull_request("on:\n  pull_request_target:\n    branches: [main]\n")
+        )
+        self.assertTrue(has_pull_request('on: [push, pull_request]\n'))
+        self.assertFalse(
+            has_pull_request(
+                "on:\n  push:\n    branches: [main]\n  schedule:\n    # Not on pull_request.\n"
+            )
+        )
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
@@ -312,6 +371,32 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("zero_alloc_step", text)
         self.assertIn("[self-hosted, gpu]", text)
         self.assertNotIn("continue-on-error: true", text)
+        self.assertFalse(has_continue_on_error(text))
+        self.assertFalse(has_pull_request(text))
+
+    def test_aw_editor_tests_is_a_real_gate_off_prs(self) -> None:
+        text = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertIn("schedule:", text)
+        self.assertIn("astraweave-llm", text)
+        self.assertIn("cargo fmt -p aw_editor -- --check", text)
+        self.assertIn("cargo clippy -p aw_editor --all-features --no-deps -- -D warnings", text)
+        self.assertIn("cargo clippy -p astraweave-llm --no-deps -- -D warnings", text)
+        self.assertIn("cargo build -p aw_editor --lib --all-features", text)
+        self.assertIn("cargo test -p aw_editor --lib --all-features", text)
+        self.assertIn("--test ui_gizmo_smoke", text)
+        self.assertFalse(has_continue_on_error(text))
+        self.assertFalse(has_pull_request(text))
+
+    def test_editor_and_sdk_ci_stay_non_blocking(self) -> None:
+        for name in ("editor-ci.yml", "sdk-ci.yml"):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            self.assertTrue(has_continue_on_error(text), msg=name)
+
+    def test_workspace_coverage_stays_non_blocking(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertTrue(has_continue_on_error(text))
+        self.assertIn("cargo llvm-cov --workspace --lib", text)
+        self.assertNotIn("github.step_summary", text)
         self.assertFalse(has_pull_request(text))
 
 

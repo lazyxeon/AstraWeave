@@ -2043,15 +2043,10 @@ mod tests {
     // ============================================================
 
     // NavAreaType tests (7 tests)
-    // FIXME: Skipped due to Windows emoji encoding issues (U+FFFD replacement character)
-    // The Road emoji "🛣️" contains variation selector U+FE0F which renders inconsistently
-    // across Windows console/file IO, causing assertion failures. The Display impl works
-    // correctly; this is purely a test environment issue.
     #[test]
-    #[ignore = "Windows emoji encoding issue"]
     fn test_nav_area_type_display() {
         assert_eq!(format!("{}", NavAreaType::Walkable), "🚶 Walkable");
-        assert_eq!(format!("{}", NavAreaType::Road), "�️ Road");
+        assert_eq!(format!("{}", NavAreaType::Road), "🛣️ Road");
         assert_eq!(format!("{}", NavAreaType::Water), "💧 Water");
         assert_eq!(format!("{}", NavAreaType::Grass), "[Leaf] Grass");
         assert_eq!(format!("{}", NavAreaType::Mud), "🟫 Mud");
@@ -2069,12 +2064,10 @@ mod tests {
         assert_eq!(NavAreaType::Blocked.name(), "Blocked");
     }
 
-    // FIXME: Skipped due to Windows emoji encoding issues (U+FFFD replacement character)
     #[test]
-    #[ignore = "Windows emoji encoding issue"]
     fn test_nav_area_type_icon() {
         assert_eq!(NavAreaType::Walkable.icon(), "🚶");
-        assert_eq!(NavAreaType::Road.icon(), "�️");
+        assert_eq!(NavAreaType::Road.icon(), "🛣️");
         assert_eq!(NavAreaType::Water.icon(), "💧");
         assert_eq!(NavAreaType::Blocked.icon(), "🚫");
     }

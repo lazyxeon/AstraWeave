@@ -6,6 +6,7 @@ on:
     paths:
       - 'tools/aw_editor/**'
       - 'astraweave-core/**'
+      - 'astraweave-llm/**'
       - '.github/workflows/aw-editor-tests.yml'
   schedule:
     # Not on pull_request. These editor test legs are optional and must not
@@ -26,109 +27,61 @@ jobs:
     name: Test AW Editor (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    # Skip if editor has known compilation issues - allows CI to pass while editor is being fixed
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        
-    steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v5
 
-    - name: Rust CI setup
-      uses: ./.github/actions/rust-ci-setup
-          
-    # Linux-specific: Install dependencies for graphics/windowing
-    - name: Install Linux Dependencies
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          pkg-config \
-          libxcb-shape0-dev \
-          libxcb-xfixes0-dev \
-          libxkbcommon-dev \
-          libegl1-mesa-dev \
-          libwayland-dev \
-          libudev-dev \
-          libasound2-dev
-          
-    # Build aw_editor (checks compilation)
-    - name: Build AW Editor
-      run: cargo build -p aw_editor --lib --all-features
-      
-    # Run library unit tests (headless tests work everywhere)
-    - name: Run Unit Tests
-      run: cargo test -p aw_editor --lib --all-features -- --nocapture
-      continue-on-error: true  # Don't fail CI on test failures (89% pass rate acceptable)
-      
-    # Run integration tests (require headless environment)
-    - name: Run Integration Tests  
-      if: runner.os != 'macOS'  # Skip macOS (no headless X11)
-      run: cargo test -p aw_editor --test ui_gizmo_smoke --test play_mode --test prefab_workflow
-      continue-on-error: true
-      
-    # Code quality checks
-    - name: Check Formatting
-      run: cargo fmt -p aw_editor -- --check
-      continue-on-error: true  # Don't block on format issues
-      
-    - name: Run Clippy
-      run: cargo clippy -p aw_editor --all-features -- -D warnings
-      continue-on-error: true  # Don't block on lints (52 warnings exist)
-      
-    # Generate test report
-    - name: Generate Test Summary
-      if: always()
-      run: |
-        echo "## AW Editor Test Results" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Platform**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
-        echo "**Rust Version**: $(rustc --version)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
-        echo "- **Unit Tests**: 146/164 passing (89%)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Integration Tests**: 9 test files (ui_gizmo_smoke, play_mode, prefab_workflow, etc.)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Known Issues" >> $GITHUB_STEP_SUMMARY
-        echo "- 18 unit test failures (gizmo math, undo stack, scene serialization)" >> $GITHUB_STEP_SUMMARY
-        echo "- 52 warnings (dead code, unused fields - tracked in Known Issues)" >> $GITHUB_STEP_SUMMARY
-        
-  # Coverage job (optional - Linux only for speed)
-  coverage:
-    name: Test Coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
-      
-    - name: Install Rust Toolchain
-      uses: dtolnay/rust-toolchain@1.89.0
-      with:
-        components: llvm-tools-preview
-        
-    - name: Install Linux Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y pkg-config libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libudev-dev libasound2-dev
-        
-    - name: Install cargo-llvm-cov
-      run: cargo install cargo-llvm-cov
-      
-    - name: Generate Coverage Report
-      run: |
-        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
-      continue-on-error: true
-      
-    - name: Upload Coverage to Codecov
-      uses: codecov/codecov-action@v4
-      if: success()
-      with:
-        files: ./lcov.info
-        flags: aw_editor
-        name: aw-editor-coverage
-      continue-on-error: true  # Don't fail if codecov upload fails
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libxcb-shape0-dev \
+            libxcb-xfixes0-dev \
+            libxkbcommon-dev \
+            libegl1-mesa-dev \
+            libwayland-dev \
+            libudev-dev \
+            libasound2-dev
+
+      - name: Check Formatting
+        run: cargo fmt -p aw_editor -- --check
+
+      - name: Clippy (aw_editor)
+        run: cargo clippy -p aw_editor --all-features --no-deps -- -D warnings
+
+      - name: Clippy (astraweave-llm without ollama)
+        run: cargo clippy -p astraweave-llm --no-deps -- -D warnings
+
+      - name: Build AW Editor
+        run: cargo build -p aw_editor --lib --all-features
+
+      - name: Run Unit Tests
+        run: cargo test -p aw_editor --lib --all-features -- --nocapture
+
+      - name: Run Integration Tests
+        if: runner.os != 'macOS'
+        run: >
+          cargo test -p aw_editor --all-features
+          --test ui_gizmo_smoke
+          --test play_mode
+          --test prefab_workflow
+
+      - name: Generate Test Summary
+        if: always()
+        run: |
+          echo "## AW Editor Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platform**: ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Rust Version**: $(rustc --version)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Blocking gate: fmt, clippy, build, unit tests, and integration tests (Linux/Windows)." >> "$GITHUB_STEP_SUMMARY"
