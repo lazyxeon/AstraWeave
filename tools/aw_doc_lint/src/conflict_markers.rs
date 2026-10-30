@@ -2,8 +2,9 @@
 //!
 //! Always enforced (even in `--mode warn`). Markers are reported in prose and
 //! inside fenced code blocks. The only suppression is an intentional
-//! documentation example: a fenced block whose info string is exactly `diff`,
-//! `text`, or `console` and that contains a complete conflict sequence
+//! documentation example: a fenced block whose opening info string is exactly
+//! `diff`, `text`, or `console` (the whole trimmed string after the opening fence
+//! run, with no extra tokens) and that contains a complete conflict sequence
 //! (`<<<<<<<` … `=======` … `>>>>>>>`) before the fence closes, and the fence
 //! ends with no unclosed conflict still open. Only the first balanced example in
 //! such a fence is suppressed when the fence **closes** with a valid closing line;
@@ -138,8 +139,11 @@ fn fence_info_string(line: &str, parsed: ParsedFence) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    let token = trimmed.split_whitespace().next()?.to_string();
-    Some(token)
+    let info = trimmed.trim_end();
+    if info.is_empty() {
+        return None;
+    }
+    Some(info.to_string())
 }
 
 fn backtick_fence_info_has_backtick(line: &str, parsed: ParsedFence) -> bool {
@@ -165,6 +169,8 @@ fn maybe_note_exempt_quiet_range(block: &mut PendingFenceErrors) {
         if let Some(start) = block.exempt_example_start {
             block.exempt_quiet_range = Some((start, block.errors.len()));
             block.exempt_example_start = None;
+            // Redundant with invalidate paths that clear saw_*; kept so stale flags cannot
+            // widen a quiet range after the first balanced example is recorded.
             block.saw_opener = false;
             block.saw_separator = false;
             block.saw_closer = false;
@@ -185,6 +191,7 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
         && block.exempt_quiet_range.is_none()
         && starts_conflict_marker(line, "<<<<<<<")
     {
+        // Redundant once exempt_candidate is false; kept to clear a pending start index immediately.
         invalidate_exempt_example_tracking(block);
         block.exempt_candidate = false;
     }
@@ -459,6 +466,18 @@ mod tests {
         let body = "````markdown\n``` sample\nstill inside outer\n```\n````\n";
         let errors = conflict_marker_errors("doc.md", body);
         assert!(errors.is_empty(), "{errors:?}");
+    }
+
+    #[test]
+    fn extra_info_string_tokens_are_not_exempt() {
+        let body = format!(
+            "```diff title=x\n{}\n{}\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("branch")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(errors.len(), 3, "{errors:?}");
     }
 
     #[test]
