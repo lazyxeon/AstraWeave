@@ -310,28 +310,56 @@ mod tests {
         assert_eq!(errors.len(), 3, "{errors:?}");
     }
 
+    fn error_lines(errors: &[String]) -> Vec<usize> {
+        errors
+            .iter()
+            .filter_map(|e| e.split(':').nth(1).and_then(|n| n.parse().ok()))
+            .collect()
+    }
+
     #[test]
     fn closing_fence_requires_matching_marker_char() {
-        let body = format!("~~~\n```\n~~~\n{}\n", opener());
+        let body = format!(
+            "```text\n{}\n~~~\n{}\n{}\n```\n{}\n{}\n{}\n",
+            opener(),
+            separator(),
+            closer("branch"),
+            opener(),
+            separator(),
+            closer("tail")
+        );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains(":4:"));
+        assert_eq!(error_lines(&errors), [7, 8, 9], "{errors:?}");
     }
 
     #[test]
     fn closing_fence_requires_minimum_length() {
-        let body = format!("````\n```\n````\n{}\n", opener());
+        let body = format!(
+            "````text\n{}\n```\n{}\n{}\n````\n{}\n{}\n{}\n",
+            opener(),
+            separator(),
+            closer("branch"),
+            opener(),
+            separator(),
+            closer("tail")
+        );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains(":4:"));
+        assert_eq!(error_lines(&errors), [7, 8, 9], "{errors:?}");
     }
 
     #[test]
     fn closing_fence_requires_no_info_string() {
-        let body = format!("```\n``` rust\n```\n{}\n", opener());
+        let body = format!(
+            "```text\n{}\n{}\n``` rust\n{}\n```\n{}\n{}\n{}\n",
+            opener(),
+            separator(),
+            closer("branch"),
+            opener(),
+            separator(),
+            closer("tail")
+        );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(errors.len(), 1, "{errors:?}");
-        assert!(errors[0].contains(":4:"));
+        assert_eq!(error_lines(&errors), [7, 8, 9], "{errors:?}");
     }
 
     #[test]
