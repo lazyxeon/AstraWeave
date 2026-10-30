@@ -8,7 +8,7 @@ on:
   workflow_run:
     workflows:
       - Comprehensive CI Pipeline
-      - Determinism Replay
+      - determinism-replay
       - Performance Benchmarks
       - Sanitizers
       - Code Coverage
@@ -79,32 +79,71 @@ jobs:
               }
             }
 
-            const listParams = {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100,
+            const listOpenIssues = async () => {
+              const listParams = {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open",
+                per_page: 100,
+              };
+              if (labelReady) {
+                listParams.labels = "ci-nightly";
+              }
+              return github.paginate(github.rest.issues.listForRepo, listParams);
             };
-            if (labelReady) {
-              listParams.labels = "ci-nightly";
-            }
-            const existing = await github.paginate(github.rest.issues.listForRepo, listParams);
-            const match = existing.find((issue) => issue.title === title);
-            if (match) {
+
+            const commentOnIssue = async (issueNumber) => {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: match.number,
+                issue_number: issueNumber,
                 body,
               });
-              core.notice(`Updated issue #${match.number}`);
+              core.notice(`Updated issue #${issueNumber}`);
+            };
+
+            const findByTitle = (issues) => issues.find((issue) => issue.title === title);
+
+            let match = findByTitle(await listOpenIssues());
+            if (match) {
+              await commentOnIssue(match.number);
             } else {
-              const created = await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels: labelReady ? ["ci-nightly"] : [],
-              });
-              core.notice(`Opened issue #${created.data.number}`);
+              match = findByTitle(await listOpenIssues());
+              if (match) {
+                await commentOnIssue(match.number);
+              } else {
+                const created = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: labelReady ? ["ci-nightly"] : [],
+                });
+                const sameTitle = (await listOpenIssues()).filter(
+                  (issue) => issue.title === title,
+                );
+                sameTitle.sort((a, b) => a.number - b.number);
+                const keep = sameTitle[0];
+                if (keep.number !== created.data.number) {
+                  await github.rest.issues.createComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: created.data.number,
+                    body: `Duplicate of #${keep.number}. Closing in favor of the earlier open issue.`,
+                  });
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: created.data.number,
+                    state: "closed",
+                    state_reason: "not_planned",
+                  });
+                  await commentOnIssue(keep.number);
+                  core.notice(
+                    `Closed duplicate #${created.data.number}; kept #${keep.number}`,
+                  );
+                } else {
+                  core.notice(`Opened issue #${created.data.number}`);
+                }
+              }
             }

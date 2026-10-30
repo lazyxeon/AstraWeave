@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -15,6 +16,40 @@ CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request
 
 def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
+
+
+def workflow_display_names() -> set[str]:
+    names: set[str] = set()
+    name_re = re.compile(r"^name:\s*(.+?)\s*$")
+    for text in workflow_texts().values():
+        for line in text.splitlines():
+            match = name_re.match(line)
+            if not match:
+                continue
+            value = match.group(1).strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            names.add(value)
+            break
+    return names
+
+
+def nightly_failure_watched_workflows(text: str) -> list[str]:
+    watched: list[str] = []
+    in_list = False
+    for line in text.splitlines():
+        if re.match(r"^\s+workflows:\s*$", line):
+            in_list = True
+            continue
+        if not in_list:
+            continue
+        item = re.match(r"^\s+-\s+(.+)\s*$", line)
+        if item:
+            watched.append(item.group(1).strip())
+            continue
+        if line.strip():
+            break
+    return watched
 
 
 def has_pull_request(text: str) -> bool:
@@ -311,6 +346,16 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertIn("cancel-in-progress: false", text)
         self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", text)
+
+    def test_nightly_failure_issue_watched_names_match_workflows(self) -> None:
+        text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
+        watched = nightly_failure_watched_workflows(text)
+        known = workflow_display_names()
+        self.assertEqual(len(watched), 13)
+        missing = [name for name in watched if name not in known]
+        self.assertEqual(missing, [])
+        self.assertIn("determinism-replay", watched)
+        self.assertNotIn("Determinism Replay", watched)
 
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
