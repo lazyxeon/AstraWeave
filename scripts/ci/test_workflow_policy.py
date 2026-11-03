@@ -322,6 +322,20 @@ def assert_mutation_summary_requires_ai_success(text: str) -> None:
         )
 
 
+AW_EDITOR_TESTS = WORKFLOWS / "aw-editor-tests.yml"
+
+
+def aw_editor_test_job(text: str) -> str:
+    return text.split("  test:\n", 1)[1]
+
+
+def assert_aw_editor_summary_step_uses_bash(text: str) -> None:
+    job = aw_editor_test_job(text)
+    block = job_step_block(job, "Generate Test Summary")
+    if "shell: bash" not in block:
+        raise AssertionError("Generate Test Summary must set shell: bash on Windows runners")
+
+
 def assert_mutation_ai_outcome_steps_not_softened(text: str) -> None:
     ai = mutation_ai_job(text)
     for step_name in ("Verify astraweave-ai shard outcomes", "Generate mutation report"):
@@ -677,7 +691,7 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertFalse(has_pull_request(text))
 
     def test_aw_editor_tests_is_a_real_gate_off_prs(self) -> None:
-        text = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        text = AW_EDITOR_TESTS.read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
         self.assertIn("astraweave-llm", text)
         self.assertIn("cargo fmt -p aw_editor -- --check", text)
@@ -688,6 +702,17 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("--test ui_gizmo_smoke", text)
         self.assertFalse(has_continue_on_error(text))
         self.assertFalse(has_pull_request(text))
+
+    def test_aw_editor_summary_step_uses_bash(self) -> None:
+        text = AW_EDITOR_TESTS.read_text(encoding="utf-8")
+        assert_aw_editor_summary_step_uses_bash(text)
+        without_bash = text.replace(
+            "      - name: Generate Test Summary\n        if: always()\n        shell: bash\n        run: |",
+            "      - name: Generate Test Summary\n        if: always()\n        run: |",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_aw_editor_summary_step_uses_bash(without_bash)
 
     def test_editor_and_sdk_ci_stay_non_blocking(self) -> None:
         for name in ("editor-ci.yml", "sdk-ci.yml"):

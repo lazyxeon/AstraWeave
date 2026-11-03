@@ -78,6 +78,7 @@ jobs:
 
       - name: Generate Test Summary
         if: always()
+        shell: bash
         run: |
           echo "## AW Editor Test Results" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
