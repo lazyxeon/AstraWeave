@@ -48,7 +48,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 | Replay hash, Ubuntu / Windows / macOS, then compare. Nineteen required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, `persist_replay`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
 | cargo-deny, cargo-audit | `Cargo Deny Check`, `Security Audit (cargo-audit)` |
 
-These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs, and Miri job `miri-ecs-hotpath` (`miri.yml`; paths `astraweave-ecs/src/blob_vec.rs`, `sparse_set.rs`, and `archetype.rs`). That Miri job is not required. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
+These path-filtered workflows are not in the required set because a filter would skip them and leave a check pending: trace sync, doc-truth lint, docs, and Miri job `miri-ecs-hotpath` (`miri.yml`; paths `astraweave-ecs/src/blob_vec.rs`, `sparse_set.rs`, and `archetype.rs`). That Miri job is not required. `net-tests.yml` still triggers on every pull request; its job is scope-conditional (`--scope net`), not path-filtered (see below). Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
 `PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub treats a skipped required check as missing, which blocks the merge. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
 
@@ -192,9 +192,9 @@ Require:
 - `pack-managed paths untracked + ignore surfaces current`
 - `OpenSSF Scorecard Analysis`
 
-Do not require the individual `Test (ubuntu, N/3)`, `Test (windows, N/3)`, or `Gate` names. On a docs-only pull request those jobs are skipped, and a skipped required check blocks the merge. `PR Rust checks` is the rollup.
+Do not require the individual `Test (ubuntu, N/3)`, `Test (windows, N/3)`, or `Gate` names as branch-protection checks. On a docs-only pull request the archive and partition jobs are skipped, and a skipped required check blocks the merge. `Gate (fmt, clippy, check)` still runs (player-facing name check and workflow policy); only its `Rust CI setup` step is conditional (`.github/workflows/ci.yml:122`). `PR Rust checks` is the rollup.
 
-Do not require `Test (ubuntu, build archive)`, `Test (windows, build archive)`, or either platform's `Test (*, N/3)` jobs individually. The rollup fails if an archive build fails or any partition fails. Do not require path-filtered jobs (`net-tests`, trace sync, doc-truth, docs, Miri `miri-ecs-hotpath`). PBR, Editor CI, and AW Editor tests do not run on pull requests.
+Do not require `Test (ubuntu, build archive)`, `Test (windows, build archive)`, or either platform's `Test (*, N/3)` jobs individually. The rollup fails if an archive build fails or any partition fails. Do not require scope- or path-gated jobs individually: `net-tests` (every pull request; job skipped when scope is cold), trace sync, doc-truth, docs, Miri `miri-ecs-hotpath`. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
 `Cargo Deny Check` is safe to require. TLS for reqwest, the websocket client, hf-hub, and ort is rustls, so the `openssl` / `openssl-sys` bans in `deny.toml` are not tripped.
 

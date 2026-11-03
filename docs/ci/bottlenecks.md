@@ -50,7 +50,7 @@ Runs 40235303264 (24.34% overall, 21.17% rust) and 40593627231 (38.52% overall, 
 
 ## 7. Main push paid the benchmark shards twice in this window
 
-Sixteen benchmark shards, job p50 from about 19 min to 46 min, ran on push to `main` and again from the nightly cron. #519 (`a9ba44e0`) removed that cron. [CI_ARCHITECTURE.md](../current/CI_ARCHITECTURE.md) records the current triggers: push to `main` and `develop`, `workflow_dispatch`, and a pull request that just gained `run-benchmarks`. Toolchain validation on main is p50 22–25 min for stable and 1.89.0, p95 about 40 min, and #468 is fixing a macOS failure in that workflow. Mutation ecs is 57 min p50 and already nightly. None of these are on an ordinary pull request.
+Sixteen benchmark shards, job p50 from about 19 min to 46 min, ran on push to `main` and again from the nightly cron. #519 (`a9ba44e0`) removed that cron. [CI_ARCHITECTURE.md](../current/CI_ARCHITECTURE.md) records the current triggers: push to `main` and `develop`, `workflow_dispatch`, and a pull request that just gained `run-benchmarks`. Toolchain validation on main is p50 22–25 min for stable and 1.89.0, p95 about 40 min. #468 merged as `65f96115` (save-test temp dirs on macOS, not toolchain clippy). Mutation ecs is 57 min p50 and already nightly. None of these are on an ordinary pull request.
 
 ## Rejected
 
