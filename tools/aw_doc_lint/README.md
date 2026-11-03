@@ -15,7 +15,7 @@ cargo run -p aw_doc_lint -- --mode warn
 
 ### Conflict-marker scan (always enforced)
 
-**Files:** every path from `git ls-files` (including `third_party/`, `.rs`, `.ron`, `.ps1`, `.gitignore`, and extensionless names such as `.github/CODEOWNERS`). Skips only NUL-byte binaries and invalid UTF-8 at read time. This includes `docs/archive/` and other paths excluded from vocabulary lint.
+**Files:** every path from `git -c core.quotepath=true ls-files -z` (NUL-delimited, so a non-ASCII name such as `×` is not C-quoted). That includes `third_party/`, `.rs`, `.ron`, `.ps1`, `.bat`, `.vs/`, `node_modules/`, `.gitignore`, and extensionless names such as `.github/CODEOWNERS`. Skips only NUL-byte binaries and invalid UTF-8 at read time (invalid UTF-8 is not decoded lossily). This includes `docs/archive/` and other paths excluded from vocabulary lint.
 
 **Markers:** column-0 git conflict lines: `<<<<<<<` / `>>>>>>>` / `|||||||` (marker plus space or end of line). A `=======` line is reported only while a conflict is open (after `<<<<<<<` and before the matching `>>>>>>>`), in prose and in fences; a setext underline or a fenced Markdown heading line of seven equals is not flagged on its own.
 

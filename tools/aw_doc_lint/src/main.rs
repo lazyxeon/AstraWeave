@@ -95,8 +95,9 @@
 //! Merge/rebase conflict markers (`<<<<<<<`, `|||||||`, `=======` between
 //! open and close, `>>>>>>>`) are always hard errors outside intentional
 //! `diff`/`text`/`console` examples; see `conflict_markers.rs` and
-//! `tools/aw_doc_lint/README.md`. The conflict scan walks every `git ls-files`
-//! path; closed-vocabulary scope is unchanged.
+//! `tools/aw_doc_lint/README.md`. The conflict scan walks every
+//! `git -c core.quotepath=true ls-files -z` path; closed-vocabulary scope is
+//! unchanged.
 
 mod conflict_markers;
 mod html_entities;
@@ -291,9 +292,11 @@ fn in_scope(path: &str) -> bool {
 }
 
 /// Tracked paths for the always-enforced conflict-marker scan (wider than
-/// closed-vocabulary scope). Every `git ls-files` entry is scanned; `third_party/`
+/// closed-vocabulary scope). Every entry from `git -c core.quotepath=true
+/// ls-files -z` is scanned. `-z` keeps non-ASCII names unquoted; `third_party/`
 /// is included because vendored trees can carry merge markers. Only NUL-byte
-/// binaries and invalid UTF-8 are skipped at read time (see `read_conflict_scan_text`).
+/// binaries and invalid UTF-8 are skipped at read time (see
+/// `read_conflict_scan_text`).
 fn in_conflict_scan_scope(_path: &str) -> bool {
     true
 }
@@ -314,17 +317,25 @@ fn read_conflict_scan_text(root: &Path, rel: &str) -> Result<Option<String>> {
 }
 
 fn tracked_files(root: &Path) -> Result<Vec<String>> {
+    // CI's default is `core.quotepath=true`. A newline-delimited listing then
+    // C-quotes bytes above 0x80 (`×` becomes `\303\227`), and that quoted
+    // string is not a path. `-c` pins that default so a developer config of
+    // `false` cannot hide the bug; `-z` emits the raw path bytes separated by
+    // NUL, which is not quoted.
     let out = Command::new("git")
-        .arg("ls-files")
+        .args(["-c", "core.quotepath=true", "ls-files", "-z"])
         .current_dir(root)
         .output()
-        .context("running `git ls-files`")?;
+        .context("running `git ls-files -z`")?;
     if !out.status.success() {
-        bail!("`git ls-files` failed (not a git repo?)");
+        bail!("`git ls-files -z` failed (not a git repo?)");
     }
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(|s| s.to_string())
+    let text =
+        String::from_utf8(out.stdout).context("`git ls-files -z` emitted a non-UTF-8 path")?;
+    Ok(text
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .map(str::to_string)
         .collect())
 }
 
@@ -1189,6 +1200,9 @@ mod tests {
         assert!(in_conflict_scan_scope(".github/CODEOWNERS"));
         assert!(in_conflict_scan_scope("third_party/foo/LICENSE"));
         assert!(in_conflict_scan_scope(".gitignore"));
+        assert!(in_conflict_scan_scope(".vs/x.json"));
+        assert!(in_conflict_scan_scope("scripts/x.bat"));
+        assert!(in_conflict_scan_scope("node_modules/x/y.js"));
     }
 
     #[test]
@@ -1205,6 +1219,61 @@ mod tests {
         let got = read_conflict_scan_text(&dir, "blob.bin").unwrap();
         assert!(got.is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_conflict_scan_text_skips_invalid_utf8_without_lossy_decode() {
+        let dir = std::env::temp_dir().join(format!(
+            "aw_doc_lint_badutf8_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("bad.txt"), b"\xff\xfe").unwrap();
+        let got = read_conflict_scan_text(&dir, "bad.txt").unwrap();
+        assert!(
+            got.is_none(),
+            "invalid UTF-8 must be skipped, not lossily decoded: {got:?}"
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn tracked_files_parses_z_delimited_paths_with_non_ascii_names() {
+        let dir = std::env::temp_dir().join(format!(
+            "aw_doc_lint_quotepath_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let rel = "icons/Pixel 16×/License.txt";
+        assert!(std::process::Command::new("git")
+            .args(["-c", "init.defaultBranch=main", "init"])
+            .current_dir(&dir)
+            .status()
+            .unwrap()
+            .success());
+        std::fs::create_dir_all(dir.join("icons/Pixel 16×")).unwrap();
+        std::fs::write(dir.join(rel), b"license\n").unwrap();
+        assert!(std::process::Command::new("git")
+            .args(["add", "--", rel])
+            .current_dir(&dir)
+            .status()
+            .unwrap()
+            .success());
+        let files = tracked_files(&dir).unwrap();
+        assert_eq!(files, vec![rel.to_string()], "{files:?}");
+        let body = std::fs::read_to_string(dir.join(&files[0])).unwrap();
+        assert_eq!(body, "license\n");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
