@@ -403,12 +403,13 @@ impl BlobVec {
 
     /// Clear all components, calling their drop functions.
     ///
-    /// `len` is published as zero before any destructor runs, so a re-entrant
-    /// `clear` cannot drop the same slots again. Elements are dropped from the
-    /// last index toward the first using a local count, not a reload of `len`
-    /// through `&mut self` (LLVM may keep `len` in a register across `drop_fn`).
-    /// A panicking destructor restores `len` to the not-yet-dropped tail so
-    /// [`Drop`] can finish it.
+    /// `len` is published as zero before any destructor runs so `drop_fn` cannot
+    /// observe stale `len` and drop the same slots again when callers obey the
+    /// no-re-entry precondition. Elements are dropped from the last index toward
+    /// the first using a local count, not a reload of `len` through `&mut self`
+    /// (LLVM may keep `len` in a register across `drop_fn`). A panicking
+    /// destructor restores `len` to the not-yet-dropped tail so [`Drop`] can
+    /// finish it.
     pub fn clear(&mut self) {
         // SAFETY: `self` is a live `BlobVec` for the duration of the call.
         unsafe { Self::clear_raw(self) }
@@ -417,8 +418,11 @@ impl BlobVec {
     /// # Safety
     ///
     /// `ptr` must point to a live `BlobVec`. `drop_fn` must not re-enter this
-    /// column except through this same raw entry point; `len` is published
-    /// before any destructor runs so a nested `clear_raw` is a no-op on drops.
+    /// column. Calling [`Self::clear_raw`] (or `clear`) from a `drop_fn` while
+    /// an outer `clear`, [`Self::clear_raw`], or [`Drop`] for `BlobVec` is in
+    /// progress is caller-forbidden undefined behavior (Miri Stacked Borrows /
+    /// Tree Borrows). `len` is published before any destructor runs so a
+    /// compliant caller does not double-drop when the tail is already detached.
     pub(crate) unsafe fn clear_raw(ptr: *mut BlobVec) {
         let n = std::mem::replace(&mut (*ptr).len, 0);
         if n == 0 {
@@ -439,16 +443,16 @@ impl BlobVec {
             return;
         }
         self.len -= n;
-        // SAFETY: `self` is live and `drop_fn` must not re-enter this column.
+        // SAFETY: `self` is live and `drop_fn` must not re-enter this column
+        // (see [`Self::clear_raw`]).
         unsafe { Self::drop_detached_tail(self, self.len, n) }
     }
 
     /// Drop `n` initialized slots `[base, base + n)`.
     ///
     /// `(*ptr).len` must already exclude this range. `drop_fn` must not re-enter
-    /// this column except through [`Self::clear_raw`]; `len` is published before
-    /// destructors run so a nested clear cannot drop the same slots again. On
-    /// panic, `len` is restored to `base + still_live` so [`Drop`] can finish.
+    /// this column (see [`Self::clear_raw`]). On panic, `len` is restored to
+    /// `base + still_live` so [`Drop`] can finish.
     unsafe fn drop_detached_tail(ptr: *mut BlobVec, base: usize, n: usize) {
         struct PanicGuard {
             len_ptr: *mut usize,
@@ -1308,10 +1312,11 @@ mod tests {
         impl Drop for Reenter {
             fn drop(&mut self) {
                 DROPS.fetch_add(1, Ordering::SeqCst);
-                // SAFETY: Test-only alias of the owning `BlobVec`. Re-entering
-                // `clear` is undefined behavior for production callers; this
+                // SAFETY: Test-only alias of the owning `BlobVec`. The outer
+                // call is also `clear_raw`; re-entry from `drop_fn` during
+                // `clear()` or `BlobVec` drop is caller-forbidden UB. This
                 // exercises the release-only double-free that detach-then-drop
-                // prevents.
+                // prevents when the outer entry is raw-only.
                 unsafe {
                     BlobVec::clear_raw(self.column);
                 }
