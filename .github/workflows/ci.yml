@@ -534,7 +534,9 @@ jobs:
     name: Test full (macos, build archive)
     runs-on: macos-latest
     needs: [changes, gate]
-    timeout-minutes: 60
+    # 90: cold aarch64 sccache still compiles ~40 minutes before nextest (run
+    # 41578863044). Partitions stay at 60; they run the uploaded archive.
+    timeout-minutes: 90
     if: github.event_name != 'pull_request' && needs.gate.result == 'success'
     steps:
       - name: Checkout
@@ -590,6 +592,10 @@ jobs:
         run: |
           cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
 
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
+
   test-full-macos-part:
     name: Test full (macos, ${{ matrix.partition }}/3)
     runs-on: macos-latest
@@ -610,6 +616,7 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
         with:
           install-nextest: "true"
+          sccache-populate: "false"
 
       - name: macOS runners have no wgpu software adapter
         run: |

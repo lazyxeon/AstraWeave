@@ -19,6 +19,12 @@ inputs:
     description: Install cargo-nextest from a prebuilt binary
     required: false
     default: "false"
+  sccache-populate:
+    description: >-
+      When false, sccache uses READ_ONLY even on main. Archive-partition jobs
+      that only run extracted nextest binaries should not write through ghac.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -58,6 +64,11 @@ runs:
       run: |
         echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
         echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+        # One ghac namespace per OS. The default version is shared; Linux gate
+        # and Test full write hundreds of x86_64 objects and evict sparse
+        # aarch64-apple-darwin entries before macOS Test full reads them (run
+        # 41578863044: 0.44% Rust hit rate, 78 cache write errors).
+        echo "SCCACHE_GHA_VERSION=${{ runner.os }}" >> "$GITHUB_ENV"
         echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
@@ -66,7 +77,10 @@ runs:
         # evicts the shared cache. Main pushes and schedules populate it.
         # CARGO_INCREMENTAL=0 is already required; sccache still refuses bins,
         # cdylibs, and proc-macros.
-        if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+        populate="${{ inputs.sccache-populate }}"
+        if [ "$populate" = "false" ]; then
+          echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
+        elif [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
           echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
         else
           echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
