@@ -1,0 +1,13 @@
+# cargo-mutants reads this from the workspace root and appends exclude_re
+# to the CLI (mutation-testing.yml still passes `--exclude-re "fn metrics\b"`).
+
+# PlanDebugger::step_did_not_advance is the shard 1/8 OOM guard.
+# Nightly job 125720952789 (run 41576449610, SHA 3aaf59b0) died in phase=Test
+# 341s after the missed mutant at adapter.rs:137:72. The in-progress mutant is
+# shard list index 168: debug_tools.rs:117:27 `replace += with *= in
+# PlanDebugger::step_forward`. `*=` leaves current_step at 0, and jump_to_step
+# pushes a WorldState until the runner is killed. The `+=` mutant stays in the
+# set and is caught by jump_to_step_stops_when_the_step_counter_sticks.
+# Operators inside the guard never fail on unmutated code, so they would be
+# missed mutants; they are not the OOM.
+exclude_re = ["step_did_not_advance"]

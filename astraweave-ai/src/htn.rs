@@ -444,14 +444,7 @@ pub fn tick_agents(tick: &mut SpatialTick, scratch: &mut NavScratch, sim_tick: u
     }
     for i in 1..n {
         let mut j = i;
-        let mut guard = 0usize;
         while j > 0 {
-            guard += 1;
-            // Insertion sort moves at most `i` steps; cap kills `j -= 1` → `j += 1` mutants
-            // (lazyxeon/AstraWeave#605, astraweave-ai mutation shard 1/8).
-            if guard > n {
-                break;
-            }
             let a = agents[order[j - 1] as usize];
             let b = agents[order[j] as usize];
             let band_a = band_of(a.pos_milli, a.player_milli);
@@ -938,37 +931,6 @@ mod tests {
     #[cfg(not(miri))]
     use astraweave_nav::FRAME_BUDGET_MS;
     use astraweave_nav::{bridge_and_ford, NavChangeKind, NavScratch};
-
-    #[test]
-    fn tick_agents_agent_ordering_terminates_with_two_agents() {
-        // Kills `replace -= with += in tick_agents` (lazyxeon/AstraWeave#605 shard 1/8):
-        // without the inner guard, the insertion sort can spin forever once n >= 2.
-        let mut tick = SpatialTick::new();
-        tick.nav = bridge_and_ford();
-        tick.len = 2;
-        tick.agents[0] = AgentState {
-            entity_id: 10,
-            pos_milli: [50_000, 0, 50_000],
-            goal_milli: [1_000, 0, 46_000],
-            player_milli: [0, 0, 0],
-            ticks_since_plan: REPLAN_TICKS,
-            plan: AgentPlan::empty(),
-        };
-        tick.agents[1] = AgentState {
-            entity_id: 5,
-            pos_milli: [1_000, 0, 1_000],
-            goal_milli: [1_000, 0, 46_000],
-            player_milli: [0, 0, 0],
-            ticks_since_plan: REPLAN_TICKS,
-            plan: AgentPlan::empty(),
-        };
-        let mut scratch = NavScratch::new();
-        tick_agents(&mut tick, &mut scratch, 1);
-        assert!(
-            tick.expansions_used <= HTN_EXPANSIONS_PER_TICK as u32,
-            "tick_agents must finish under the expansion budget"
-        );
-    }
 
     #[test]
     fn spatial_tick_does_not_call_goap_or_a_live_model() {

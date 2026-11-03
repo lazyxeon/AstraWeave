@@ -114,9 +114,28 @@ impl PlanDebugger {
         new_state.apply_effects(action.effects());
 
         self.state_history.push(new_state);
+        let previous_step = self.current_step;
         self.current_step += 1;
+        // Shard 1/8 OOM: `+=` → `*=` leaves current_step unchanged (it starts at 0),
+        // so jump_to_step pushes a WorldState on every iteration until the runner
+        // dies. Nightly job 125720952789 (run 41576449610, SHA 3aaf59b0) logged
+        // `ERROR scenario execution internal error err=interrupted phase=Test`
+        // 341s after the missed mutant at adapter.rs:137:72. On that tree this is
+        // debug_tools.rs:117:27, shard list index 168. lazyxeon/AstraWeave#605.
+        if self.step_did_not_advance(previous_step) {
+            let _ = self.state_history.pop();
+            self.current_step = previous_step;
+            return Err("PlanDebugger step did not advance".to_string());
+        }
 
         Ok(())
+    }
+
+    /// True when a step failed to move the cursor or grew history past the plan.
+    /// Operators here are excluded in `.cargo/mutants.toml`: unmutated tests never
+    /// take this branch, and the branch exists to catch `+=` → `*=`.
+    fn step_did_not_advance(&self, previous_step: usize) -> bool {
+        self.current_step <= previous_step || self.state_history.len() > self.plan.len() + 1
     }
 
     /// Step backward one action
@@ -493,6 +512,32 @@ mod tests {
         assert_eq!(
             debugger.current_state().get("step"),
             Some(&StateValue::Int(2))
+        );
+    }
+
+    #[test]
+    fn jump_to_step_stops_when_the_step_counter_sticks() {
+        // Kills `replace += with *= in PlanDebugger::step_forward` (shard 1/8 OOM).
+        // Deleting the advance guard fails this test: the source check below goes
+        // red, and with `*=` applied jump_to_step allocates without bound.
+        let plan = vec!["action1".to_string(), "action2".to_string()];
+        let start = WorldState::new();
+        let actions = vec![
+            create_test_action("action1", vec![("step", StateValue::Int(1))]),
+            create_test_action("action2", vec![("step", StateValue::Int(2))]),
+        ];
+        let mut debugger = PlanDebugger::new(plan, start, actions);
+
+        debugger.jump_to_step(2).unwrap();
+        assert_eq!(debugger.current_step(), 2);
+        assert_eq!(debugger.state_history.len(), 3);
+
+        let src = include_str!("debug_tools.rs");
+        let start_fn = src.find("fn step_forward").expect("step_forward present");
+        let end_fn = src.find("fn step_backward").expect("step_backward present");
+        assert!(
+            src[start_fn..end_fn].contains("PlanDebugger step did not advance"),
+            "step_forward must reject a counter that does not advance"
         );
     }
 
