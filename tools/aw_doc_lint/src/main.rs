@@ -90,13 +90,15 @@
 //! Default_Ignorable letters, and non-whitespace controls, in
 //! `is_invisible_frame_char`. Player-facing docs must not use the retired game
 //! title. A failed read of a scanned file, including
-//! `docs/current/PROJECT_BRIEF.md`, fails the process.
+//! `docs/current/PROJECT_BRIEF.md`, fails the process, except a submodule
+//! gitlink (mode 160000), a symlink (never followed), or a path missing from
+//! the worktree.
 //!
 //! Merge/rebase conflict markers (`<<<<<<<`, `|||||||`, `=======` between
 //! open and close, `>>>>>>>`) are always hard errors outside intentional
 //! `diff`/`text`/`console` examples; see `conflict_markers.rs` and
 //! `tools/aw_doc_lint/README.md`. The conflict scan walks every
-//! `git -c core.quotepath=true ls-files -z` path; closed-vocabulary scope is
+//! `git -c core.quotepath=true ls-files -z -s` path; closed-vocabulary scope is
 //! unchanged.
 
 mod conflict_markers;
@@ -293,10 +295,11 @@ fn in_scope(path: &str) -> bool {
 
 /// Tracked paths for the always-enforced conflict-marker scan (wider than
 /// closed-vocabulary scope). Every entry from `git -c core.quotepath=true
-/// ls-files -z` is scanned. `-z` keeps non-ASCII names unquoted; `third_party/`
-/// is included because vendored trees can carry merge markers. Only NUL-byte
-/// binaries and invalid UTF-8 are skipped at read time (see
-/// `read_conflict_scan_text`).
+/// ls-files -z -s` is scanned. `-z` keeps non-ASCII names unquoted;
+/// `third_party/` is included because vendored trees can carry merge markers.
+/// NUL-byte binaries and invalid UTF-8 are skipped at read time. A submodule
+/// gitlink, a symlink, or a path missing from the worktree is skipped; any
+/// other read error fails the run (see `read_conflict_scan_text`).
 fn in_conflict_scan_scope(_path: &str) -> bool {
     true
 }
@@ -305,8 +308,52 @@ fn is_probably_binary(content: &[u8]) -> bool {
     content.contains(&0)
 }
 
-fn read_conflict_scan_text(root: &Path, rel: &str) -> Result<Option<String>> {
-    let bytes = std::fs::read(root.join(rel)).with_context(|| format!("reading {rel}"))?;
+/// One `git ls-files -z -s` record. `mode` is the octal index mode (`0o160000`
+/// is a submodule gitlink).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct TrackedEntry {
+    mode: u32,
+    path: String,
+}
+
+fn parse_ls_files_stage_record(record: &str) -> Result<TrackedEntry> {
+    let (meta, path) = record
+        .split_once('\t')
+        .with_context(|| format!("`git ls-files -z -s` record has no path tab: {record}"))?;
+    let mode_str = meta.split(' ').next().context("missing git file mode")?;
+    let mode = u32::from_str_radix(mode_str, 8)
+        .with_context(|| format!("bad git file mode {mode_str}"))?;
+    if path.is_empty() {
+        bail!("`git ls-files -z -s` record has an empty path");
+    }
+    Ok(TrackedEntry {
+        mode,
+        path: path.to_string(),
+    })
+}
+
+/// Bytes of a tracked worktree file, or `Ok(None)` for the three skips in #632.
+/// Symlinks are detected with `symlink_metadata` and are not opened.
+fn read_tracked_bytes(root: &Path, entry: &TrackedEntry) -> Result<Option<Vec<u8>>> {
+    if entry.mode == 0o160000 {
+        return Ok(None);
+    }
+    let path = root.join(&entry.path);
+    match std::fs::symlink_metadata(&path) {
+        Ok(meta) if meta.file_type().is_symlink() => Ok(None),
+        Ok(_) => {
+            let bytes = std::fs::read(&path).with_context(|| format!("reading {}", entry.path))?;
+            Ok(Some(bytes))
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).with_context(|| format!("reading {}", entry.path)),
+    }
+}
+
+fn read_conflict_scan_text(root: &Path, entry: &TrackedEntry) -> Result<Option<String>> {
+    let Some(bytes) = read_tracked_bytes(root, entry)? else {
+        return Ok(None);
+    };
     if is_probably_binary(&bytes) {
         return Ok(None);
     }
@@ -316,27 +363,27 @@ fn read_conflict_scan_text(root: &Path, rel: &str) -> Result<Option<String>> {
     }
 }
 
-fn tracked_files(root: &Path) -> Result<Vec<String>> {
+fn tracked_files(root: &Path) -> Result<Vec<TrackedEntry>> {
     // CI's default is `core.quotepath=true`. A newline-delimited listing then
     // C-quotes bytes above 0x80 (`×` becomes `\303\227`), and that quoted
     // string is not a path. `-c` pins that default so a developer config of
     // `false` cannot hide the bug; `-z` emits the raw path bytes separated by
-    // NUL, which is not quoted.
+    // NUL, which is not quoted. `-s` keeps the index mode so a gitlink
+    // (160000) can be skipped without opening it.
     let out = Command::new("git")
-        .args(["-c", "core.quotepath=true", "ls-files", "-z"])
+        .args(["-c", "core.quotepath=true", "ls-files", "-z", "-s"])
         .current_dir(root)
         .output()
-        .context("running `git ls-files -z`")?;
+        .context("running `git ls-files -z -s`")?;
     if !out.status.success() {
-        bail!("`git ls-files -z` failed (not a git repo?)");
+        bail!("`git ls-files -z -s` failed (not a git repo?)");
     }
     let text =
-        String::from_utf8(out.stdout).context("`git ls-files -z` emitted a non-UTF-8 path")?;
-    Ok(text
-        .split('\0')
-        .filter(|path| !path.is_empty())
-        .map(str::to_string)
-        .collect())
+        String::from_utf8(out.stdout).context("`git ls-files -z -s` emitted a non-UTF-8 path")?;
+    text.split('\0')
+        .filter(|record| !record.is_empty())
+        .map(parse_ls_files_stage_record)
+        .collect()
 }
 
 // ---- matching ----------------------------------------------------------------
@@ -900,7 +947,11 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
     let allow = load_allowlist(&allowlist_doc)?;
 
     let tracked = tracked_files(root)?;
-    let files: Vec<String> = tracked.iter().filter(|f| in_scope(f)).cloned().collect();
+    let paths: Vec<String> = tracked.iter().map(|entry| entry.path.clone()).collect();
+    let files: Vec<&TrackedEntry> = tracked
+        .iter()
+        .filter(|entry| in_scope(&entry.path))
+        .collect();
 
     let in_ci = std::env::var("GITHUB_ACTIONS")
         .map(|v| v == "true")
@@ -916,14 +967,25 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
     let mut scanned = 0usize;
     let mut conflict = Vec::new();
 
-    for f in tracked.iter().filter(|f| in_conflict_scan_scope(f)) {
-        if let Some(content) = read_conflict_scan_text(root, f)? {
-            conflict.extend(conflict_markers::conflict_marker_errors(f, &content));
+    for entry in tracked
+        .iter()
+        .filter(|entry| in_conflict_scan_scope(&entry.path))
+    {
+        if let Some(content) = read_conflict_scan_text(root, entry)? {
+            conflict.extend(conflict_markers::conflict_marker_errors(
+                &entry.path,
+                &content,
+            ));
         }
     }
 
-    for f in &files {
-        let content = read_repo_file(root, f)?;
+    for entry in &files {
+        let Some(bytes) = read_tracked_bytes(root, entry)? else {
+            continue;
+        };
+        let content =
+            String::from_utf8(bytes).with_context(|| format!("reading {}", entry.path))?;
+        let f = &entry.path;
         scanned += 1;
         for (i, line) in content.lines().enumerate() {
             for hit in lint_line(line, &lits) {
@@ -960,7 +1022,7 @@ fn lint_repo(root: &Path, mode: Mode) -> Result<()> {
     let readme = read_repo_file(root, README_REL)?;
     let status = read_repo_file(root, STATUS_REL)?;
     let workflow = read_repo_file(root, REPLAY_WORKFLOW_REL)?;
-    let player_facing = load_player_facing(root, &tracked)?;
+    let player_facing = load_player_facing(root, &paths)?;
     let front = front_door_errors(&readme, &status, &workflow, &player_facing);
     for e in &front {
         println!("{e}");
@@ -1216,7 +1278,14 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("aw_doc_lint_conflict_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("blob.bin"), b"prefix\0suffix").unwrap();
-        let got = read_conflict_scan_text(&dir, "blob.bin").unwrap();
+        let got = read_conflict_scan_text(
+            &dir,
+            &TrackedEntry {
+                mode: 0o100644,
+                path: "blob.bin".to_string(),
+            },
+        )
+        .unwrap();
         assert!(got.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1234,7 +1303,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("bad.txt"), b"\xff\xfe").unwrap();
-        let got = read_conflict_scan_text(&dir, "bad.txt").unwrap();
+        let got = read_conflict_scan_text(
+            &dir,
+            &TrackedEntry {
+                mode: 0o100644,
+                path: "bad.txt".to_string(),
+            },
+        )
+        .unwrap();
         assert!(
             got.is_none(),
             "invalid UTF-8 must be skipped, not lossily decoded: {got:?}"
@@ -1270,9 +1346,131 @@ mod tests {
             .unwrap()
             .success());
         let files = tracked_files(&dir).unwrap();
-        assert_eq!(files, vec![rel.to_string()], "{files:?}");
-        let body = std::fs::read_to_string(dir.join(&files[0])).unwrap();
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert_eq!(files[0].path, rel);
+        assert_eq!(files[0].mode, 0o100644);
+        let body = std::fs::read_to_string(dir.join(&files[0].path)).unwrap();
         assert_eq!(body, "license\n");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn git_in(dir: &std::path::Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "x")
+            .env("GIT_AUTHOR_EMAIL", "x@x")
+            .env("GIT_COMMITTER_NAME", "x")
+            .env("GIT_COMMITTER_EMAIL", "x@x")
+            .status()
+            .unwrap();
+        assert!(status.success(), "{args:?}");
+    }
+
+    fn lint_fixture(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "aw_doc_lint_{tag}_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("docs/current")).unwrap();
+        std::fs::create_dir_all(dir.join("docs/campaigns/doc-truth")).unwrap();
+        std::fs::create_dir_all(dir.join(".github/workflows")).unwrap();
+        std::fs::write(
+            dir.join(SPEC_REL),
+            format!("{VOCAB_A_START}\n{VOCAB_A_END}\n{VOCAB_B_START}\n{VOCAB_B_END}\n"),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join(ALLOWLIST_REL),
+            format!("{ALLOWLIST_START}\n{ALLOWLIST_END}\n"),
+        )
+        .unwrap();
+        std::fs::write(dir.join(README_REL), sample_readme()).unwrap();
+        std::fs::write(dir.join(STATUS_REL), sample_status()).unwrap();
+        std::fs::write(dir.join(REPLAY_WORKFLOW_REL), sample_workflow()).unwrap();
+        std::fs::write(
+            dir.join("docs/current/PROJECT_BRIEF.md"),
+            "The game is Aravath.\n",
+        )
+        .unwrap();
+        git_in(&dir, &["-c", "init.defaultBranch=main", "init"]);
+        git_in(&dir, &["add", "."]);
+        dir
+    }
+
+    fn make_symlink(target: &std::path::Path, link: &std::path::Path) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(target, link).unwrap();
+    }
+
+    #[test]
+    fn conflict_scan_skips_gitlink() {
+        let dir = lint_fixture("gitlink");
+        git_in(&dir, &["commit", "-qm", "init"]);
+        let sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        assert!(sha.status.success());
+        let sha = String::from_utf8(sha.stdout).unwrap().trim().to_string();
+        std::fs::create_dir(dir.join("sm")).unwrap();
+        git_in(
+            &dir,
+            &[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("160000,{sha},sm"),
+            ],
+        );
+        let result = lint_repo(&dir, Mode::Warn);
+        assert!(result.is_ok(), "{result:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn conflict_scan_does_not_follow_symlink() {
+        let dir = lint_fixture("symlink");
+        let target = dir.join("untracked-target.txt");
+        std::fs::write(&target, "<<<<<<< HEAD\n").unwrap();
+        let link = dir.join("dang");
+        make_symlink(&target, &link);
+        git_in(&dir, &["add", "--", "dang"]);
+        let result = lint_repo(&dir, Mode::Warn);
+        assert!(result.is_ok(), "symlink must not be followed: {result:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn conflict_scan_skips_missing_worktree_path() {
+        let dir = lint_fixture("missing");
+        std::fs::write(dir.join("gone.txt"), "hello\n").unwrap();
+        git_in(&dir, &["add", "--", "gone.txt"]);
+        std::fs::remove_file(dir.join("gone.txt")).unwrap();
+        let result = lint_repo(&dir, Mode::Warn);
+        assert!(result.is_ok(), "{result:?}");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn conflict_scan_read_error_still_fails() {
+        let dir = lint_fixture("iodir");
+        let blocked = dir.join("blocked.txt");
+        std::fs::write(&blocked, "hello\n").unwrap();
+        git_in(&dir, &["add", "--", "blocked.txt"]);
+        std::fs::remove_file(&blocked).unwrap();
+        std::fs::create_dir(&blocked).unwrap();
+        let err = lint_repo(&dir, Mode::Warn).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("reading blocked.txt"), "{msg}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

@@ -10,7 +10,9 @@
 //! such a fence is suppressed when the fence **closes** with a valid closing line;
 //! an unclosed fence that runs to EOF never suppresses markers. A `>>>>>>>` or
 //! `|||||||` before that first `<<<<<<<`, or a `>>>>>>>` before any `=======`,
-//! clears the exemption, so the conflict that follows is reported. Any later
+//! clears the exemption, so the conflict that follows is reported. A fence that
+//! opens while a prose conflict is already open does not clear that conflict:
+//! a closer inside the fence leaves the prose `in_conflict` flag set. Any later
 //! marker in that fence is reported.
 //!
 //! Fence lines follow CommonMark: up to three spaces of indent, an opening run
@@ -38,6 +40,9 @@ struct PendingFenceErrors {
     saw_separator: bool,
     saw_closer: bool,
     in_conflict: bool,
+    /// Prose `in_conflict` when this fence opened. Restored on close so a
+    /// closer inside the fence cannot disarm the surrounding conflict.
+    prose_conflict_at_open: bool,
     /// Index in `errors` where the first exempt example's `<<<<<<<` will be recorded.
     exempt_example_start: Option<usize>,
     /// Inclusive start, exclusive end of the first balanced exempt example in `errors`.
@@ -67,7 +72,7 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
             });
             if closes_top {
                 let (_, block) = fence_stack.pop().expect("closes_top implied a frame");
-                in_conflict = block.in_conflict;
+                in_conflict = block.prose_conflict_at_open || block.in_conflict;
                 flush_fence_block(&mut errors, block, true);
             } else if fence_stack.is_empty() && parsed.len >= 3 {
                 let info = fence_info_string(line, parsed);
@@ -83,6 +88,7 @@ pub fn conflict_marker_errors(path: &str, content: &str) -> Vec<String> {
                         saw_separator: false,
                         saw_closer: false,
                         in_conflict,
+                        prose_conflict_at_open: in_conflict,
                         exempt_example_start: None,
                         exempt_quiet_range: None,
                         errors: Vec::new(),
@@ -785,6 +791,21 @@ mod tests {
         );
         let errors = conflict_marker_errors("doc.md", &body);
         assert_eq!(error_lines(&errors), [1, 3, 4, 5], "{errors:?}");
+    }
+
+    #[test]
+    fn fence_opened_inside_prose_conflict_keeps_separator_armed() {
+        // cursor[bot] on conflict_markers.rs:70. A closer inside the fence must
+        // not disarm the prose conflict, so the `=======` after the fence stays.
+        let body = format!(
+            "{}\nours\n```text\n{}\n```\n{}\ntheirs\n{}\n",
+            opener(),
+            closer("decoy"),
+            separator(),
+            closer("branch")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [1, 4, 6, 8], "{errors:?}");
     }
 
     #[test]
