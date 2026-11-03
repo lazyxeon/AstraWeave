@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
+sys.path.insert(0, str(ROOT / "scripts" / "ci"))
+import mutation_ai_outcomes  # noqa: E402
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
 CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
@@ -104,6 +107,100 @@ def jobs_missing_timeout(text: str) -> list[str]:
             has_timeout = True
     flush()
     return missing
+
+
+MUTATION_TESTING = WORKFLOWS / "mutation-testing.yml"
+VERIFY_BASELINE_ERROR = "baseline did not complete successfully"
+VERIFY_NO_MUTANTS_ERROR = "no mutant outcomes recorded after baseline"
+
+
+def mutation_testing_text() -> str:
+    return MUTATION_TESTING.read_text(encoding="utf-8")
+
+
+def mutation_ai_job(text: str) -> str:
+    return text.split("  mutants-ai:\n", 1)[1].split("\n  mutants-behavior:\n", 1)[0]
+
+
+def mutation_summary_job(text: str) -> str:
+    return text.split("  mutants-summary:\n", 1)[1]
+
+
+def job_step_block(job: str, step_name: str) -> str:
+    marker = f"- name: {step_name}"
+    start = job.find(marker)
+    if start < 0:
+        raise AssertionError(f"missing step {step_name!r}")
+    rest = job[start + len(marker) :]
+    next_step = rest.find("\n      - ")
+    if next_step < 0:
+        return rest
+    return rest[:next_step]
+
+
+def _run_script(step_block: str) -> str:
+    if "run:" not in step_block:
+        return ""
+    return step_block.split("run:", 1)[1]
+
+
+def _python_run_lines(run: str) -> list[str]:
+    return [
+        line
+        for line in run.splitlines()
+        if "python3 scripts/ci/mutation_ai_outcomes.py" in line
+    ]
+
+
+def assert_mutation_ai_outcome_steps_not_softened(text: str) -> None:
+    ai = mutation_ai_job(text)
+    for step_name in ("Verify astraweave-ai shard outcomes", "Generate mutation report"):
+        block = job_step_block(ai, step_name)
+        if "continue-on-error: true" in block:
+            raise AssertionError(f"{step_name} must not use continue-on-error")
+        for line in _python_run_lines(_run_script(block)):
+            if "|| true" in line:
+                raise AssertionError(f"{step_name} must not mask failures with || true")
+    summary = mutation_summary_job(text)
+    report = job_step_block(summary, "Generate summary report")
+    if "continue-on-error: true" in report:
+        raise AssertionError("summary report must not use continue-on-error")
+    for line in _python_run_lines(_run_script(report)):
+        if "|| true" in line:
+            raise AssertionError("summary report must not mask python failures with || true")
+
+
+def assert_mutation_summary_checks_out_before_scoring(text: str) -> None:
+    summary = mutation_summary_job(text)
+    checkout = summary.find("uses: actions/checkout@v5")
+    scoring = summary.find("mutation_ai_outcomes.py")
+    if checkout < 0:
+        raise AssertionError("mutants-summary must checkout the repository")
+    if scoring < 0:
+        raise AssertionError("mutants-summary must score astraweave-ai outcomes")
+    if checkout > scoring:
+        raise AssertionError("checkout must precede mutation_ai_outcomes.py in mutants-summary")
+
+
+def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
+    ai = mutation_ai_job(text)
+    report = job_step_block(ai, "Generate mutation report")
+    run = report.split("run:", 1)[1]
+    if 'eval "$(python3 scripts/ci/mutation_ai_outcomes.py' in run:
+        raise AssertionError("shard report must not use unchecked eval $(python3 …)")
+    if "counts=$(python3 scripts/ci/mutation_ai_outcomes.py" not in run:
+        raise AssertionError("shard report must capture python output before eval")
+    if ': "${DECIDED:?}"' not in run or '"${SCORE:?}"' not in run:
+        raise AssertionError("shard report must require DECIDED and SCORE")
+    summary = mutation_summary_job(text)
+    report = job_step_block(summary, "Generate summary report")
+    run = report.split("run:", 1)[1]
+    if 'eval "$(python3 scripts/ci/mutation_ai_outcomes.py' in run:
+        raise AssertionError("summary must not use unchecked eval $(python3 …)")
+    if "counts=$(python3 scripts/ci/mutation_ai_outcomes.py" not in run:
+        raise AssertionError("summary must capture python output before eval")
+    if ': "${DECIDED:?}"' not in run or '"${SCORE:?}"' not in run:
+        raise AssertionError("summary must require DECIDED and SCORE")
 
 
 class WorkflowPolicyTest(unittest.TestCase):
@@ -395,6 +492,97 @@ class WorkflowPolicyTest(unittest.TestCase):
         )[0]
         self.assertIn("if: matrix.experimental", nightly)
         self.assertNotIn("'nightly'", nightly)
+
+    def test_mutation_ai_caps_memory_and_uploads_on_failure(self) -> None:
+        text = mutation_testing_text()
+        ai = mutation_ai_job(text)
+        self.assertIn("ulimit -v 6291456", ai)
+        self.assertIn("--in-place", ai)
+        self.assertIn("--shard ${{ matrix.shard }}/8", ai)
+        self.assertNotIn("--jobs 1", ai)
+        self.assertIn("Verify astraweave-ai shard outcomes", ai)
+        self.assertIn("mutation_ai_outcomes.py", ai)
+        report = ai.split("Generate mutation report", 1)[1].split("Upload mutation results", 1)[0]
+        upload = ai.split("Upload mutation results", 1)[1]
+        self.assertIn("if: always()", report)
+        self.assertIn("if: always()", upload)
+
+    def test_mutation_ai_outcome_steps_are_not_softened(self) -> None:
+        text = mutation_testing_text()
+        assert_mutation_ai_outcome_steps_not_softened(text)
+        softened = text.replace(
+            "python3 scripts/ci/mutation_ai_outcomes.py --verify-shard",
+            "python3 scripts/ci/mutation_ai_outcomes.py --verify-shard || true",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_mutation_ai_outcome_steps_not_softened(softened)
+        softened = text.replace(
+            "      - name: Verify astraweave-ai shard outcomes\n        if: always()\n        run: |",
+            "      - name: Verify astraweave-ai shard outcomes\n        if: always()\n        continue-on-error: true\n        run: |",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_mutation_ai_outcome_steps_not_softened(softened)
+
+    def test_mutation_summary_checks_out_before_scoring(self) -> None:
+        text = mutation_testing_text()
+        assert_mutation_summary_checks_out_before_scoring(text)
+        without_checkout = text.replace("      - uses: actions/checkout@v5\n\n      - name: Download all artifacts", "      - name: Download all artifacts", 1)
+        with self.assertRaises(AssertionError):
+            assert_mutation_summary_checks_out_before_scoring(without_checkout)
+
+    def test_mutation_ai_scoring_uses_strict_eval(self) -> None:
+        text = mutation_testing_text()
+        assert_mutation_ai_scoring_uses_strict_eval(text)
+        loose = text.replace(
+            'counts=$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}") || exit 1',
+            'eval "$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}")"',
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_mutation_ai_scoring_uses_strict_eval(loose)
+
+    def test_mutation_ai_outcomes_excludes_cap_oom_from_caught(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_cap_oom"
+        counts = mutation_ai_outcomes.count_outcomes(root / "outcomes.json")
+        self.assertEqual(counts.cap_oom, 1)
+        self.assertEqual(counts.caught, 0)
+        self.assertEqual(counts.decided, 0)
+
+    def test_mutation_ai_outcomes_counts_real_caught(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_real_caught"
+        counts = mutation_ai_outcomes.count_outcomes(root / "outcomes.json")
+        self.assertEqual(counts.caught, 1)
+        self.assertEqual(counts.cap_oom, 0)
+        self.assertEqual(counts.score_percent, 100)
+
+    def test_mutation_ai_outcomes_verify_shard_requires_baseline_and_mutants(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_real_caught"
+        self.assertEqual(mutation_ai_outcomes.verify_shard_outcomes(root / "outcomes.json"), [])
+
+        missing = mutation_ai_outcomes.verify_shard_outcomes(root / "missing.json")
+        self.assertTrue(missing)
+        self.assertIn("missing outcomes", missing[0])
+
+        baseline_failure = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_baseline_failure"
+        errors = mutation_ai_outcomes.verify_shard_outcomes(baseline_failure / "outcomes.json")
+        self.assertIn(VERIFY_BASELINE_ERROR, errors)
+
+        baseline_only = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_baseline_only"
+        errors = mutation_ai_outcomes.verify_shard_outcomes(baseline_only / "outcomes.json")
+        self.assertIn(VERIFY_NO_MUTANTS_ERROR, errors)
+
+    def test_mutation_ai_verify_errors_are_required(self) -> None:
+        source = (ROOT / "scripts" / "ci" / "mutation_ai_outcomes.py").read_text(encoding="utf-8")
+        self.assertIn(VERIFY_BASELINE_ERROR, source)
+        self.assertIn(VERIFY_NO_MUTANTS_ERROR, source)
+        stripped = source.replace(f'errors.append("{VERIFY_BASELINE_ERROR}")', "", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn(VERIFY_BASELINE_ERROR, stripped)
+        stripped = source.replace(f'errors.append("{VERIFY_NO_MUTANTS_ERROR}")', "", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn(VERIFY_NO_MUTANTS_ERROR, stripped)
 
 
 if __name__ == "__main__":
