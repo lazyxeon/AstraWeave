@@ -1,346 +1,113 @@
-# Hello Companion Walkthrough
+# Hello Companion
 
-The `hello_companion` example is the perfect introduction to AstraWeave's AI-native architecture. This walkthrough explains every step of what happens when you run this example and why it's designed this way.
+`examples/hello_companion` is the companion binary. The package name is `hello_companion`. This page walks that file from the command you type to the plan the classical orchestrator returns.
 
-## Running the Example
+Run it from the repository root:
 
 ```bash
 cargo run -p hello_companion --release
 ```
 
-## Expected Output
+The crate default features are `fast-alloc` only (`examples/hello_companion/Cargo.toml`). That build does not open a window and does not call a model. It selects Classical (`RuleOrchestrator`).
 
-```
-[INFO] Initializing AstraWeave Engine...
-[INFO] Creating world with ECS...
-[INFO] Spawning AI companion entity
-[INFO] Starting simulation loop at 60Hz
-[INFO] Tick 1: Capturing perception snapshot
-[INFO] AI perception: 1 entities visible, 0 audio events
-[INFO] Sending perception to AI planning layer
-[INFO] AI generated plan: MoveTo { target: Vec3(10.0, 0.0, 5.0), urgency: 0.7 }
-[INFO] Validating movement tool usage...
-[ERROR] Tool validation failed: LosBlocked - No clear line of sight to target
-thread 'main' panicked at examples/hello_companion/src/main.rs:42:5:
-called `Result::unwrap()` on an `Err` value: ToolValidationError(LosBlocked)
-```
+## What the process does
 
-**This panic is intentional!** It demonstrates AstraWeave's core principle: AI agents cannot perform actions that violate the game world's constraints.
+`main` without the `visual` feature is `examples/hello_companion/src/main.rs`. It prints the banner, calls `select_ai_mode`, then `run_single_demo`.
 
-## Code Walkthrough
+`run_single_demo` does four things:
 
-Let's examine the source code to understand each step:
+1. `setup_world` builds an `astraweave_core::World` and a `WorldSnapshot`.
+2. `build_app(w, 0.25)` (`astraweave-core/src/ecs_adapter.rs`) inserts that world into an `astraweave_ecs::App` with a `Dt(0.25)` resource. The `0.25` is that resource. It is not a claim that this binary ticks at 60 Hz.
+3. `generate_plan` asks the selected orchestrator for a `PlanIntent`.
+4. `validate_and_execute` (`astraweave-core/src/validation.rs`) applies the plan or returns an `EngineError`. On `Err` the example prints the error and continues. It then calls `app.run_fixed(1)` twenty times and prints positions.
 
-### 1. Engine Initialization
+The strings the binary prints are the `println!` calls in that file, including `Using Classical AI (RuleOrchestrator).`, `Classical AI (RuleOrchestrator)`, `Generated {} step plan`, `Executing Plan`, and `Post-execution State`. The validator logs `Plan {} with {} steps`.
+
+## The world
+
+`setup_world` in the same file:
 
 ```rust
-// examples/hello_companion/src/main.rs
-use astraweave_core::*;
-use astraweave_ai::*;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    env_logger::init();
-    
-    // Create the ECS world
-    let mut world = World::new();
-    
-    // Configure the engine systems
-    world.add_plugin(CorePlugin)
-         .add_plugin(AIPlugin)
-         .add_plugin(PhysicsPlugin);
-```
-
-**What's happening:**
-- Sets up the Entity-Component-System (ECS) world
-- Registers core systems for AI, physics, and simulation
-- Configures 60Hz fixed-tick simulation
-
-### 2. Spawning the AI Companion
-
-```rust
-    // Spawn an AI companion entity
-    let companion = world.spawn()
-        .insert(Position(Vec3::new(0.0, 0.0, 0.0)))
-        .insert(AIAgent {
-            perception_range: 10.0,
-            planning_interval: Duration::from_millis(500),
-            ai_model: AIModel::Local("companion-7b".to_string()),
-        })
-        .insert(MovementCapability {
-            max_speed: 5.0,
-            acceleration: 2.0,
-        })
-        .id();
-    
-    info!("Spawned AI companion with ID: {:?}", companion);
-```
-
-**What's happening:**
-- Creates a new entity in the ECS world
-- Adds position component (where the companion is)
-- Adds AI agent component (makes it intelligent)
-- Adds movement capability (what it can do)
-
-### 3. The Simulation Loop
-
-```rust
-    // Run simulation for a few ticks
-    for tick in 0..5 {
-        info!("Starting tick {}", tick);
-        
-        // This is where the AI magic happens
-        world.step(Duration::from_nanos(16_666_667)); // 1/60 second
-        
-        // Small delay so we can see the output
-        std::thread::sleep(Duration::from_millis(100));
-    }
-```
-
-**What's happening:**
-- Runs exactly 5 simulation ticks
-- Each tick advances the world by exactly 1/60th of a second
-- The deterministic timing ensures consistent behavior
-
-### 4. The AI Pipeline (Inside world.step())
-
-During each `world.step()` call, several systems run in sequence:
-
-#### A. Perception System
-
-```rust
-fn ai_perception_system(
-    mut query: Query<(&Position, &AIAgent, &mut PerceptionState)>,
-    world_query: Query<&Position>,
-) {
-    for (pos, agent, mut perception) in query.iter_mut() {
-        // Gather what the AI can see
-        let mut visible_entities = Vec::new();
-        
-        for other_pos in world_query.iter() {
-            let distance = pos.0.distance(other_pos.0);
-            if distance <= agent.perception_range {
-                visible_entities.push(EntityData {
-                    position: other_pos.0,
-                    distance,
-                    entity_type: "unknown".to_string(),
-                });
-            }
-        }
-        
-        // Create perception snapshot
-        perception.last_snapshot = Some(PerceptionSnapshot {
-            timestamp: world.current_tick(),
-            agent_id: entity,
-            visible_entities,
-            audio_events: vec![], // None in this simple example
-            world_state: WorldState::default(),
-        });
+let mut w = World::new();
+for x in 6..=6 {
+    for y in 1..=8 {
+        w.obstacles.insert((x, y));
     }
 }
+let player = w.spawn("Player", IVec2 { x: 2, y: 2 }, Team { id: 0 }, 100, 0);
+let comp = w.spawn("Companion", IVec2 { x: 2, y: 3 }, Team { id: 1 }, 80, 30);
+let enemy = w.spawn("Rival", IVec2 { x: 12, y: 2 }, Team { id: 2 }, 60, 0);
 ```
 
-#### B. AI Planning System
+`World::spawn` is `astraweave_core::World::spawn(&mut self, name, pos, team, hp, ammo)`. The companion cooldown `throw:smoke` is set to `0.0`. The snapshot is `build_snapshot` with `PerceptionConfig { los_max: 12 }` and objective `extract`.
 
-```rust
-fn ai_planning_system(
-    mut query: Query<(&AIAgent, &PerceptionState, &mut PlanningState)>,
-    ai_service: Res<AIService>,
-) {
-    for (agent, perception, mut planning) in query.iter_mut() {
-        if let Some(snapshot) = &perception.last_snapshot {
-            // Send to AI model for planning
-            let plan_request = PlanningRequest {
-                perception: snapshot.clone(),
-                agent_profile: agent.clone(),
-                available_tools: vec!["MovementTool", "InteractionTool"],
-            };
-            
-            // This is where the LLM generates a plan
-            let plan = ai_service.generate_plan(plan_request)?;
-            
-            info!("AI generated plan: {:?}", plan.intent);
-            planning.current_plan = Some(plan);
-        }
-    }
-}
+`validate_and_execute` is called with `ValidateCfg { world_bounds: (0, 0, 19, 9) }` and the companion entity id.
+
+## The classical plan
+
+`generate_classical_plan` constructs `RuleOrchestrator` and calls `propose_plan`. That method is `astraweave-ai/src/orchestrator.rs`. When the snapshot has an enemy and the smoke cooldown is at or below zero, the plan is three steps:
+
+1. `ActionStep::Throw { item: "smoke", x: mid.x, y: mid.y }` where `mid` is the integer midpoint of the companion and the first enemy.
+2. `ActionStep::MoveTo` two cells toward that enemy on each axis, using `saturating_add` and `signum`.
+3. `ActionStep::CoverFire` on that enemy for `2.5` seconds.
+
+For the coordinates `setup_world` uses, the companion is `(2, 3)` and the enemy is `(12, 2)`, so the midpoint is `(7, 2)` and the move target is `(4, 1)`. The obstacle column is `x = 6`.
+
+`validate_and_execute` walks steps in order. `ActionStep::Throw` returns `EngineError::LosBlocked` when line of sight fails (`astraweave-core/src/validation.rs`). That variant's display text is `line of sight blocked` (`astraweave-core/src/schema.rs`). A debug `cargo run -p hello_companion` on this tree printed:
+
+```text
+Generated 3 steps
+✅ Generated 3 step plan in <milliseconds>
+
+--- Executing Plan @ t=0.00 ---
+   Plan plan-0 with 3 steps
+⚠️  Execution failed: line of sight blocked. Continuing...
+
+--- Post-execution State @ t=5.00 ---
+Companion: IVec2 { x: 2, y: 3 }
+Enemy:     IVec2 { x: 12, y: 2 }
+Enemy HP:  60
 ```
 
-#### C. Tool Validation System
+The millisecond field is whatever that process measured. The step count, the error line, the positions, and `t=5.00` follow from the source above.
 
-```rust
-fn tool_validation_system(
-    mut query: Query<(&PlanningState, &mut ActionState)>,
-    tool_registry: Res<ToolRegistry>,
-    world: &World,
-) {
-    for (planning, mut action) in query.iter_mut() {
-        if let Some(plan) = &planning.current_plan {
-            for tool_usage in &plan.tools {
-                // This is where the validation happens
-                let validation_result = tool_registry
-                    .get_tool(&tool_usage.tool_name)
-                    .unwrap()
-                    .validate(world, tool_usage);
-                
-                match validation_result {
-                    ValidationResult::Valid => {
-                        info!("Tool validation passed: {}", tool_usage.tool_name);
-                        action.pending_actions.push(tool_usage.clone());
-                    }
-                    ValidationResult::Blocked(reason) => {
-                        error!("Tool validation failed: {:?}", reason);
-                        // This causes the panic in hello_companion
-                        return Err(ToolValidationError::from(reason));
-                    }
-                }
-            }
-        }
-    }
-}
-```
+The throw fails, so `MoveTo` does not run and the companion stays at `(2, 3)`. The process exits 0. `t=5.00` is twenty `run_fixed(1)` calls with `Dt(0.25)`. `MoveTo` would return `EngineError::NoPath` (`path not found`) if a later step reached a blocked path. This world does not get that far.
 
-## Why Does It Panic?
+## Change it and run it again
 
-The panic occurs because the AI tries to move to a position but there's no clear line of sight. Here's what happens:
-
-### 1. AI Perception
-- The companion perceives its current position (0, 0, 0)
-- It detects no obstacles in its perception range
-
-### 2. AI Planning
-- The AI decides it wants to move to position (10, 0, 5)
-- This seems reasonable based on its limited perception
-
-### 3. Tool Validation
-- The MovementTool.validate() method checks line of sight
-- There's an invisible obstacle blocking the path
-- Validation fails with `LosBlocked` error
-
-### 4. Engine Authority
-- The engine refuses to execute the invalid action
-- This maintains world integrity and prevents AI cheating
-
-## Key Learning Points
-
-### 1. AI Cannot Cheat
-The AI doesn't have perfect information about the world. It can only act based on what it perceives, and all actions must be validated by the engine.
-
-### 2. Deterministic Behavior
-Run the example multiple times - you'll get the same result every time. This determinism is crucial for:
-- Reliable testing
-- Networking (same simulation on all clients)
-- Debugging AI behavior
-
-### 3. Tool-Based Architecture
-The AI doesn't directly move entities or change the world. It can only request actions through validated tools:
-- MovementTool (for movement)
-- InteractionTool (for object interaction)
-- CombatTool (for attacks)
-- CommunicationTool (for dialogue)
-
-### 4. Perception vs Reality
-The AI's perception is limited and may not match reality. This creates interesting emergent behavior as AI agents must:
-- Explore to gather information
-- Make decisions with incomplete data
-- Adapt when actions fail
-
-## Modifying the Example
-
-### Make It Not Panic
-
-To see successful AI behavior, modify the world setup:
-
-```rust
-// Remove the obstacle that blocks line of sight
-world.remove_obstacle(Vec3::new(5.0, 0.0, 2.5));
-
-// Or give the AI perfect perception
-ai_agent.perception_range = f32::INFINITY;
-```
-
-### Add More Interesting Behavior
-
-```rust
-// Add a target for the AI to find
-world.spawn()
-    .insert(Position(Vec3::new(15.0, 0.0, 0.0)))
-    .insert(InteractableItem {
-        item_type: "treasure_chest".to_string(),
-        value: 100,
-    });
-
-// The AI will now try to navigate to and interact with the chest
-```
-
-### Enable Logging for More Detail
+Edit `setup_world` in `examples/hello_companion/src/main.rs`. Move the enemy, or clear the obstacle loop, then:
 
 ```bash
-RUST_LOG=debug cargo run -p hello_companion --release
+cargo run -p hello_companion --release
 ```
 
-This shows detailed information about:
-- ECS system execution order
-- AI model input/output
-- Tool validation steps
-- World state changes
+The same four steps run. The plan id is `plan-{}` from `(snap.t * 1000.0) as i64` inside `RuleOrchestrator::propose_plan`.
 
-## Architectural Insights
+## Other modes
 
-### Fixed-Tick Simulation
-The 60Hz fixed timestep ensures:
-- Physics determinism
-- Consistent AI decision making
-- Reliable networking
-- Predictable performance
+Flags go after `--`. Features go before it.
 
-### ECS Benefits
-The Entity-Component-System architecture provides:
-- Cache-friendly performance
-- Clear separation of concerns
-- Easy parallel system execution
-- Modular, testable code
+| Command | What runs |
+| --- | --- |
+| `cargo run -p hello_companion --release` | `RuleOrchestrator` |
+| `cargo run -p hello_companion --release --features llm -- --bt` | Behavior tree in this file, feature `llm` |
+| `cargo run -p hello_companion --release --features llm -- --utility` | Utility scorer, feature `llm` |
+| `cargo run -p hello_companion --release --features llm,ollama -- --llm` | `Qwen3Ollama`, constant `DEFAULT_QWEN_INSTRUCT_MODEL` (`qwen3.5:4b`) |
+| `cargo run -p hello_companion --release --features llm,ollama -- --hybrid` | LLM, then `generate_classical_plan` if that call returns `Err` |
+| `cargo run -p hello_companion --release --features llm -- --ensemble` | Ensemble, feature `llm` |
+| `cargo run -p hello_companion --release --features llm_orchestrator -- --arbiter` | `GoapOrchestrator::propose_plan`, which calls `htn::legacy_goap_plan` |
+| `cargo run -p hello_companion --release --features visual` | `visual_demo::run_visual_demo`. This one opens a window. |
 
-### AI Validation Pipeline
-The perception → planning → validation → execution pipeline ensures:
-- No AI cheating
-- Consistent game rules
-- Emergent behavior from constraints
-- Easy debugging and testing
+`select_ai_mode`: with `ollama` compiled and no flag, the mode is Hybrid. With `llm` and not `ollama`, the mode is Behavior Tree. A flag whose feature is missing prints a warning and uses Classical.
 
-## Next Steps
+`--arbiter` does not construct `AIArbiter`. See [AI Arbiter](../core-systems/ai/arbiter.md).
 
-After understanding hello_companion:
+## What this binary is not
 
-1. **Explore More Examples**: Try [Adaptive Boss](./adaptive-boss.md) for complex AI
-2. **Learn Architecture**: Read [AI-Native Design](../architecture/ai-native.md)
-3. **Build Your Own**: Follow [Building Your First Game](../game-dev/first-game.md)
-4. **Dive Deeper**: Study [Core AI Systems](../core-systems/ai/index.md)
+It is not the cross-OS replay job. The deterministic tick's planner is `RuleOrchestrator` inside `sys_ai_planning`, which is a different call site from this example's direct `propose_plan`. Measurements live on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page.
 
-## Common Questions
+## Related
 
-### Q: Why does it panic instead of just logging the error?
-
-**A**: The panic demonstrates that validation failures are serious. In a real game, you'd handle this gracefully, but the example uses panic to make the validation concept crystal clear.
-
-### Q: Can I make the AI smarter to avoid this error?
-
-**A**: Yes! You can:
-- Improve the AI's perception system
-- Give it better pathfinding tools
-- Add obstacle detection to its planning
-- Implement learning from failed actions
-
-### Q: Is this really how a game AI should work?
-
-**A**: For AI-native games, yes! This approach:
-- Prevents AI cheating
-- Creates emergent behavior
-- Works in multiplayer
-- Enables complex AI interactions
-
-The "failed action = learning opportunity" approach leads to much more interesting AI behavior than scripted sequences.
-
----
-
-*The hello_companion example may be simple, but it demonstrates the fundamental principles that enable AstraWeave's AI-native gameplay. Every complex AI behavior in the engine builds on these same validation patterns.*
+- [Your first companion](../getting-started/first-companion.md)
+- [Examples index](./index.md)
+- [AI system](../core-systems/ai/index.md)

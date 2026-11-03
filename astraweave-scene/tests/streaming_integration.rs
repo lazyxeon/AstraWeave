@@ -9,10 +9,13 @@ use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
 
-/// Helper to generate unique test directory per test to prevent parallel test race conditions
-#[allow(dead_code)]
-fn unique_test_dir(test_name: &str) -> PathBuf {
-    PathBuf::from(format!("target/test_assets/cells_{}", test_name))
+/// Cell files this binary writes.
+///
+/// `CARGO_TARGET_TMPDIR` lives inside the workspace target. A relative
+/// `target/` creates `astraweave-scene/target`, which used to win the GPU
+/// skip log's ancestor walk and fail the workspace-path guard.
+fn scratch_cells() -> PathBuf {
+    PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("test_assets/cells")
 }
 
 /// Helper to create a test cell file
@@ -99,8 +102,8 @@ async fn test_async_cell_loading() {
 #[tokio::test]
 async fn test_memory_budget_enforcement() {
     // Create test directory
-    let test_dir = Path::new("target/test_assets/cells");
-    fs::create_dir_all(test_dir).await.ok();
+    let test_dir = scratch_cells();
+    fs::create_dir_all(&test_dir).await.ok();
 
     // Create multiple cells
     for x in 0..5 {
@@ -319,8 +322,8 @@ async fn test_lru_cache_functionality() {
 #[tokio::test]
 async fn test_performance_no_stalls() {
     // Create test directory
-    let test_dir = Path::new("target/test_assets/cells");
-    fs::create_dir_all(test_dir).await.ok();
+    let test_dir = scratch_cells();
+    fs::create_dir_all(&test_dir).await.ok();
 
     // Create cells
     for x in 0..10 {

@@ -1,8 +1,7 @@
 # Blueprint Zone Editor
 
-> **Status**: Production Ready  
-> **Tests**: 125+  
-> **Crates**: `astraweave-terrain`, `astraweave-blend`, `aw_editor`
+> **Crates**: `astraweave-terrain`, `astraweave-blend`, `aw_editor`  
+> **Status**: this page does not claim a test count or a production grade. Check the crates before copying a signature.
 
 The Blueprint Zone system provides polygon-based spatial control for vegetation generation and heightmap injection. It bridges `.blend` scene imports with AstraWeave's terrain scatter pipeline, enabling both exact 1:1 reproduction (Replica mode) and procedural variation (Inspired mode) of imported environments.
 

@@ -82,17 +82,20 @@ pub fn parse_llm_response(json_text: &str, reg: &ToolRegistry) -> Result<ParseRe
 
     // Stage 1: Try direct parse
     eprintln!("  [Stage 1/5] Attempting Direct JSON Parse...");
-    if let Ok(plan) = try_direct_parse(json_text, reg, &mut warnings) {
-        eprintln!(
-            "  ✅ SUCCESS via Direct Parse! Plan has {} steps",
-            plan.steps.len()
-        );
-        return Ok(ParseResult {
-            plan,
-            extraction_method: ExtractionMethod::Direct,
-            validation_warnings: warnings,
-        });
-    }
+    let direct_err = match try_direct_parse(json_text, reg, &mut warnings) {
+        Ok(plan) => {
+            eprintln!(
+                "  ✅ SUCCESS via Direct Parse! Plan has {} steps",
+                plan.steps.len()
+            );
+            return Ok(ParseResult {
+                plan,
+                extraction_method: ExtractionMethod::Direct,
+                validation_warnings: warnings,
+            });
+        }
+        Err(err) => err,
+    };
     eprintln!("  ❌ Stage 1 failed");
 
     // Stage 2: Try code fence extraction
@@ -164,7 +167,7 @@ pub fn parse_llm_response(json_text: &str, reg: &ToolRegistry) -> Result<ParseRe
     eprintln!("╚═══════════════════════════════════════════════════════════════╝\n");
 
     bail!(
-        "Failed to parse LLM response after all extraction methods. Response preview: {}",
+        "Failed to parse LLM response after all extraction methods. Response preview: {}. Direct parse: {direct_err:#}",
         truncate(json_text, 200)
     );
 }

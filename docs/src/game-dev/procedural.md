@@ -1043,6 +1043,6 @@ impl ContentValidator {
 ## Related Documentation
 
 - [Terrain System](../core-systems/terrain.md) - Terrain rendering integration
-- [Quest Systems](../core-systems/quests.md) - Generated quest execution
+- [Quest Systems](../examples/index.md) - Generated quest execution
 - [AI System Overview](../core-systems/ai/index.md) - AI content enhancement
 - [Configuration Reference](../reference/configuration.md) - PCG parameters

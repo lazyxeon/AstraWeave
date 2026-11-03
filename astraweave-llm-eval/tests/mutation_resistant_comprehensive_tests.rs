@@ -619,7 +619,7 @@ mod mutation_kill_tests {
     use astraweave_llm::LlmClient;
     use std::sync::Arc;
 
-    /// Mock LLM returning 2 ThrowSmoke steps (non-validated types bypass tool registry check)
+    /// Mock LLM returning ThrowSmoke then Attack. The eval registry names both.
     struct SmokePlanMock;
 
     #[async_trait::async_trait]
@@ -650,8 +650,7 @@ mod mutation_kill_tests {
     #[tokio::test]
     async fn evaluate_single_scenario_exact_scores() {
         // SmokePlanMock: [ThrowSmoke, Attack]
-        // These pass validation catch-all (not MoveTo/Throw/CoverFire/Revive)
-        // validity = 1.0 (parsed OK)
+        // The eval registry includes those PascalCase names, so validity is 1.0.
         // goal = 0.0 (no expected actions in match arms for ThrowSmoke/Attack)
         // safety = 1.0 (no forbidden actions in match arms)
         // coherence: 1 pair: ThrowSmoke→Attack, not same type, not MoveTo→CoverFire

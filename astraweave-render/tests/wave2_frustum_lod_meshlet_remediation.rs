@@ -311,12 +311,12 @@ fn lod_selector_close_object_is_lod_0() {
 #[test]
 fn lod_selector_far_object_higher_lod() {
     let sel = LODSelector::new(1080.0, std::f32::consts::FRAC_PI_4);
-    // Object very far away with small error threshold → should pick higher LOD
-    let lod = sel.select_lod(Vec3::new(0.0, 0.0, -1000.0), 0.1, 0.001, Vec3::ZERO, 4);
-    // At 1000 units, projected size is very small → LOD > 0
+    // `lod_error` is a screen-space threshold in pixels (see NANITE.md). Coarser LOD
+    // is chosen when the projected footprint is below that threshold.
+    let lod = sel.select_lod(Vec3::new(0.0, 0.0, -1000.0), 1.0, 100.0, Vec3::ZERO, 4);
     assert!(
         lod > 0,
-        "Distant tiny object should use higher LOD, got {}",
+        "Distant object with footprint below error threshold should use higher LOD, got {}",
         lod
     );
 }
