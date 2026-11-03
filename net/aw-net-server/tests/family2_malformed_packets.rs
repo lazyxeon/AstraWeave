@@ -12,9 +12,10 @@
 //!
 //! 2. A packet that fails to DECODE (truncated, garbage, oversized-undecodable,
 //!    non-binary) is OUTSIDE the kick policy's mandate. The server's in-session
-//!    loop guards binary frames with `if let Ok(m) = decode_msg(..)` and routes
-//!    Text/Ping/other through `Some(Ok(_)) => {}` (Ping is answered with Pong).
-//!    So a decode failure is SILENTLY IGNORED and the connection STAYS OPEN.
+//!    loop guards binary frames with `if let Ok(m) = decode_msg(..)`. Text and
+//!    Pong are charged and are not parsed. Ping is charged and answered with
+//!    Pong when it pays. A few of those frames stay inside the bucket, so the
+//!    connection STAYS OPEN. A decode failure on one frame is not a kick.
 //!    "Stays open" is never proven by the absence of a Close — it is proven by
 //!    subsequent successful AUTHENTICATED traffic (a signed frame followed by an
 //!    in-order Ping→Pong), which under the Kick policy is itself a
@@ -500,11 +501,11 @@ async fn oversized_packets_do_not_panic_server() {
 // ---------------------------------------------------------------------------
 
 /// Text frame with garbage, Text frame with valid-looking JSON, and a WS Ping
-/// with a payload. The server's in-session loop only decodes `Message::Binary`;
-/// Text falls into `Some(Ok(_)) => {}` (ignored — Text is never parsed as a
-/// protocol message), and `Message::Ping(p)` is answered with `Message::Pong(p)`.
-/// The connection stays open throughout, proven by an authenticated round-trip
-/// before and after the non-binary barrage.
+/// with a payload. The server's in-session loop only decodes `Message::Binary`.
+/// Text is charged and is not parsed as a protocol message. A few text frames
+/// stay inside the bucket. `Message::Ping` is answered with `Message::Pong`
+/// when the ping pays. The connection stays open, proven by an authenticated
+/// round-trip before and after the non-binary frames.
 #[tokio::test(flavor = "multi_thread")]
 async fn non_binary_ws_frames_ignored_connection_survives() {
     let key = SigningKey::dev_default();

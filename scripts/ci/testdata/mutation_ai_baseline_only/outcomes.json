@@ -1,0 +1,9 @@
+{
+  "total_mutants": 0,
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success"
+    }
+  ]
+}

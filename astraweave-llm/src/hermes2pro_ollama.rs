@@ -412,10 +412,12 @@ Your responses must be valid JSON following this schema:
 Available actions: MoveTo, Throw, CoverFire, Revive.
 Always prioritize team survival and tactical advantage."#;
 
-/// Implement LlmClient trait for Ollama-based Hermes 2 Pro
-#[async_trait]
-impl LlmClient for Hermes2ProOllama {
-    async fn complete(&self, prompt: &str) -> Result<String> {
+impl Hermes2ProOllama {
+    async fn complete_formatted(
+        &self,
+        prompt: &str,
+        format_schema: Option<&serde_json::Value>,
+    ) -> Result<String> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
@@ -428,7 +430,7 @@ impl LlmClient for Hermes2ProOllama {
         }
         messages.push(json!({"role": "user", "content": prompt}));
 
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "messages": messages,
             "stream": false,
@@ -438,6 +440,9 @@ impl LlmClient for Hermes2ProOllama {
                 "num_ctx": 8192,  // Hermes 2 Pro supports 8192 tokens (2× Phi-3)
             }
         });
+        if let Some(schema) = format_schema {
+            crate::plan_format::insert_schema_format(&mut body, schema);
+        }
 
         // ═══ DEBUG LOGGING ═══
         eprintln!("\n╔═══════════════════════════════════════════════════════════════╗");
@@ -456,20 +461,7 @@ impl LlmClient for Hermes2ProOllama {
         let start = std::time::Instant::now();
 
         let response_json: serde_json::Value = crate::with_call_deadline(120, async {
-            let response = crate::send_for_headers(
-                crate::stream_read_idle(),
-                client.post(&url).json(&body).send(),
-            )
-            .await
-            .context("Failed to send request to Ollama")?;
-
-            if !response.status().is_success() {
-                anyhow::bail!("Ollama returned error: {}", response.status());
-            }
-
-            crate::read_capped_json(response)
-                .await
-                .context("Failed to parse Ollama response")
+            crate::post_ollama_json_value(client, &url, body).await
         })
         .await?;
 
@@ -497,6 +489,22 @@ impl LlmClient for Hermes2ProOllama {
         );
 
         Ok(text)
+    }
+}
+
+/// Implement LlmClient trait for Ollama-based Hermes 2 Pro
+#[async_trait]
+impl LlmClient for Hermes2ProOllama {
+    async fn complete(&self, prompt: &str) -> Result<String> {
+        self.complete_formatted(prompt, None).await
+    }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        self.complete_formatted(prompt, Some(format)).await
     }
 
     /// Complete with streaming support (progressive response delivery)

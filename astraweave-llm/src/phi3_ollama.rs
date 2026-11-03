@@ -265,10 +265,12 @@ Your responses must be valid JSON following this schema:
 Available actions: MoveTo, Throw, CoverFire, Revive.
 Always prioritize team survival and tactical advantage."#;
 
-/// Implement LlmClient trait for Ollama-based Phi-3
-#[async_trait]
-impl LlmClient for Phi3Ollama {
-    async fn complete(&self, prompt: &str) -> Result<String> {
+impl Phi3Ollama {
+    async fn complete_formatted(
+        &self,
+        prompt: &str,
+        format_schema: Option<&serde_json::Value>,
+    ) -> Result<String> {
         crate::ensure_model_request(&self.url, self.allow_remote)?;
         let client = &self.client;
 
@@ -281,7 +283,7 @@ impl LlmClient for Phi3Ollama {
             prompt.to_string()
         };
 
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "prompt": full_prompt,
             "stream": false,
@@ -291,6 +293,9 @@ impl LlmClient for Phi3Ollama {
                 "num_ctx": 4096,  // Reduced context window for speed
             }
         });
+        if let Some(schema) = format_schema {
+            crate::plan_format::insert_schema_format(&mut body, schema);
+        }
 
         // ═══ PHASE 7 DEBUG LOGGING ═══
         eprintln!("\n╔═══════════════════════════════════════════════════════════════╗");
@@ -308,20 +313,7 @@ impl LlmClient for Phi3Ollama {
         let start = std::time::Instant::now();
 
         let response_json: serde_json::Value = crate::with_call_deadline(120, async {
-            let response = crate::send_for_headers(
-                crate::stream_read_idle(),
-                client.post(&url).json(&body).send(),
-            )
-            .await
-            .context("Failed to send request to Ollama")?;
-
-            if !response.status().is_success() {
-                anyhow::bail!("Ollama returned error: {}", response.status());
-            }
-
-            crate::read_capped_json(response)
-                .await
-                .context("Failed to parse Ollama response")
+            crate::post_ollama_json_value(client, &url, body).await
         })
         .await?;
 
@@ -349,6 +341,22 @@ impl LlmClient for Phi3Ollama {
         );
 
         Ok(text)
+    }
+}
+
+/// Implement LlmClient trait for Ollama-based Phi-3
+#[async_trait]
+impl LlmClient for Phi3Ollama {
+    async fn complete(&self, prompt: &str) -> Result<String> {
+        self.complete_formatted(prompt, None).await
+    }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        self.complete_formatted(prompt, Some(format)).await
     }
 }
 

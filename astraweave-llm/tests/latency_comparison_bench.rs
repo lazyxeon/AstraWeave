@@ -281,7 +281,9 @@ async fn latency_comparison_qwen3_vs_hermes2pro() {
     //   - Minimal system prompt (matched to Hermes prompt length)
     //
     // Note: Qwen3::fast() sets ctx=2048, num_batch=1024, num_keep=-1,
-    // use_mmap=true, keep_alive=-1. These are Ollama-level optimizations
+    // use_mmap=true, keep_alive=-1. num_keep is the context-shift keep count.
+    // Prefix reuse is keep_alive plus the server prompt cache.
+    // These are Ollama-level optimizations
     // that Hermes benefits from its smaller model size instead (7B vs 8.2B params).
     let qwen3 = Qwen3Ollama::fast()
         .expect("model client")

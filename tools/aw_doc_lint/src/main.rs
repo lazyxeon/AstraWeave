@@ -1704,8 +1704,8 @@ mod tests {
         let workflow = include_str!("../../../.github/workflows/doc-truth-lint.yml");
         assert!(!workflow.contains("anyhow + clap"), "{workflow}");
         assert!(workflow.contains("unicode_categories"));
-        let status = include_str!("../../../docs/current/ENGINE_STATUS.md");
-        assert!(status.contains("U+2018"));
+        let spec = include_str!("../../../docs/campaigns/doc-truth/CLOSED_VOCABULARY_LINT.md");
+        assert!(spec.contains("U+2018"));
     }
 
     #[test]

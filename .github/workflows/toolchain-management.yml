@@ -52,9 +52,10 @@ jobs:
           - "1.88.0"  # Previous stable for compatibility
           - beta
         include:
-          # Test nightly features if requested
+          # Dated nightly from .github/rust-nightly-channel (#560).
+          # The label is not a rustup channel; the step below installs the pin.
           - os: ubuntu-latest
-            toolchain: nightly
+            toolchain: pinned-nightly
             experimental: true
         exclude:
           # Skip beta/older versions on Windows/macOS to reduce CI time and cost
@@ -79,7 +80,14 @@ jobs:
           # hashes that pointer instead of AnimationLibrary_Godot_Standard.bin.
           lfs: true
 
+      - name: Set up pinned nightly
+        if: matrix.experimental
+        uses: ./.github/actions/rust-nightly
+        with:
+          components: rustfmt, clippy, rust-src, rust-analyzer
+
       - name: Set up Rust toolchain
+        if: ${{ !matrix.experimental }}
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ github.event.inputs.toolchain_version || matrix.toolchain }}
@@ -179,7 +187,8 @@ jobs:
           fi
 
       - name: Check code formatting compatibility
-        if: matrix.toolchain != 'nightly'  # Nightly may have different formatting rules
+        # The pinned-nightly row sets experimental. Nightly rustfmt can differ.
+        if: ${{ !matrix.experimental }}
         shell: bash
         run: bash .github/scripts/fmt-check.sh
 
@@ -188,7 +197,7 @@ jobs:
           cargo clippy --locked --workspace ${{ env.EXCLUDED_PACKAGES }} -- -D warnings
 
       - name: Test nightly features (if nightly)
-        if: matrix.toolchain == 'nightly'
+        if: matrix.experimental
         run: |
           # Test unstable features that might be beneficial
           echo 'Testing nightly-specific features...'

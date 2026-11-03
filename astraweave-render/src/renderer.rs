@@ -12013,12 +12013,21 @@ fn install_device_error_handler(
 /// Append one skip line for a test that found no adapter.
 ///
 /// `new_headless` does not call this. The parent directory has to already
-/// exist and canonicalize to the workspace `target/` directory. The file
-/// itself is created. A symlink at the final path is refused, and the open
-/// does not follow one. A failed write panics so the test does not pass
-/// without a line.
-#[allow(clippy::panic)]
+/// exist and canonicalize to the workspace `target/` directory. That
+/// directory is `CARGO_TARGET_DIR` when set, otherwise the parent of this
+/// crate's compile-time manifest plus `target`. The calling test's runtime
+/// manifest is not consulted, so a `<crate>/target` directory does not move
+/// the log. The file itself is created. A symlink at the final path is
+/// refused, and the open does not follow one. A failed write panics so the
+/// test does not pass without a line.
 pub fn record_gpu_skip_for_tests(reason: &str) {
+    record_gpu_skip_for_tests_at(reason, std::env::var_os("AW_GPU_SKIP_LOG"));
+}
+
+/// `log_override` is `AW_GPU_SKIP_LOG`. `None` uses `gpu-skip-reasons.txt`
+/// inside the workspace target. The guard is the same either way.
+#[allow(clippy::panic)]
+fn record_gpu_skip_for_tests_at(reason: &str, log_override: Option<std::ffi::OsString>) {
     let target = existing_workspace_target();
     let target = target.canonicalize().unwrap_or_else(|err| {
         panic!(
@@ -12026,7 +12035,7 @@ pub fn record_gpu_skip_for_tests(reason: &str) {
             target.display()
         )
     });
-    let path = match std::env::var_os("AW_GPU_SKIP_LOG") {
+    let path = match log_override {
         Some(raw) => std::path::PathBuf::from(raw),
         None => target.join("gpu-skip-reasons.txt"),
     };
@@ -12116,20 +12125,24 @@ fn one_skip_line(reason: &str) -> String {
         .collect()
 }
 
+/// Workspace `target/` for the GPU skip log.
+///
+/// `CARGO_TARGET_DIR` wins when the process has it. Otherwise the path is
+/// the parent of this crate's compile-time manifest plus `target`.
+/// `env!("CARGO_MANIFEST_DIR")` is baked into `astraweave-render`. The
+/// runtime `CARGO_MANIFEST_DIR` is the package Cargo is testing, and an
+/// ancestor walk stops at the first `target/` directory. Scene streaming
+/// tests created `astraweave-scene/target`, so that walk returned the crate
+/// directory and the guard rejected the workspace skip log.
 fn existing_workspace_target() -> std::path::PathBuf {
     if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
         return std::path::PathBuf::from(dir);
     }
-    let manifest = std::path::PathBuf::from(
-        std::env::var_os("CARGO_MANIFEST_DIR").unwrap_or_else(|| std::ffi::OsString::from(".")),
-    );
-    for ancestor in manifest.ancestors() {
-        let candidate = ancestor.join("target");
-        if candidate.is_dir() {
-            return candidate;
-        }
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    match manifest.parent() {
+        Some(workspace) => workspace.join("target"),
+        None => manifest.join("target"),
     }
-    manifest.join("target")
 }
 
 fn warp_requested() -> bool {
@@ -12206,6 +12219,98 @@ mod skip_log_tests {
         assert!(super::is_missing_adapter(&wrapped));
         let other: anyhow::Error = wgpu::RequestAdapterError::EnvNotSet.into();
         assert!(!super::is_missing_adapter(&other));
+    }
+
+    /// A `<crate>/target` directory must not steal the workspace skip log.
+    ///
+    /// The log path is what CI sets on `AW_GPU_SKIP_LOG`: a file whose parent
+    /// is the workspace `target/`. The override is passed in so a parallel
+    /// lib test does not observe a process-wide `set_var`.
+    #[test]
+    fn crate_local_target_keeps_the_workspace_skip_log() {
+        let decoy = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
+        let created = !decoy.exists();
+        if created {
+            std::fs::create_dir_all(&decoy).expect("crate-local target");
+        }
+        struct Cleanup {
+            decoy: std::path::PathBuf,
+            created: bool,
+            log: Option<std::path::PathBuf>,
+        }
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                if let Some(log) = &self.log {
+                    let _ = std::fs::remove_file(log);
+                }
+                if self.created {
+                    let _ = std::fs::remove_dir_all(&self.decoy);
+                }
+            }
+        }
+        let mut cleanup = Cleanup {
+            decoy: decoy.clone(),
+            created,
+            log: None,
+        };
+        let workspace = super::existing_workspace_target()
+            .canonicalize()
+            .expect("workspace target");
+        let decoy_canon = decoy.canonicalize().expect("decoy target");
+        assert_ne!(
+            workspace, decoy_canon,
+            "crate-local target must not become the workspace target"
+        );
+        let log_name = format!(
+            "gpu-skip-crate-decoy-{}-{}.txt",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        );
+        let log = workspace.join(log_name);
+        cleanup.log = Some(log.clone());
+        super::record_gpu_skip_for_tests_at(
+            "crate-local target must not win",
+            Some(log.as_os_str().to_os_string()),
+        );
+        let written = std::fs::read_to_string(&log).expect("skip line");
+        assert!(
+            written.contains("SKIP(gpu):") && written.contains("crate-local target must not win"),
+            "{written}"
+        );
+        assert!(
+            !decoy.join("gpu-skip-reasons.txt").exists(),
+            "skip line was written under the crate-local target"
+        );
+    }
+
+    #[test]
+    fn skip_log_outside_the_workspace_target_still_panics() {
+        let dir = std::env::temp_dir().join(format!("aw-gpu-skip-outside-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("outside dir");
+        let path = dir.join("gpu-skip-reasons.txt");
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::record_gpu_skip_for_tests_at("outside", Some(path.as_os_str().to_os_string()));
+        }));
+        let created = path.exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        let payload = caught.expect_err("a skip log outside the workspace target must panic");
+        let text = panic_message(&payload);
+        assert!(text.contains("is outside"), "guard message was {text}");
+        assert!(!created, "the refused skip log must not be created");
+    }
+
+    fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+        if let Some(msg) = payload.downcast_ref::<String>() {
+            return msg.clone();
+        }
+        if let Some(msg) = payload.downcast_ref::<&str>() {
+            return (*msg).to_string();
+        }
+        "non-string panic".to_string()
     }
 }
 

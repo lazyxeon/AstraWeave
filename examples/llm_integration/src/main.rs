@@ -352,6 +352,39 @@ fn create_tool_registry() -> ToolRegistry {
                     .map(|(k, v)| (k.into(), v.into()))
                     .collect(),
             },
+            // `parse_llm_plan` matches ActionStep names, which are PascalCase.
+            ToolSpec {
+                name: "MoveTo".into(),
+                args: [("x", "i32"), ("y", "i32")]
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.into()))
+                    .collect(),
+            },
+            ToolSpec {
+                name: "Throw".into(),
+                args: [
+                    ("item", "enum[smoke,grenade,flashbang]"),
+                    ("x", "i32"),
+                    ("y", "i32"),
+                ]
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+            },
+            ToolSpec {
+                name: "CoverFire".into(),
+                args: [("target_id", "u32"), ("duration", "f32")]
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.into()))
+                    .collect(),
+            },
+            ToolSpec {
+                name: "Revive".into(),
+                args: [("ally_id", "u32")]
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v.into()))
+                    .collect(),
+            },
         ],
         constraints: Constraints {
             enforce_cooldowns: true,

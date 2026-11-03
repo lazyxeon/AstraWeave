@@ -1,7 +1,6 @@
 use anyhow::Result;
 use astraweave_core::{Constraints, ToolRegistry, ToolSpec};
 use astraweave_llm::parse_llm_plan;
-use std::collections::BTreeMap;
 use std::fs;
 
 fn main() -> Result<()> {
@@ -51,6 +50,20 @@ fn main() -> Result<()> {
         name: "revive".into(),
         args: [("ally_id".into(), "u32".into())].into_iter().collect(),
     });
+    // `parse_llm_plan` matches ActionStep names, which are PascalCase.
+    for spec in tools.clone() {
+        let pascal = match spec.name.as_str() {
+            "move_to" => "MoveTo",
+            "throw" => "Throw",
+            "cover_fire" => "CoverFire",
+            "revive" => "Revive",
+            _ => continue,
+        };
+        tools.push(ToolSpec {
+            name: pascal.into(),
+            args: spec.args,
+        });
+    }
 
     let reg = ToolRegistry {
         tools,
