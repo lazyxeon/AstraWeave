@@ -116,13 +116,9 @@ impl PlanDebugger {
         self.state_history.push(new_state);
         let previous_step = self.current_step;
         self.current_step += 1;
-        // Shard 1/8 OOM: `+=` → `*=` leaves current_step unchanged (it starts at 0),
-        // so jump_to_step pushes a WorldState on every iteration until the runner
-        // dies. Nightly job 125720952789 (run 41576449610, SHA 3aaf59b0) logged
-        // `ERROR scenario execution internal error err=interrupted phase=Test`
-        // 341s after the missed mutant at adapter.rs:137:72. On that tree the
-        // in-progress mutant is inferred (not confirmed in the log) as shard list
-        // index 168 → debug_tools.rs:117:27. lazyxeon/AstraWeave#605.
+        // Not observable on correct code: `+=` is always an advance here. This guard
+        // only turns the cargo-mutants `*=` mutant into a fast `Err` instead of an
+        // unbounded `jump_to_step` loop (shard 1/8 OOM; lazyxeon/AstraWeave#605).
         if self.current_step <= previous_step {
             let _ = self.state_history.pop();
             self.current_step = previous_step;
@@ -511,9 +507,9 @@ mod tests {
 
     #[test]
     fn jump_to_step_stops_when_the_step_counter_sticks() {
-        // Kills `replace += with *= in PlanDebugger::step_forward` (shard 1/8 OOM).
-        // Deleting the advance guard fails this test: the source check below goes
-        // red, and with `*=` applied jump_to_step allocates without bound.
+        // Exercises jump_to_step on a two-step plan. Removing the advance guard in
+        // step_forward is not observable here; that guard exists only to turn the
+        // `*=` mutant from an OOM crash into a fast failure (see step_forward).
         let plan = vec!["action1".to_string(), "action2".to_string()];
         let start = WorldState::new();
         let actions = vec![
@@ -525,14 +521,6 @@ mod tests {
         debugger.jump_to_step(2).unwrap();
         assert_eq!(debugger.current_step(), 2);
         assert_eq!(debugger.state_history.len(), 3);
-
-        let src = include_str!("debug_tools.rs");
-        let start_fn = src.find("fn step_forward").expect("step_forward present");
-        let end_fn = src.find("fn step_backward").expect("step_backward present");
-        assert!(
-            src[start_fn..end_fn].contains("PlanDebugger step did not advance"),
-            "step_forward must reject a counter that does not advance"
-        );
     }
 
     #[test]
