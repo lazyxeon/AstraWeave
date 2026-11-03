@@ -252,7 +252,7 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("CARGO_INCREMENTAL=0", action)
         self.assertIn("SCCACHE_GHA_RW_MODE=READ_ONLY", action)
         self.assertIn("SCCACHE_GHA_RW_MODE=READ_WRITE", action)
-        self.assertIn("SCCACHE_GHA_VERSION=${{ runner.os }}", action)
+        self.assertNotIn("SCCACHE_GHA_VERSION", action)
         self.assertIn("sccache-populate", action)
         self.assertIn("refs/heads/main", action)
         # RUSTFLAGS replaces every rustflags entry. The pin is in cargo config.

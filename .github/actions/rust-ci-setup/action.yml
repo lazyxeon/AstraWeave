@@ -64,11 +64,6 @@ runs:
       run: |
         echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
         echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-        # One ghac namespace per OS. The default version is shared; Linux gate
-        # and Test full write hundreds of x86_64 objects and evict sparse
-        # aarch64-apple-darwin entries before macOS Test full reads them (run
-        # 41578863044: 0.44% Rust hit rate, 78 cache write errors).
-        echo "SCCACHE_GHA_VERSION=${{ runner.os }}" >> "$GITHUB_ENV"
         echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"

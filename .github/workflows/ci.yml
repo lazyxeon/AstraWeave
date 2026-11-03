@@ -534,8 +534,8 @@ jobs:
     name: Test full (macos, build archive)
     runs-on: macos-latest
     needs: [changes, gate]
-    # 90: cold aarch64 sccache still compiles ~40 minutes before nextest (run
-    # 41578863044). Partitions stay at 60; they run the uploaded archive.
+    # 90: archive compile plus on-runner bin/probe targets (~40m on run
+    # 41578863044) before partitions start. Partitions stay at 60.
     timeout-minutes: 90
     if: github.event_name != 'pull_request' && needs.gate.result == 'success'
     steps:
