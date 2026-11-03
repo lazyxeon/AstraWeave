@@ -8,8 +8,10 @@
 //! (`<<<<<<<` … `=======` … `>>>>>>>`) before the fence closes, and the fence
 //! ends with no unclosed conflict still open. Only the first balanced example in
 //! such a fence is suppressed when the fence **closes** with a valid closing line;
-//! an unclosed fence that runs to EOF never suppresses markers. Any later marker
-//! in that fence is reported.
+//! an unclosed fence that runs to EOF never suppresses markers. A `>>>>>>>` or
+//! `|||||||` before that first `<<<<<<<`, or a `>>>>>>>` before any `=======`,
+//! clears the exemption, so the conflict that follows is reported. Any later
+//! marker in that fence is reported.
 //!
 //! Fence lines follow CommonMark: up to three spaces of indent, an opening run
 //! of three or more `` ` `` or `~` characters (optional info string), and a
@@ -214,11 +216,24 @@ fn apply_line_markers(path: &str, line_num: usize, line: &str, block: &mut Pendi
         } else if msg.contains(">>>>>>>") {
             block.saw_closer = true;
             block.in_conflict = false;
-            if block.exempt_candidate && block.saw_opener && !block.saw_separator {
+            // A closer before `=======` is not a balanced example. That includes
+            // a closer that arrives before any `<<<<<<<`. Leaving the candidate
+            // set would drop the conflict that follows once this line is removed.
+            if block.exempt_candidate && !block.saw_separator {
                 invalidate_exempt_example_tracking(block);
                 block.exempt_candidate = false;
             }
         } else if msg.contains("|||||||") {
+            // A parent marker before the first opener is not the diff3 line of
+            // an example. Clear the candidate so the conflict that follows stays.
+            if block.exempt_candidate
+                && block.exempt_quiet_range.is_none()
+                && block.exempt_example_start.is_none()
+                && !block.in_conflict
+            {
+                invalidate_exempt_example_tracking(block);
+                block.exempt_candidate = false;
+            }
             block.saw_opener = true;
         }
     }
@@ -510,20 +525,44 @@ mod tests {
     }
 
     #[test]
-    fn stray_marker_before_exempt_example_is_flagged() {
+    fn leading_closer_before_conflict_is_not_exempt() {
+        // A `>>>>>>>` before the first `<<<<<<<` must not quiet the conflict
+        // that follows. Deleting the closer leaves a normal exempt example.
         let body = format!(
-            "```text\n{}\n{}\n{}\n{}\n```\n",
-            closer("x"),
+            "```text\n{}\n{}\nours\n{}\ntheirs\n{}\n```\n",
+            closer("stray"),
             opener(),
             separator(),
-            closer("b")
+            closer("branch")
         );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(error_lines(&errors), [2], "{errors:?}");
+        assert_eq!(error_lines(&errors), [2, 3, 5, 7], "{errors:?}");
+        let example = format!(
+            "```text\n{}\nours\n{}\ntheirs\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("branch")
+        );
+        assert!(
+            conflict_marker_errors("doc.md", &example).is_empty(),
+            "the same conflict with the leading closer removed stays exempt"
+        );
     }
 
     #[test]
-    fn stray_markers_before_and_after_exempt_example_are_flagged() {
+    fn leading_diff3_parent_before_conflict_is_not_exempt() {
+        let body = format!(
+            "```text\n||||||| parent\n{}\nours\n{}\ntheirs\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("branch")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert_eq!(error_lines(&errors), [2, 3, 5, 7], "{errors:?}");
+    }
+
+    #[test]
+    fn leading_closer_reports_the_conflict_and_later_markers() {
         let body = format!(
             "```text\n{}\n{}\n{}\n{}\n{}\n{}\n```\n",
             closer("x"),
@@ -534,7 +573,19 @@ mod tests {
             closer("y")
         );
         let errors = conflict_marker_errors("doc.md", &body);
-        assert_eq!(error_lines(&errors), [2, 6, 7], "{errors:?}");
+        assert_eq!(error_lines(&errors), [2, 3, 4, 5, 6, 7], "{errors:?}");
+    }
+
+    #[test]
+    fn diff3_example_in_exempt_fence_is_not_flagged() {
+        let body = format!(
+            "```text\n{}\n||||||| parent\nours\n{}\ntheirs\n{}\n```\n",
+            opener(),
+            separator(),
+            closer("branch")
+        );
+        let errors = conflict_marker_errors("doc.md", &body);
+        assert!(errors.is_empty(), "{errors:?}");
     }
 
     #[test]
