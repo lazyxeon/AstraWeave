@@ -38,8 +38,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install pinned Rust nightly
+        uses: ./.github/actions/rust-nightly
         with:
           components: llvm-tools-preview
 
@@ -58,5 +58,6 @@ jobs:
       - name: Fuzz ${{ matrix.target }} for two minutes
         working-directory: ${{ matrix.dir }}
         # rust-toolchain.toml pins 1.89.0, so a bare `cargo` is stable.
-        # cargo-fuzz passes -Z, which stable rejects.
-        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=120
+        # cargo-fuzz passes -Z, which stable rejects. AW_NIGHTLY is the
+        # dated channel in .github/rust-nightly-channel (#560).
+        run: cargo +$AW_NIGHTLY fuzz run ${{ matrix.target }} -- -max_total_time=120

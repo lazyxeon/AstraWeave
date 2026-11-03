@@ -115,6 +115,9 @@ jobs:
       - name: Player-facing name check
         run: bash scripts/ci/player_facing_names.sh
 
+      - name: Workflow policy
+        run: python3 scripts/ci/test_workflow_policy.py
+
       - name: Rust CI setup
         if: needs.changes.outputs.docs_only != 'true'
         uses: ./.github/actions/rust-ci-setup

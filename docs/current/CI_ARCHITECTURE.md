@@ -48,7 +48,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 | Replay hash, Ubuntu / Windows / macOS, then compare. Nineteen required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, `persist_replay`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
 | cargo-deny, cargo-audit | `Cargo Deny Check`, `Security Audit (cargo-audit)` |
 
-These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
+These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs, and Miri job `miri-ecs-hotpath` (`miri.yml`; paths `astraweave-ecs/src/blob_vec.rs`, `sparse_set.rs`, and `archetype.rs`). That Miri job is not required. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
 `PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub treats a skipped required check as missing, which blocks the merge. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
 
@@ -57,7 +57,7 @@ These also run on a non-docs pull request when their paths match, and are not in
 | Work | When |
 |---|---|
 | Full 3-OS `cargo nextest` plus a release build of the core crates, and demo validation | `ci.yml` on push, schedule 04:30 UTC, dispatch. Not on pull requests. |
-| 5-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. #375 removes the 50 ms debug wall-clock assert from `view_ring_lod_keeps_the_forest_under_budget`. The test still requires `total > 400` and `kept < 900`. macOS 1.89 on run 39084152246 measured 50.776916 ms, failed `as_millis() < 50`, and skipped `Run clippy with toolchain`. That host-clock assert no longer skips clippy. MSRV stays on the pull request. |
+| 5-toolchain matrix (stable, 1.89.0, 1.88.0, beta, pinned nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The nightly matrix label is `pinned-nightly`. The channel is the date in `.github/rust-nightly-channel` (#560). Miri, sanitizers, and fuzz use that same pin. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. #375 removes the 50 ms debug wall-clock assert from `view_ring_lod_keeps_the_forest_under_budget`. The test still requires `total > 400` and `kept < 900`. macOS 1.89 on run 39084152246 measured 50.776916 ms, failed `as_millis() < 50`, and skipped `Run clippy with toolchain`. That host-clock assert no longer skips clippy. MSRV stays on the pull request. |
 | Sanitizers | `sanitizers.yml` on push and schedule 03:00 UTC. Not on pull requests. |
 | Coverage | `coverage.yml` on push to main, schedule 06:10 UTC, dispatch. |
 | CodeQL | push to main and weekly (Sunday 03:00 UTC). Not on pull requests. |
@@ -193,7 +193,7 @@ Require:
 
 Do not require the individual `Test (windows, N/3)` or `Gate` names. On a docs-only pull request those jobs are skipped, and a skipped required check blocks the merge. `PR Rust checks` is the rollup.
 
-Do not require `Test (windows, build archive)` or `Test (windows, N/3)` individually. The rollup fails if the archive build fails or any partition fails. Do not require path-filtered jobs (`net-tests`, trace sync, doc-truth, docs). PBR, Editor CI, and AW Editor tests do not run on pull requests.
+Do not require `Test (windows, build archive)` or `Test (windows, N/3)` individually. The rollup fails if the archive build fails or any partition fails. Do not require path-filtered jobs (`net-tests`, trace sync, doc-truth, docs, Miri `miri-ecs-hotpath`). PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
 `Cargo Deny Check` is safe to require. TLS for reqwest, the websocket client, hf-hub, and ort is rustls, so the `openssl` / `openssl-sys` bans in `deny.toml` are not tripped.
 
