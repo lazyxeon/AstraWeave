@@ -120,22 +120,16 @@ impl PlanDebugger {
         // so jump_to_step pushes a WorldState on every iteration until the runner
         // dies. Nightly job 125720952789 (run 41576449610, SHA 3aaf59b0) logged
         // `ERROR scenario execution internal error err=interrupted phase=Test`
-        // 341s after the missed mutant at adapter.rs:137:72. On that tree this is
-        // debug_tools.rs:117:27, shard list index 168. lazyxeon/AstraWeave#605.
-        if self.step_did_not_advance(previous_step) {
+        // 341s after the missed mutant at adapter.rs:137:72. On that tree the
+        // in-progress mutant is inferred (not confirmed in the log) as shard list
+        // index 168 → debug_tools.rs:117:27. lazyxeon/AstraWeave#605.
+        if self.current_step <= previous_step {
             let _ = self.state_history.pop();
             self.current_step = previous_step;
             return Err("PlanDebugger step did not advance".to_string());
         }
 
         Ok(())
-    }
-
-    /// True when a step failed to move the cursor or grew history past the plan.
-    /// Operators here are excluded in `.cargo/mutants.toml`: unmutated tests never
-    /// take this branch, and the branch exists to catch `+=` → `*=`.
-    fn step_did_not_advance(&self, previous_step: usize) -> bool {
-        self.current_step <= previous_step || self.state_history.len() > self.plan.len() + 1
     }
 
     /// Step backward one action
