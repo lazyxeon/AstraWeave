@@ -256,6 +256,15 @@ impl AdvancedGOAP {
                 );
                 return None;
             }
+            if open_set.len() > self.max_plan_iterations {
+                tracing::warn!(
+                    "Open set size ({}) exceeded max iterations ({}) for goal '{}'",
+                    open_set.len(),
+                    self.max_plan_iterations,
+                    goal.name
+                );
+                return None;
+            }
 
             // Goal check
             if goal.is_satisfied(&current.state) {
@@ -1092,6 +1101,33 @@ mod tests {
         let plan = goap.plan(&start, &goal);
         assert!(plan.is_some(), "max_iterations=2 should allow 1-step plan");
         assert_eq!(plan.unwrap(), vec!["act"]);
+    }
+
+    #[test]
+    fn test_plan_direct_open_set_size_capped() {
+        // Kills unbounded open-set growth when iteration guards are mutated (#605).
+        let mut goap = AdvancedGOAP::new();
+        goap.set_max_iterations(32);
+        for i in 0..16 {
+            let mut effects = BTreeMap::new();
+            effects.insert(format!("flag_{i}"), StateValue::Bool(true));
+            goap.add_action(Box::new(SimpleAction::new(
+                format!("action_{i}"),
+                BTreeMap::new(),
+                effects,
+                1.0,
+            )));
+        }
+        let start = WorldState::new();
+        let mut goal_state = BTreeMap::new();
+        goal_state.insert("flag_99".to_string(), StateValue::Bool(true));
+        let goal = Goal::new("unreachable", goal_state);
+        let started = std::time::Instant::now();
+        assert!(goap.plan(&start, &goal).is_none());
+        assert!(
+            started.elapsed().as_secs() < 5,
+            "plan_direct should abort instead of allocating without bound"
+        );
     }
 
     #[test]

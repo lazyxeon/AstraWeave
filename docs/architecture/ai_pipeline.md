@@ -2031,6 +2031,8 @@ Despite the architectural cleanliness of the `Orchestrator`-trait integration, n
 |---|---|---|---|
 | AG1 | Every `pub mod` and `pub use` in `mod.rs` is `#[cfg(feature = "planner_advanced")]`-gated. With the feature off, nothing in the Advanced GOAP submodule is reachable from the crate root. | Yes | `mod.rs:4-88` — every line has the cfg attribute |
 | AG2 | `AdvancedGOAP::new()` defaults: `max_plan_iterations = 10000`, `risk_weight = 5.0`, empty actions, empty history. | Yes | `planner.rs:55-63` |
+| AG2b | `plan_direct` aborts when `open_set.len() > max_plan_iterations` (same numeric cap as the iteration guard; lazyxeon/AstraWeave#605). | Yes | `planner.rs:249-268` |
+| AG2c | `tick_agents` insertion sort uses a per-`i` step guard (`guard > n`) so `j -= 1` → `j += 1` mutants cannot spin (shard 1/8). | Yes | `htn.rs:447-465` |
 | AG3 | `Action::calculate_cost` default impl clamps cost to `≥ 0.1` (never zero or negative). | Yes | `action.rs:34` (`cost.max(0.1)`) |
 | AG4 | `Action::calculate_cost` failure_penalty bounded `[0, 10.0]` per `failure_rate * 10.0`; success_bonus bounded `[-2.0, 0]` per `success_rate * -2.0`. | Yes | `action.rs:25-29` |
 | AG5 | `Action::success_probability` default returns 0.8 (80%) for unknown actions. | Yes | `action.rs:48` |
