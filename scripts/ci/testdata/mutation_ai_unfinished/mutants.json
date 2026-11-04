@@ -1,0 +1,8 @@
+[
+  {
+    "name": "src/lib.rs:1:1: replace foo with 0"
+  },
+  {
+    "name": "src/lib.rs:2:1: replace bar with 0"
+  }
+]

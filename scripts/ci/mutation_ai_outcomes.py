@@ -45,6 +45,17 @@ def _log_is_cap_oom(mutants_out_dir: Path, log_path: str | None) -> bool:
     return any(marker in text for marker in CAP_OOM_MARKERS)
 
 
+def expected_mutant_count(mutants_path: Path) -> int | None:
+    if not mutants_path.is_file():
+        return None
+    data = json.loads(mutants_path.read_text(encoding="utf-8"))
+    if isinstance(data, list):
+        return len(data)
+    if isinstance(data, dict) and isinstance(data.get("mutants"), list):
+        return len(data["mutants"])
+    return None
+
+
 def count_outcomes(outcomes_path: Path) -> OutcomeCounts:
     data = json.loads(outcomes_path.read_text(encoding="utf-8"))
     mutants_out_dir = outcomes_path.parent
@@ -84,6 +95,18 @@ def verify_shard_outcomes(outcomes_path: Path) -> list[str]:
     non_baseline = len([o for o in outcomes if o.get("scenario") != "Baseline"])
     if non_baseline <= 0:
         errors.append("no mutant outcomes recorded after baseline")
+
+    if data.get("end_time") is None:
+        errors.append("cargo-mutants did not finish (end_time is null)")
+
+    mutants_path = outcomes_path.parent / "mutants.json"
+    expected = expected_mutant_count(mutants_path)
+    if expected is None:
+        errors.append(f"missing or unreadable mutants list beside outcomes: {mutants_path}")
+    elif non_baseline != expected:
+        errors.append(
+            f"incomplete shard: {non_baseline} mutant outcomes recorded, expected {expected}"
+        )
     return errors
 
 
