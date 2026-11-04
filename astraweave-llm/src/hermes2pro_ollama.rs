@@ -59,6 +59,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::any::Any;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -495,6 +496,18 @@ impl Hermes2ProOllama {
 /// Implement LlmClient trait for Ollama-based Hermes 2 Pro
 #[async_trait]
 impl LlmClient for Hermes2ProOllama {
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        self.temperature
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         self.complete_formatted(prompt, None).await
     }

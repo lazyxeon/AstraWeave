@@ -31,6 +31,7 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde_json::json;
+use std::any::Any;
 
 use crate::LlmClient;
 
@@ -347,6 +348,18 @@ impl Phi3Ollama {
 /// Implement LlmClient trait for Ollama-based Phi-3
 #[async_trait]
 impl LlmClient for Phi3Ollama {
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        self.temperature
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         self.complete_formatted(prompt, None).await
     }

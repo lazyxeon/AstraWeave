@@ -435,6 +435,14 @@ impl Phi3Medium {
 /// Implement LlmClient trait for seamless integration
 #[async_trait]
 impl LlmClient for Phi3Medium {
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model_path
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        self.config.temperature
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         #[cfg(feature = "phi3")]
         {

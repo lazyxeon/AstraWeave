@@ -2,6 +2,8 @@
 #[cfg(feature = "ollama")]
 use anyhow::Context;
 use anyhow::{bail, Result};
+#[cfg(feature = "ollama")]
+use std::any::Any;
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
@@ -1202,6 +1204,13 @@ pub enum PlanSource {
 /// Trait for LLM clients (mock, Ollama, etc).
 #[async_trait::async_trait]
 pub trait LlmClient: Send + Sync + std::any::Any {
+    /// Process-local client identity for `GLOBAL_CACHE` partitioning.
+    ///
+    /// Must not be persisted or folded into replay/determinism hashes.
+    fn llm_cache_client_id(&self) -> String {
+        format!("{:?}", self.type_id())
+    }
+
     /// Model name for global prompt-cache partitioning.
     fn llm_cache_model_id(&self) -> &str {
         "default"
@@ -1346,6 +1355,14 @@ impl OllamaClient {
 #[cfg(feature = "ollama")]
 #[async_trait::async_trait]
 impl LlmClient for OllamaClient {
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         #[derive(serde::Serialize)]
         struct Req<'a> {
@@ -1405,10 +1422,6 @@ impl LlmClient for OllamaClient {
             .as_str()
             .map(str::to_string)
             .context("Missing 'response' field in Ollama output")
-    }
-
-    fn llm_cache_model_id(&self) -> &str {
-        &self.model
     }
 }
 
@@ -2238,6 +2251,10 @@ impl LlmClient for OllamaChatClient {
             .await
     }
 
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
     fn llm_cache_model_id(&self) -> &str {
         &self.model
     }
@@ -2436,8 +2453,16 @@ impl LlmClient for LocalHttpClient {
         Ok(parsed.choices[0].message.content.clone())
     }
 
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
     fn llm_cache_model_id(&self) -> &str {
         &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        0.1
     }
 }
 
@@ -2835,17 +2860,16 @@ fn extract_json_from_fenced(s: &str) -> Option<String> {
 }
 
 #[cfg(feature = "llm_cache")]
-fn plan_prompt_cache_key(
+pub(crate) fn plan_prompt_cache_key(
     client: &dyn LlmClient,
     snap: &WorldSnapshot,
     reg: &ToolRegistry,
 ) -> PromptKey {
     let prompt = build_prompt(snap, reg);
     let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
-    let client_id = format!("{:?}", client.type_id());
     PromptKey::new(
         &prompt,
-        &client_id,
+        &client.llm_cache_client_id(),
         client.llm_cache_model_id(),
         client.llm_cache_temperature(),
         &tool_names,
@@ -3911,6 +3935,44 @@ mod tests {
     fn test_clear_global_cache_does_not_panic() {
         // Just ensure it doesn't panic
         super::clear_global_cache();
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn plan_prompt_cache_key_separates_model_temperature_endpoint_and_type() {
+        use crate::phi3_ollama::Phi3Ollama;
+        use crate::qwen3_ollama::Qwen3Ollama;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+
+        let qwen_a = Qwen3Ollama::new("http://127.0.0.1:11434", "qwen3:a").expect("client");
+        let qwen_b = Qwen3Ollama::new("http://127.0.0.1:11434", "qwen3:b").expect("client");
+        let key_model_a = super::plan_prompt_cache_key(&qwen_a, &snap, &reg);
+        let key_model_b = super::plan_prompt_cache_key(&qwen_b, &snap, &reg);
+        assert_ne!(key_model_a, key_model_b);
+
+        let mut warm = qwen_a.clone();
+        warm.temperature = 0.5;
+        let mut hot = qwen_a.clone();
+        hot.temperature = 0.9;
+        assert_ne!(
+            super::plan_prompt_cache_key(&warm, &snap, &reg),
+            super::plan_prompt_cache_key(&hot, &snap, &reg)
+        );
+
+        let qwen_other_host =
+            Qwen3Ollama::new("http://127.0.0.1:11435", "qwen3:a").expect("client");
+        assert_ne!(
+            super::plan_prompt_cache_key(&qwen_a, &snap, &reg),
+            super::plan_prompt_cache_key(&qwen_other_host, &snap, &reg)
+        );
+
+        let phi3 = Phi3Ollama::new("http://127.0.0.1:11434", "qwen3:a").expect("client");
+        assert_ne!(
+            super::plan_prompt_cache_key(&qwen_a, &snap, &reg),
+            super::plan_prompt_cache_key(&phi3, &snap, &reg)
+        );
     }
 
     // ═══════════════════════════════════════════════════════════════════════

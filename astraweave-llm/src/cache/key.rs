@@ -15,6 +15,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone)]
 pub struct PromptKey {
     prompt_hash: u64,
+    /// Process-local client partition; never persist or hash into replay state.
     pub client_id: String,
     pub model: String,      // Phase 7: Made public for similarity matching
     pub temperature_q: u32, // Phase 7: Made public for similarity matching (temperature * 100)
