@@ -452,10 +452,12 @@ impl BlobVec {
     ///
     /// `(*ptr).len` must already exclude this range. `drop_fn` must not re-enter
     /// this column (see [`Self::clear_raw`]). On panic, `len` is restored to
-    /// `base + still_live` so [`Drop`] can finish.
+    /// `base + still_live` only when no nested drop changed `len` away from
+    /// `base`, so [`Drop`] can finish the not-yet-dropped tail.
     unsafe fn drop_detached_tail(ptr: *mut BlobVec, base: usize, n: usize) {
         struct PanicGuard {
             len_ptr: *mut usize,
+            published_len: usize,
             live_len: usize,
         }
 
@@ -465,7 +467,9 @@ impl BlobVec {
                     // SAFETY: `len_ptr` points at this column's `len` for the whole
                     // `drop_detached_tail` call and is not used after the guard drops.
                     unsafe {
-                        *self.len_ptr = self.live_len;
+                        if *self.len_ptr == self.published_len {
+                            *self.len_ptr = self.live_len;
+                        }
                     }
                 }
             }
@@ -479,6 +483,7 @@ impl BlobVec {
         let mut still_live = n;
         let mut guard = PanicGuard {
             len_ptr,
+            published_len: base,
             live_len: base + still_live,
         };
 
@@ -1336,6 +1341,44 @@ mod tests {
                 _payload: Box::new(2),
             });
             BlobVec::clear_raw(column);
+        }
+        assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    #[cfg(not(miri))]
+    fn clear_and_drop_publish_len_before_drop_fn() {
+        use std::mem::ManuallyDrop;
+        use std::ptr;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        struct CountDrop(Box<u32>);
+        impl Drop for CountDrop {
+            fn drop(&mut self) {
+                DROPS.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = BlobVec::new::<CountDrop>();
+        unsafe {
+            blob.push(CountDrop(Box::new(1)));
+            blob.push(CountDrop(Box::new(2)));
+        }
+        blob.clear();
+        assert_eq!(blob.len(), 0);
+        assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = ManuallyDrop::new(BlobVec::new::<CountDrop>());
+        unsafe {
+            (&mut *blob).push(CountDrop(Box::new(3)));
+            (&mut *blob).push(CountDrop(Box::new(4)));
+        }
+        unsafe {
+            ptr::drop_in_place(&mut *blob);
         }
         assert_eq!(DROPS.load(Ordering::SeqCst), 2);
     }
