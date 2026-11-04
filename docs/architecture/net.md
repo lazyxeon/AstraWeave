@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: example_only
 summary: "FALSE-PRODUCTION-READY (R.0.B 2026-06-30): the prior active/wired front-matter was example-only reality — astraweave-net::GameServer/Msg/Snapshot has no non-example engine/tool caller (ex-only). Real multiplayer wire-up is DEFERRED to v1.1 (a conscious deferral, not a drop). net.md §1"
 owns: [astraweave-net]
-doc_version: "1.7"
-last_verified_commit: fba18f5f9
+doc_version: "1.8"
+last_verified_commit: 67b5fccc1
 ---
 
 # Architecture Trace: Net (Snapshot-Based Game Server)
@@ -27,11 +27,11 @@ last_verified_commit: fba18f5f9
 |---|---|
 | **System name** | Net (snapshot-based game server) |
 | **Primary crates** | `astraweave-net` (sole crate in this subsystem) |
-| **Document version** | 1.7 |
-| **Last verified against commit** | `fba18f5f9` |
+| **Document version** | 1.8 |
+| **Last verified against commit** | `67b5fccc1` |
 | **Last verified date** | 2026-11-04 |
 | **Status** | Active |
-| **Revision history** | 1.7 (2026-11-04): Verified at `fba18f5f9`. Corrected stale `astraweave-net/Cargo.toml` line cites after dependency block shifts (§2 stage 8, §4 upstream/downstream unchanged, §5 property tests, §6 webpki/tungstenite/QUIC row, §7 ring decision, §8 invariant 16 unchanged at `:8`/`:9`). §6 tls row: `webpki-roots` is client-side only — used in `TlsClientConfig::default_connector` (`tls.rs:104-106`), not server PEM loading.<br><br>1.6 (2026-10-16): Workspace `tokio` does not enable `net`. This crate opts in with `features = ["net"]`.<br><br>1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
+| **Revision history** | 1.8 (2026-11-04): Verified at `67b5fccc1`. §4 upstream Cargo.toml:20→:23; downstream unchanged. `validate_and_execute` is `lib.rs:830` (`ClientProposePlan`) and `lib.rs:866` (`ClientInput`). `tests/property_tests.rs` has 16 `#[test]` functions; `property_tests_extended.rs` has 13. Listed suite total is 369. `GameServer` calls `accept_async_with_config` at `lib.rs:597`. `TLS_SERVER_ROOTS` is imported at `tls.rs:31` and used only at `tls.rs:106` (`tls.rs:119` is `with_custom_ca`). `tokio-rustls` at `Cargo.toml:27` lists `["ring"]`; `rustls` at `Cargo.toml:28` lists `["ring", "std"]`. The QUIC sentences are `docs/src/core-systems/networking.md:26` and `:33` in `8f5f615e0`, removed in the 2026-05-15 rewrite (`d833c784e`); `28bc94f21` is the stub page, not those sentences. WebSocket accept is `lib.rs:596-597`.<br><br>1.7 (2026-11-04): Verified at `fba18f5f9`. Corrected stale `astraweave-net/Cargo.toml` line cites after dependency block shifts (§2 stage 8, §4 upstream Cargo.toml:20→:23; downstream unchanged, §5 property tests, §6 webpki/tungstenite/QUIC row, §7 ring decision, §8 invariant 16 unchanged at `:8`/`:9`). §6 tls row: `webpki-roots` is client-side only — used in `TlsClientConfig::default_connector` (`tls.rs:104-106`), not server PEM loading.<br><br>1.6 (2026-10-16): Workspace `tokio` does not enable `net`. This crate opts in with `features = ["net"]`.<br><br>1.5 (2026-10-15): The `tls` feature parses PEM with `rustls-pki-types`. `rustls-pemfile` is not a dependency.<br><br>1.4 (2026-10-15): `GameServer` accepts WebSocket connections with `engine_ws_config` (`max_message_size` and `max_frame_size` 1 MiB). `astraweave-ipc` uses the same 1 MiB cap on accept and connect. 1.3 (2026-10-15): Hello requires a real token outside debug/test, and input uses the server player id. 1.2 (2026-05-12): Deep investigation pass. **Major new finding**: the aspirational `docs/src/core-systems/networking.md` doc claims AstraWeave uses **QUIC (via Quinn)** for transport — but the actual implementation uses **WebSocket (tokio-tungstenite over TCP)**. This is an architectural-class mismatch beyond the type-name mismatches already documented; added to §6. Enriched §11 Q2, Q6, Q8, Q9 with concrete factual context (test counts, call-site counts, exact line refs). Q6 (replay log) factually closed at the code level: 2 push sites (`lib.rs:837, 868`), 0 remove sites anywhere — confirmed truly unbounded. Q9 (webpki-roots) clarified as **client-side-only** — `TLS_SERVER_ROOTS` is imported only at `tls.rs:33, 119`, both inside `TlsClientConfig::default_connector`. Q8 (Box<dyn Interest>) quantified — 2 allocation sites per broadcast per connection. Added note that `tls.rs` exports **5 public methods** (not the 2 the §1 summary highlights): `TlsServerConfig::{from_pem_files, acceptor}`, `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`.<br><br>1.1 (2026-05-12): Verification pass. **Corrected §4 / Appendix B**: the prior `[INFERRED]` claim of "no aspirational doc tree" was wrong — `docs/src/core-systems/networking.md` exists and references 7+ nonexistent submodules (`replication`, `state`, `delta`, `serialization`, `prediction`, plus types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`). Same `28bc94f21` "Create comprehensive bespoke wiki" sweep that created the aspirational audio/input docs. Added new §6 row. Resolved §10 sanitizer `[INFERRED]` — `astraweave-net` is explicitly listed in the `P1_CRATES` array at `sanitizers.yml:205`. Corrected Appendix B creation date: first commit was 2025-09-04 (`ba52548b3`), not 2025-09-05. |
 | **Owner notes** | Self-contained snapshot-server library. Three direct production consumers (`examples/coop_server`, `examples/coop_client`, `examples/net_headless_sim`). Optional `tls` feature for secure WebSocket. Dedicated `.github/workflows/net-tests.yml` workflow. Not an ECS-Plugin — `astraweave-net` predates and operates parallel to the ECS-Plugin networking in `astraweave-net-ecs`. |
 
 ---
@@ -168,10 +168,10 @@ Optional TLS path (feature = "tls")
     │   → Wraps in TlsConnector
     │
    *Note:* The doc-comment examples (tls.rs:7-21) show how callers would wire this into
-   `tokio-tungstenite::accept_async_with_tls_acceptor` / `connect_async_tls_with_config`, but
-   `GameServer::run_ws_on_listener` uses plain `tokio_tungstenite::accept_async` (lib.rs:596) —
-   no TLS wiring inside `GameServer`. TLS is exposed as a library primitive; callers must
-   wire it themselves outside `astraweave-net`.
+   `tokio-tungstenite::accept_async_with_tls_acceptor` / `connect_async_tls_with_config`.
+   `GameServer::run_ws_on_listener` calls `tokio_tungstenite::accept_async_with_config`
+   (lib.rs:597) and does not build a `TlsAcceptor`. The `tls.rs` unit tests and
+   `tests/error_message_validation_tests.rs` also call the TLS helpers.
 ```
 
 ### Stage-by-stage detail
@@ -232,7 +232,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 **Role:** Build rustls `ServerConfig` from PEM files (server) or a default `ClientConfig` trusting webpki roots (client).
 **Inputs:** `cert.pem` + `key.pem` paths (server); none (client).
 **Outputs:** `TlsAcceptor` / `TlsConnector`.
-**Notes:** Uses `ring` crypto backend (`Cargo.toml:27` features `["ring"]`). No default-features on rustls (line 28 `default-features = false`) to ensure ring is the sole crypto provider for Windows compatibility. The module is consumed only via doc-comment examples (`tls.rs:7-21`); `GameServer::run_ws_on_listener` uses plain `accept_async` and does not invoke any TLS path. Callers wanting TLS must wire the acceptor/connector themselves.
+**Notes:** Uses `ring` crypto backend (`Cargo.toml:27` features `["ring"]`). No default-features on rustls (line 28 `default-features = false`) to ensure ring is the sole crypto provider for Windows compatibility. `GameServer::run_ws_on_listener` calls `accept_async_with_config` (`lib.rs:597`) and does not build a `TlsAcceptor`. Doc-comment examples (`tls.rs:7-21`) show a caller wiring `accept_async_with_tls_acceptor` / `connect_async_tls_with_config`. Those examples are not the only callers: the `tls.rs` unit tests call `default_connector` (`tls.rs:218`) and `from_pem_files` (`tls.rs:237`), and `tests/error_message_validation_tests.rs:30` calls `TlsServerConfig::from_pem_files`.
 
 ---
 
@@ -271,7 +271,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
-| `astraweave-core` (direct dep, `Cargo.toml:23`) | `World`, `IVec2`, `Team`, `PlanIntent`, `ActionStep`, `ValidateCfg`, `validate_and_execute(&mut World, actor_id, &PlanIntent, &ValidateCfg, &mut log)` | Tick-driven grid world; movement / action validation | `GameServer::new` (lib.rs:512-531) constructs a hardcoded test world with three entities (P, C, E) and a wall of obstacles at x=6. `validate_and_execute` is called from both `ClientProposePlan` and `ClientInput` handlers (lib.rs:829, 860). |
+| `astraweave-core` (direct dep, `Cargo.toml:23`) | `World`, `IVec2`, `Team`, `PlanIntent`, `ActionStep`, `ValidateCfg`, `validate_and_execute(&mut World, actor_id, &PlanIntent, &ValidateCfg, &mut log)` | Tick-driven grid world; movement / action validation | `GameServer::new` (lib.rs:512-531) constructs a hardcoded test world with three entities (P, C, E) and a wall of obstacles at x=6. `validate_and_execute` is called from `ClientProposePlan` (`lib.rs:830`) and `ClientInput` (`lib.rs:866`). |
 | Filesystem (TLS certs) | `TlsServerConfig::from_pem_files("cert.pem", "key.pem")` (`tls.rs:56-`) | PEM-encoded X.509 cert chain + private key | Feature-gated (`tls`). Webpki trust roots for client side embedded via `webpki-roots` crate. |
 | WebSocket client connections | `tokio_tungstenite::accept_async_with_config(TcpStream, engine_ws_config())` | JSON-encoded `Msg::Client*` frames as `Message::Text` | Server uses plain TCP. `max_message_size` and `max_frame_size` are 1 MiB. TLS-wrapping is library-exposed but not wired inside `GameServer`. |
 
@@ -300,13 +300,13 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 |---|---|---|---|
 | `astraweave-net/src/lib.rs` | All public types (`Snapshot`, `Delta`, `EntityState`, `Interest`+4 impls, `InterestPolicy`, `GameServer`, `Msg`, `ServerEvent`, `ReplayEvent`) + the core pipeline functions (`build_snapshot`, `filter_snapshot_for_viewer`, `diff_snapshots`, `apply_delta`, `replay_from`) + the WebSocket server loop. | Active | 932 lines. `#![forbid(unsafe_code)]` (line 1). |
 | `astraweave-net/src/error.rs` | `NetError` enum (7 variants) + `NetResult<T>` alias. | Active | 43 lines. `#[non_exhaustive]` + `#[must_use]`. |
-| `astraweave-net/src/tls.rs` | `TlsServerConfig::{from_pem_files, acceptor}` (server-side) + `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}` (client-side). 5 public methods total. | Active (feature-gated) | 258 lines. Compiled only when `tls` feature enabled. Library primitives — not wired into `GameServer` directly. `webpki_roots::TLS_SERVER_ROOTS` is imported at line 33 and used only at line 119 inside `default_connector` (client-side trust store). |
+| `astraweave-net/src/tls.rs` | `TlsServerConfig::{from_pem_files, acceptor}` (server-side) + `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}` (client-side). 5 public methods total. | Active (feature-gated) | 258 lines. Compiled only when `tls` feature enabled. Library primitives — not wired into `GameServer` directly. `webpki_roots::TLS_SERVER_ROOTS` is imported at line 31 and its only use is line 106, inside `default_connector`. Line 119 is `with_custom_ca`, which does not use the webpki bundle. |
 | `astraweave-net/src/tests.rs` | Unit tests for snapshot/delta/replay/interest. | Active (tests) | 999 lines, 38 tests. Included via `#[cfg(test)] mod tests` at `lib.rs:260-261`. |
 | `astraweave-net/src/mutation_tests.rs` | Mutation-resistance harness targeting cargo-mutants survivors. | Active (tests) | 1087 lines, 50 tests. Included via `#[cfg(test)] mod mutation_tests` at `lib.rs:258-259`. |
 | `astraweave-net/tests/interest_coverage_tests.rs` | Coverage tests for the 4 Interest impls. | Active (tests) | 19 tests including FoV-LoS Bresenham edge cases. |
 | `astraweave-net/tests/mutation_resistant_comprehensive_tests.rs` | Second mutation-resistance pass. | Active (tests) | 129 tests. |
-| `astraweave-net/tests/property_tests.rs` | proptest-based property tests. | Active (tests) | 23 tests. Uses `proptest = "1.5"` (Cargo.toml:33). |
-| `astraweave-net/tests/property_tests_extended.rs` | Extended proptest suite. | Active (tests) | 14 tests + checked-in `property_tests_extended.proptest-regressions` file. |
+| `astraweave-net/tests/property_tests.rs` | proptest-based property tests. | Active (tests) | 16 `#[test]` functions. Uses `proptest = "1.5"` (Cargo.toml:33). |
+| `astraweave-net/tests/property_tests_extended.rs` | Extended proptest suite. | Active (tests) | 13 `#[test]` functions + checked-in `property_tests_extended.proptest-regressions` file. |
 | `astraweave-net/tests/boundary_condition_tests.rs` | Edge-case unit tests. | Active (tests) | 6 tests. |
 | `astraweave-net/tests/concurrent_stress_tests.rs` | Concurrency stress harness. | Active (tests) | 1 test (gated on tokio runtime). |
 | `astraweave-net/tests/coverage_booster_tests.rs` | Coverage-targeted miscellanea. | Active (tests) | 4 tests. |
@@ -338,10 +338,10 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 | `astraweave-net::EntityState { pos: IVec2, hp, team, ammo }` vs. `astraweave-net-ecs::EntityState { position: Vec3, health }` | `astraweave-net/src/lib.rs:38-44` vs. `astraweave-net-ecs/src/lib.rs:43-47` | Parallel data models | The two networking subsystems use disjoint per-entity state types. `astraweave-net` models grid-aligned 2D positions (`IVec2`, tile coordinates) plus team + ammo; `astraweave-net-ecs` models continuous 3D positions and tracks only health. Neither crate imports the other. |
 | `astraweave-net::Msg` (JSON) vs. `aw-net-proto::{ClientToServer, ServerToClient}` (postcard + lz4) | `astraweave-net/src/lib.rs:447-483` vs. `net/aw-net-proto/src/lib.rs:22-` | Parallel wire formats | `astraweave-net` uses `serde_json::to_string` + `Message::Text` (lib.rs:602, 666, 721, 734, 744, 754, 765). `aw-net-proto` defines a postcard-encoded enum with optional lz4 compression and crc32 framing. Distinct envelopes; no shared dispatcher. |
 | `GameServer` (this crate) vs. `net/aw-net-server` standalone binary | `astraweave-net/src/lib.rs:494-899` vs. `net/aw-net-server/src/main.rs` (852 lines) | Two server implementations | This crate provides a library `GameServer` consumed by `examples/coop_server`. `net/aw-net-server` is a standalone binary with matchmaking + room management using `aw-net-proto`. They are completely independent processes. |
-| `astraweave-net::tls` vs. `GameServer::run_ws_on_listener` | `astraweave-net/src/tls.rs` vs. `astraweave-net/src/lib.rs:596` | TLS available but not wired | `tls.rs` exposes `TlsAcceptor` / `TlsConnector` library primitives. `GameServer` uses plain `tokio_tungstenite::accept_async`. The doc comment at `tls.rs:7-21` shows how a caller would compose them, but no production code in `astraweave-net` itself does this wiring. The optional `webpki-roots` dep (`Cargo.toml:29`) is client-side only: `TLS_SERVER_ROOTS` seeds the trust store in `TlsClientConfig::default_connector` (`tls.rs:104-106`); `TlsServerConfig::from_pem_files` does not use it. |
+| `astraweave-net::tls` vs. `GameServer::run_ws_on_listener` | `astraweave-net/src/tls.rs` vs. `astraweave-net/src/lib.rs:596-597` | TLS available but not wired | `tls.rs` exposes `TlsAcceptor` / `TlsConnector` library primitives. `GameServer` calls `tokio_tungstenite::accept_async_with_config` at `lib.rs:597` and does not build a `TlsAcceptor`. The doc comment at `tls.rs:7-21` shows how a caller would compose them. The `tls.rs` unit tests call `default_connector` (`tls.rs:218`) and `from_pem_files` (`tls.rs:237`); `tests/error_message_validation_tests.rs:30` calls `TlsServerConfig::from_pem_files`. The optional `webpki-roots` dep (`Cargo.toml:29`) is client-side only: `TLS_SERVER_ROOTS` is imported at `tls.rs:31` and its only use is `tls.rs:106` inside `TlsClientConfig::default_connector` (`tls.rs:104-106`); `TlsServerConfig::from_pem_files` does not use it. `with_custom_ca` (`tls.rs:119`) does not use the webpki bundle. |
 | Two hashing strategies (`stable_hash_snapshot` vs. `subset_hash`) | `lib.rs:228-256` | Intentional split | `stable_hash_snapshot` includes obstacles; used in `build_snapshot` (lib.rs:296) for the canonical `world_hash`. `subset_hash` omits obstacles; used in `filter_snapshot_for_viewer` (lib.rs:320) and in `diff_snapshots`'s `head_hash` (lib.rs:393). Filtering produces a different hash than the source snapshot's hash, which means a delta's `head_hash` is not directly comparable to a snapshot's `world_hash` after filtering. |
 | Aspirational `docs/src/core-systems/networking.md` API surface (`Server`, `ServerConfig`, `Client`, `ClientConfig`, `ClientId`, `ClientEvent`, `replication::{NetEntity, ReplicationMode}`, `state::{WorldState, EntityState}`, `delta::{DeltaEncoder, DeltaDecoder}`, `serialization::{BitWriter, BitReader}`, `prediction::{PredictionSystem, InputBuffer}`) | `docs/src/core-systems/networking.md` | Reference-only, code-absent | None of these submodules exist in `astraweave-net`. Origin: commit `28bc94f21` (2025-09-08, "Create comprehensive bespoke wiki with 51-section documentation structure (#34)") authored by `Copilot <198982749+Copilot@users.noreply.github.com>` — the same bulk AI-generated documentation sweep that introduced aspirational audio/input/net-ecs docs (per their respective traces). |
-| Architectural mismatch in same aspirational doc: claims **QUIC (via Quinn)** transport | `docs/src/core-systems/networking.md:28-33` | Doc-vs-code architectural disagreement | The aspirational doc states: "Transport Layer: UDP-based reliable/unreliable messaging with Quinn (QUIC)" and "AstraWeave uses QUIC (via Quinn) for modern, secure, and multiplexed networking with built-in congestion control and 0-RTT connection establishment." The actual `astraweave-net` implementation uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:22`, `lib.rs:596`). No `quinn` dependency exists in `astraweave-net/Cargo.toml`. This is more than a type-name mismatch — it's an architectural-class disagreement (TCP+WS vs UDP+QUIC). |
+| Architectural mismatch in the pre-2026-05-15 aspirational doc: it claimed **QUIC (via Quinn)** transport | `8f5f615e0:docs/src/core-systems/networking.md:26` and `:33` (removed by `d833c784e`) | Doc-vs-code architectural disagreement | The pre-rewrite page stated: "Transport Layer: UDP-based reliable/unreliable messaging with Quinn (QUIC)" (`:26`) and "AstraWeave uses QUIC (via Quinn) for modern, secure, and multiplexed networking with built-in congestion control and 0-RTT connection establishment." (`:33`). Those sentences are in `8f5f615e0` (same blob at `9eeed87d0`). The 2026-05-15 rewrite (`d833c784e`) removed them. They are not at current `docs/src/core-systems/networking.md:28-33`. `28bc94f21:docs/src/core-systems/networking.md` is the one-line stub `# Networking` and does not contain them. `astraweave-net` uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:22`, `lib.rs:596-597`). No `quinn` key exists in `astraweave-net/Cargo.toml`. This is an architectural-class disagreement (TCP+WS vs UDP+QUIC). |
 
 ### Naming collisions
 
@@ -439,7 +439,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 - **Consequences:**
   - Wider Windows toolchain support.
   - Loses some performance advantages aws-lc-rs has on Linux.
-  - Both rustls and tokio-rustls explicit `default-features = false, features = ["ring", "std"]` to ensure consistent provider selection.
+  - `tokio-rustls` (`Cargo.toml:27`) sets `default-features = false, features = ["ring"]`. `rustls` (`Cargo.toml:28`) sets `default-features = false, features = ["ring", "std"]`.
 
 ### Decision: `#![forbid(unsafe_code)]` at crate root
 - **Date:** 2026-02-09, commit `745c100a8` (sweeping commit titled "Mutation-resistant test suites across ~35+ crates …" that added `#![forbid(unsafe_code)]` to `lib.rs:1` as a small line within a much larger workspace-wide change; verified via `git log -L "1,5:astraweave-net/src/lib.rs"`). The attribute was **not** present in the original 2025-09-04 implementation; same pattern as `astraweave-input` per its trace.
@@ -484,7 +484,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 ### Cold paths
 
-- **Connection accept + WebSocket upgrade** (`tokio_tungstenite::accept_async`, `lib.rs:596`) — once per client connect.
+- **Connection accept + WebSocket upgrade** (`tokio_tungstenite::accept_async_with_config`, `lib.rs:596-597`) — once per client connect.
 - **TLS handshake** (when `tls` feature is wired by an external caller) — once per client connect; rustls handshake is well-known to take milliseconds.
 - **`replay_from`** (`lib.rs:911-932`) — batch determinism check, not a per-frame path. Run once on demand.
 
@@ -505,24 +505,24 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
   - `src/tests.rs`: 38 tests.
   - `src/mutation_tests.rs`: 50 tests.
   - `src/tls.rs`: 3 tests (TLS configuration loading).
-- **Integration tests:** 286 across `tests/` and `tests/integration/`:
+- **Integration tests:** 278 across `tests/` and `tests/integration/`:
   - `tests/boundary_condition_tests.rs`: 6 tests.
   - `tests/concurrent_stress_tests.rs`: 1 test.
   - `tests/coverage_booster_tests.rs`: 4 tests.
   - `tests/error_message_validation_tests.rs`: 1 test.
   - `tests/interest_coverage_tests.rs`: 19 tests.
   - `tests/mutation_resistant_comprehensive_tests.rs`: 129 tests.
-  - `tests/property_tests.rs`: 23 tests (proptest 1.5).
-  - `tests/property_tests_extended.rs`: 14 tests; corresponding `.proptest-regressions` file is checked in.
+  - `tests/property_tests.rs`: 16 `#[test]` functions (proptest 1.5).
+  - `tests/property_tests_extended.rs`: 13 `#[test]` functions; corresponding `.proptest-regressions` file is checked in.
   - `tests/integration/sync_tests.rs`: 25 tests.
   - `tests/integration/snapshot_sync_tests.rs`: 6 tests.
   - `tests/integration/packet_loss_tests.rs`: 25 tests.
   - `tests/integration/server_logic_tests.rs`: 3 tests.
   - `tests/integration/auth_tests.rs`: 30 tests.
-- **Total tests:** **377** in this crate.
+- **Total tests:** **369** in this crate.
 - **Mutation testing:** Two dedicated suites — `src/mutation_tests.rs` (50 tests, 1087 lines) and `tests/mutation_resistant_comprehensive_tests.rs` (129 tests). The crate is **not** present in `.github/workflows/mutation-testing.yml` as of `a2474c5b7` (verified via workspace grep) — the tests are owned by the crate, not by a centralized mutation-testing run.
 - **Fuzz targets:** 4 in `astraweave-net/fuzz/fuzz_targets/`: `fuzz_delta_compression`, `fuzz_interest_management`, `fuzz_packet_parsing`, `fuzz_snapshot_serialization`. Run on demand with `cargo +nightly fuzz run <target>`. **Not** present in any `.github/workflows/*.yml` as of `a2474c5b7`.
-- **Property tests:** 37 (proptest 1.5). Checked-in regressions file at `tests/property_tests_extended.proptest-regressions` preserves shrunk failing inputs.
+- **Property tests:** 29 (proptest 1.5). Checked-in regressions file at `tests/property_tests_extended.proptest-regressions` preserves shrunk failing inputs.
 - **Benchmarks:** `benches/net_bench.rs` (criterion 0.5 with `html_reports`). Run via `cargo bench -p astraweave-net`.
 - **Sanitizer CI:** `astraweave-net` is explicitly listed in the `P1_CRATES` array at `.github/workflows/sanitizers.yml:205` (alongside `astraweave-asset`, `astraweave-memory`, `astraweave-context`). Verified by direct read 2026-05-12.
 - **Dedicated CI:** `.github/workflows/net-tests.yml` runs `cargo test -p astraweave-net --all-features --verbose` on every push to main and every PR (verified at workflow line 17).
@@ -550,7 +550,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 - **`Box<dyn Interest>` allocated per snapshot per client.** Each broadcast triggers a fresh `Box::new(...)` for each connected client. **Investigation (2026-05-12):** Two allocation sites (the `ForceSnapshot` branch at `lib.rs:625-656` and the `Snapshot` branch at `lib.rs:676-707`). With M connected players and N broadcasts/sec (~20 Hz delta + 1 Hz full = ~21 broadcasts/sec), the workspace allocates `M × 21` boxes/sec at steady state. For M=2 (typical demo) that's ~42 allocations/sec — negligible. For M=64 (production hypothetical) that's ~1,344/sec — still modest but worth noting at higher scales. Is this hot-path allocation acceptable at current player counts, or worth caching the policy → interest object map?
 
-- **`webpki-roots` dep is client-side-only but lives in the unified `tls` feature flag.** **Investigation (2026-05-12):** Confirmed `webpki_roots::TLS_SERVER_ROOTS` is imported at `tls.rs:33` and used at `tls.rs:119` — both inside `TlsClientConfig::default_connector` (a client-side method that builds a `RootCertStore` of trusted CAs). The `TlsServerConfig::from_pem_files` server-side path does NOT touch `webpki-roots`. So the dep is genuinely client-only. The `tls.rs` module exports 5 public methods total: server-side `TlsServerConfig::{from_pem_files, acceptor}` and client-side `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`. A consumer that only wants server TLS (e.g., `coop_server` providing a service) still pulls `webpki-roots` because the feature flag is unified. Is this fine because both client and server are co-located in this crate's primitives, or worth splitting client-tls and server-tls feature flags?
+- **`webpki-roots` dep is client-side-only but lives in the unified `tls` feature flag.** **Investigation (verified at `67b5fccc1`):** `webpki_roots::TLS_SERVER_ROOTS` is imported at `tls.rs:31` and its only use is `tls.rs:106`, inside `TlsClientConfig::default_connector` (`tls.rs:104`). Line 119 is `with_custom_ca`, which starts from `RootCertStore::empty()` and adds only the caller PEM; it does not use the webpki bundle. The `TlsServerConfig::from_pem_files` server-side path does not touch `webpki-roots`. So the dep is genuinely client-only. The `tls.rs` module exports 5 public methods total: server-side `TlsServerConfig::{from_pem_files, acceptor}` and client-side `TlsClientConfig::{default_connector, with_custom_ca, insecure_connector}`. A consumer that only wants server TLS (e.g., `coop_server` providing a service) still pulls `webpki-roots` because the feature flag is unified. Is this fine because both client and server are co-located in this crate's primitives, or worth splitting client-tls and server-tls feature flags?
 
 ---
 
@@ -569,7 +569,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 - `rg 'pub fn|pub struct|pub enum|pub trait' astraweave-net/src/` should match §3 vocabulary surface.
 - `cargo tree -p astraweave-net --depth 1` should list `anyhow`, `thiserror`, `serde`, `serde_json`, `tokio`, `futures-util`, `tungstenite`, `tokio-tungstenite`, `astraweave-core`, `rand`. Adding `tls` feature adds `tokio-rustls`, `rustls`, `webpki-roots`.
 - `rg 'use astraweave_net' --type rust -g '!*test*' -g '!benches/*'` should find the three example consumers in §4. New consumers must be added there.
-- `grep -c '#\[test\]\|#\[tokio::test\]\|proptest!' astraweave-net/src/*.rs astraweave-net/tests/*.rs astraweave-net/tests/integration/*.rs` should total ≥ 377 (the test-count invariant should grow, never shrink).
+- `grep -c '#\[test\]\|#\[tokio::test\]\|proptest!' astraweave-net/src/*.rs astraweave-net/tests/*.rs astraweave-net/tests/integration/*.rs` should total ≥ 369 (the test-count invariant should grow, never shrink).
 - Stamp the new commit hash and date in the metadata table after verification.
 
 ---
