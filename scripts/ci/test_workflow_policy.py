@@ -40,6 +40,28 @@ ACTION_MAJOR_FLOORS: dict[str, int] = {
     "actions/cache": 4,
     "actions/github-script": 7,
 }
+PINNED_ACTION_MAJOR_FLOORS: dict[str, int] = {
+    "actions/checkout": 7,
+    "actions/upload-artifact": 4,
+    "actions/download-artifact": 4,
+    "actions/cache": 4,
+    "actions/github-script": 7,
+}
+# Hardcoded refs one major below each pinned floor (not derived from ACTION_MAJOR_FLOORS).
+BELOW_FLOOR_MAJOR_TAG_BY_ACTION: dict[str, str] = {
+    "actions/checkout": "v6",
+    "actions/upload-artifact": "v3",
+    "actions/download-artifact": "v3",
+    "actions/cache": "v3",
+    "actions/github-script": "v6",
+}
+AT_FLOOR_MAJOR_TAG_BY_ACTION: dict[str, str] = {
+    "actions/checkout": "v7",
+    "actions/upload-artifact": "v4",
+    "actions/download-artifact": "v4",
+    "actions/cache": "v4",
+    "actions/github-script": "v7",
+}
 _POLICY_ACTION_PATTERN = "|".join(re.escape(action) for action in POLICY_ACTIONS)
 ACTION_USES_RE = re.compile(
     rf"uses:\s*(?P<action>{_POLICY_ACTION_PATTERN})@(?P<ref>[^\s#]+)"
@@ -660,6 +682,19 @@ class WorkflowPolicyTest(unittest.TestCase):
         without_checkout = text.replace(f"{checkout_line}\n\n", "", 1)
         with self.assertRaises(AssertionError):
             assert_mutation_summary_checks_out_before_scoring(without_checkout)
+        source = inspect.getsource(assert_mutation_summary_checks_out_before_scoring)
+        self.assertIn("if checkout > scoring:", source)
+        stripped = source.replace("if checkout > scoring:", "if False and checkout > scoring:", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn("if checkout > scoring:", stripped)
+        reordered = without_checkout.replace(
+            'Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"',
+            f'Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"\n\n      {checkout_line.strip()}',
+            1,
+        )
+        with self.assertRaises(AssertionError) as ctx:
+            assert_mutation_summary_checks_out_before_scoring(reordered)
+        self.assertIn("must precede", str(ctx.exception))
 
     def test_workflow_action_pins(self) -> None:
         violations: list[str] = []
@@ -671,6 +706,7 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
 
     def test_policy_actions_have_floors_and_uses_regex(self) -> None:
+        self.assertEqual(ACTION_MAJOR_FLOORS, PINNED_ACTION_MAJOR_FLOORS)
         self.assertEqual(set(ACTION_MAJOR_FLOORS), set(POLICY_ACTIONS))
         for action in POLICY_ACTIONS:
             violations = workflow_action_pin_violations(f"uses: {action}@main")
@@ -679,6 +715,10 @@ class WorkflowPolicyTest(unittest.TestCase):
             match = ACTION_USES_RE.search(f"uses: {action}@v99")
             self.assertIsNotNone(match, action)
             self.assertEqual(match.group("action"), action)
+            below = BELOW_FLOOR_MAJOR_TAG_BY_ACTION[action]
+            at_floor = AT_FLOOR_MAJOR_TAG_BY_ACTION[action]
+            self.assertIn(BELOW_FLOOR_MSG, action_ref_violation(action, below) or "", action)
+            self.assertIsNone(action_ref_violation(action, at_floor), action)
 
     def test_action_ref_rejects_unpinned_branch(self) -> None:
         self.assertIn(UNPINNED_REF_MSG, action_ref_violation("actions/checkout", "main") or "")
@@ -703,6 +743,10 @@ class WorkflowPolicyTest(unittest.TestCase):
 
     def test_action_ref_rejects_major_below_floor(self) -> None:
         self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v4") or "")
+        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v5") or "")
+        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v6") or "")
+        for action, below in BELOW_FLOOR_MAJOR_TAG_BY_ACTION.items():
+            self.assertIn(BELOW_FLOOR_MSG, action_ref_violation(action, below) or "", action)
         source = inspect.getsource(action_ref_violation)
         self.assertIn("if int(major.group(1)) < floor:", source)
         stripped = source.replace("if int(major.group(1)) < floor:", "if False and int(major.group(1)) < floor:", 1)
