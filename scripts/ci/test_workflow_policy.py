@@ -438,12 +438,11 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_nightly_failure_issue_serializes_per_upstream_run(self) -> None:
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
         self.assertIn(
-            "group: ${{ github.workflow }}-${{ github.event.workflow_run.name }}",
+            "group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}",
             text,
         )
         self.assertIn("cancel-in-progress: false", text)
         self.assertNotIn("group: ${{ github.workflow }}-${{ github.ref }}", text)
-        self.assertNotIn("github.event.workflow_run.id }}", text)
 
     def test_nightly_failure_issue_watched_names_match_workflows(self) -> None:
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
