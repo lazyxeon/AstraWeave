@@ -13,7 +13,7 @@ jobs:
   scope:
     name: Affected scope
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     outputs:
       run: ${{ steps.detect.outputs.run }}
       reason: ${{ steps.detect.outputs.reason }}
@@ -23,9 +23,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          # Full history. A numeric 0 in `&& 0 || 1` is falsy and becomes
-          # fetch-depth 1, which cannot see the base commit.
-          fetch-depth: 0
+          fetch-depth: 1
+          filter: blob:none
+          fetch-tags: false
+
+      - name: Deepen history for merge-base
+        if: github.event_name == 'pull_request'
+        run: bash scripts/ci/deepen_for_merge_base.sh "${{ github.base_ref }}"
 
       - name: Classify the diff
         id: detect
@@ -39,7 +43,6 @@ jobs:
               echo "packages="
             } >> "$GITHUB_OUTPUT"
           else
-            git fetch --no-tags origin "${{ github.base_ref }}"
             python3 scripts/ci/affected_crates.py \
               --base "origin/${{ github.base_ref }}" \
               --head HEAD \

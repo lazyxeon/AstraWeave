@@ -94,7 +94,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 | `astraweave-dialogue` | llm, embeddings, context, prompts, rag, persona |
 | `astraweave-embeddings` | _(LLM foundation)_ |
 | `astraweave-context` | _(LLM foundation)_ |
-| `astraweave-prompts` | _(LLM foundation)_ |
+| `astraweave-prompts` | core, llm |
 | `astraweave-rag` | _(LLM foundation)_ |
 | `astraweave-persona` | _(LLM foundation)_ |
 
@@ -521,7 +521,7 @@ Treat `docs/src/` content as **historical/aspirational** unless cross-validated 
 |---|---|---|---|
 | `docs/src/core-systems/audio.md` + `docs/src/api/audio.md` | `AudioConfig`, `AudioBackend`, `AudioListener`, `SpatialSound`, `AttenuationModel`, `ReverbZone`, `AudioOcclusion`, `MusicManager`, `MusicLayer`, `SfxManager`, `SoundPool`, `AudioMixer`, `Bus` | **None exist** in `astraweave-audio/src/lib.rs` re-exports. The actual API is ~30 lines of `lib.rs` + the source it re-exports (`AudioEngine`, `DialoguePlayer`, `VoiceBank`, `EmitterId`, `ListenerPose`). | `audio.md` §6 |
 | `docs/src/core-systems/input.md` | `InputSystem`, `InputConfig`, `ActionMap`, `BindingRecorder`, `BindingProfile`, `ContextPriority`, `InputBuffer`, `InputPredictor`, `InputRecorder`, `mapping::ActionMap`, `rebinding::BindingRecorder`, `replay::InputRecorder`, `buffer::InputBuffer`, `device::MouseButton` | **None exist** in `astraweave-input/src/lib.rs` re-exports. Actual API is `Action`, `Binding`, `BindingSet`, `InputManager`, `Axis2`. | `input.md` §6 |
-| `docs/src/core-systems/networking.md` | Claims **QUIC (via Quinn)** transport with "UDP-based reliable/unreliable messaging," 0-RTT, multiplexed. Plus submodules `replication`, `state`, `delta`, `serialization`, `prediction` and types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`. | Actual `astraweave-net` uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:18-19`, `lib.rs:612`). **No `quinn` dependency exists**. Architectural-class mismatch (TCP+WS vs UDP+QUIC), not just type-name mismatch. None of the submodules exist. | `net.md` §6 |
+| `docs/src/core-systems/networking.md` | Claims **QUIC (via Quinn)** transport with "UDP-based reliable/unreliable messaging," 0-RTT, multiplexed. Plus submodules `replication`, `state`, `delta`, `serialization`, `prediction` and types `Server`/`ServerConfig`/`Client`/`ClientConfig`/`ClientEvent`. | Actual `astraweave-net` uses **WebSocket over TCP** via `tokio-tungstenite` (`Cargo.toml:22`, `lib.rs:612-613`). **No `quinn` dependency exists**. Architectural-class mismatch (TCP+WS vs UDP+QUIC), not just type-name mismatch. None of the submodules exist. | `net.md` §6 |
 
 ### 7.2 Doc-comment migration drift (target state ahead of runtime wiring)
 

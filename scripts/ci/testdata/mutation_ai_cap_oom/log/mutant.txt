@@ -1,0 +1,3 @@
+running 1 test
+memory allocation of 500000000 bytes failed
+error: test failed, to rerun pass `-p example --lib`

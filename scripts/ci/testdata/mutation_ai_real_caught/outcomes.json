@@ -1,0 +1,19 @@
+{
+  "total_mutants": 1,
+  "end_time": "2026-01-01T00:00:00Z",
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success"
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/lib.rs:1:1: replace foo with 0"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/mutant.txt"
+    }
+  ]
+}
