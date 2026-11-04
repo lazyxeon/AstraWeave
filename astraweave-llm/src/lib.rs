@@ -4255,9 +4255,10 @@ mod tests {
 
     /// One POST. Returns the URL and the raw JSON body the client sent.
     #[cfg(all(feature = "llm_cache", feature = "ollama"))]
-    fn capture_one_http_body() -> (String, std::sync::mpsc::Receiver<String>) {
+    fn capture_one_http_body(response: &str) -> (String, std::sync::mpsc::Receiver<String>) {
         use std::io::{Read, Write};
 
+        let response = response.to_string();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let addr = listener.local_addr().expect("addr");
         let (tx, rx) = std::sync::mpsc::channel();
@@ -4301,7 +4302,6 @@ mod tests {
                     Err(_) => break String::new(),
                 }
             };
-            let response = r#"{"message":{"content":"ok"}}"#;
             let header = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                 response.len()
@@ -4319,7 +4319,7 @@ mod tests {
     #[cfg(all(feature = "llm_cache", feature = "ollama"))]
     #[tokio::test]
     async fn ollama_chat_nonstream_temperature_matches_recorded_cache() {
-        let (url, body_rx) = capture_one_http_body();
+        let (url, body_rx) = capture_one_http_body(r#"{"message":{"content":"ok"}}"#);
         let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
         client.low_latency = false;
         let text = client.complete("ping").await.expect("non-stream complete");
@@ -4339,6 +4339,45 @@ mod tests {
         assert!(
             body.contains("\"temperature\":0.1"),
             "non-stream temperature must be the JSON number 0.1, got {body}"
+        );
+        let recorded = f64::from(client.llm_cache_temperature());
+        assert!(
+            (sent_temp - recorded).abs() < 1e-6,
+            "recorded temperature {recorded} != sent {sent_temp} in {body}"
+        );
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let key = plan_prompt_cache_key(&client, &snap, &reg);
+        assert_eq!(key.temperature_q, (sent_temp * 100.0).round() as u32);
+    }
+
+    /// Default `low_latency` is the `OLLAMA_LOW_LATENCY=1` path. `complete` sends
+    /// the streaming chat body, and that body's temperature must equal the recorded
+    /// cache temperature.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[tokio::test]
+    async fn ollama_chat_stream_temperature_matches_recorded_cache() {
+        let (url, body_rx) =
+            capture_one_http_body("{\"message\":{\"content\":\"ok\"},\"done\":true}\n");
+        let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
+        client.low_latency = true;
+        let text = client.complete("ping").await.expect("stream complete");
+        assert_eq!(text, "ok");
+        let body = body_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("request body");
+        let sent: serde_json::Value = serde_json::from_str(&body).expect("json body");
+        assert_eq!(
+            sent["stream"],
+            serde_json::json!(true),
+            "expected the streaming chat body, got {body}"
+        );
+        let sent_temp = sent["options"]["temperature"].as_f64().unwrap_or_else(|| {
+            panic!("streaming body has no temperature: {body}");
+        });
+        assert!(
+            body.contains("\"temperature\":0.1"),
+            "streaming temperature must be the JSON number 0.1, got {body}"
         );
         let recorded = f64::from(client.llm_cache_temperature());
         assert!(
