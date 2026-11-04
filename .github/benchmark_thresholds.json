@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "generated": "2025-10-09T00:00:00Z",
-  "description": "Baseline performance thresholds for AstraWeave engine (Week 2-3 benchmarks)",
+  "description": "Baseline performance thresholds. Keys are the benchmark_name values scripts/export_benchmark_jsonl.ps1 writes (Criterion ids). benchmark.yml prefixes package:: ; the checker strips that prefix. The old ids ecs_benchmarks/entity_spawn, ecs_benchmarks/entity_tick_empty, ecs_performance/stress_10k_entities, and input_benchmarks/full_input_set_processing are not rows the runner writes. entity_spawning and world_tick are the core_benchmarks ids.",
   "policy": {
     "default_max_regression": "50%",
     "default_warn_threshold": "25%",
@@ -9,43 +9,34 @@
     "comment": "Thresholds set from Week 2 baseline metrics + Week 3 optimizations"
   },
   "benchmarks": {
-    "astraweave-core::ecs_benchmarks/world_creation": {
-      "baseline": 25.8,
-      "max_allowed": 38.7,
-      "warn_threshold": 32.25,
+    "world_creation": {
+      "baseline": 42.87,
+      "max_allowed": 64.31,
+      "warn_threshold": 53.59,
       "unit": "ns",
-      "description": "ECS World creation time (Week 2 Action 2)",
+      "description": "ECS World creation on ubuntu-latest. The 25.8 ns laptop figure is not this runner. Three healthy aggregates on 2026-10-28 were 41.47, 42.62, and 42.87 ns. Cap is 1.5x the slowest of those.",
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-core::ecs_benchmarks/entity_spawn": {
-      "baseline": 420,
-      "max_allowed": 630,
-      "warn_threshold": 525,
+    "entity_spawning": {
+      "baseline": 30830.93,
+      "max_allowed": 46246.4,
+      "warn_threshold": 38538.66,
       "unit": "ns",
-      "description": "Single entity spawn time (Week 2 Action 2)",
-      "created": "2025-10-08T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
+      "description": "Spawn 100 entities (core_benchmarks). ubuntu-latest means from runs 40756735213 (30830.93 ns), 40742663481 (30805.26 ns), 40647488491 (17653.34 ns), and 40637628179 (30493.92 ns). Cap is 1.5x the slowest, rounded to 0.01 ns.",
+      "created": "2026-10-29T00:00:00Z",
+      "last_updated": "2026-10-29T00:00:00Z"
     },
-    "astraweave-core::ecs_benchmarks/entity_tick_empty": {
-      "baseline": 0.95,
-      "max_allowed": 1.5,
-      "warn_threshold": 1.2,
+    "world_tick": {
+      "baseline": 48.49,
+      "max_allowed": 72.74,
+      "warn_threshold": 60.61,
       "unit": "ns",
-      "description": "Empty entity tick (sub-nanosecond, Week 2 Action 2)",
-      "created": "2025-10-08T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
+      "description": "One tick of 50 entities (core_benchmarks). ubuntu-latest means from the same four runs: 45.82, 48.39, 24.38, and 48.49 ns. Cap is 1.5x the slowest, rounded to 0.01 ns.",
+      "created": "2026-10-29T00:00:00Z",
+      "last_updated": "2026-10-29T00:00:00Z"
     },
-    "astraweave-stress-test::ecs_performance/stress_10k_entities": {
-      "baseline": 5000000,
-      "max_allowed": 7500000,
-      "warn_threshold": 6250000,
-      "unit": "ns",
-      "description": "10,000 entities spawn stress test (Week 2 Action 2)",
-      "created": "2025-10-08T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
-    },
-    "astraweave-behavior::goap_planning/goap_planning_simple": {
+    "goap_planning_simple": {
       "baseline": 6050,
       "max_allowed": 9075,
       "warn_threshold": 7562.5,
@@ -54,7 +45,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-behavior::goap_planning/goap_planning_10_actions": {
+    "goap_planning_10_actions": {
       "baseline": 3650000,
       "max_allowed": 5475000,
       "warn_threshold": 4562500,
@@ -63,7 +54,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-behavior::goap_planning/goap_planning_20_actions": {
+    "goap_planning_20_actions": {
       "baseline": 25400000,
       "max_allowed": 38100000,
       "warn_threshold": 31750000,
@@ -72,7 +63,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-behavior::goap_planning/goap_caching_cold_cache": {
+    "goap_caching_cold_cache": {
       "baseline": 364900,
       "max_allowed": 547350,
       "warn_threshold": 456125,
@@ -81,7 +72,7 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-behavior::goap_planning/goap_caching_warm_cache_90pct": {
+    "goap_caching_warm_cache_90pct": {
       "baseline": 737,
       "max_allowed": 1105.5,
       "warn_threshold": 921.25,
@@ -91,7 +82,7 @@
       "last_updated": "2025-10-09T00:00:00Z",
       "critical": true
     },
-    "astraweave-behavior::goap_planning/goap_cache_comparison/cache_miss": {
+    "goap_cache_comparison/cache_miss": {
       "baseline": 47190,
       "max_allowed": 70785,
       "warn_threshold": 58987.5,
@@ -100,7 +91,7 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-behavior::goap_planning/goap_cache_comparison/cache_hit": {
+    "goap_cache_comparison/cache_hit": {
       "baseline": 1010,
       "max_allowed": 1515,
       "warn_threshold": 1262.5,
@@ -110,7 +101,7 @@
       "last_updated": "2025-10-09T00:00:00Z",
       "critical": true
     },
-    "astraweave-behavior::behavior_tree/behavior_tree_simple": {
+    "behavior_tree_simple_3_nodes": {
       "baseline": 57,
       "max_allowed": 85.5,
       "warn_threshold": 71.25,
@@ -119,16 +110,16 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-behavior::behavior_tree/behavior_tree_complex": {
-      "baseline": 253,
-      "max_allowed": 379.5,
-      "warn_threshold": 316.25,
+    "behavior_tree_20_nodes": {
+      "baseline": 369.66,
+      "max_allowed": 554.49,
+      "warn_threshold": 462.08,
       "unit": "ns",
-      "description": "Complex behavior tree (Week 2 Action 3)",
+      "description": "Complex behavior tree on ubuntu-latest. The 253 ns baseline left max_allowed at 379.5, about 10 ns above the high cluster: 369.66 ns on run 40165571400 and 369.56 ns on run 40455623588. The same commit also measured 185.87 ns (run 40274704065). Cap is 1.5x 369.66 ns, the slower of those samples. warn_threshold is 1.25x.",
       "created": "2025-10-08T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
+      "last_updated": "2026-10-28T00:00:00Z"
     },
-    "astraweave-ai::ai_core_loop/ai_core_loop_simple": {
+    "ai_loop_full_end_to_end_simple": {
       "baseline": 184,
       "max_allowed": 276,
       "warn_threshold": 230,
@@ -138,7 +129,7 @@
       "last_updated": "2025-10-09T00:00:00Z",
       "critical": true
     },
-    "astraweave-ai::ai_core_loop/ai_core_loop_moderate": {
+    "ai_loop_full_end_to_end_moderate": {
       "baseline": 736,
       "max_allowed": 1104,
       "warn_threshold": 920,
@@ -147,7 +138,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-ai::ai_core_loop/ai_core_loop_complex": {
+    "ai_loop_full_end_to_end_complex": {
       "baseline": 2100,
       "max_allowed": 3150,
       "warn_threshold": 2625,
@@ -156,7 +147,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-terrain::terrain_generation/chunk_64x64": {
+    "heightmap_generation_64x64": {
       "baseline": 1980000,
       "max_allowed": 2970000,
       "warn_threshold": 2475000,
@@ -165,7 +156,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-terrain::terrain_generation/world_chunk_streaming": {
+    "world_chunk_generation": {
       "baseline": 15060000,
       "max_allowed": 16670000,
       "warn_threshold": 16000000,
@@ -176,7 +167,7 @@
       "critical": true,
       "comment": "MUST stay under 16.67ms for 60 FPS - optimized from 19.8ms"
     },
-    "astraweave-input::input_benchmarks/input_binding_creation": {
+    "binding_creation": {
       "baseline": 4.67,
       "max_allowed": 7.0,
       "warn_threshold": 5.84,
@@ -185,7 +176,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-input::input_benchmarks/input_binding_lookup": {
+    "binding_lookup": {
       "baseline": 12.3,
       "max_allowed": 18.45,
       "warn_threshold": 15.38,
@@ -194,16 +185,7 @@
       "created": "2025-10-08T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-input::input_benchmarks/full_input_set_processing": {
-      "baseline": 1030,
-      "max_allowed": 1545,
-      "warn_threshold": 1287.5,
-      "unit": "ns",
-      "description": "Full input set processing (Week 1 baseline)",
-      "created": "2025-10-08T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
-    },
-    "astraweave-physics::raycast/raycast_empty_scene": {
+    "raycast_empty_scene": {
       "baseline": 48,
       "max_allowed": 72,
       "warn_threshold": 60,
@@ -212,25 +194,25 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-physics::raycast/raycast_ground_plane": {
-      "baseline": 44,
-      "max_allowed": 66,
-      "warn_threshold": 55,
+    "raycast_ground_plane": {
+      "baseline": 194.61,
+      "max_allowed": 291.92,
+      "warn_threshold": 243.26,
       "unit": "ns",
-      "description": "Raycast vs ground plane (Week 3 Action 12)",
+      "description": "Raycast vs a stepped ground plane on ubuntu-latest. The 44 ns cap measured a query pipeline that had not been stepped, so the ray missed. The bench now calls world.step() and asserts a hit. ubuntu-latest means: 194.61 ns (run 39532631733), 186.55, 173.12, 191.1, 184.9, 156. Cap is 1.5x the slowest. Empty-scene on the same runners stays near 13 ns, under its old cap.",
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-physics::raycast/raycast_batch_8_rays": {
-      "baseline": 273,
-      "max_allowed": 409.5,
-      "warn_threshold": 341.25,
+    "raycast_batch_8_rays": {
+      "baseline": 2309.9,
+      "max_allowed": 3464.85,
+      "warn_threshold": 2887.38,
       "unit": "ns",
-      "description": "8 raycasts in circle (vision simulation, Week 3 Action 12)",
+      "description": "Eight hitting raycasts on ubuntu-latest. The bench does not call world.step(). It calls query_pipeline.update so the boxes are in the broad phase, and the loop asserts hit_count >= 2. The 273 ns cap was eight misses. The cap is 1.5x 2309.9 ns from run 39532631733 (max_allowed 3464.85). Later ubuntu-latest means are higher and still under that cap: 2388.78 ns (run 40455623588), 2385.60 ns (run 40647488491), 2316.25 ns (run 40066299246). Windows and macOS do not run this workflow.",
       "created": "2025-10-09T00:00:00Z",
-      "last_updated": "2025-10-09T00:00:00Z"
+      "last_updated": "2026-10-28T00:00:00Z"
     },
-    "astraweave-physics::character_controller/character_move_straight": {
+    "character_move_straight": {
       "baseline": 114,
       "max_allowed": 171,
       "warn_threshold": 142.5,
@@ -239,7 +221,7 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-physics::character_controller/character_move_diagonal": {
+    "character_move_diagonal": {
       "baseline": 190,
       "max_allowed": 285,
       "warn_threshold": 237.5,
@@ -248,7 +230,7 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-physics::character_controller/character_full_tick": {
+    "character_full_tick": {
       "baseline": 6518,
       "max_allowed": 9777,
       "warn_threshold": 8147.5,
@@ -258,7 +240,7 @@
       "last_updated": "2025-10-09T00:00:00Z",
       "critical": true
     },
-    "astraweave-physics::rigid_body/rigid_body_single_step": {
+    "rigid_body_single_step": {
       "baseline": 2971,
       "max_allowed": 4456.5,
       "warn_threshold": 3713.75,
@@ -267,7 +249,7 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-physics::rigid_body/rigid_body_batch_step/1": {
+    "rigid_body_batch_step/1": {
       "baseline": 2569,
       "max_allowed": 3853.5,
       "warn_threshold": 3211.25,
@@ -276,7 +258,7 @@
       "created": "2025-10-09T00:00:00Z",
       "last_updated": "2025-10-09T00:00:00Z"
     },
-    "astraweave-physics::rigid_body/rigid_body_creation": {
+    "rigid_body_creation": {
       "baseline": 3264,
       "max_allowed": 4896,
       "warn_threshold": 4080,
@@ -287,14 +269,14 @@
     }
   },
   "critical_benchmarks": [
-    "astraweave-ai::ai_core_loop/ai_core_loop_simple",
-    "astraweave-behavior::goap_planning/goap_caching_warm_cache_90pct",
-    "astraweave-behavior::goap_planning/goap_cache_comparison/cache_hit",
-    "astraweave-terrain::terrain_generation/world_chunk_streaming",
-    "astraweave-physics::character_controller/character_full_tick"
+    "ai_loop_full_end_to_end_simple",
+    "goap_caching_warm_cache_90pct",
+    "goap_cache_comparison/cache_hit",
+    "world_chunk_generation",
+    "character_full_tick"
   ],
   "metadata": {
-    "total_benchmarks": 30,
+    "total_benchmarks": 28,
     "baseline_source": "Week 2-3 completion reports",
     "optimization_actions": [
       "Week 2 Action 2: ECS Performance Baseline",
@@ -306,10 +288,10 @@
     ],
     "performance_targets": {
       "ai_core_loop_simple": "< 5ms for real-time AI (achieved: 184ns)",
-      "goap_cache_hit": "< 1ms for real-time planning (achieved: 1.01µs)",
+      "goap_cache_hit": "< 1ms for real-time planning (achieved: 1.01\u00b5s)",
       "terrain_streaming": "< 16.67ms for 60 FPS (achieved: 15.06ms)",
-      "behavior_tree_simple": "< 1µs for 60K agents @ 60 FPS (achieved: 57ns)",
-      "character_full_tick": "< 16.67ms for 60 FPS (achieved: 6.52µs)"
+      "behavior_tree_simple": "< 1\u00b5s for 60K agents @ 60 FPS (achieved: 57ns)",
+      "character_full_tick": "< 16.67ms for 60 FPS (achieved: 6.52\u00b5s)"
     }
   }
 }
