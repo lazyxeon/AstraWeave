@@ -44,8 +44,6 @@ jobs:
             assets/_downloaded
             .asset_cache
           key: polyhaven-${{ hashFiles('assets/asset_manifest.toml', 'assets/polyhaven_manifest.toml') }}
-          restore-keys: |
-            polyhaven-
 
       - uses: ./.github/actions/rust-ci-setup
         if: steps.cache-assets.outputs.cache-hit != 'true'
