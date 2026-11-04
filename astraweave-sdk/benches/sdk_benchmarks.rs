@@ -74,9 +74,10 @@ fn bench_world_lifecycle(c: &mut Criterion) {
 
     // Benchmark: World creation overhead only
     group.bench_function("world_create_only", |b| {
-        b.iter_with_large_drop(|| {
+        b.iter(|| {
             let world = aw_world_create();
-            black_box(world)
+            black_box(world);
+            aw_world_destroy(world);
         })
     });
 
