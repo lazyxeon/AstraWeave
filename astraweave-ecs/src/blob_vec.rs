@@ -28,6 +28,7 @@ fn empty_blob(item_layout: Layout, drop_fn: Option<unsafe fn(*mut u8)>) -> BlobV
         len: 0,
         len_stamp: 0,
         drop_depth: 0,
+        dropped_from: 0,
         dropped_through: 0,
         capacity: if zst { usize::MAX } else { 0 },
         item_layout,
@@ -69,11 +70,14 @@ pub struct BlobVec {
     /// "unchanged" and frees the tail twice.
     len_stamp: u64,
     /// Nesting of `drop_detached_tail`. The outermost call owns
-    /// `dropped_through`.
+    /// `[dropped_from, dropped_through)`.
     drop_depth: usize,
-    /// Indices `< dropped_through` were dropped by a nested
-    /// `drop_detached_tail` and must not be dropped again. Idle columns keep
-    /// this at 0. The outermost drop resets it on entry and on exit.
+    /// Half-open interval of indices a nested `drop_detached_tail` already
+    /// dropped. Empty is `dropped_from == dropped_through` (both 0 when idle).
+    /// A later range that touches or overlaps is merged. A range that does
+    /// not join aborts, so a disjoint nested drop cannot be freed again.
+    /// The outermost drop resets both on entry and on exit.
+    dropped_from: usize,
     dropped_through: usize,
     /// Allocated capacity (in number of components)
     capacity: usize,
@@ -92,8 +96,9 @@ pub struct BlobVec {
     /// `drop_last`, or `swap_remove_raw_to`, each of which keeps a
     /// `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     drop_fn: Option<unsafe fn(*mut u8)>,
 }
 
@@ -281,8 +286,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -324,8 +330,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -473,8 +480,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     pub fn clear(&mut self) {
         // SAFETY: `self` is a live `BlobVec`. This `&mut self` stays live
         // across `drop_fn`, so a destructor must not re-enter.
@@ -500,8 +508,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     ///
     /// `drop_detached_tail` takes `*mut BlobVec` and does not hold
     /// `&mut BlobVec`. It is not `#[inline(never)]`: keeping the body out of
@@ -537,8 +546,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     pub(crate) fn drop_last(&mut self, n: usize) {
         // SAFETY: `self` is live. This `&mut self` stays live across `drop_fn`,
         // so a destructor must not re-enter.
@@ -560,8 +570,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     unsafe fn drop_last_raw(ptr: *mut BlobVec, n: usize) {
         let len = ptr::read(ptr::addr_of!((*ptr).len));
         let n = n.min(len);
@@ -586,8 +597,9 @@ impl BlobVec {
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
     /// A store that changes `len` bumps `len_stamp`, so writing the published
-    /// value back is not treated as unchanged. The outer loop does not drop a
-    /// prefix a nested `drop_detached_tail` already dropped.
+    /// value back is not treated as unchanged. The outer loop skips indices
+    /// in `[dropped_from, dropped_through)`, including a nested range that
+    /// does not start at 0. A range that does not join that interval aborts.
     ///
     /// The guard writes that tail only when `len_stamp` is still the stamp
     /// this call published. Deleting that write fails
@@ -595,8 +607,9 @@ impl BlobVec {
     /// same-value store does not bump the stamp, so the defined nested
     /// `clear_raw` still restores. A store that changes `len` bumps the stamp,
     /// and a later store of the published value does not clear it: the guard
-    /// does not put that length back, and this loop does not drop an index a
-    /// nested call already dropped. The stamp does not make re-entry through
+    /// does not put that length back, and this loop skips an index inside
+    /// `[dropped_from, dropped_through)`. A nested range that does not join
+    /// that interval aborts. The stamp does not make re-entry through
     /// `swap_remove_raw` (`&mut self`) defined. This function is not
     /// `#[inline(never)]`. Keeping the body out of line would not make that
     /// re-entry defined either.
@@ -605,6 +618,7 @@ impl BlobVec {
             len_ptr: *mut usize,
             stamp_ptr: *const u64,
             depth_ptr: *mut usize,
+            dropped_from_ptr: *mut usize,
             dropped_ptr: *mut usize,
             published_stamp: u64,
             entered_depth: usize,
@@ -628,6 +642,7 @@ impl BlobVec {
                     }
                     ptr::write(self.depth_ptr, self.entered_depth);
                     if self.entered_depth == 0 {
+                        ptr::write(self.dropped_from_ptr, 0);
                         ptr::write(self.dropped_ptr, 0);
                     }
                 }
@@ -642,9 +657,11 @@ impl BlobVec {
         let len_ptr = ptr::addr_of_mut!((*ptr).len);
         let stamp_ptr = ptr::addr_of!((*ptr).len_stamp);
         let depth_ptr = ptr::addr_of_mut!((*ptr).drop_depth);
+        let dropped_from_ptr = ptr::addr_of_mut!((*ptr).dropped_from);
         let dropped_ptr = ptr::addr_of_mut!((*ptr).dropped_through);
         let entered_depth = ptr::read(depth_ptr);
         if entered_depth == 0 {
+            ptr::write(dropped_from_ptr, 0);
             ptr::write(dropped_ptr, 0);
         }
         ptr::write(depth_ptr, entered_depth + 1);
@@ -654,6 +671,7 @@ impl BlobVec {
             len_ptr,
             stamp_ptr,
             depth_ptr,
+            dropped_from_ptr,
             dropped_ptr,
             published_stamp,
             entered_depth,
@@ -663,17 +681,20 @@ impl BlobVec {
         while still_live > 0 {
             still_live -= 1;
             let index = base + still_live;
-            // A nested `drop_detached_tail` already dropped this index and
-            // every index below it. Dropping them again is the ABA double free.
-            if index < ptr::read(dropped_ptr) {
-                break;
+            // Skip an index a nested `drop_detached_tail` already dropped.
+            // Continue, so a range that does not start at 0 still leaves the
+            // lower indices for this loop. `break` would leak them.
+            let from = ptr::read(dropped_from_ptr);
+            let through = ptr::read(dropped_ptr);
+            if from != through && index >= from && index < through {
+                continue;
             }
             guard.live_len = base + still_live;
             if let Some(drop_fn) = drop_fn {
                 // SAFETY: `index` is in the detached `[base, base + n)` range
                 // that was initialized before `len` was published, and it is
-                // not below `dropped_through`. `drop_fn` matches the component
-                // type registered at construction.
+                // outside `[dropped_from, dropped_through)`. `drop_fn` matches
+                // the component type registered at construction.
                 unsafe {
                     let item = data.add(index * item_size);
                     drop_fn(item);
@@ -682,27 +703,64 @@ impl BlobVec {
         }
 
         // Indices `[base, base + n)` are dropped, either by this loop or by
-        // a nested call that raised `dropped_through`. Extend the prefix when
-        // this range connects to it so the caller skips those indices too.
-        let through = ptr::read(dropped_ptr);
-        if base <= through {
-            let end = base + n;
-            if end > through {
-                ptr::write(dropped_ptr, end);
-            }
+        // a nested call. Record that interval even when it does not start at
+        // 0. An empty call (`n == 0`) must not look like a range: the defined
+        // nested `clear_raw` publishes 0 over 0 and drops nothing.
+        let end = base + n;
+        if end > base {
+            Self::note_dropped_range(ptr, base, end);
         }
 
-        // A raw store of `len` does not bump `len_stamp`. The tail is dropped;
-        // do not leave that store pointing at it. A method store bumps the
-        // stamp and publishes its own length, which this call leaves alone.
-        if ptr::read(stamp_ptr) == published_stamp {
-            let len_now = ptr::read(len_ptr);
-            if len_now > base {
-                Self::publish_len(ptr, base);
-            }
+        // The detached range is fully dropped. A raw store of `len` does not
+        // bump `len_stamp`, so any `len > base` still names freed slots.
+        // A method store bumps the stamp and may publish a length inside this
+        // range (`drop_last_raw` of a suffix). That length also names freed
+        // slots. Leave a length at or below `base` (this call's own publish,
+        // or a nested publish of a surviving prefix) and a length past `end`
+        // whose stamp changed (that publish is outside this range).
+        let len_now = ptr::read(len_ptr);
+        let stamp_matches = ptr::read(stamp_ptr) == published_stamp;
+        let inside_detached = len_now > base && len_now <= end;
+        if inside_detached || (stamp_matches && len_now > base) {
+            Self::publish_len(ptr, base);
         }
 
         guard.live_len = base;
+    }
+
+    /// Merge `[base, end)` into `[dropped_from, dropped_through)`.
+    ///
+    /// An empty interval (`dropped_from == dropped_through`) takes the range
+    /// as-is, including one that does not start at 0. A range that touches or
+    /// overlaps is merged. A range that does not join aborts: skipping it
+    /// would leave those indices for the caller to free again.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to a live `BlobVec`. `base < end`.
+    unsafe fn note_dropped_range(ptr: *mut BlobVec, base: usize, end: usize) {
+        let from_ptr = ptr::addr_of_mut!((*ptr).dropped_from);
+        let through_ptr = ptr::addr_of_mut!((*ptr).dropped_through);
+        let from = ptr::read(from_ptr);
+        let through = ptr::read(through_ptr);
+        if from == through {
+            ptr::write(from_ptr, base);
+            ptr::write(through_ptr, end);
+            return;
+        }
+        if base <= through && end >= from {
+            if base < from {
+                ptr::write(from_ptr, base);
+            }
+            if end > through {
+                ptr::write(through_ptr, end);
+            }
+            return;
+        }
+        eprintln!(
+            "astraweave-ecs: BlobVec dropped range [{base}, {end}) does not join [{from}, {through})"
+        );
+        std::process::abort();
     }
 
     /// Store `len`. Bump `len_stamp` only when the value changes.
@@ -1801,6 +1859,13 @@ mod tests {
         BlobVec::drop_last_raw(column, 2);
     }
 
+    /// Id 2 writes `len = 2` and drops only the last of that prefix (index 1).
+    /// The nested range does not start at 0. Index 1 must still be dropped once.
+    unsafe fn reenter_drop_last_suffix(column: *mut BlobVec) {
+        std::ptr::write(std::ptr::addr_of_mut!((*column).len), 2);
+        BlobVec::drop_last_raw(column, 1);
+    }
+
     /// Id 2 writes `len = 2` and does not drop through a method. The outer
     /// loop still drops every slot once; `len` must not stay 2.
     unsafe fn reenter_store_len_only(column: *mut BlobVec) {
@@ -1820,6 +1885,16 @@ mod tests {
     #[test]
     fn drop_last_raw_republish_prefix_drops_each_element_once() {
         assert_republish_drops_once(false, reenter_drop_last_after_republish);
+    }
+
+    /// Three `Box` slots. Outer `clear_raw`. Id 2 raw-writes `len = 2` and calls
+    /// `drop_last_raw(col, 1)`, which drops index 1 only. Every drop count is 1.
+    ///
+    /// Recording only a prefix from 0 skips this range (`base > dropped_through`),
+    /// and the outer loop drops index 1 again.
+    #[test]
+    fn drop_last_raw_republish_suffix_drops_each_element_once() {
+        assert_republish_drops_once(false, reenter_drop_last_suffix);
     }
 
     #[test]

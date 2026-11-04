@@ -287,8 +287,10 @@ impl Drop for DropProbe {
 /// behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or
 /// `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across
 /// `drop_fn`. A store that changes `len` bumps `len_stamp`, so writing the
-/// published value back is not treated as unchanged. The outer loop does not
-/// drop a prefix a nested `drop_detached_tail` already dropped. Kani does not
+/// published value back is not treated as unchanged. The outer loop skips
+/// indices in `[dropped_from, dropped_through)`, including a nested range
+/// that does not start at 0. A range that does not join that interval
+/// aborts. Kani does not
 /// implement `catch_unwind` (model-checking/kani#267),
 /// so the harness applies the non-reentrant split itself: `drop_last` runs
 /// through the panicking slot, then `clear` finishes the rest. It does not
