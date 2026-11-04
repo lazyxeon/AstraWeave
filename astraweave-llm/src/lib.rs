@@ -1469,9 +1469,13 @@ pub struct OllamaChatClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
-    /// Temperature on every `/api/chat` body, including the non-streaming `Req`.
-    /// The cache key uses the same value.
+    /// Temperature on `/api/chat` completion bodies, including the non-streaming `Req`.
+    /// `warmup` sends `0.0` and does not use this constant. The cache key uses this value.
     const CHAT_TEMPERATURE: f64 = 0.1;
+
+    /// `num_predict` on the streaming completion. The non-streaming `Req` omits it.
+    /// `warmup` sends `1` and does not use this constant.
+    const CHAT_NUM_PREDICT: u32 = 512;
 
     /// Stored endpoint. The first hop is checked again before each request.
     pub fn url(&self) -> &str {
@@ -1770,7 +1774,7 @@ impl OllamaChatClient {
                 "model": &self.model,
                 "messages": [{ "role": "user", "content": prompt }],
                 "stream": true,
-                "options": { "temperature": Self::CHAT_TEMPERATURE, "num_predict": 512 }
+                "options": { "temperature": Self::CHAT_TEMPERATURE, "num_predict": Self::CHAT_NUM_PREDICT }
             });
             plan_format::apply_chat_format(
                 &mut stream_body,
@@ -2280,7 +2284,45 @@ impl LlmClient for OllamaChatClient {
     }
 
     fn llm_cache_client_id(&self) -> String {
-        format!("{}:{:?}", self.url(), self.type_id())
+        // Length prefixes keep a URL from aliasing another profile.
+        // `low_latency` selects the streaming completion versus the non-streaming `Req`.
+        // Format and `num_predict` are the values that completion sends: the streaming
+        // body sends `json` when `force_format_json` is set, and `CHAT_NUM_PREDICT`;
+        // the non-streaming `Req` sends neither. `keep_alive` is written only on the
+        // streaming body, including `Some("")` versus `None`. `early_exit_on_json`
+        // stays out: both arms return the same extracted object. `warmup` is not
+        // this completion.
+        fn push_counted(out: &mut String, value: &str) {
+            use std::fmt::Write;
+            let _ = write!(out, "{}:{value}", value.len());
+            out.push(';');
+        }
+
+        let streaming = self.low_latency;
+        let format = if streaming && self.force_format_json {
+            "json"
+        } else {
+            ""
+        };
+        let num_predict = if streaming {
+            Self::CHAT_NUM_PREDICT.to_string()
+        } else {
+            String::new()
+        };
+        let (keep_present, keep_value) = match self.keep_alive.as_deref() {
+            Some(value) if streaming => ("1", value),
+            _ => ("0", ""),
+        };
+
+        let mut id = String::new();
+        push_counted(&mut id, self.url());
+        push_counted(&mut id, &format!("{:?}", self.type_id()));
+        push_counted(&mut id, if streaming { "1" } else { "0" });
+        push_counted(&mut id, format);
+        push_counted(&mut id, &num_predict);
+        push_counted(&mut id, keep_present);
+        push_counted(&mut id, keep_value);
+        id
     }
 
     fn llm_cache_model_id(&self) -> &str {
@@ -2288,8 +2330,8 @@ impl LlmClient for OllamaChatClient {
     }
 
     fn llm_cache_temperature(&self) -> f32 {
-        // Streaming and non-streaming chat bodies both send `CHAT_TEMPERATURE`,
-        // including when `OLLAMA_LOW_LATENCY` is off.
+        // Streaming and non-streaming chat completions both send `CHAT_TEMPERATURE`,
+        // including when `OLLAMA_LOW_LATENCY` is off. `warmup` sends 0.0 instead.
         Self::CHAT_TEMPERATURE as f32
     }
 }
@@ -4253,6 +4295,114 @@ mod tests {
         assert_eq!(key.temperature_q, 10);
     }
 
+    /// Chat profile with the env knobs overridden so the cache id does not
+    /// follow `OLLAMA_LOW_LATENCY`, `OLLAMA_FORMAT_JSON`, or `OLLAMA_KEEP_ALIVE`.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn ollama_chat_profile(low_latency: bool, force_format_json: bool) -> OllamaChatClient {
+        let mut client = OllamaChatClient::new(
+            "http://127.0.0.1:11434".to_string(),
+            "phi3:medium".to_string(),
+        )
+        .expect("client");
+        client.low_latency = low_latency;
+        client.force_format_json = force_format_json;
+        client.keep_alive = None;
+        client
+    }
+
+    /// Length-prefixed fields of `llm_cache_client_id`, in write order.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn cache_id_fields(id: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = id;
+        while !rest.is_empty() {
+            let (len_text, after) = rest
+                .split_once(':')
+                .unwrap_or_else(|| panic!("cache id field missing length: {id}"));
+            let len: usize = len_text
+                .parse()
+                .unwrap_or_else(|_| panic!("cache id length {len_text} in {id}"));
+            assert!(after.len() >= len + 1, "cache id field overruns {id}");
+            out.push(after[..len].to_string());
+            assert_eq!(
+                &after[len..len + 1],
+                ";",
+                "cache id field missing ';' in {id}"
+            );
+            rest = &after[len + 1..];
+        }
+        out
+    }
+
+    /// Streaming and non-streaming completions must not share a plan.
+    ///
+    /// Field order: url, type, low_latency, format, num_predict, keep_alive
+    /// presence, keep_alive value. Dropping one `push_counted` shifts the
+    /// later fields, so this fails closed.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_across_chat_modes() {
+        let stream = ollama_chat_profile(true, true);
+        let batch = ollama_chat_profile(false, true);
+        let stream_fields = cache_id_fields(&stream.llm_cache_client_id());
+        let batch_fields = cache_id_fields(&batch.llm_cache_client_id());
+        assert_eq!(stream_fields.len(), 7, "{stream_fields:?}");
+        assert_eq!(batch_fields.len(), 7, "{batch_fields:?}");
+        assert_eq!(stream_fields[0], batch_fields[0]);
+        assert_eq!(stream_fields[1], batch_fields[1]);
+        assert_eq!(stream_fields[2], "1");
+        assert_eq!(batch_fields[2], "0");
+        assert_eq!(stream_fields[3], "json");
+        assert_eq!(batch_fields[3], "");
+        assert_eq!(stream_fields[4], "512");
+        assert_eq!(batch_fields[4], "");
+        assert_eq!(stream_fields[5], "0");
+        assert_eq!(batch_fields[5], "0");
+        assert_eq!(stream_fields[6], "");
+        assert_eq!(batch_fields[6], "");
+        let batch_plain = ollama_chat_profile(false, false);
+        assert_eq!(
+            batch.llm_cache_client_id(),
+            batch_plain.llm_cache_client_id(),
+            "the non-streaming Req does not send format"
+        );
+        let mut batch_keep = ollama_chat_profile(false, true);
+        batch_keep.keep_alive = Some("5m".to_string());
+        assert_eq!(
+            batch.llm_cache_client_id(),
+            batch_keep.llm_cache_client_id(),
+            "the non-streaming Req does not send keep_alive"
+        );
+        assert_profile_cache_miss("ollama chat mode", &stream, &batch);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_when_only_format_json_changes() {
+        let with_json = ollama_chat_profile(true, true);
+        let without = ollama_chat_profile(true, false);
+        assert_profile_cache_miss("ollama chat format", &with_json, &without);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_when_only_keep_alive_changes() {
+        let mut base = ollama_chat_profile(true, true);
+        let mut changed = ollama_chat_profile(true, true);
+        base.keep_alive = Some("5m".to_string());
+        changed.keep_alive = Some("1m".to_string());
+        assert_profile_cache_miss("ollama chat keep_alive", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_when_only_keep_alive_presence_changes() {
+        let absent = ollama_chat_profile(true, true);
+        let mut empty = ollama_chat_profile(true, true);
+        empty.keep_alive = Some(String::new());
+        assert_profile_cache_miss("ollama chat keep_alive presence", &absent, &empty);
+    }
+
     /// One POST. Returns the URL and the raw JSON body the client sent.
     #[cfg(all(feature = "llm_cache", feature = "ollama"))]
     fn capture_one_http_body(response: &str) -> (String, std::sync::mpsc::Receiver<String>) {
@@ -4322,6 +4472,8 @@ mod tests {
         let (url, body_rx) = capture_one_http_body(r#"{"message":{"content":"ok"}}"#);
         let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
         client.low_latency = false;
+        client.force_format_json = true;
+        client.keep_alive = None;
         let text = client.complete("ping").await.expect("non-stream complete");
         assert_eq!(text, "ok");
         let body = body_rx
@@ -4333,22 +4485,24 @@ mod tests {
             serde_json::json!(false),
             "expected the non-stream Req, got {body}"
         );
-        let sent_temp = sent["options"]["temperature"].as_f64().unwrap_or_else(|| {
-            panic!("non-stream body has no temperature: {body}");
-        });
         assert!(
-            body.contains("\"temperature\":0.1"),
-            "non-stream temperature must be the JSON number 0.1, got {body}"
+            sent.get("format").is_none(),
+            "non-stream Req must omit format, got {body}"
         );
-        let recorded = f64::from(client.llm_cache_temperature());
         assert!(
-            (sent_temp - recorded).abs() < 1e-6,
-            "recorded temperature {recorded} != sent {sent_temp} in {body}"
+            sent["options"].get("num_predict").is_none(),
+            "non-stream Req must omit num_predict, got {body}"
         );
+        assert_eq!(
+            sent["options"]["temperature"],
+            serde_json::json!(0.1),
+            "options.temperature must be 0.1, got {body}"
+        );
+        assert_eq!(client.llm_cache_temperature(), 0.1);
         let snap = create_test_world_snapshot();
         let reg = create_test_registry();
         let key = plan_prompt_cache_key(&client, &snap, &reg);
-        assert_eq!(key.temperature_q, (sent_temp * 100.0).round() as u32);
+        assert_eq!(key.temperature_q, 10);
     }
 
     /// Default `low_latency` is the `OLLAMA_LOW_LATENCY=1` path. `complete` sends
@@ -4361,6 +4515,8 @@ mod tests {
             capture_one_http_body("{\"message\":{\"content\":\"ok\"},\"done\":true}\n");
         let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
         client.low_latency = true;
+        client.force_format_json = true;
+        client.keep_alive = None;
         let text = client.complete("ping").await.expect("stream complete");
         assert_eq!(text, "ok");
         let body = body_rx
@@ -4372,22 +4528,26 @@ mod tests {
             serde_json::json!(true),
             "expected the streaming chat body, got {body}"
         );
-        let sent_temp = sent["options"]["temperature"].as_f64().unwrap_or_else(|| {
-            panic!("streaming body has no temperature: {body}");
-        });
-        assert!(
-            body.contains("\"temperature\":0.1"),
-            "streaming temperature must be the JSON number 0.1, got {body}"
+        assert_eq!(
+            sent["format"],
+            serde_json::json!("json"),
+            "streaming format must be json, got {body}"
         );
-        let recorded = f64::from(client.llm_cache_temperature());
-        assert!(
-            (sent_temp - recorded).abs() < 1e-6,
-            "recorded temperature {recorded} != sent {sent_temp} in {body}"
+        assert_eq!(
+            sent["options"]["num_predict"],
+            serde_json::json!(512),
+            "streaming num_predict must be 512, got {body}"
         );
+        assert_eq!(
+            sent["options"]["temperature"],
+            serde_json::json!(0.1),
+            "options.temperature must be 0.1, got {body}"
+        );
+        assert_eq!(client.llm_cache_temperature(), 0.1);
         let snap = create_test_world_snapshot();
         let reg = create_test_registry();
         let key = plan_prompt_cache_key(&client, &snap, &reg);
-        assert_eq!(key.temperature_q, (sent_temp * 100.0).round() as u32);
+        assert_eq!(key.temperature_q, 10);
     }
 
     #[cfg(all(feature = "llm_cache", feature = "ollama", not(feature = "phi3")))]
