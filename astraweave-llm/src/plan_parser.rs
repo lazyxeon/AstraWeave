@@ -8,7 +8,7 @@
 /// - Detailed error reporting with recovery suggestions
 /// - Metrics tracking for parse success rates
 use anyhow::{anyhow, bail, Context, Result};
-use astraweave_core::{ActionStep, PlanIntent, ToolRegistry};
+use astraweave_core::{byte_prefix, ActionStep, PlanIntent, ToolRegistry};
 use serde_json::Value;
 use std::collections::HashSet;
 use tracing::debug;
@@ -296,7 +296,7 @@ fn try_object_extraction(
             "  📦 Extracted object ({} chars): {}",
             obj_str.len(),
             if obj_str.len() > 200 {
-                &obj_str[..200]
+                byte_prefix(obj_str, 200)
             } else {
                 obj_str
             }
@@ -307,7 +307,7 @@ fn try_object_extraction(
             "  🧹 After cleaning ({} chars): {}",
             cleaned.len(),
             if cleaned.len() > 200 {
-                &cleaned[..200]
+                byte_prefix(&cleaned, 200)
             } else {
                 &cleaned
             }
@@ -533,7 +533,7 @@ fn truncate(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len])
+        format!("{}...", byte_prefix(s, max_len))
     }
 }
 
@@ -544,7 +544,7 @@ fn truncate(s: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use astraweave_core::{Constraints, ToolSpec};
+    use astraweave_core::{byte_prefix, Constraints, ToolSpec};
     use std::collections::BTreeMap;
 
     fn create_test_registry() -> ToolRegistry {
@@ -584,6 +584,57 @@ mod tests {
         assert_eq!(result.extraction_method, ExtractionMethod::Direct);
         assert_eq!(result.plan.plan_id, "test-1");
         assert_eq!(result.plan.steps.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_long_multibyte_response_does_not_panic() {
+        let reg = create_test_registry();
+        let padding = "é".repeat(100);
+        let text = format!("{padding}not-json");
+        let result = parse_llm_response(&text, &reg);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn truncate_respects_char_boundaries() {
+        let s = "é".repeat(80);
+        assert!(s.len() > 150);
+        let out = truncate(&s, 150);
+        assert!(out.ends_with("..."));
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+        assert!(byte_prefix(&s, 150).len() <= 150);
+    }
+
+    #[test]
+    fn truncate_at_150_mid_multibyte_scalar_does_not_panic() {
+        let s = "é".repeat(76);
+        assert!(s.len() > 150);
+        assert!(!s.is_char_boundary(151));
+        let out = truncate(&s, 151);
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+    }
+
+    #[test]
+    fn object_extraction_preview_at_200_bytes_avoids_mid_scalar() {
+        let obj_str = "日".repeat(67);
+        assert!(obj_str.len() > 200);
+        assert!(!obj_str.is_char_boundary(200));
+        let preview = byte_prefix(&obj_str, 200);
+        assert!(std::str::from_utf8(preview.as_bytes()).is_ok());
+        assert_eq!(preview.len(), 198);
+    }
+
+    #[test]
+    fn object_extraction_debug_previews_respect_char_boundaries() {
+        let reg = create_test_registry();
+        let pad = "é".repeat(120);
+        let text = format!(
+            r#"{{"plan_id":"preview-test","pad":"{pad}","steps":[{{"act":"FlyToMoon"}}]}}"#
+        );
+        assert!(text.len() > 200);
+        let mut warnings = Vec::new();
+        let result = try_object_extraction(&text, &reg, &mut warnings);
+        assert!(result.is_err());
     }
 
     #[test]

@@ -112,6 +112,8 @@ def jobs_missing_timeout(text: str) -> list[str]:
 MUTATION_TESTING = WORKFLOWS / "mutation-testing.yml"
 VERIFY_BASELINE_ERROR = "baseline did not complete successfully"
 VERIFY_NO_MUTANTS_ERROR = "no mutant outcomes recorded after baseline"
+VERIFY_END_TIME_ERROR = "cargo-mutants did not finish (end_time is null)"
+VERIFY_INCOMPLETE_ERROR = "incomplete shard:"
 
 
 def mutation_testing_text() -> str:
@@ -150,6 +152,16 @@ def _python_run_lines(run: str) -> list[str]:
         for line in run.splitlines()
         if "python3 scripts/ci/mutation_ai_outcomes.py" in line
     ]
+
+
+def assert_mutation_summary_requires_ai_success(text: str) -> None:
+    summary = mutation_summary_job(text)
+    report = job_step_block(summary, "Generate summary report")
+    run = _run_script(report)
+    if 'needs.mutants-ai.result }}" != "success"' not in run:
+        raise AssertionError(
+            "mutants-summary must fail when needs.mutants-ai.result is not success"
+        )
 
 
 def assert_mutation_ai_outcome_steps_not_softened(text: str) -> None:
@@ -448,7 +460,7 @@ class WorkflowPolicyTest(unittest.TestCase):
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
         watched = nightly_failure_watched_workflows(text)
         known = workflow_display_names()
-        self.assertEqual(len(watched), 13)
+        self.assertEqual(len(watched), 20)
         missing = [name for name in watched if name not in known]
         self.assertEqual(missing, [])
         self.assertIn("determinism-replay", watched)
@@ -506,6 +518,17 @@ class WorkflowPolicyTest(unittest.TestCase):
         upload = ai.split("Upload mutation results", 1)[1]
         self.assertIn("if: always()", report)
         self.assertIn("if: always()", upload)
+
+    def test_mutation_summary_requires_ai_matrix_success(self) -> None:
+        text = mutation_testing_text()
+        assert_mutation_summary_requires_ai_success(text)
+        without = text.replace(
+            'elif [ "${{ needs.mutants-ai.result }}" != "success" ]; then',
+            'elif false; then',
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_mutation_summary_requires_ai_success(without)
 
     def test_mutation_ai_outcome_steps_are_not_softened(self) -> None:
         text = mutation_testing_text()
@@ -573,10 +596,22 @@ class WorkflowPolicyTest(unittest.TestCase):
         errors = mutation_ai_outcomes.verify_shard_outcomes(baseline_only / "outcomes.json")
         self.assertIn(VERIFY_NO_MUTANTS_ERROR, errors)
 
+    def test_mutation_ai_outcomes_verify_shard_rejects_unfinished(self) -> None:
+        root = ROOT / "scripts" / "ci" / "testdata" / "mutation_ai_unfinished"
+        errors = mutation_ai_outcomes.verify_shard_outcomes(root / "outcomes.json")
+        self.assertTrue(any(VERIFY_END_TIME_ERROR in err for err in errors))
+        self.assertTrue(any(VERIFY_INCOMPLETE_ERROR in err for err in errors))
+        exit_code = mutation_ai_outcomes.main(
+            ["--verify-shard", str(root / "outcomes.json")]
+        )
+        self.assertEqual(exit_code, 1)
+
     def test_mutation_ai_verify_errors_are_required(self) -> None:
         source = (ROOT / "scripts" / "ci" / "mutation_ai_outcomes.py").read_text(encoding="utf-8")
         self.assertIn(VERIFY_BASELINE_ERROR, source)
         self.assertIn(VERIFY_NO_MUTANTS_ERROR, source)
+        self.assertIn(VERIFY_END_TIME_ERROR, source)
+        self.assertIn(VERIFY_INCOMPLETE_ERROR, source)
         stripped = source.replace(f'errors.append("{VERIFY_BASELINE_ERROR}")', "", 1)
         with self.assertRaises(AssertionError):
             self.assertIn(VERIFY_BASELINE_ERROR, stripped)

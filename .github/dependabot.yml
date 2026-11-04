@@ -30,9 +30,16 @@ updates:
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+        group-by: dependency-name
     labels:
       - "dependencies"
-      - "github-actions"
+      - "ci"
