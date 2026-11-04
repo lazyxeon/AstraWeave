@@ -51,11 +51,10 @@ test = false
 doc = false
 bench = false
 
-# Uncomment if event system API is exposed in World
-# [[bin]]
-# name = "fuzz_event_system"
-# path = "fuzz_targets/fuzz_event_system.rs"
-# test = false
-# doc = false
-# bench = false
+[[bin]]
+name = "fuzz_event_system"
+path = "fuzz_targets/fuzz_event_system.rs"
+test = false
+doc = false
+bench = false
 

@@ -1,5 +1,13 @@
-# Nightly parser fuzzing. Not on pull requests: each target is capped at
-# two minutes so this job cannot stretch pull-request CI.
+# Nightly parser fuzzing. Not on pull requests.
+# The matrix is every [[bin]] in a fuzz/Cargo.toml (scripts/ci/fuzz_targets.py).
+# Each target is capped at 120 seconds. The corpus is a workflow artifact
+# named fuzz-corpus-<target>, restored from the newest qualifying run of
+# this workflow on the default branch of this repository. A run may be
+# failed overall when another matrix cell crashed; per-target corpora still
+# restore from that run.
+# Crash reproducers are uploaded. The workflow token is contents: read and
+# actions: read. upload-artifact uses the runner artifact token, and the
+# fuzz job inherits that token.
 
 name: Fuzz nightly
 
@@ -14,50 +22,112 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  targets:
+    name: List fuzz targets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.list.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: List cargo-fuzz bins
+        id: list
+        run: |
+          {
+            echo "matrix<<EOF"
+            python3 scripts/ci/fuzz_targets.py
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
   fuzz:
     name: ${{ matrix.target }}
+    needs: targets
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - dir: persistence/aw-save/fuzz
-            target: fuzz_awsv
-          - dir: astraweave-combat/fuzz
-            target: fuzz_vitals
-          - dir: astraweave-asset/fuzz
-            target: fuzz_gltf_json
-          - dir: astraweave-asset/fuzz
-            target: fuzz_cell_ron
-          - dir: net/aw-net-proto/fuzz
-            target: fuzz_decode_msg
+        include: ${{ fromJson(needs.targets.outputs.matrix) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install pinned Rust nightly
         uses: ./.github/actions/rust-nightly
         with:
           components: llvm-tools-preview
 
-      - name: Cache cargo-fuzz
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/bin/cargo-fuzz
-          key: cargo-fuzz-0.13.1
-
       - name: Install cargo-fuzz
-        run: |
-          if ! command -v cargo-fuzz >/dev/null; then
-            cargo install cargo-fuzz --version 0.13.1 --locked
-          fi
-
-      - name: Fuzz ${{ matrix.target }} for two minutes
-        working-directory: ${{ matrix.dir }}
         # rust-toolchain.toml pins 1.89.0, so a bare `cargo` is stable.
+        # cargo-fuzz 0.13.1 does not build on current nightly (rustix).
+        run: cargo install cargo-fuzz --version 0.13.1 --locked
+
+      - name: Restore corpus
+        env:
+          FUZZ_DIR: ${{ matrix.dir }}
+          FUZZ_TARGET: ${{ matrix.target }}
+          GH_TOKEN: ${{ github.token }}
+          THIS_RUN: ${{ github.run_id }}
+          CORPUS_BRANCH: ${{ github.event.repository.default_branch }}
+          CORPUS_REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p "$FUZZ_DIR/corpus/$FUZZ_TARGET"
+          case "$FUZZ_TARGET" in
+            *[!A-Za-z0-9_]*) echo "refusing target name" >&2; exit 1 ;;
+          esac
+          if [ -z "$CORPUS_BRANCH" ] || [ -z "$CORPUS_REPOSITORY" ]; then
+            echo "refusing corpus restore without a default branch and repository" >&2
+            exit 1
+          fi
+          name="fuzz-corpus-${FUZZ_TARGET}"
+          runs_payload="$(mktemp)"
+          payload="$(mktemp)"
+          branch_q="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["CORPUS_BRANCH"], safe=""))')"
+          gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/workflows/fuzz-nightly.yml/runs?per_page=100&status=completed&branch=${branch_q}&exclude_pull_requests=true" >"$runs_payload"
+          gh api --paginate "repos/${CORPUS_REPOSITORY}/actions/artifacts?per_page=100&name=${name}" >"$payload"
+          run_id="$(python3 scripts/ci/fuzz_corpus_artifact.py "$THIS_RUN" "$CORPUS_BRANCH" "$CORPUS_REPOSITORY" "$runs_payload" <"$payload")"
+          if [ -z "$run_id" ]; then
+            echo "No previous corpus artifact; starting empty."
+            exit 0
+          fi
+          case "$run_id" in
+            *[!0-9]*) echo "refusing run id" >&2; exit 1 ;;
+          esac
+          tmp="$(mktemp -d)"
+          gh run download "$run_id" --name "$name" --dir "$tmp/out"
+          find "$tmp/out" -type f -exec cp {} "$FUZZ_DIR/corpus/$FUZZ_TARGET/" \;
+
+      - name: Fuzz for two minutes
+        working-directory: ${{ matrix.dir }}
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
         # cargo-fuzz passes -Z, which stable rejects. AW_NIGHTLY is the
         # dated channel in .github/rust-nightly-channel (#560).
-        run: cargo +$AW_NIGHTLY fuzz run ${{ matrix.target }} -- -max_total_time=120
+        run: cargo +$AW_NIGHTLY fuzz run "$FUZZ_TARGET" -- -max_total_time=120
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-crash-${{ matrix.target }}-${{ github.run_id }}
+          path: ${{ matrix.dir }}/artifacts/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Save corpus
+        if: always() && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: ${{ matrix.dir }}/corpus/${{ matrix.target }}
+          if-no-files-found: ignore
+          retention-days: 14

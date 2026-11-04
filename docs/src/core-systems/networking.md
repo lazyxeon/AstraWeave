@@ -57,7 +57,7 @@ models, wire formats, and integration patterns. Neither imports the other.
   `sign16`. Every signature verification fails for two independent reasons (length
   mismatch + algorithm mismatch). The failure is `warn!` only — the server does not
   kick the client. Tracked as Q17 in `ARCHITECTURE_MAP.md` §14.
-* **`apply_delta` silent no-op on tick mismatch** (`astraweave-net/src/lib.rs:404-406`).
+* **`apply_delta` silent no-op on tick mismatch** (`astraweave-net/src/lib.rs:420-422`).
 * **`EntityState` type collision.** Both crates define a struct named `EntityState`
   with different field shapes (`{ pos: IVec2, hp, team, ammo }` vs.
   `{ position: Vec3, health }`). Qualify imports.
