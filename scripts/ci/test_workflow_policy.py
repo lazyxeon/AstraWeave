@@ -606,6 +606,30 @@ class WorkflowPolicyTest(unittest.TestCase):
             text,
         )
 
+    def test_one_off_replay_workflows_stay_removed(self) -> None:
+        for name in (
+            "ai-depth-replay.yml",
+            "combat-replay.yml",
+            "determinism-replay-mod.yml",
+        ):
+            self.assertFalse(
+                (WORKFLOWS / name).exists(),
+                f"{name} must stay removed; cross-OS replay lives in determinism-replay.yml",
+            )
+
+    def test_frame_alloc_sites_is_dispatch_only(self) -> None:
+        text = (WORKFLOWS / "frame-alloc-sites.yml").read_text(encoding="utf-8")
+        on_block = text.split("on:", 1)[1].split("\npermissions:", 1)[0]
+        self.assertIn("workflow_dispatch:", on_block)
+        self.assertNotIn("push:", on_block)
+        self.assertIn("frame_alloc_test_executable.py", text)
+
+    def test_assets_prefetch_uses_polyhaven_provider_filter(self) -> None:
+        text = (WORKFLOWS / "assets-prefetch.yml").read_text(encoding="utf-8")
+        self.assertIn("--manifest assets/asset_manifest.toml", text)
+        self.assertIn("--provider polyhaven", text)
+        self.assertNotIn("astraweave-assets -- check", text)
+
     def test_allocation_measurement_is_a_real_gate_off_prs(self) -> None:
         text = (WORKFLOWS / "allocation-measurement.yml").read_text(encoding="utf-8")
         self.assertIn("schedule:", text)
