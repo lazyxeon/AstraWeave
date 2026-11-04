@@ -4039,19 +4039,77 @@ mod tests {
             "Qwen3Ollama::fast and ::strategic must not share a plan at similarity 1.0, got {hit:?}"
         );
         assert_eq!(cache.stats().similarity_hits, 0);
+    }
 
-        let mut same_temperature = fast.clone();
-        same_temperature.enable_thinking = !fast.enable_thinking;
-        same_temperature.max_tokens = fast.max_tokens.saturating_add(1);
-        same_temperature.context_length = fast.context_length.saturating_add(1);
-        same_temperature.system_prompt = Some("different-profile".to_string());
-        let same_temperature_key = super::plan_prompt_cache_key(&same_temperature, &snap, &reg);
-        let same_temperature_hit = cache.get(&same_temperature_key);
+    /// `fast` stored, then `get` of a clone that differs in exactly one identity field.
+    ///
+    /// One test per `push_counted` field. Dropping that line makes this `get`
+    /// return the stored plan, so the miss assertion fails on its own.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn assert_qwen_fast_single_field_miss(
+        label: &str,
+        mutate: impl FnOnce(&mut qwen3_ollama::Qwen3Ollama),
+    ) {
+        use std::time::Instant;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let fast = qwen3_ollama::Qwen3Ollama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        mutate(&mut changed);
+        let fast_key = super::plan_prompt_cache_key(&fast, &snap, &reg);
+        let changed_key = super::plan_prompt_cache_key(&changed, &snap, &reg);
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        cache.put(
+            fast_key,
+            CachedPlan {
+                plan: PlanIntent {
+                    plan_id: label.to_string(),
+                    steps: vec![],
+                },
+                created_at: Instant::now(),
+                tokens_saved: 1,
+            },
+        );
+
+        let hit = cache.get(&changed_key);
         assert!(
-            same_temperature_hit.is_none(),
-            "thinking, context, max tokens, and system prompt must miss at similarity 1.0, got {same_temperature_hit:?}"
+            hit.is_none(),
+            "{label} must miss at similarity 1.0, got {hit:?}"
         );
         assert_eq!(cache.stats().similarity_hits, 0);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_enable_thinking_changes() {
+        assert_qwen_fast_single_field_miss("enable_thinking", |client| {
+            client.enable_thinking = !client.enable_thinking;
+        });
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_context_length_changes() {
+        assert_qwen_fast_single_field_miss("context_length", |client| {
+            client.context_length = client.context_length.saturating_add(1);
+        });
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_max_tokens_changes() {
+        assert_qwen_fast_single_field_miss("max_tokens", |client| {
+            client.max_tokens = client.max_tokens.saturating_add(1);
+        });
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_system_prompt_changes() {
+        assert_qwen_fast_single_field_miss("system_prompt", |client| {
+            client.system_prompt = Some("different-profile".to_string());
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
