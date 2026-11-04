@@ -3017,4 +3017,216 @@ mod tests {
         assert!(catch_unwind(AssertUnwindSafe(|| drop(blob))).is_ok());
         assert_eq!(DROPS.load(Ordering::SeqCst), 3);
     }
+
+    /// Six `Box` slots. Outer `clear_raw`. Id 5 raw-writes `len = 4` and calls
+    /// `drop_last_raw(2)`, which drops `[2, 4)` and bumps `len_stamp`. Id 1
+    /// then panics. The follow-up `clear_raw` must not drop index 1 again.
+    ///
+    /// Leaving the nested publish (`len == 2`) in place does that.
+    #[test]
+    fn panic_after_nested_nonprefix_does_not_double_free() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+            panic_low: bool,
+            lower_still: bool,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                unsafe { *self.drops.add(self.id as usize) += 1 };
+                if self.lower_still {
+                    unsafe {
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), 4);
+                        BlobVec::drop_last_raw(self.column, 2);
+                    }
+                }
+                if self.panic_low {
+                    panic!("panic after nested range");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 6];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::with_capacity::<Elem>(8));
+        let column = holder.get();
+        unsafe {
+            for id in 0..6u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                    panic_low: id == 1,
+                    lower_still: id == 5,
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| BlobVec::clear_raw(column))).is_err();
+            assert!(panicked);
+            let len_after = ptr::read(ptr::addr_of!((*column).len));
+            // Unfixed, `len` stays 2 and this clear frees index 1 again.
+            BlobVec::clear_raw(column);
+            assert_eq!(len_after, 1, "in-progress index 1 must sit outside len");
+            assert_eq!(drops, [1, 1, 1, 1, 1, 1]);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+        }
+    }
+
+    /// Three `Box` slots, capacity to spare. Outer `clear_raw`. Id 2 writes a
+    /// spare element at index 3, `publish_len(4)` (stamp bump), then panics.
+    /// Column `Drop` must not free index 2 again. The spare is above the
+    /// in-progress index, so the published `len` does not include it; this
+    /// test drops that slot itself.
+    #[test]
+    fn push_then_panic_does_not_restore_but_second_clear_covers_dropped_slot() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+            push_panic: bool,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                let id = self.id;
+                let drops = self.drops;
+                let column = self.column;
+                let push_panic = self.push_panic;
+                unsafe { *drops.add(id as usize) += 1 };
+                if push_panic {
+                    unsafe {
+                        let data = ptr::read(ptr::addr_of!((*column).data)).as_ptr();
+                        let size = ptr::read(ptr::addr_of!((*column).item_layout)).size();
+                        let dst = data.add(3 * size);
+                        ptr::write(
+                            dst.cast::<Elem>(),
+                            Elem {
+                                id: 3,
+                                payload: Box::new(3),
+                                drops,
+                                column,
+                                push_panic: false,
+                            },
+                        );
+                        BlobVec::publish_len(column, 4);
+                    }
+                    panic!("push then panic");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 4];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::with_capacity::<Elem>(8));
+        let column = holder.get();
+        let len_after = unsafe {
+            for id in 0..3u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                    push_panic: id == 2,
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| BlobVec::clear_raw(column))).is_err();
+            assert!(panicked);
+            let len_after = ptr::read(ptr::addr_of!((*column).len));
+            // The spare sits at index 3. A published len of 2 does not own it.
+            // Len 4 is the unfixed stamp-mismatch value; column Drop then
+            // frees index 2 a second time, so this branch stays closed there.
+            if len_after <= 3 {
+                let data = ptr::read(ptr::addr_of!((*column).data)).as_ptr();
+                let size = ptr::read(ptr::addr_of!((*column).item_layout)).size();
+                ptr::drop_in_place(data.add(3 * size).cast::<Elem>());
+            }
+            len_after
+        };
+        // `BlobVec::drop` clears whatever `len` still counts. Unfixed, that
+        // length is 4 and index 2 is freed again.
+        drop(holder);
+        assert_eq!(len_after, 2, "unwind must exclude the in-progress index");
+        assert_eq!(drops, [1, 1, 1, 1]);
+    }
+
+    /// Outermost `drop_last_raw(1)` on three `Box` slots. Id 2 raw-writes
+    /// `len = 2`, drops index 1, raw-writes `raw_len`, then panics. The live
+    /// prefix is 1. `raw_len == 3` makes the next `clear_raw` double-free
+    /// index 1. `raw_len == 100` makes it walk off the allocation.
+    fn assert_drop_last_panic_after_suffix(raw_len: usize) {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+            raw_len: usize,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                unsafe { *self.drops.add(self.id as usize) += 1 };
+                if self.id == 2 {
+                    unsafe {
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), 2);
+                        BlobVec::drop_last_raw(self.column, 1);
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), self.raw_len);
+                    }
+                    panic!("suffix then panic");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 3];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::new::<Elem>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..3u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                    raw_len,
+                });
+            }
+            let panicked =
+                catch_unwind(AssertUnwindSafe(|| BlobVec::drop_last_raw(column, 1))).is_err();
+            assert!(panicked);
+            let len_after = ptr::read(ptr::addr_of!((*column).len));
+            BlobVec::clear_raw(column);
+            assert_eq!(len_after, 1, "dropped index 1 must sit outside len");
+            assert_eq!(drops, [1, 1, 1]);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+        }
+    }
+
+    #[test]
+    fn drop_last_raw_panic_after_suffix_len_3_does_not_double_free() {
+        assert_drop_last_panic_after_suffix(3);
+    }
+
+    #[test]
+    fn drop_last_raw_panic_after_suffix_len_100_does_not_walk_off() {
+        assert_drop_last_panic_after_suffix(100);
+    }
 }
