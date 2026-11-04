@@ -62,7 +62,7 @@ jobs:
             --shard-count 16
       
       - name: Upload benchmark artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-results-${{ github.sha }}-shard-${{ matrix.shard_index }}
           path: benchmark_results/shard-${{ matrix.shard_index }}/
@@ -213,7 +213,7 @@ jobs:
           echo "benchmark_count=$benchmark_count" >> "$GITHUB_OUTPUT"
 
       - name: Upload combined benchmark artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: benchmark-results-${{ github.sha }}

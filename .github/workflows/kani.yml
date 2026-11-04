@@ -46,7 +46,7 @@ jobs:
           args: --package astraweave-ecs -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
       - name: Upload Kani Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kani-report-ecs
@@ -67,7 +67,7 @@ jobs:
           args: --package astraweave-math -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
       - name: Upload Kani Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kani-report-math
@@ -88,7 +88,7 @@ jobs:
           args: --package astraweave-sdk -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
       - name: Upload Kani Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kani-report-sdk
@@ -109,7 +109,7 @@ jobs:
           args: --package astraweave-core -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
       - name: Upload Kani Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: kani-report-core

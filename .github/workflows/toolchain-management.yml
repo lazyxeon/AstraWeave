@@ -318,7 +318,7 @@ jobs:
               -p hello_companion 2>&1 | tail -1 >> perf-${{ matrix.toolchain }}.txt
 
       - name: Upload performance results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: performance-${{ matrix.toolchain }}
           path: perf-${{ matrix.toolchain }}.txt
@@ -362,7 +362,7 @@ jobs:
           echo "- Monitor nightly for upcoming features" >> toolchain-report.md
 
       - name: Upload toolchain report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: toolchain-report
           path: toolchain-report.md

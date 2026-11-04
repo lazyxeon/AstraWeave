@@ -110,7 +110,7 @@ jobs:
           echo '```' >> audit-report.md
 
       - name: Upload audit reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: security-audit-report-${{ github.run_number }}
           path: |
@@ -259,7 +259,7 @@ jobs:
           echo '```' >> analysis.md
 
       - name: Upload analysis report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: workspace-analysis-report
           path: |
@@ -359,7 +359,7 @@ jobs:
           echo '```' >> performance.md
 
       - name: Upload performance report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: performance-profile-report
           path: |

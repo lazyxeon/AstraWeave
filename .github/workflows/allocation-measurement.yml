@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload bench output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: alloc-measure-${{ matrix.crate }}
           path: bench-output/
@@ -115,7 +115,7 @@ jobs:
 
       - name: Upload tick time
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sim-tick-time
           path: bench-output/sim-tick-time.txt
@@ -157,7 +157,7 @@ jobs:
           fi
 
       - name: Upload combined summary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: alloc-measure-summary
           path: summary.md
