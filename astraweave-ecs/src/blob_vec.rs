@@ -26,6 +26,9 @@ fn empty_blob(item_layout: Layout, drop_fn: Option<unsafe fn(*mut u8)>) -> BlobV
     BlobVec {
         data: dangling_aligned(item_layout.align()),
         len: 0,
+        len_stamp: 0,
+        drop_depth: 0,
+        dropped_through: 0,
         capacity: if zst { usize::MAX } else { 0 },
         item_layout,
         drop_fn,
@@ -56,6 +59,22 @@ pub struct BlobVec {
     data: NonNull<u8>,
     /// Number of components currently stored
     len: usize,
+    /// Bumped when `len` is stored as a different value.
+    ///
+    /// The panic guard compares this stamp, not the length. A nested
+    /// `clear_raw` that writes `0` over `0` does not bump it, so the defined
+    /// outer path still restores the undropped tail. A store that changes
+    /// `len` bumps it, and a later store of the old value does not put the
+    /// stamp back. Comparing the length alone treats that round-trip as
+    /// "unchanged" and frees the tail twice.
+    len_stamp: u64,
+    /// Nesting of `drop_detached_tail`. The outermost call owns
+    /// `dropped_through`.
+    drop_depth: usize,
+    /// Indices `< dropped_through` were dropped by a nested
+    /// `drop_detached_tail` and must not be dropped again. Idle columns keep
+    /// this at 0. The outermost drop resets it on entry and on exit.
+    dropped_through: usize,
     /// Allocated capacity (in number of components)
     capacity: usize,
     /// Memory layout of a single component
@@ -72,6 +91,9 @@ pub struct BlobVec {
     /// is undefined behavior, as is re-entry during `clear`, `Drop`,
     /// `drop_last`, or `swap_remove_raw_to`, each of which keeps a
     /// `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     drop_fn: Option<unsafe fn(*mut u8)>,
 }
 
@@ -183,7 +205,7 @@ impl BlobVec {
         // capacity. Offset is within bounds because `self.len < self.capacity`.
         let ptr = self.data.as_ptr().add(self.len * self.item_layout.size());
         ptr.cast::<T>().write(value);
-        self.len += 1;
+        self.set_len(self.len + 1);
     }
 
     // ========================================================================
@@ -207,7 +229,7 @@ impl BlobVec {
         // `reserve(1)` ensures capacity. Offset is within allocation bounds.
         let dst = self.data.as_ptr().add(self.len * self.item_layout.size());
         clone_fn(src, dst);
-        self.len += 1;
+        self.set_len(self.len + 1);
     }
 
     /// Get a raw pointer to the component at the specified index.
@@ -258,6 +280,9 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -298,6 +323,9 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -404,7 +432,7 @@ impl BlobVec {
             ptr::swap(ptr, last_ptr);
         }
 
-        self.len -= 1;
+        self.set_len(self.len - 1);
         ptr::read(
             self.data
                 .as_ptr()
@@ -444,6 +472,9 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     pub fn clear(&mut self) {
         // SAFETY: `self` is a live `BlobVec`. This `&mut self` stays live
         // across `drop_fn`, so a destructor must not re-enter.
@@ -468,17 +499,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     ///
     /// `drop_detached_tail` takes `*mut BlobVec` and does not hold
     /// `&mut BlobVec`. It is not `#[inline(never)]`: keeping the body out of
     /// line does not make a `swap_remove_raw` (`&mut self`) re-entry defined.
-    /// The published-length compare is defence in depth. No defined re-entry
-    /// stores a different `len`.
+    /// `len_stamp` is the defence in depth. A same-value store does not bump
+    /// it. No defined re-entry stores a different `len`.
     pub(crate) unsafe fn clear_raw(ptr: *mut BlobVec) {
         // Read and publish through raw pointers so this entry does not hold
         // `&mut BlobVec` across the nested drop.
         let n = ptr::read(ptr::addr_of!((*ptr).len));
-        ptr::write(ptr::addr_of_mut!((*ptr).len), 0);
+        // A same-value store (the defined nested call, `len` already 0) does
+        // not bump `len_stamp`. The outer panic guard still restores.
+        Self::publish_len(ptr, 0);
         if n == 0 {
             return;
         }
@@ -500,6 +536,9 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     pub(crate) fn drop_last(&mut self, n: usize) {
         // SAFETY: `self` is live. This `&mut self` stays live across `drop_fn`,
         // so a destructor must not re-enter.
@@ -520,6 +559,9 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     unsafe fn drop_last_raw(ptr: *mut BlobVec, n: usize) {
         let len = ptr::read(ptr::addr_of!((*ptr).len));
         let n = n.min(len);
@@ -527,7 +569,7 @@ impl BlobVec {
             return;
         }
         let base = len - n;
-        ptr::write(ptr::addr_of_mut!((*ptr).len), base);
+        Self::publish_len(ptr, base);
         Self::drop_detached_tail(ptr, base, n);
     }
 
@@ -543,35 +585,50 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
+    /// A store that changes `len` bumps `len_stamp`, so writing the published
+    /// value back is not treated as unchanged. The outer loop does not drop a
+    /// prefix a nested `drop_detached_tail` already dropped.
     ///
-    /// The guard writes that tail only when `len` is still the length this call
-    /// published (`base`). Deleting that write fails
-    /// `clear_raw_reenter_panic_restores_undropped_tail` (`len` stays 0). The
-    /// compare is defence in depth: no defined re-entry stores a different
-    /// `len`, and it does not make re-entry through `swap_remove_raw`
-    /// (`&mut self`) defined. This function is not `#[inline(never)]`. Keeping
-    /// the body out of line would not make that re-entry defined either.
+    /// The guard writes that tail only when `len_stamp` is still the stamp
+    /// this call published. Deleting that write fails
+    /// `clear_raw_reenter_panic_restores_undropped_tail` (`len` stays 0). A
+    /// same-value store does not bump the stamp, so the defined nested
+    /// `clear_raw` still restores. A store that changes `len` bumps the stamp,
+    /// and a later store of the published value does not clear it: the guard
+    /// does not put that length back, and this loop does not drop an index a
+    /// nested call already dropped. The stamp does not make re-entry through
+    /// `swap_remove_raw` (`&mut self`) defined. This function is not
+    /// `#[inline(never)]`. Keeping the body out of line would not make that
+    /// re-entry defined either.
     unsafe fn drop_detached_tail(ptr: *mut BlobVec, base: usize, n: usize) {
         struct PanicGuard {
             len_ptr: *mut usize,
-            published_len: usize,
+            stamp_ptr: *const u64,
+            depth_ptr: *mut usize,
+            dropped_ptr: *mut usize,
+            published_stamp: u64,
+            entered_depth: usize,
             live_len: usize,
         }
 
         impl Drop for PanicGuard {
             fn drop(&mut self) {
-                if std::thread::panicking() {
-                    // SAFETY: `len_ptr` points at this column's `len` for the
-                    // whole `drop_detached_tail` call. The defined outer
-                    // `clear_raw` path publishes 0, and a nested `clear_raw`
-                    // leaves that 0 in place, so this restore runs. Skipping
-                    // the write when `len` changed is defence in depth only.
-                    // Re-entry through `swap_remove_raw` (`&mut self`) is
-                    // undefined behavior; this compare does not make it defined.
-                    unsafe {
-                        if *self.len_ptr == self.published_len {
-                            *self.len_ptr = self.live_len;
-                        }
+                // SAFETY: the pointers address this column for the whole
+                // `drop_detached_tail` call. The defined outer `clear_raw`
+                // path publishes 0 without bumping `len_stamp` on the nested
+                // same-value store, so this restore runs. A stamp mismatch
+                // means some store changed `len` (even if the value came
+                // back). Restoring then would free slots the nested drop
+                // already freed. Re-entry through `swap_remove_raw`
+                // (`&mut self`) is undefined behavior; the stamp does not
+                // make it defined.
+                unsafe {
+                    if std::thread::panicking() && *self.stamp_ptr == self.published_stamp {
+                        *self.len_ptr = self.live_len;
+                    }
+                    ptr::write(self.depth_ptr, self.entered_depth);
+                    if self.entered_depth == 0 {
+                        ptr::write(self.dropped_ptr, 0);
                     }
                 }
             }
@@ -583,21 +640,40 @@ impl BlobVec {
         let item_size = ptr::read(ptr::addr_of!((*ptr).item_layout)).size();
         let data = ptr::read(ptr::addr_of!((*ptr).data)).as_ptr();
         let len_ptr = ptr::addr_of_mut!((*ptr).len);
+        let stamp_ptr = ptr::addr_of!((*ptr).len_stamp);
+        let depth_ptr = ptr::addr_of_mut!((*ptr).drop_depth);
+        let dropped_ptr = ptr::addr_of_mut!((*ptr).dropped_through);
+        let entered_depth = ptr::read(depth_ptr);
+        if entered_depth == 0 {
+            ptr::write(dropped_ptr, 0);
+        }
+        ptr::write(depth_ptr, entered_depth + 1);
+        let published_stamp = ptr::read(stamp_ptr);
         let mut still_live = n;
         let mut guard = PanicGuard {
             len_ptr,
-            published_len: base,
+            stamp_ptr,
+            depth_ptr,
+            dropped_ptr,
+            published_stamp,
+            entered_depth,
             live_len: base + still_live,
         };
 
         while still_live > 0 {
             still_live -= 1;
             let index = base + still_live;
+            // A nested `drop_detached_tail` already dropped this index and
+            // every index below it. Dropping them again is the ABA double free.
+            if index < ptr::read(dropped_ptr) {
+                break;
+            }
             guard.live_len = base + still_live;
             if let Some(drop_fn) = drop_fn {
                 // SAFETY: `index` is in the detached `[base, base + n)` range
-                // that was initialized before `len` was published. `drop_fn`
-                // matches the component type registered at construction.
+                // that was initialized before `len` was published, and it is
+                // not below `dropped_through`. `drop_fn` matches the component
+                // type registered at construction.
                 unsafe {
                     let item = data.add(index * item_size);
                     drop_fn(item);
@@ -605,7 +681,49 @@ impl BlobVec {
             }
         }
 
+        // Indices `[base, base + n)` are dropped, either by this loop or by
+        // a nested call that raised `dropped_through`. Extend the prefix when
+        // this range connects to it so the caller skips those indices too.
+        let through = ptr::read(dropped_ptr);
+        if base <= through {
+            let end = base + n;
+            if end > through {
+                ptr::write(dropped_ptr, end);
+            }
+        }
+
+        // A raw store of `len` does not bump `len_stamp`. The tail is dropped;
+        // do not leave that store pointing at it. A method store bumps the
+        // stamp and publishes its own length, which this call leaves alone.
+        if ptr::read(stamp_ptr) == published_stamp {
+            let len_now = ptr::read(len_ptr);
+            if len_now > base {
+                Self::publish_len(ptr, base);
+            }
+        }
+
         guard.live_len = base;
+    }
+
+    /// Store `len`. Bump `len_stamp` only when the value changes.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to a live `BlobVec`.
+    unsafe fn publish_len(ptr: *mut BlobVec, new_len: usize) {
+        let len_ptr = ptr::addr_of_mut!((*ptr).len);
+        let old = ptr::read(len_ptr);
+        if old != new_len {
+            ptr::write(len_ptr, new_len);
+            let stamp_ptr = ptr::addr_of_mut!((*ptr).len_stamp);
+            ptr::write(stamp_ptr, ptr::read(stamp_ptr).wrapping_add(1));
+        }
+    }
+
+    fn set_len(&mut self, new_len: usize) {
+        // SAFETY: `self` is a live `BlobVec`. The raw store ends before this
+        // `&mut self` is used again.
+        unsafe { Self::publish_len(self, new_len) }
     }
 }
 
@@ -1598,6 +1716,115 @@ mod tests {
             assert_eq!(DROPS.load(Ordering::SeqCst), 3);
             assert_eq!(FREED.load(Ordering::SeqCst), 0b111);
         }
+    }
+
+    /// Element used by the len-republish regression. `reenter` runs only for
+    /// the last slot (id 2), after that slot has published `len == 2`.
+    struct Republish {
+        id: u8,
+        drops: *mut u32,
+        column: *mut BlobVec,
+        payload: Box<u32>,
+        panic_after: bool,
+        reenter: Option<unsafe fn(*mut BlobVec)>,
+    }
+
+    impl Drop for Republish {
+        fn drop(&mut self) {
+            let _kept = *self.payload;
+            unsafe {
+                *self.drops.add(self.id as usize) += 1;
+                if let Some(reenter) = self.reenter {
+                    reenter(self.column);
+                }
+                if self.panic_after {
+                    panic!("republish then panic");
+                }
+            }
+        }
+    }
+
+    /// Outer `clear_raw` on three `Box` slots. Id 2 stores `len = 2` and then
+    /// `reenter` (which leaves `len == 0`). Each slot must be dropped once.
+    ///
+    /// Deleting the stamp (and comparing the published length again) makes the
+    /// non-panic path drop ids 0 and 1 twice inside the outer loop, and makes
+    /// the panic path restore `len == 2` so the following `clear_raw` drops
+    /// them again.
+    fn assert_republish_drops_once(panic_after: bool, reenter: unsafe fn(*mut BlobVec)) {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        let mut drops = [0u32; 3];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::new::<Republish>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..3u8 {
+                (*column).push(Republish {
+                    id,
+                    drops: drops_ptr,
+                    column,
+                    payload: Box::new(u32::from(id) + 1),
+                    panic_after: panic_after && id == 2,
+                    reenter: if id == 2 { Some(reenter) } else { None },
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| {
+                BlobVec::clear_raw(column);
+            }));
+            assert_eq!(panicked.is_err(), panic_after);
+            assert_eq!(
+                ptr::read(ptr::addr_of!((*column).len)),
+                0,
+                "republished len must not be restored over dropped slots"
+            );
+            for id in 0..3 {
+                assert_eq!(*drops_ptr.add(id), 1, "element {id}");
+            }
+            BlobVec::clear_raw(column);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+            for id in 0..3 {
+                assert_eq!(*drops_ptr.add(id), 1, "second clear dropped element {id}");
+            }
+        }
+    }
+
+    unsafe fn reenter_clear_after_republish(column: *mut BlobVec) {
+        std::ptr::write(std::ptr::addr_of_mut!((*column).len), 2);
+        BlobVec::clear_raw(column);
+    }
+
+    unsafe fn reenter_drop_last_after_republish(column: *mut BlobVec) {
+        std::ptr::write(std::ptr::addr_of_mut!((*column).len), 2);
+        BlobVec::drop_last_raw(column, 2);
+    }
+
+    /// Id 2 writes `len = 2` and does not drop through a method. The outer
+    /// loop still drops every slot once; `len` must not stay 2.
+    unsafe fn reenter_store_len_only(column: *mut BlobVec) {
+        std::ptr::write(std::ptr::addr_of_mut!((*column).len), 2);
+    }
+
+    #[test]
+    fn clear_raw_republish_prefix_drops_each_element_once() {
+        assert_republish_drops_once(false, reenter_clear_after_republish);
+    }
+
+    #[test]
+    fn clear_raw_republish_prefix_panic_does_not_restore_dropped_tail() {
+        assert_republish_drops_once(true, reenter_clear_after_republish);
+    }
+
+    #[test]
+    fn drop_last_raw_republish_prefix_drops_each_element_once() {
+        assert_republish_drops_once(false, reenter_drop_last_after_republish);
+    }
+
+    #[test]
+    fn clear_raw_raw_len_store_does_not_resurrect_dropped_slots() {
+        assert_republish_drops_once(false, reenter_store_len_only);
     }
 
     #[test]
