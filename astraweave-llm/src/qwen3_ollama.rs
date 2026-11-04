@@ -744,6 +744,14 @@ impl LlmClient for Qwen3Ollama {
         push_counted(&mut id, if self.enable_thinking { "1" } else { "0" });
         push_counted(&mut id, &self.context_length.to_string());
         push_counted(&mut id, &self.max_tokens.to_string());
+        push_counted(
+            &mut id,
+            if self.system_prompt.is_some() {
+                "1"
+            } else {
+                "0"
+            },
+        );
         push_counted(&mut id, self.system_prompt.as_deref().unwrap_or(""));
         id
     }
@@ -1022,6 +1030,23 @@ mod tests {
         assert!(client.enable_thinking);
         assert_eq!(client.context_length, 16384);
         assert!(client.system_prompt.is_none());
+    }
+
+    #[test]
+    fn llm_cache_client_id_distinguishes_missing_and_empty_system_prompt() {
+        use crate::LlmClient;
+
+        let absent = Qwen3Ollama::localhost()
+            .expect("model client")
+            .without_system_prompt();
+        let empty = Qwen3Ollama::localhost()
+            .expect("model client")
+            .with_system_prompt("");
+        assert_ne!(
+            absent.llm_cache_client_id(),
+            empty.llm_cache_client_id(),
+            "None and Some(\"\") must not share a cache client id"
+        );
     }
 
     #[test]
