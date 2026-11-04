@@ -62,15 +62,18 @@ pub struct BlobVec {
     data: NonNull<u8>,
     /// Number of components currently stored
     len: usize,
-    /// Generation of `len`. Incremented only when a store changes the value.
+    /// Generation of `len`. A live `PanicGuard` is the only reader.
     ///
-    /// A same-value store does not bump it. The defined nested `clear_raw`
+    /// A guard exists only while `drop_depth > 0`. [`BlobVec::publish_len`]
+    /// bumps this when the value changes. [`BlobVec::set_len`] bumps it only
+    /// while `drop_depth != 0`, so `push` outside a drop does not. A
+    /// same-value store does not bump it. The defined nested `clear_raw`
     /// writes `0` over `0` and leaves the stamp alone, so the outer panic
     /// guard still restores the undropped tail. A raw `ptr::write` of `len`
-    /// does not bump it either. A store that changes `len` bumps it, and a
-    /// later store of the old value does not put the stamp back. Comparing
-    /// the length alone treats that round-trip as "unchanged" and frees the
-    /// tail twice.
+    /// does not bump it either. A store that changes `len` on the raw path
+    /// bumps it, and a later store of the old value does not put the stamp
+    /// back. Comparing the length alone treats that round-trip as
+    /// "unchanged" and frees the tail twice.
     len_stamp: u64,
     /// Nesting of `drop_detached_tail`. The outermost call owns the dropped
     /// interval and the in-progress span. A call entered at depth >= 2 aborts.
@@ -106,18 +109,22 @@ pub struct BlobVec {
     /// is undefined behavior, as is re-entry during `clear`, `Drop`,
     /// `drop_last`, or `swap_remove_raw_to`, each of which keeps a
     /// `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     drop_fn: Option<unsafe fn(*mut u8)>,
 }
 
@@ -196,9 +203,12 @@ const fn repaired_len(from: usize, through: usize, base: usize) -> usize {
 /// `live_len` is the index being dropped. Indices `>= live_len` are already
 /// out of the column. This is not [`repaired_len`]: an empty interval there
 /// returns `base`, and for `clear_raw` that base is 0, which would leak the
-/// tail a matching stamp restores. An empty interval here keeps `len_now`
-/// when it is already `<= live_len` (the inner guard wrote it) and clamps a
-/// raw store past `live_len`.
+/// tail a matching stamp restores.
+///
+/// The caller has already merged this frame's in-progress span. An interval
+/// that is still empty means no slot was dropped. The raw `len` is not that
+/// set: a store below `live_len` (`publish_len(1)` during `clear_raw`) skips
+/// initialized slots. Publish `live_len`.
 ///
 /// A non-empty interval that reaches `live_len` and starts below it covers
 /// `[from, live_len)`. The live prefix is `from`. An interval that sits at
@@ -211,14 +221,9 @@ enum UnwindLen {
     Gap,
 }
 
-const fn unwind_len(from: usize, through: usize, live_len: usize, len_now: usize) -> UnwindLen {
+const fn unwind_len(from: usize, through: usize, live_len: usize) -> UnwindLen {
     if from == through {
-        let len = if len_now > live_len {
-            live_len
-        } else {
-            len_now
-        };
-        return UnwindLen::Publish(len);
+        return UnwindLen::Publish(live_len);
     }
     if through < live_len {
         return UnwindLen::Gap;
@@ -227,6 +232,29 @@ const fn unwind_len(from: usize, through: usize, live_len: usize, len_now: usize
         return UnwindLen::Publish(from);
     }
     UnwindLen::Publish(live_len)
+}
+
+/// Merge `[progress_from, progress_through)` into `[from, through)` on unwind.
+///
+/// `note_dropped_range` runs after the loop. A panic inside `drop_fn` never
+/// gets there. The span is `[index, end)`: slots this frame has finished or
+/// is dropping. An empty span is not a range. A span that joins is merged so
+/// a parent guard sees those slots. A span that does not join is left alone;
+/// [`unwind_len`] then sees the hole and returns [`UnwindLen::Gap`].
+fn absorb_dropped_progress(
+    from: usize,
+    through: usize,
+    progress_from: usize,
+    progress_through: usize,
+) -> (usize, usize) {
+    if progress_from == progress_through {
+        return (from, through);
+    }
+    match join_dropped_range(from, through, progress_from, progress_through) {
+        RangeJoin::Take => (progress_from, progress_through),
+        RangeJoin::Merge { from, through } => (from, through),
+        RangeJoin::Disjoint => (from, through),
+    }
 }
 
 /// Print `message` and abort. A subprocess test reads `AW_BLOBVEC_ABORT_LOG`
@@ -423,18 +451,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -475,18 +507,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -633,18 +669,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     pub fn clear(&mut self) {
         // SAFETY: `self` is a live `BlobVec`. This `&mut self` stays live
         // across `drop_fn`, so a destructor must not re-enter.
@@ -669,18 +709,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     ///
     /// `drop_detached_tail` takes `*mut BlobVec` and does not hold
     /// `&mut BlobVec`. It is not `#[inline(never)]`: keeping the body out of
@@ -715,18 +759,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     pub(crate) fn drop_last(&mut self, n: usize) {
         // SAFETY: `self` is live. This `&mut self` stays live across `drop_fn`,
         // so a destructor must not re-enter.
@@ -747,18 +795,22 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     unsafe fn drop_last_raw(ptr: *mut BlobVec, n: usize) {
         let len = ptr::read(ptr::addr_of!((*ptr).len));
         let n = n.min(len);
@@ -782,32 +834,41 @@ impl BlobVec {
     /// `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry
     /// during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of
     /// which keeps a `&mut BlobVec` live across `drop_fn`.
-    /// A store that changes `len` bumps `len_stamp`. A same-value store does
-    /// not. The outer loop skips indices in `[dropped_from, dropped_through)`.
+    /// A `publish_len` store that changes `len` bumps `len_stamp`. `set_len`
+    /// bumps only while `drop_depth != 0`. A same-value store does not. The
+    /// outer loop skips indices in `[dropped_from, dropped_through)`.
     /// Before `drop_fn`, the span `[index, base + n)` is the done and
     /// in-progress range. A nested range that overlaps that span aborts. A
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`. On unwind, a matching `len_stamp` restores
+    /// publishes `base`. On unwind, this frame merges
+    /// `[progress_from, progress_through)` into the dropped interval when
+    /// that span joins, so a panic before `note_dropped_range` still records
+    /// the slots it finished or is dropping. A matching `len_stamp` restores
     /// `live_len`. A mismatch publishes a prefix that excludes indices
     /// `>= live_len` and excludes a dropped interval that covers
-    /// `[dropped_from, live_len)`. A live index between that interval and
-    /// `live_len` aborts.
+    /// `[dropped_from, live_len)`. An empty interval publishes `live_len`.
+    /// A live index between that interval and `live_len` aborts.
     ///
     /// The guard writes that tail only when `len_stamp` is still the stamp
     /// this call published. Deleting that write fails
     /// `clear_raw_reenter_panic_restores_undropped_tail` (`len` stays 0). A
     /// same-value store does not bump the stamp, so the defined nested
     /// `clear_raw` still restores. A store that changes `len` bumps the stamp.
-    /// On unwind that mismatch does not leave the raw store in place:
-    /// [`unwind_len`] publishes the prefix below `live_len`, and below
-    /// `dropped_from` when the interval covers `[dropped_from, live_len)`.
-    /// Deleting that publish fails
+    /// On unwind that mismatch does not leave the raw store in place.
+    /// The frame first merges `[progress_from, progress_through)` when that
+    /// span joins, because `note_dropped_range` has not run yet. [`unwind_len`]
+    /// then publishes the prefix below `live_len`, and below `dropped_from`
+    /// when the interval covers `[dropped_from, live_len)`. An interval that
+    /// is still empty publishes `live_len`. Deleting that publish fails
     /// `drop_last_raw_unwind_after_nested_suffix_publishes_live_prefix`
-    /// (`len` stays 3 or 100). A live index between the interval and
-    /// `live_len` aborts. On the way out, a non-empty interval publishes
-    /// `dropped_from` and an empty interval publishes `base`. A nested range
+    /// (`len` stays 3 or 100). Skipping the merge fails
+    /// `clear_raw_unwind_inside_nested_drop_last_aborts`: the inner guard's
+    /// stamp still matches, so it keeps its own index and leaks the slot
+    /// between that index and the outer `live_len`. A live index between the
+    /// interval and `live_len` aborts. On the way out, a non-empty interval
+    /// publishes `dropped_from` and an empty interval publishes `base`. A nested range
     /// that does not join that interval aborts. A third frame aborts before
     /// this loop. The stamp does not make re-entry through `swap_remove_raw`
     /// (`&mut self`) defined. This function is not `#[inline(never)]`.
@@ -840,6 +901,12 @@ impl BlobVec {
                 // `len`. Writing `live_len` then would free a slot that nested
                 // drop already freed, and leaving the raw store in place
                 // walks off the allocation or frees it on the next clear.
+                // The in-progress span is merged first. `note_dropped_range`
+                // runs after the loop, so a panic inside the nested
+                // `drop_fn` would otherwise leave the interval empty. The
+                // inner guard's stamp still matches its own `publish_len`
+                // and would keep that shorter index. A parent then leaks the
+                // live slot between that index and its `live_len`.
                 // `unwind_len` publishes the prefix that excludes both.
                 // Re-entry through `swap_remove_raw` (`&mut self`) is
                 // undefined behavior; the stamp does not make it defined.
@@ -847,13 +914,26 @@ impl BlobVec {
                 // would otherwise keep the dropped interval.
                 unsafe {
                     if std::thread::panicking() {
+                        // Still this frame's span. The parent span is restored
+                        // below, after the parent can read the interval.
+                        let recorded_from = *self.dropped_from_ptr;
+                        let recorded_through = *self.dropped_ptr;
+                        let (from, through) = absorb_dropped_progress(
+                            recorded_from,
+                            recorded_through,
+                            *self.progress_from_ptr,
+                            *self.progress_through_ptr,
+                        );
+                        if from != recorded_from {
+                            ptr::write(self.dropped_from_ptr, from);
+                        }
+                        if through != recorded_through {
+                            ptr::write(self.dropped_ptr, through);
+                        }
                         if *self.stamp_ptr == self.published_stamp {
                             *self.len_ptr = self.live_len;
                         } else {
-                            let from = *self.dropped_from_ptr;
-                            let through = *self.dropped_ptr;
-                            let len_now = *self.len_ptr;
-                            match unwind_len(from, through, self.live_len, len_now) {
+                            match unwind_len(from, through, self.live_len) {
                                 UnwindLen::Publish(len) => {
                                     *self.len_ptr = len;
                                 }
@@ -1030,9 +1110,16 @@ impl BlobVec {
     }
 
     fn set_len(&mut self, new_len: usize) {
-        // SAFETY: `self` is a live `BlobVec`. The raw store ends before this
-        // `&mut self` is used again.
-        unsafe { Self::publish_len(self, new_len) }
+        // `push` / `push_raw` land here. A guard reads `len_stamp` only while
+        // `drop_depth > 0`, so a push outside a drop stores `len` directly.
+        // Routing every push through `publish_len` keeps `len` out of a
+        // register. The raw re-entry paths still use `publish_len`.
+        if self.len != new_len {
+            self.len = new_len;
+            if self.drop_depth != 0 {
+                self.len_stamp = self.len_stamp.wrapping_add(1);
+            }
+        }
     }
 }
 
@@ -2418,18 +2505,29 @@ mod tests {
 
     /// An empty interval must not use [`repaired_len`]. That returns `base`,
     /// which is 0 for `clear_raw` and would leak the tail a matching stamp
-    /// restores. A covered interval publishes `from` even when the raw store
-    /// is 0 or past `live_len`. A hole is a gap.
+    /// restores. After the in-progress span is merged, an empty interval
+    /// means no slot was dropped, so it publishes `live_len` rather than a
+    /// shorter raw store. A covered interval publishes `from`. A hole is a gap.
     #[test]
     fn unwind_len_publishes_the_prefix_or_a_gap() {
-        assert_eq!(unwind_len(0, 0, 2, 0), UnwindLen::Publish(0));
-        assert_eq!(unwind_len(0, 0, 2, 100), UnwindLen::Publish(2));
-        assert_eq!(unwind_len(1, 2, 2, 100), UnwindLen::Publish(1));
-        assert_eq!(unwind_len(1, 2, 2, 3), UnwindLen::Publish(1));
-        assert_eq!(unwind_len(1, 2, 2, 0), UnwindLen::Publish(1));
-        assert_eq!(unwind_len(2, 3, 2, 100), UnwindLen::Publish(2));
-        assert_eq!(unwind_len(0, 1, 2, 0), UnwindLen::Gap);
+        assert_eq!(unwind_len(0, 0, 2), UnwindLen::Publish(2));
+        assert_eq!(unwind_len(1, 2, 2), UnwindLen::Publish(1));
+        assert_eq!(unwind_len(2, 3, 2), UnwindLen::Publish(2));
+        assert_eq!(unwind_len(0, 1, 2), UnwindLen::Gap);
         assert_eq!(repaired_len(0, 0, 0), 0);
+    }
+
+    /// A panic merges the in-progress span. A touching span extends the
+    /// interval. A hole is left for [`unwind_len`] to reject. An empty span
+    /// is not a range.
+    #[test]
+    fn absorb_dropped_progress_records_a_joining_span() {
+        assert_eq!(absorb_dropped_progress(0, 0, 1, 2), (1, 2));
+        assert_eq!(absorb_dropped_progress(1, 2, 2, 3), (1, 3));
+        assert_eq!(absorb_dropped_progress(2, 3, 1, 2), (1, 3));
+        assert_eq!(absorb_dropped_progress(1, 2, 3, 4), (1, 2));
+        assert_eq!(absorb_dropped_progress(1, 2, 0, 0), (1, 2));
+        assert_eq!(absorb_dropped_progress(0, 0, 2, 3), (2, 3));
     }
 
     #[test]
@@ -2739,6 +2837,133 @@ mod tests {
             "live index between",
             unwind_gap_child,
         );
+    }
+
+    /// Four `Box` slots. Outer `clear_raw`. Id 3 raw-writes `len = 2` and
+    /// calls `drop_last_raw(column, 1)`. Id 1 panics inside that call, before
+    /// `note_dropped_range`. The inner guard's stamp still matches, so it
+    /// used to keep `len == 1` and leak index 2 (`[0, 1, 0, 1]`, then a
+    /// follow-up clear left `[1, 1, 0, 1]`). The in-progress span `[1, 2)`
+    /// is recorded on unwind. Index 2 is live between that interval and the
+    /// outer `live_len` (3), so the child aborts. Publishing the outer
+    /// `live_len` instead double-frees index 1.
+    #[cfg(not(miri))]
+    fn unwind_inside_nested_drop_child() {
+        let mut drops = [0u32; 4];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = std::cell::UnsafeCell::new(BlobVec::new::<Republish>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..4u8 {
+                (*column).push(Republish {
+                    id,
+                    drops: drops_ptr,
+                    column,
+                    payload: Box::new(u32::from(id) + 1),
+                    panic_after: id == 1,
+                    reenter: if id == 3 {
+                        Some(reenter_drop_last_suffix)
+                    } else {
+                        None
+                    },
+                });
+            }
+            BlobVec::clear_raw(column);
+        }
+    }
+
+    #[test]
+    #[cfg(not(miri))]
+    fn clear_raw_unwind_inside_nested_drop_last_aborts() {
+        assert_abort_child(
+            "blob_vec::tests::clear_raw_unwind_inside_nested_drop_last_aborts",
+            "live index between",
+            unwind_inside_nested_drop_child,
+        );
+    }
+
+    /// Three `Box` slots. Outer `clear_raw`. Id 2 raw-writes `len = 2` and
+    /// calls `drop_last_raw(1)`. Id 1 panics inside that call. The nested
+    /// span `[1, 2)` touches the outer span `[2, 3)`, so the live prefix is
+    /// 1. Index 0 is still initialized and the later clear drops it once.
+    #[test]
+    fn clear_raw_unwind_inside_adjacent_nested_publishes_live_prefix() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        let mut drops = [0u32; 3];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::new::<Republish>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..3u8 {
+                (*column).push(Republish {
+                    id,
+                    drops: drops_ptr,
+                    column,
+                    payload: Box::new(u32::from(id) + 1),
+                    panic_after: id == 1,
+                    reenter: if id == 2 {
+                        Some(reenter_drop_last_suffix)
+                    } else {
+                        None
+                    },
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| {
+                BlobVec::clear_raw(column);
+            }));
+            assert!(panicked.is_err());
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 1);
+            assert_eq!(drops, [0, 1, 1]);
+            BlobVec::clear_raw(column);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+            assert_eq!(drops, [1, 1, 1]);
+        }
+    }
+
+    /// Three `Box` slots. Outer `clear_raw`. Id 2 calls `publish_len(1)` and
+    /// panics. No nested guard runs. Keeping that shorter `len` leaks index 1
+    /// (`[1, 0, 1]` after the column drops). The in-progress span is `[2, 3)`,
+    /// so the live prefix is 2 and the later clear drops index 0 and index 1
+    /// once.
+    #[test]
+    fn clear_raw_publish_len_below_live_len_keeps_the_prefix() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        unsafe fn reenter(column: *mut BlobVec) {
+            BlobVec::publish_len(column, 1);
+            panic!("publish_len below live_len");
+        }
+
+        let mut drops = [0u32; 3];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::new::<Republish>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..3u8 {
+                (*column).push(Republish {
+                    id,
+                    drops: drops_ptr,
+                    column,
+                    payload: Box::new(u32::from(id) + 1),
+                    panic_after: false,
+                    reenter: if id == 2 { Some(reenter) } else { None },
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| {
+                BlobVec::clear_raw(column);
+            }));
+            assert!(panicked.is_err());
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 2);
+            assert_eq!(drops, [0, 0, 1]);
+            BlobVec::clear_raw(column);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+            assert_eq!(drops, [1, 1, 1]);
+        }
     }
 
     #[test]

@@ -286,18 +286,21 @@ impl Drop for DropProbe {
 /// freed twice. Re-entry through `swap_remove_raw` (`&mut self`) is undefined
 /// behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or
 /// `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across
-/// `drop_fn`. A store that changes `len` bumps `len_stamp`. A same-value
-/// store does not. The outer loop skips indices in
+/// `drop_fn`. A `publish_len` store that changes `len` bumps `len_stamp`.
+/// `set_len` bumps only while `drop_depth != 0`. A same-value store does
+/// not. The outer loop skips indices in
 /// `[dropped_from, dropped_through)`. Before `drop_fn`, the span
 /// `[index, base + n)` is the done and in-progress range. A nested range
 /// that overlaps that span aborts. A range that does not join the dropped
 /// interval aborts. A call entered at `drop_depth >= 2` aborts. After the
 /// interval is merged, a non-empty interval publishes `len` to
-/// `dropped_from` and an empty interval publishes `base`. On unwind, a
-/// matching `len_stamp` restores `live_len`. A mismatch publishes a prefix
-/// that excludes indices `>= live_len` and excludes a dropped interval that
-/// covers `[dropped_from, live_len)`. A live index between that interval and
-/// `live_len` aborts. Kani does not implement `catch_unwind`
+/// `dropped_from` and an empty interval publishes `base`. On unwind, this
+/// frame merges `[progress_from, progress_through)` into the dropped
+/// interval when that span joins. A matching `len_stamp` restores
+/// `live_len`. A mismatch publishes a prefix that excludes indices
+/// `>= live_len` and excludes a dropped interval that covers
+/// `[dropped_from, live_len)`. An empty interval publishes `live_len`. A
+/// live index between that interval and `live_len` aborts. Kani does not implement `catch_unwind`
 /// (model-checking/kani#267), so the harness applies the non-reentrant split
 /// itself: `drop_last` runs through the panicking slot, then `clear` finishes
 /// the rest. It does not model a nested `clear_raw` or this unwind.
