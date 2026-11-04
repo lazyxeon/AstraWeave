@@ -293,12 +293,16 @@ impl Drop for DropProbe {
 /// that overlaps that span aborts. A range that does not join the dropped
 /// interval aborts. A call entered at `drop_depth >= 2` aborts. After the
 /// interval is merged, a non-empty interval publishes `len` to
-/// `dropped_from` and an empty interval publishes `base`. Kani does not
-/// implement `catch_unwind` (model-checking/kani#267),
+/// `dropped_from` and an empty interval publishes `base`. On unwind, a stamp
+/// mismatch publishes `unwind_published_len` instead of that tail. Kani does
+/// not implement `catch_unwind` (model-checking/kani#267),
 /// so the harness applies the non-reentrant split itself: `drop_last` runs
 /// through the panicking slot, then `clear` finishes the rest. It does not
-/// model a nested `clear_raw`. `clear_raw_reenter_panic_restores_undropped_tail`
-/// runs that outer-`clear_raw` panic under Miri.
+/// model a nested `clear_raw` or a stamp-mismatch unwind.
+/// `clear_raw_reenter_panic_restores_undropped_tail` runs that outer-`clear_raw`
+/// panic under Miri. `panic_after_nested_nonprefix_does_not_double_free` and
+/// `push_then_panic_does_not_restore_but_second_clear_covers_dropped_slot`
+/// cover the mismatch unwind.
 #[kani::proof]
 #[kani::unwind(8)]
 fn blob_vec_drops_each_element_once_including_panicking_drop() {

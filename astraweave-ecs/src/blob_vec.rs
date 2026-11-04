@@ -113,7 +113,11 @@ pub struct BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     drop_fn: Option<unsafe fn(*mut u8)>,
 }
 
@@ -185,6 +189,28 @@ const fn repaired_len(from: usize, through: usize, base: usize) -> usize {
     } else {
         base
     }
+}
+
+/// Length to publish when unwinding after `len_stamp` changed.
+///
+/// `live_len` is the in-progress index. This call has already dropped every
+/// index at or above it, or is dropping that index now. An empty interval
+/// (`from == through`) publishes `live_len`, not the success-path `base`
+/// ([`repaired_len`] would return). A non-empty interval that starts at or
+/// above `live_len` also publishes `live_len`. A non-empty interval that
+/// covers `[from, live_len)` publishes `from`. `None` is a live index in
+/// `[through, live_len)`; the caller aborts.
+const fn unwind_published_len(from: usize, through: usize, live_len: usize) -> Option<usize> {
+    if from == through {
+        return Some(live_len);
+    }
+    if from >= live_len {
+        return Some(live_len);
+    }
+    if through >= live_len {
+        return Some(from);
+    }
+    None
 }
 
 /// Print `message` and abort. A subprocess test reads `AW_BLOBVEC_ABORT_LOG`
@@ -388,7 +414,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -436,7 +466,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -590,7 +624,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     pub fn clear(&mut self) {
         // SAFETY: `self` is a live `BlobVec`. This `&mut self` stays live
         // across `drop_fn`, so a destructor must not re-enter.
@@ -622,7 +660,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     ///
     /// `drop_detached_tail` takes `*mut BlobVec` and does not hold
     /// `&mut BlobVec`. It is not `#[inline(never)]`: keeping the body out of
@@ -664,7 +706,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     pub(crate) fn drop_last(&mut self, n: usize) {
         // SAFETY: `self` is live. This `&mut self` stays live across `drop_fn`,
         // so a destructor must not re-enter.
@@ -692,7 +738,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     unsafe fn drop_last_raw(ptr: *mut BlobVec, n: usize) {
         let len = ptr::read(ptr::addr_of!((*ptr).len));
         let n = n.min(len);
@@ -723,7 +773,11 @@ impl BlobVec {
     /// range that does not join the dropped interval aborts. A call entered
     /// at `drop_depth >= 2` aborts. After the interval is merged, a non-empty
     /// interval publishes `len` to `dropped_from` and an empty interval
-    /// publishes `base`.
+    /// publishes `base`. On unwind, a stamp mismatch publishes
+    /// `unwind_published_len` instead of that tail: the in-progress index
+    /// when the dropped interval is empty or starts at or above that index,
+    /// and `dropped_from` when the interval covers `[dropped_from, live_len)`.
+    /// A live index between the interval and the in-progress index aborts.
     ///
     /// The guard writes that tail only when `len_stamp` is still the stamp
     /// this call published. Deleting that write fails
@@ -731,7 +785,13 @@ impl BlobVec {
     /// same-value store does not bump the stamp, so the defined nested
     /// `clear_raw` still restores. A store that changes `len` bumps the stamp,
     /// and a later store of the published value does not clear it: the guard
-    /// does not put that length back, and this loop skips an index inside
+    /// does not put that length back. It publishes `unwind_published_len`,
+    /// which excludes the in-progress index and the dropped interval.
+    /// Deleting that publish fails
+    /// `panic_after_nested_nonprefix_does_not_double_free` and
+    /// `push_then_panic_does_not_restore_but_second_clear_covers_dropped_slot`.
+    /// A live index between the interval and the in-progress index aborts
+    /// (`clear_raw_unwind_gap_aborts`). This loop skips an index inside
     /// `[dropped_from, dropped_through)`. On the way out, a non-empty interval
     /// publishes `dropped_from` and an empty interval publishes `base`. A
     /// nested range that does not join that interval aborts. A third frame
@@ -762,14 +822,32 @@ impl BlobVec {
                 // path publishes 0 without bumping `len_stamp` on the nested
                 // same-value store, so this restore runs. A stamp mismatch
                 // means some store changed `len` (even if the value came
-                // back). Restoring then would free slots the nested drop
-                // already freed. Re-entry through `swap_remove_raw`
-                // (`&mut self`) is undefined behavior; the stamp does not
-                // make it defined. `drop_depth` must be restored: the next
-                // outermost clear would otherwise keep the dropped interval.
+                // back). Restoring `live_len` then would free slots a nested
+                // drop already freed, but leaving the raw `len` in place
+                // keeps the in-progress index inside the published range.
+                // `unwind_published_len` excludes that index and the dropped
+                // interval. A live index between them aborts. The success-path
+                // `repaired_len` is not used here: an empty interval would
+                // publish `base`, and for `clear_raw` that is 0. Re-entry
+                // through `swap_remove_raw` (`&mut self`) is undefined
+                // behavior; the stamp does not make it defined. `drop_depth`
+                // must be restored: the next outermost clear would otherwise
+                // keep the dropped interval.
                 unsafe {
-                    if std::thread::panicking() && *self.stamp_ptr == self.published_stamp {
-                        *self.len_ptr = self.live_len;
+                    if std::thread::panicking() {
+                        if *self.stamp_ptr == self.published_stamp {
+                            *self.len_ptr = self.live_len;
+                        } else {
+                            let from = *self.dropped_from_ptr;
+                            let through = *self.dropped_ptr;
+                            match unwind_published_len(from, through, self.live_len) {
+                                Some(len) => *self.len_ptr = len,
+                                None => abort_dropped_range(&format!(
+                                    "astraweave-ecs: BlobVec unwind leaves a live index between [{from}, {through}) and {}",
+                                    self.live_len
+                                )),
+                            }
+                        }
                     }
                     ptr::write(self.depth_ptr, self.entered_depth);
                     ptr::write(self.progress_from_ptr, self.saved_progress_from);
@@ -2307,6 +2385,27 @@ mod tests {
         assert_eq!(repaired_len(4, 4, 1), 1);
     }
 
+    /// Empty interval publishes the in-progress index, not success-path `base`.
+    /// A covering interval publishes `from`. A gap is `None`.
+    #[test]
+    fn unwind_published_len_excludes_in_progress_and_dropped_interval() {
+        assert_eq!(unwind_published_len(0, 0, 2), Some(2));
+        assert_eq!(unwind_published_len(4, 4, 1), Some(1));
+        assert_eq!(repaired_len(0, 0, 0), 0);
+        assert_ne!(unwind_published_len(0, 0, 2), Some(repaired_len(0, 0, 0)));
+        // panic_after: interval [2, 4) sits above in-progress index 1.
+        assert_eq!(unwind_published_len(2, 4, 1), Some(1));
+        // suffix panic: interval [1, 2) covers up to in-progress index 2.
+        assert_eq!(unwind_published_len(1, 2, 2), Some(1));
+        assert_eq!(unwind_published_len(0, 2, 2), Some(0));
+        assert_eq!(unwind_published_len(1, 5, 2), Some(1));
+        // from == live_len still publishes that index (same value either way).
+        assert_eq!(unwind_published_len(2, 4, 2), Some(2));
+        // gap: [1, 2) does not reach in-progress index 4.
+        assert_eq!(unwind_published_len(1, 2, 4), None);
+        assert_eq!(unwind_published_len(0, 1, 3), None);
+    }
+
     /// Four `Box` slots. Outer `clear_raw`. Id 3 drops `[1, 2)` and then
     /// `[2, 3)`. The ranges touch. Every element is dropped once.
     #[test]
@@ -2544,5 +2643,279 @@ mod tests {
         }
         assert!(catch_unwind(AssertUnwindSafe(|| drop(blob))).is_ok());
         assert_eq!(DROPS.load(Ordering::SeqCst), 3);
+    }
+
+    /// Six `Box` slots. Outer `clear_raw`. Id 5 raw-writes `len = 4` and calls
+    /// `drop_last_raw(2)`, which drops `[2, 4)` and bumps `len_stamp`. Id 1
+    /// then panics. The follow-up `clear_raw` must not drop index 1 again.
+    ///
+    /// Leaving the nested publish (`len == 2`) in place does that.
+    #[test]
+    fn panic_after_nested_nonprefix_does_not_double_free() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+            panic_low: bool,
+            lower_still: bool,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                unsafe { *self.drops.add(self.id as usize) += 1 };
+                if self.lower_still {
+                    unsafe {
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), 4);
+                        BlobVec::drop_last_raw(self.column, 2);
+                    }
+                }
+                if self.panic_low {
+                    panic!("panic after nested range");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 6];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::with_capacity::<Elem>(8));
+        let column = holder.get();
+        unsafe {
+            for id in 0..6u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                    panic_low: id == 1,
+                    lower_still: id == 5,
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| BlobVec::clear_raw(column))).is_err();
+            assert!(panicked);
+            let len_after = ptr::read(ptr::addr_of!((*column).len));
+            // Unfixed, `len` stays 2 and this clear frees index 1 again.
+            BlobVec::clear_raw(column);
+            assert_eq!(len_after, 1, "in-progress index 1 must sit outside len");
+            assert_eq!(drops, [1, 1, 1, 1, 1, 1]);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+        }
+    }
+
+    /// Three `Box` slots, capacity to spare. Outer `clear_raw`. Id 2 writes a
+    /// spare element at index 3, `publish_len(4)` (stamp bump), then panics.
+    /// Column `Drop` must not free index 2 again. The spare is above the
+    /// in-progress index, so the published `len` does not include it; this
+    /// test drops that slot itself.
+    #[test]
+    fn push_then_panic_does_not_restore_but_second_clear_covers_dropped_slot() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+            push_panic: bool,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                let id = self.id;
+                let drops = self.drops;
+                let column = self.column;
+                let push_panic = self.push_panic;
+                unsafe { *drops.add(id as usize) += 1 };
+                if push_panic {
+                    unsafe {
+                        let data = ptr::read(ptr::addr_of!((*column).data)).as_ptr();
+                        let size = ptr::read(ptr::addr_of!((*column).item_layout)).size();
+                        let dst = data.add(3 * size);
+                        ptr::write(
+                            dst.cast::<Elem>(),
+                            Elem {
+                                id: 3,
+                                payload: Box::new(3),
+                                drops,
+                                column,
+                                push_panic: false,
+                            },
+                        );
+                        BlobVec::publish_len(column, 4);
+                    }
+                    panic!("push then panic");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 4];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::with_capacity::<Elem>(8));
+        let column = holder.get();
+        let len_after = unsafe {
+            for id in 0..3u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                    push_panic: id == 2,
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| BlobVec::clear_raw(column))).is_err();
+            assert!(panicked);
+            let len_after = ptr::read(ptr::addr_of!((*column).len));
+            // The spare sits at index 3. A published len of 2 does not own it.
+            // Len 4 is the unfixed stamp-mismatch value; column Drop then
+            // frees index 2 a second time, so this branch stays closed there.
+            if len_after <= 3 {
+                let data = ptr::read(ptr::addr_of!((*column).data)).as_ptr();
+                let size = ptr::read(ptr::addr_of!((*column).item_layout)).size();
+                ptr::drop_in_place(data.add(3 * size).cast::<Elem>());
+            }
+            len_after
+        };
+        // `BlobVec::drop` clears whatever `len` still counts. Unfixed, that
+        // length is 4 and index 2 is freed again.
+        drop(holder);
+        assert_eq!(len_after, 2, "unwind must exclude the in-progress index");
+        assert_eq!(drops, [1, 1, 1, 1]);
+    }
+
+    /// Outermost `drop_last_raw(1)` on three `Box` slots. Id 2 raw-writes
+    /// `len = 2`, drops index 1, raw-writes `raw_len`, then panics. The live
+    /// prefix is 1. `raw_len == 3` makes the next `clear_raw` double-free
+    /// index 1. `raw_len == 100` makes it walk off the allocation.
+    fn assert_drop_last_panic_after_suffix(raw_len: usize) {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+            raw_len: usize,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                unsafe { *self.drops.add(self.id as usize) += 1 };
+                if self.id == 2 {
+                    unsafe {
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), 2);
+                        BlobVec::drop_last_raw(self.column, 1);
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), self.raw_len);
+                    }
+                    panic!("suffix then panic");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 3];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::new::<Elem>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..3u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                    raw_len,
+                });
+            }
+            let panicked =
+                catch_unwind(AssertUnwindSafe(|| BlobVec::drop_last_raw(column, 1))).is_err();
+            assert!(panicked);
+            let len_after = ptr::read(ptr::addr_of!((*column).len));
+            BlobVec::clear_raw(column);
+            assert_eq!(len_after, 1, "dropped index 1 must sit outside len");
+            assert_eq!(drops, [1, 1, 1]);
+            assert_eq!(ptr::read(ptr::addr_of!((*column).len)), 0);
+        }
+    }
+
+    #[test]
+    fn drop_last_raw_panic_after_suffix_len_3_does_not_double_free() {
+        assert_drop_last_panic_after_suffix(3);
+    }
+
+    #[test]
+    fn drop_last_raw_panic_after_suffix_len_100_does_not_walk_off() {
+        assert_drop_last_panic_after_suffix(100);
+    }
+
+    /// Five `Box` slots. Outer `clear_raw`. Id 4 drops index 1 (`[1, 2)`) and
+    /// panics while the in-progress index is 4. Index 2 and 3 are still live
+    /// between the interval and that index. The guard aborts. Returning from
+    /// the abort instead leaves `len` covering index 1, and the second
+    /// `clear_raw` double-frees it.
+    #[cfg(not(miri))]
+    fn unwind_gap_child() {
+        use std::cell::UnsafeCell;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::ptr;
+
+        struct Elem {
+            id: u8,
+            payload: Box<u32>,
+            drops: *mut u32,
+            column: *mut BlobVec,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                unsafe { *self.drops.add(self.id as usize) += 1 };
+                if self.id == 4 {
+                    unsafe {
+                        ptr::write(ptr::addr_of_mut!((*self.column).len), 2);
+                        BlobVec::drop_last_raw(self.column, 1);
+                    }
+                    panic!("gap then panic");
+                }
+            }
+        }
+
+        let mut drops = [0u32; 5];
+        let drops_ptr = drops.as_mut_ptr();
+        let holder = UnsafeCell::new(BlobVec::new::<Elem>());
+        let column = holder.get();
+        unsafe {
+            for id in 0..5u8 {
+                (*column).push(Elem {
+                    id,
+                    payload: Box::new(u32::from(id) + 1),
+                    drops: drops_ptr,
+                    column,
+                });
+            }
+            let panicked = catch_unwind(AssertUnwindSafe(|| BlobVec::clear_raw(column))).is_err();
+            assert!(panicked, "gap panic must unwind");
+            BlobVec::clear_raw(column);
+        }
+        panic!("child returned");
+    }
+
+    #[test]
+    #[cfg(not(miri))]
+    fn clear_raw_unwind_gap_aborts() {
+        assert_abort_child(
+            "blob_vec::tests::clear_raw_unwind_gap_aborts",
+            "live index between",
+            unwind_gap_child,
+        );
     }
 }
