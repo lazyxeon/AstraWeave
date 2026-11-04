@@ -64,7 +64,7 @@ jobs:
       reason: ${{ steps.detect.outputs.reason }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # Depth 2 is the merge commit and both parents. Depth 1 cannot
           # see the base parent. Depth 0 makes actions/checkout fetch every
@@ -110,7 +110,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Player-facing name check
         run: bash scripts/ci/player_facing_names.sh
@@ -153,7 +153,7 @@ jobs:
       (needs.changes.outputs.full == 'true' || needs.changes.outputs.packages != '')
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # Greybox tests open KayKit glTF buffers. An LFS pointer is ~130 bytes
           # and the importer rejects it.
@@ -257,7 +257,7 @@ jobs:
         partition: [1, 2, 3]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # The archived tests load KayKit files from this checkout.
           lfs: true
@@ -301,7 +301,7 @@ jobs:
       (needs.changes.outputs.full == 'true' || needs.changes.outputs.packages != '')
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -376,7 +376,7 @@ jobs:
         partition: [1, 2, 3]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # The archived tests load KayKit files from this checkout.
           lfs: true
@@ -412,7 +412,7 @@ jobs:
       (needs.changes.outputs.full == 'true' || needs.changes.outputs.packages != '')
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Read rust-version
         id: msrv
@@ -503,7 +503,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -548,7 +548,7 @@ jobs:
     if: github.event_name != 'pull_request' && needs.gate.result == 'success'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -607,7 +607,7 @@ jobs:
         partition: [1, 2, 3]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           lfs: true
 
@@ -667,7 +667,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -690,7 +690,7 @@ jobs:
     if: github.event_name != 'pull_request' && needs.gate.result == 'success'
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup

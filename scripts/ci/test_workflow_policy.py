@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import inspect
 import re
 import sys
 import unittest
@@ -15,6 +16,132 @@ import mutation_ai_outcomes  # noqa: E402
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
 CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
+
+POLICY_ACTIONS = (
+    "actions/checkout",
+    "actions/upload-artifact",
+    "actions/download-artifact",
+    "actions/cache",
+    "actions/github-script",
+)
+EXPECTED_POLICY_ACTIONS = frozenset(
+    {
+        "actions/checkout",
+        "actions/upload-artifact",
+        "actions/download-artifact",
+        "actions/cache",
+        "actions/github-script",
+    }
+)
+ACTION_MAJOR_FLOORS: dict[str, int] = {
+    "actions/checkout": 7,
+    "actions/upload-artifact": 4,
+    "actions/download-artifact": 4,
+    "actions/cache": 4,
+    "actions/github-script": 7,
+}
+PINNED_ACTION_MAJOR_FLOORS: dict[str, int] = {
+    "actions/checkout": 7,
+    "actions/upload-artifact": 4,
+    "actions/download-artifact": 4,
+    "actions/cache": 4,
+    "actions/github-script": 7,
+}
+# Hardcoded refs one major below each pinned floor (not derived from ACTION_MAJOR_FLOORS).
+BELOW_FLOOR_MAJOR_TAG_BY_ACTION: dict[str, str] = {
+    "actions/checkout": "v6",
+    "actions/upload-artifact": "v3",
+    "actions/download-artifact": "v3",
+    "actions/cache": "v3",
+    "actions/github-script": "v6",
+}
+AT_FLOOR_MAJOR_TAG_BY_ACTION: dict[str, str] = {
+    "actions/checkout": "v7",
+    "actions/upload-artifact": "v4",
+    "actions/download-artifact": "v4",
+    "actions/cache": "v4",
+    "actions/github-script": "v7",
+}
+_POLICY_ACTION_PATTERN = "|".join(re.escape(action) for action in POLICY_ACTIONS)
+ACTION_USES_RE = re.compile(
+    rf"uses:\s*(?P<action>{_POLICY_ACTION_PATTERN})@(?P<ref>[^\s#]+)"
+)
+UNPINNED_BRANCH_REFS = frozenset({"main", "master", "HEAD", "latest", "release"})
+UNPINNED_REF_MSG = "unpinned action ref"
+NON_SHA_TAG_MSG = "must be a 40-char SHA or major tag vN"
+BELOW_FLOOR_MSG = "below major floor"
+
+
+def action_ref_violation(action: str, ref: str) -> str | None:
+    if action not in ACTION_MAJOR_FLOORS:
+        return None
+    if (
+        not ref
+        or ref in UNPINNED_BRANCH_REFS
+        or "/" in ref
+        or ref.startswith("refs/")
+        or ref.startswith(".")
+    ):
+        return f"{UNPINNED_REF_MSG} {action}@{ref!r}"
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        return None
+    major = re.fullmatch(r"v([0-9]+)", ref)
+    if major:
+        floor = ACTION_MAJOR_FLOORS[action]
+        if int(major.group(1)) < floor:
+            return f"{action}@{ref} {BELOW_FLOOR_MSG} v{floor}"
+        return None
+    return f"{action}@{ref} {NON_SHA_TAG_MSG}"
+
+
+def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        match = ACTION_USES_RE.search(line)
+        if not match:
+            continue
+        violation = action_ref_violation(match.group("action"), match.group("ref"))
+        if violation:
+            violations.append(f"{prefix}{line_no}: {violation}")
+    return violations
+
+
+def find_action_uses_pos(block: str, action: str) -> int:
+    pos = -1
+    for match in ACTION_USES_RE.finditer(block):
+        if match.group("action") == action:
+            pos = match.start()
+    return pos
+
+
+def summary_checkout_step_line(text: str) -> str:
+    summary = mutation_summary_job(text)
+    for line in summary.splitlines():
+        if "uses: actions/checkout@" in line:
+            return line
+    raise AssertionError("mutants-summary missing checkout step")
+
+
+def _exec_action_ref_violation_from_source(source: str):
+    namespace: dict[str, object] = {
+        "re": re,
+        "ACTION_MAJOR_FLOORS": ACTION_MAJOR_FLOORS,
+        "UNPINNED_BRANCH_REFS": UNPINNED_BRANCH_REFS,
+        "UNPINNED_REF_MSG": UNPINNED_REF_MSG,
+        "NON_SHA_TAG_MSG": NON_SHA_TAG_MSG,
+        "BELOW_FLOOR_MSG": BELOW_FLOOR_MSG,
+    }
+    exec(compile(source, "<action_ref_violation>", "exec"), namespace)
+    fn = namespace.get("action_ref_violation")
+    if not callable(fn):
+        raise RuntimeError("action_ref_violation missing after exec")
+    return fn
+
+
+def _broken_action_ref_violation(old: str, new: str):
+    source = inspect.getsource(action_ref_violation).replace(old, new, 1)
+    return _exec_action_ref_violation_from_source(source)
 
 
 def workflow_texts() -> dict[str, str]:
@@ -184,7 +311,7 @@ def assert_mutation_ai_outcome_steps_not_softened(text: str) -> None:
 
 def assert_mutation_summary_checks_out_before_scoring(text: str) -> None:
     summary = mutation_summary_job(text)
-    checkout = summary.find("uses: actions/checkout@v5")
+    checkout = find_action_uses_pos(summary, "actions/checkout")
     scoring = summary.find("mutation_ai_outcomes.py")
     if checkout < 0:
         raise AssertionError("mutants-summary must checkout the repository")
@@ -551,9 +678,120 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_mutation_summary_checks_out_before_scoring(self) -> None:
         text = mutation_testing_text()
         assert_mutation_summary_checks_out_before_scoring(text)
-        without_checkout = text.replace("      - uses: actions/checkout@v5\n\n      - name: Download all artifacts", "      - name: Download all artifacts", 1)
+        checkout_line = summary_checkout_step_line(text)
+        without_checkout = text.replace(f"{checkout_line}\n\n", "", 1)
         with self.assertRaises(AssertionError):
             assert_mutation_summary_checks_out_before_scoring(without_checkout)
+        source = inspect.getsource(assert_mutation_summary_checks_out_before_scoring)
+        self.assertIn("if checkout > scoring:", source)
+        stripped = source.replace("if checkout > scoring:", "if False and checkout > scoring:", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn("if checkout > scoring:", stripped)
+        reordered = without_checkout.replace(
+            'Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"',
+            f'Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"\n\n      {checkout_line.strip()}',
+            1,
+        )
+        with self.assertRaises(AssertionError) as ctx:
+            assert_mutation_summary_checks_out_before_scoring(reordered)
+        self.assertIn("must precede", str(ctx.exception))
+
+    def test_workflow_action_pins(self) -> None:
+        violations: list[str] = []
+        for name, text in workflow_texts().items():
+            violations.extend(workflow_action_pin_violations(text, path=name))
+        self.assertEqual(violations, [])
+
+    def test_policy_actions_matches_expected_set(self) -> None:
+        self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
+
+    def test_policy_actions_have_floors_and_uses_regex(self) -> None:
+        self.assertEqual(ACTION_MAJOR_FLOORS, PINNED_ACTION_MAJOR_FLOORS)
+        self.assertEqual(set(ACTION_MAJOR_FLOORS), set(POLICY_ACTIONS))
+        for action in POLICY_ACTIONS:
+            violations = workflow_action_pin_violations(f"uses: {action}@main")
+            self.assertEqual(len(violations), 1, action)
+            self.assertIn(UNPINNED_REF_MSG, violations[0])
+            match = ACTION_USES_RE.search(f"uses: {action}@v99")
+            self.assertIsNotNone(match, action)
+            self.assertEqual(match.group("action"), action)
+            below = BELOW_FLOOR_MAJOR_TAG_BY_ACTION[action]
+            at_floor = AT_FLOOR_MAJOR_TAG_BY_ACTION[action]
+            self.assertIn(BELOW_FLOOR_MSG, action_ref_violation(action, below) or "", action)
+            self.assertIsNone(action_ref_violation(action, at_floor), action)
+
+    def test_action_ref_rejects_unpinned_branch(self) -> None:
+        self.assertIn(UNPINNED_REF_MSG, action_ref_violation("actions/checkout", "main") or "")
+        source = inspect.getsource(action_ref_violation)
+        self.assertIn("UNPINNED_BRANCH_REFS", source)
+        stripped = source.replace("or ref in UNPINNED_BRANCH_REFS", "", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn("UNPINNED_BRANCH_REFS", stripped)
+
+    def test_action_ref_rejects_non_sha_semver_tag(self) -> None:
+        self.assertIn(NON_SHA_TAG_MSG, action_ref_violation("actions/upload-artifact", "v4.3.0") or "")
+        source = inspect.getsource(action_ref_violation)
+        self.assertIn("NON_SHA_TAG_MSG", source)
+        stripped = source.replace('return f"{action}@{ref} {NON_SHA_TAG_MSG}"', "", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn("NON_SHA_TAG_MSG", stripped)
+        broken_fn = _broken_action_ref_violation(
+            'return f"{action}@{ref} {NON_SHA_TAG_MSG}"',
+            "return None",
+        )
+        self.assertIsNone(broken_fn("actions/upload-artifact", "v4.3.0"))
+
+    def test_action_ref_rejects_major_below_floor(self) -> None:
+        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v4") or "")
+        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v5") or "")
+        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v6") or "")
+        for action, below in BELOW_FLOOR_MAJOR_TAG_BY_ACTION.items():
+            self.assertIn(BELOW_FLOOR_MSG, action_ref_violation(action, below) or "", action)
+        source = inspect.getsource(action_ref_violation)
+        self.assertIn("if int(major.group(1)) < floor:", source)
+        stripped = source.replace("if int(major.group(1)) < floor:", "if False and int(major.group(1)) < floor:", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn("if int(major.group(1)) < floor:", stripped)
+        broken_fn = _broken_action_ref_violation(
+            "if int(major.group(1)) < floor:",
+            "if False and int(major.group(1)) < floor:",
+        )
+        self.assertIsNone(broken_fn("actions/checkout", "v4"))
+
+    def test_action_ref_accepts_sha_and_major_tags(self) -> None:
+        self.assertIsNone(
+            action_ref_violation(
+                "actions/checkout",
+                "3d3c42e5aac5ba805825da76410c181273ba90b1",
+            )
+        )
+        self.assertIsNone(action_ref_violation("actions/checkout", "v7"))
+        self.assertIsNone(action_ref_violation("actions/github-script", "v8"))
+
+    def test_action_ref_rejects_malformed_sha(self) -> None:
+        bad_refs = (
+            "a" * 39,
+            "a" * 41,
+            "3d3c42e",
+            "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+            "0" * 39 + "g",
+        )
+        for ref in bad_refs:
+            msg = action_ref_violation("actions/checkout", ref)
+            self.assertIsNotNone(msg, ref)
+            self.assertIn(NON_SHA_TAG_MSG, msg or "")
+        broken_plus = _broken_action_ref_violation(
+            r're.fullmatch(r"[0-9a-f]{40}", ref)',
+            r're.fullmatch(r"[0-9a-f]+", ref)',
+        )
+        self.assertIsNone(broken_plus("actions/checkout", "a" * 39))
+        self.assertIsNotNone(action_ref_violation("actions/checkout", "a" * 39))
+        broken_dot = _broken_action_ref_violation(
+            r're.fullmatch(r"[0-9a-f]{40}", ref)',
+            r're.fullmatch(r".{40}", ref)',
+        )
+        self.assertIsNone(broken_dot("actions/checkout", "G" * 40))
+        self.assertIsNotNone(action_ref_violation("actions/checkout", "G" * 40))
 
     def test_mutation_ai_scoring_uses_strict_eval(self) -> None:
         text = mutation_testing_text()
