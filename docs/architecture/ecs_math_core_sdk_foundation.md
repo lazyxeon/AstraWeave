@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.17"
-last_verified_commit: 3c65ca7f
+doc_version: "1.18"
+last_verified_commit: 6340178025fd66bfd51f583802af60f6e8a3e0c1
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,13 +20,13 @@ last_verified_commit: 3c65ca7f
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.17 |
-| **Last verified against commit** | `3c65ca7f` |
-| **Last verified date** | 2026-10-29 |
+| **Document version** | 1.18 |
+| **Last verified against commit** | `6340178025fd66bfd51f583802af60f6e8a3e0c1` |
+| **Last verified date** | 2026-11-04 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
-> **Revision notice — 2026-11-04 (v1.18).** Re-entry is defined only for an outer `clear_raw` reached through a raw pointer, with no `&mut BlobVec` live up the stack. On that path the outer call publishes `len == 0` before `drop_fn`, a nested `clear_raw` does not drop again, and on unwind the panic guard restores `len` to the not-yet-dropped tail so those slots are not freed twice. Re-entry through `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across `drop_fn`. `drop_detached_tail` is not `#[inline(never)]`. `clear_raw_reenter_panic_restores_undropped_tail` (`astraweave-ecs/src/blob_vec.rs:1532`) is that outer path; deleting the restore at `blob_vec.rs:573` leaves `len == 0`. Checked on this branch.
+> **Revision notice — 2026-11-04 (v1.18).** Re-entry is defined only for an outer `clear_raw` reached through a raw pointer, with no `&mut BlobVec` live up the stack. On that path the outer call publishes `len == 0` before `drop_fn`, a nested `clear_raw` does not drop again, and on unwind the panic guard restores `len` to the not-yet-dropped tail so those slots are not freed twice. Re-entry through `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across `drop_fn`. `drop_detached_tail` is not `#[inline(never)]`. `clear_raw_reenter_panic_restores_undropped_tail` (`astraweave-ecs/src/blob_vec.rs:1532`) is that outer path; deleting the restore at `blob_vec.rs:573` leaves `len == 0`. Checked at `634017802`.
 >
 > **Revision notice — 2026-10-29 (v1.17).** `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0, before the next decrement. A destructor that reaches the same column needs a second pointer aliasing the live `&mut self`, which is undefined behavior. Checked at `3c65ca7f`.
 >
@@ -584,6 +584,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.18 | 2026-11-04 | Re-entry is defined only for outer `clear_raw` through a raw pointer; re-entry through `swap_remove_raw`, `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to` is undefined behavior. Panic guard restores the not-yet-dropped tail only on the outer path (invariant 19). Stamp names `634017802`. |
 | 1.17 | 2026-10-29 | `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0 (invariant 19). |
 | 1.16 | 2026-10-29 | `default_tool_registry` names `MoveTo`, `Throw`, `CoverFire`, and `Revive`. `BlobVec` commits `len` before `drop_fn` and drops each element once, including when a destructor panics (invariant 19). |
 | 1.15 | 2026-10-28 | `BlobVec` does not allocate a zero-sized column. `reserve` uses `checked_mul`. Stamp names `129ccac4`. |
