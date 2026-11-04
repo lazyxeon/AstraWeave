@@ -1993,10 +1993,10 @@ All 22 files behind `#[cfg(feature = "planner_advanced")]` per `mod.rs:4-45`. Pl
 | `plan_stitcher.rs` | 617 | `PlanStitcher` + `Conflict`. Phase 4 |
 | `plan_analyzer.rs` | 1546 | `PlanAnalyzer` + `PlanMetrics`. Phase 5 |
 | `plan_visualizer.rs` | 1437 | `PlanVisualizer`. Phase 5 |
-| `debug_tools.rs` | 858 | `PlanDebugger`. Phase 5 |
+| `debug_tools.rs` | 885 | `PlanDebugger`. Phase 5 |
 | `telemetry.rs` | 642 | `PlanExecutionTracker`. Phase 1+ |
 | `tests.rs` | 320 | Crate-internal tests (Phase 5 closure). All test files for Advanced GOAP route through this module |
-| **Subtotal** | **16,736** | 22 files |
+| **Subtotal** | **16,763** | 22 files |
 | `astraweave-ai/src/bin.disabled/analyze-plan.rs` | ~400 | Phase 5 CLI — disabled |
 | `astraweave-ai/src/bin.disabled/validate-goals.rs` | ~? | Phase 5 CLI — disabled |
 | `astraweave-ai/src/bin.disabled/visualize-plan.rs` | ~250 | Phase 5 CLI — disabled |
@@ -2031,6 +2031,8 @@ Despite the architectural cleanliness of the `Orchestrator`-trait integration, n
 |---|---|---|---|
 | AG1 | Every `pub mod` and `pub use` in `mod.rs` is `#[cfg(feature = "planner_advanced")]`-gated. With the feature off, nothing in the Advanced GOAP submodule is reachable from the crate root. | Yes | `mod.rs:4-88` — every line has the cfg attribute |
 | AG2 | `AdvancedGOAP::new()` defaults: `max_plan_iterations = 10000`, `risk_weight = 5.0`, empty actions, empty history. | Yes | `planner.rs:55-63` |
+| AG2b | `plan_direct` returns `None` when `iterations > max_plan_iterations` (default 10000). That iteration counter is the search bound. | Yes | `planner.rs:251-258` |
+| AG2c | `PlanDebugger::step_forward` returns an error when `current_step <= previous_step` after increment (counter stuck, e.g. `+=` mutated to `*=`). That fails the step instead of allocating without bound from `jump_to_step` (shard 1/8 OOM, job 125720952789; shard list index 168 is inferred from the job log, not confirmed). | Yes | `debug_tools.rs:122-126` |
 | AG3 | `Action::calculate_cost` default impl clamps cost to `≥ 0.1` (never zero or negative). | Yes | `action.rs:34` (`cost.max(0.1)`) |
 | AG4 | `Action::calculate_cost` failure_penalty bounded `[0, 10.0]` per `failure_rate * 10.0`; success_bonus bounded `[-2.0, 0]` per `success_rate * -2.0`. | Yes | `action.rs:25-29` |
 | AG5 | `Action::success_probability` default returns 0.8 (80%) for unknown actions. | Yes | `action.rs:48` |
