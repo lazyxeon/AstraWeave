@@ -188,6 +188,7 @@ async fn test_phase7_cache_similarity() {
     // Cache a plan
     let key1 = astraweave_llm::cache::PromptKey::new(
         "Attack enemy at position 5 and then retreat to cover",
+        "integration",
         "qwen3.5:4b",
         0.7,
         &["attack", "move_to", "take_cover"],
@@ -217,6 +218,7 @@ async fn test_phase7_cache_similarity() {
     // Query with similar prompt (should hit via similarity)
     let key2 = astraweave_llm::cache::PromptKey::new(
         "Attack foe at position 5 and then fall back to cover",
+        "integration",
         "qwen3.5:4b",
         0.7,
         &["attack", "move_to", "take_cover"],

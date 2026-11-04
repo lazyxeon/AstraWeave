@@ -17,6 +17,7 @@ use astraweave_core::{
 };
 use astraweave_llm::{clear_global_cache, plan_from_llm, LlmClient, PlanSource};
 use async_trait::async_trait;
+use serial_test::serial;
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -216,6 +217,7 @@ impl LlmClient for StreamingClient {
 // =============================================================================
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_chain_success_first_try() {
     //! Tests that successful LLM response is used directly
     clear_global_cache(); // Ensure test isolation
@@ -242,6 +244,7 @@ async fn test_fallback_chain_success_first_try() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_chain_after_failures() {
     //! Tests that system retries and eventually uses fallback after repeated failures
     clear_global_cache(); // Ensure test isolation
@@ -268,6 +271,7 @@ async fn test_fallback_chain_after_failures() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_chain_malformed_json() {
     //! Tests fallback when LLM returns malformed JSON
     clear_global_cache(); // Ensure test isolation
@@ -296,6 +300,7 @@ async fn test_fallback_chain_malformed_json() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_chain_hallucinated_tools() {
     //! Tests fallback when LLM returns non-existent tools
     clear_global_cache(); // Ensure test isolation
@@ -331,6 +336,7 @@ async fn test_fallback_chain_hallucinated_tools() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_latency_budget() {
     //! Tests that slow LLM responses trigger fallback within latency budget
     clear_global_cache(); // Ensure test isolation
@@ -353,6 +359,7 @@ async fn test_fallback_latency_budget() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_streaming_parser_assembly() {
     //! Tests that streaming responses are correctly assembled
     clear_global_cache(); // Ensure test isolation
@@ -384,6 +391,7 @@ async fn test_streaming_parser_assembly() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_plan_validity() {
     //! Tests that fallback plans are always valid and executable
     clear_global_cache(); // Ensure test isolation
@@ -423,6 +431,7 @@ async fn test_fallback_plan_validity() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_concurrent_fallback_requests() {
     //! Tests that multiple concurrent fallback requests don't interfere
     clear_global_cache(); // Ensure test isolation
@@ -468,6 +477,7 @@ async fn test_concurrent_fallback_requests() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_preserves_context() {
     //! Tests that fallback plans consider the world state
     clear_global_cache(); // Ensure test isolation
@@ -503,6 +513,7 @@ async fn test_fallback_preserves_context() {
 }
 
 #[tokio::test]
+#[serial]
 async fn test_fallback_tier_progression() {
     //! Tests that fallback progresses through tiers correctly
     clear_global_cache(); // Ensure test isolation
@@ -559,6 +570,38 @@ async fn test_fallback_tier_progression() {
                 "Should have informative reason: {}",
                 reason
             );
+        }
+        _ => panic!("Unexpected PlanSource variant"),
+    }
+}
+
+#[tokio::test]
+#[serial]
+async fn global_cache_partitions_by_client_identity() {
+    //! Two clients with the same prompt must not share a cached plan.
+    clear_global_cache();
+
+    let snap = create_test_snapshot();
+    let reg = create_test_registry();
+
+    let cached = plan_from_llm(&SuccessClient, &snap, &reg).await;
+    match cached {
+        PlanSource::Llm(plan) => assert_eq!(plan.plan_id, "success-1"),
+        PlanSource::Fallback { .. } => panic!("Expected LLM plan from SuccessClient"),
+        _ => panic!("Unexpected PlanSource variant"),
+    }
+
+    let other = plan_from_llm(&StreamingClient::new(), &snap, &reg).await;
+    match other {
+        PlanSource::Llm(plan) => assert_eq!(
+            plan.plan_id, "stream-1",
+            "StreamingClient must not receive SuccessClient cache entry"
+        ),
+        PlanSource::Fallback { plan, reason } => {
+            panic!(
+                "Expected streaming LLM plan, got fallback: {reason:?} steps={}",
+                plan.steps.len()
+            )
         }
         _ => panic!("Unexpected PlanSource variant"),
     }

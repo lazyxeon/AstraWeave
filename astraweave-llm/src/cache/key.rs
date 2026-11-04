@@ -15,6 +15,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone)]
 pub struct PromptKey {
     prompt_hash: u64,
+    pub client_id: String,
     pub model: String,      // Phase 7: Made public for similarity matching
     pub temperature_q: u32, // Phase 7: Made public for similarity matching (temperature * 100)
     tools_hash: u64,
@@ -26,6 +27,7 @@ pub struct PromptKey {
 impl Hash for PromptKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.prompt_hash.hash(state);
+        self.client_id.hash(state);
         self.model.hash(state);
         self.temperature_q.hash(state);
         self.tools_hash.hash(state);
@@ -36,6 +38,7 @@ impl Hash for PromptKey {
 impl PartialEq for PromptKey {
     fn eq(&self, other: &Self) -> bool {
         self.prompt_hash == other.prompt_hash
+            && self.client_id == other.client_id
             && self.model == other.model
             && self.temperature_q == other.temperature_q
             && self.tools_hash == other.tools_hash
@@ -50,10 +53,17 @@ impl PromptKey {
     ///
     /// # Arguments
     /// * `prompt` - The prompt text (will be normalized)
+    /// * `client_id` - Stable client identity for cache partitioning
     /// * `model` - The model identifier (e.g., "phi3:medium")
     /// * `temperature` - The temperature parameter
     /// * `tools` - Tool names for hashing (sorted for stability)
-    pub fn new(prompt: &str, model: &str, temperature: f32, tools: &[&str]) -> Self {
+    pub fn new(
+        prompt: &str,
+        client_id: &str,
+        model: &str,
+        temperature: f32,
+        tools: &[&str],
+    ) -> Self {
         let normalized = normalize_prompt(prompt);
         let prompt_hash = hash_string(&normalized);
         let tools_hash = hash_tools(tools);
@@ -61,6 +71,7 @@ impl PromptKey {
 
         Self {
             prompt_hash,
+            client_id: client_id.to_string(),
             model: model.to_string(),
             temperature_q,
             tools_hash,
@@ -70,9 +81,16 @@ impl PromptKey {
 
     /// Create from raw hash values (for testing)
     #[cfg(test)]
-    pub fn from_hashes(prompt_hash: u64, model: &str, temperature_q: u32, tools_hash: u64) -> Self {
+    pub fn from_hashes(
+        prompt_hash: u64,
+        client_id: &str,
+        model: &str,
+        temperature_q: u32,
+        tools_hash: u64,
+    ) -> Self {
         Self {
             prompt_hash,
+            client_id: client_id.to_string(),
             model: model.to_string(),
             temperature_q,
             tools_hash,
@@ -200,32 +218,40 @@ mod tests {
 
     #[test]
     fn test_key_equality_same_normalized() {
-        let key1 = PromptKey::new("hello  world", "model1", 0.7, &["move", "attack"]);
-        let key2 = PromptKey::new("hello world", "model1", 0.7, &["move", "attack"]);
+        let key1 = PromptKey::new("hello  world", "client", "model1", 0.7, &["move", "attack"]);
+        let key2 = PromptKey::new("hello world", "client", "model1", 0.7, &["move", "attack"]);
 
         assert_eq!(key1, key2);
     }
 
     #[test]
     fn test_key_inequality_different_prompt() {
-        let key1 = PromptKey::new("hello world", "model1", 0.7, &["move"]);
-        let key2 = PromptKey::new("goodbye world", "model1", 0.7, &["move"]);
+        let key1 = PromptKey::new("hello world", "client", "model1", 0.7, &["move"]);
+        let key2 = PromptKey::new("goodbye world", "client", "model1", 0.7, &["move"]);
 
         assert_ne!(key1, key2);
     }
 
     #[test]
     fn test_key_inequality_different_model() {
-        let key1 = PromptKey::new("hello", "model1", 0.7, &["move"]);
-        let key2 = PromptKey::new("hello", "model2", 0.7, &["move"]);
+        let key1 = PromptKey::new("hello", "client", "model1", 0.7, &["move"]);
+        let key2 = PromptKey::new("hello", "client", "model2", 0.7, &["move"]);
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_key_inequality_different_client_same_prompt_and_model() {
+        let key1 = PromptKey::new("hello", "client_a", "model1", 0.7, &["move"]);
+        let key2 = PromptKey::new("hello", "client_b", "model1", 0.7, &["move"]);
 
         assert_ne!(key1, key2);
     }
 
     #[test]
     fn test_key_inequality_different_temperature() {
-        let key1 = PromptKey::new("hello", "model1", 0.7, &["move"]);
-        let key2 = PromptKey::new("hello", "model1", 0.8, &["move"]);
+        let key1 = PromptKey::new("hello", "client", "model1", 0.7, &["move"]);
+        let key2 = PromptKey::new("hello", "client", "model1", 0.8, &["move"]);
 
         assert_ne!(key1, key2);
     }
@@ -233,10 +259,19 @@ mod tests {
     #[test]
     fn test_key_temperature_quantization() {
         // Very small temperature differences should hash to same key
-        let key1 = PromptKey::new("hello", "model1", 0.701, &["move"]);
-        let key2 = PromptKey::new("hello", "model1", 0.699, &["move"]);
+        let key1 = PromptKey::new("hello", "client", "model1", 0.701, &["move"]);
+        let key2 = PromptKey::new("hello", "client", "model1", 0.699, &["move"]);
 
         assert_eq!(key1, key2); // Both round to 70
+    }
+
+    #[test]
+    fn different_clients_and_models_distinct_keys_for_same_prompt() {
+        let prompt = "engage hostiles near the objective";
+        let tools = &["MoveTo", "Attack"];
+        let alpha = PromptKey::new(prompt, "client-a", "model-one", 0.7, tools);
+        let beta = PromptKey::new(prompt, "client-b", "model-two", 0.7, tools);
+        assert_ne!(alpha, beta);
     }
 
     #[test]

@@ -1201,7 +1201,17 @@ pub enum PlanSource {
 
 /// Trait for LLM clients (mock, Ollama, etc).
 #[async_trait::async_trait]
-pub trait LlmClient: Send + Sync {
+pub trait LlmClient: Send + Sync + std::any::Any {
+    /// Model name for global prompt-cache partitioning.
+    fn llm_cache_model_id(&self) -> &str {
+        "default"
+    }
+
+    /// Sampling temperature encoded into the prompt-cache key.
+    fn llm_cache_temperature(&self) -> f32 {
+        0.7
+    }
+
     /// Complete a prompt and return the full response (blocking until complete)
     async fn complete(&self, prompt: &str) -> Result<String>;
 
@@ -1395,6 +1405,10 @@ impl LlmClient for OllamaClient {
             .as_str()
             .map(str::to_string)
             .context("Missing 'response' field in Ollama output")
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
     }
 }
 
@@ -2223,6 +2237,10 @@ impl LlmClient for OllamaChatClient {
         self.complete_with_optional_format(prompt, Some(format))
             .await
     }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
 }
 
 /// A simple local HTTP LLM client that can work with any OpenAI-compatible API
@@ -2416,6 +2434,10 @@ impl LlmClient for LocalHttpClient {
         }
 
         Ok(parsed.choices[0].message.content.clone())
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
     }
 }
 
@@ -2812,6 +2834,24 @@ fn extract_json_from_fenced(s: &str) -> Option<String> {
     None
 }
 
+#[cfg(feature = "llm_cache")]
+fn plan_prompt_cache_key(
+    client: &dyn LlmClient,
+    snap: &WorldSnapshot,
+    reg: &ToolRegistry,
+) -> PromptKey {
+    let prompt = build_prompt(snap, reg);
+    let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
+    let client_id = format!("{:?}", client.type_id());
+    PromptKey::new(
+        &prompt,
+        &client_id,
+        client.llm_cache_model_id(),
+        client.llm_cache_temperature(),
+        &tool_names,
+    )
+}
+
 /// Generate a plan using LLM with Phase 7 multi-tier fallback system
 ///
 /// This function uses a 4-tier fallback chain:
@@ -2828,15 +2868,7 @@ pub async fn plan_from_llm(
 ) -> PlanSource {
     #[cfg(feature = "llm_cache")]
     {
-        // Build cache key for fast lookup
-        let prompt = build_prompt(snap, reg);
-        let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
-        let cache_key = PromptKey::new(
-            &prompt,
-            "default", // TODO: Extract from client
-            0.7,       // TODO: Extract temperature from client
-            &tool_names,
-        );
+        let cache_key = plan_prompt_cache_key(client, snap, reg);
 
         // Check cache first
         if let Some((cached_plan, _decision)) = GLOBAL_CACHE.get(&cache_key) {
@@ -2869,8 +2901,7 @@ pub async fn plan_from_llm(
     {
         if result.tier <= fallback_system::FallbackTier::SimplifiedLlm {
             let prompt = build_prompt(snap, reg);
-            let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
-            let cache_key = PromptKey::new(&prompt, "default", 0.7, &tool_names);
+            let cache_key = plan_prompt_cache_key(client, snap, reg);
             let cached_plan = CachedPlan {
                 plan: result.plan.clone(),
                 created_at: std::time::Instant::now(),
