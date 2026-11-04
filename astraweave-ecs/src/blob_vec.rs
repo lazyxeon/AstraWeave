@@ -63,7 +63,9 @@ pub struct BlobVec {
     /// Function to drop a single component.
     ///
     /// SAFETY: Must be called with a valid pointer to the component type
-    /// registered at construction. Must not re-enter this `BlobVec`.
+    /// registered at construction. The only supported re-entry is
+    /// [`Self::clear_raw`] from the raw drop path. On unwind the panic guard
+    /// restores `len` only when that re-entry left the published length in place.
     drop_fn: Option<unsafe fn(*mut u8)>,
 }
 
@@ -238,8 +240,9 @@ impl BlobVec {
     /// where we don't need to preserve the component value.
     ///
     /// The removed value is moved into the last slot and dropped by
-    /// [`Self::drop_last`], which publishes the shorter `len` before the
-    /// destructor. A panic in that destructor cannot drop the slot again.
+    /// [`Self::drop_last`]. That publishes the shorter `len` and drops the slot
+    /// on the raw path. A panic restores `len` only when no nested
+    /// [`Self::clear_raw`] changed it, so a dropped slot is not freed again.
     ///
     /// # Panics
     /// Panics if index is out of bounds.
@@ -286,7 +289,7 @@ impl BlobVec {
         let last_index = self.len - 1;
 
         // Copy the element at index to dst. The original stays live until
-        // `drop_last` commits `len` and drops the last slot.
+        // `drop_last` publishes `len` and drops the last slot on the raw path.
         let src = self.data.as_ptr().add(index * item_size);
         clone_fn(src, dst);
 
@@ -403,28 +406,38 @@ impl BlobVec {
 
     /// Clear all components, calling their drop functions.
     ///
-    /// `len` is published as zero before any destructor runs so `drop_fn` cannot
-    /// observe stale `len` and drop the same slots again when callers obey the
-    /// no-re-entry precondition. Elements are dropped from the last index toward
-    /// the first using a local count, not a reload of `len` through `&mut self`
-    /// (LLVM may keep `len` in a register across `drop_fn`). A panicking
-    /// destructor restores `len` to the not-yet-dropped tail so [`Drop`] can
-    /// finish it.
+    /// `len` is published as zero before any destructor runs. Elements are
+    /// dropped from the last index toward the first on the raw path, not by
+    /// reloading `len` through this `&mut self` (release LLVM may keep `len`
+    /// in a register across `drop_fn`). The panic-guard rule is documented on
+    /// [`Self::clear_raw`].
     pub fn clear(&mut self) {
-        // SAFETY: `self` is a live `BlobVec` for the duration of the call.
+        // SAFETY: `self` is a live `BlobVec`. Destructors run in the raw drop
+        // path, which does not use this reference.
         unsafe { Self::clear_raw(self) }
     }
 
+    /// Publish `len == 0` and drop every initialized slot.
+    ///
     /// # Safety
     ///
-    /// `ptr` must point to a live `BlobVec`. `drop_fn` must not re-enter this
-    /// column. Calling [`Self::clear_raw`] (or `clear`) from a `drop_fn` while
-    /// an outer `clear`, [`Self::clear_raw`], or [`Drop`] for `BlobVec` is in
-    /// progress is caller-forbidden undefined behavior (Miri Stacked Borrows /
-    /// Tree Borrows). `len` is published before any destructor runs so a
-    /// compliant caller does not double-drop when the tail is already detached.
+    /// `ptr` must point to a live `BlobVec`.
+    ///
+    /// # Panic-guard rule
+    ///
+    /// This is the one re-entry a `drop_fn` may make into this column.
+    /// Destructors run only in `drop_detached_tail`, which takes `*mut BlobVec`,
+    /// does not hold `&mut BlobVec`, and is `#[inline(never)]`. On unwind that
+    /// guard writes the not-yet-dropped tail back into `len` only when `len` is
+    /// still the length this drop published. A nested `clear_raw` publishes and
+    /// drops its own range; the outer guard must leave that `len` alone.
+    /// Re-entering through any other alias while a `&mut BlobVec` is live across
+    /// `drop_fn` is undefined.
     pub(crate) unsafe fn clear_raw(ptr: *mut BlobVec) {
-        let n = std::mem::replace(&mut (*ptr).len, 0);
+        // Read and publish through raw pointers so this entry does not hold
+        // `&mut BlobVec` across the nested drop.
+        let n = ptr::read(ptr::addr_of!((*ptr).len));
+        ptr::write(ptr::addr_of_mut!((*ptr).len), 0);
         if n == 0 {
             return;
         }
@@ -433,27 +446,44 @@ impl BlobVec {
 
     /// Drop the last `n` live elements.
     ///
-    /// `n` is clamped to `len`. The tail is detached from `len` before any
-    /// `drop_fn` runs, then dropped through [`Self::drop_detached_tail`].
-    /// Crate-visible so the Kani split in `blob_vec_kani` can resume the tail
-    /// the way [`Drop`] does after a panicking destructor.
+    /// `n` is clamped to `len`. Forwards to the raw entry so `drop_fn` does not
+    /// run under this `&mut self`. Crate-visible so the Kani split in
+    /// `blob_vec_kani` can resume the tail the way [`Drop`] does after a
+    /// panicking destructor.
     pub(crate) fn drop_last(&mut self, n: usize) {
-        let n = n.min(self.len);
+        // SAFETY: `self` is live. The raw entry performs the drop.
+        unsafe { Self::drop_last_raw(self, n) }
+    }
+
+    /// Detach the last `n` elements and drop them.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must point to a live `BlobVec`. `n` is clamped to `len`. The caller
+    /// must not use a `&mut BlobVec` to this column until this returns.
+    /// See the panic-guard rule on [`Self::clear_raw`].
+    unsafe fn drop_last_raw(ptr: *mut BlobVec, n: usize) {
+        let len = ptr::read(ptr::addr_of!((*ptr).len));
+        let n = n.min(len);
         if n == 0 {
             return;
         }
-        self.len -= n;
-        // SAFETY: `self` is live and `drop_fn` must not re-enter this column
-        // (see [`Self::clear_raw`]).
-        unsafe { Self::drop_detached_tail(self, self.len, n) }
+        let base = len - n;
+        ptr::write(ptr::addr_of_mut!((*ptr).len), base);
+        Self::drop_detached_tail(ptr, base, n);
     }
 
     /// Drop `n` initialized slots `[base, base + n)`.
     ///
-    /// `(*ptr).len` must already exclude this range. `drop_fn` must not re-enter
-    /// this column (see [`Self::clear_raw`]). On panic, `len` is restored to
-    /// `base + still_live` only when no nested drop changed `len` away from
-    /// `base`, so [`Drop`] can finish the not-yet-dropped tail.
+    /// `(*ptr).len` must already exclude this range. See the panic-guard rule
+    /// on [`Self::clear_raw`].
+    ///
+    /// `#[inline(never)]` is required. `swap_remove_raw` and `drop_last` take
+    /// `&mut self`. If this body were inlined into that `noalias` reference,
+    /// release LLVM could treat `*len_ptr == published_len` as true after
+    /// `drop_fn` and resurrect slots a nested [`Self::clear_raw`] already
+    /// dropped.
+    #[inline(never)]
     unsafe fn drop_detached_tail(ptr: *mut BlobVec, base: usize, n: usize) {
         struct PanicGuard {
             len_ptr: *mut usize,
@@ -464,8 +494,10 @@ impl BlobVec {
         impl Drop for PanicGuard {
             fn drop(&mut self) {
                 if std::thread::panicking() {
-                    // SAFETY: `len_ptr` points at this column's `len` for the whole
-                    // `drop_detached_tail` call and is not used after the guard drops.
+                    // SAFETY: `len_ptr` points at this column's `len` for the
+                    // whole `drop_detached_tail` call. The load stays in this
+                    // non-inlined raw function, so it is not folded through a
+                    // caller's `&mut BlobVec`.
                     unsafe {
                         if *self.len_ptr == self.published_len {
                             *self.len_ptr = self.live_len;
@@ -475,11 +507,12 @@ impl BlobVec {
             }
         }
 
-        let blob = &mut *ptr;
-        let drop_fn = blob.drop_fn;
-        let item_size = blob.item_layout.size();
-        let data = blob.data.as_ptr();
-        let len_ptr = std::ptr::addr_of_mut!((*ptr).len);
+        // Copy the fields without creating a `&mut BlobVec` that would span
+        // `drop_fn` and put `len` back under `noalias`.
+        let drop_fn = ptr::read(ptr::addr_of!((*ptr).drop_fn));
+        let item_size = ptr::read(ptr::addr_of!((*ptr).item_layout)).size();
+        let data = ptr::read(ptr::addr_of!((*ptr).data)).as_ptr();
+        let len_ptr = ptr::addr_of_mut!((*ptr).len);
         let mut still_live = n;
         let mut guard = PanicGuard {
             len_ptr,
@@ -492,12 +525,12 @@ impl BlobVec {
             let index = base + still_live;
             guard.live_len = base + still_live;
             if let Some(drop_fn) = drop_fn {
-                // SAFETY: `index` is in the detached `[base, base + n)` range that
-                // was initialized before `len` was published. `drop_fn` matches the
-                // component type registered at construction.
+                // SAFETY: `index` is in the detached `[base, base + n)` range
+                // that was initialized before `len` was published. `drop_fn`
+                // matches the component type registered at construction.
                 unsafe {
-                    let ptr = data.add(index * item_size);
-                    drop_fn(ptr);
+                    let item = data.add(index * item_size);
+                    drop_fn(item);
                 }
             }
         }
@@ -1317,11 +1350,9 @@ mod tests {
         impl Drop for Reenter {
             fn drop(&mut self) {
                 DROPS.fetch_add(1, Ordering::SeqCst);
-                // SAFETY: Test-only alias of the owning `BlobVec`. The outer
-                // call is also `clear_raw`; re-entry from `drop_fn` during
-                // `clear()` or `BlobVec` drop is caller-forbidden UB. This
-                // exercises the release-only double-free that detach-then-drop
-                // prevents when the outer entry is raw-only.
+                // SAFETY: Test-only alias of the owning `BlobVec`. Both the
+                // outer call and this re-entry are `clear_raw`, which is the
+                // supported raw re-entry. The column is not moved.
                 unsafe {
                     BlobVec::clear_raw(self.column);
                 }
@@ -1345,42 +1376,159 @@ mod tests {
         assert_eq!(DROPS.load(Ordering::SeqCst), 2);
     }
 
+    /// Panics on the first destructor so the panic guard runs.
+    ///
+    /// Deleting the restore (leaving `len` at the published 0) fails both
+    /// `len == 1` asserts. `clear()` and in-place [`Drop`] each publish `len`
+    /// before `drop_fn` and then finish the undropped element once.
     #[test]
-    #[cfg(not(miri))]
     fn clear_and_drop_publish_len_before_drop_fn() {
         use std::mem::ManuallyDrop;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
         use std::ptr;
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         static DROPS: AtomicUsize = AtomicUsize::new(0);
 
-        struct CountDrop(Box<u32>);
+        struct CountDrop {
+            payload: Box<u32>,
+            panic_on_drop: bool,
+        }
         impl Drop for CountDrop {
             fn drop(&mut self) {
+                let _kept = *self.payload;
                 DROPS.fetch_add(1, Ordering::SeqCst);
+                if self.panic_on_drop {
+                    panic!("publish len before drop_fn");
+                }
+            }
+        }
+
+        fn push_pair(blob: &mut BlobVec) {
+            unsafe {
+                blob.push(CountDrop {
+                    payload: Box::new(1),
+                    panic_on_drop: false,
+                });
+                blob.push(CountDrop {
+                    payload: Box::new(2),
+                    panic_on_drop: true,
+                });
             }
         }
 
         DROPS.store(0, Ordering::SeqCst);
         let mut blob = BlobVec::new::<CountDrop>();
-        unsafe {
-            blob.push(CountDrop(Box::new(1)));
-            blob.push(CountDrop(Box::new(2)));
-        }
+        push_pair(&mut blob);
+        assert!(catch_unwind(AssertUnwindSafe(|| blob.clear())).is_err());
+        assert_eq!(blob.len(), 1, "panic guard must restore the undropped tail");
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
         blob.clear();
         assert_eq!(blob.len(), 0);
         assert_eq!(DROPS.load(Ordering::SeqCst), 2);
 
         DROPS.store(0, Ordering::SeqCst);
         let mut blob = ManuallyDrop::new(BlobVec::new::<CountDrop>());
-        unsafe {
-            (&mut *blob).push(CountDrop(Box::new(3)));
-            (&mut *blob).push(CountDrop(Box::new(4)));
-        }
+        push_pair(&mut blob);
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
+            ptr::drop_in_place(&mut *blob);
+        }));
+        assert!(panicked.is_err());
+        assert_eq!(
+            blob.len(),
+            1,
+            "in-place Drop must restore the undropped tail"
+        );
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
         unsafe {
             ptr::drop_in_place(&mut *blob);
         }
         assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+    }
+
+    /// cursor[bot] repro: `swap_remove_raw(2)` on `[A, B, C]`, where `C`'s
+    /// destructor calls `clear_raw` and then panics.
+    ///
+    /// The guard must not write the detached prefix back into `len`. Always
+    /// restoring `live_len` (`if true`) leaves `len == 2` and frees `A` and `B`
+    /// again on the following `clear`. `Box` payloads make that second free a
+    /// real deallocation. The column lives in an `UnsafeCell` so `push` does
+    /// not invalidate the pointer stored in each element. Miri still rejects
+    /// `swap_remove_raw`'s `&mut self` as a Stacked Borrows retag of that
+    /// pointer; the raw non-panicking path is `hostile_reenter_clear_from_drop`.
+    #[test]
+    #[cfg(not(miri))]
+    fn swap_remove_raw_reenter_clear_raw_panic_does_not_resurrect() {
+        use std::cell::UnsafeCell;
+        use std::mem::ManuallyDrop;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::sync::atomic::{AtomicU32, Ordering};
+
+        static DROPS: AtomicU32 = AtomicU32::new(0);
+        static FREED: AtomicU32 = AtomicU32::new(0);
+
+        struct Elem {
+            id: u32,
+            column: *mut BlobVec,
+            payload: Box<u32>,
+        }
+
+        impl Drop for Elem {
+            fn drop(&mut self) {
+                let _kept = *self.payload;
+                let bit = 1u32 << self.id;
+                let prev = FREED.fetch_or(bit, Ordering::SeqCst);
+                assert_eq!(prev & bit, 0, "element {} freed twice", self.id);
+                DROPS.fetch_add(1, Ordering::SeqCst);
+                if self.id == 2 {
+                    // SAFETY: `column` points at the live column that owns this
+                    // element. `clear_raw` is the supported re-entry.
+                    unsafe { BlobVec::clear_raw(self.column) }
+                    panic!("clear_raw then panic");
+                }
+            }
+        }
+
+        DROPS.store(0, Ordering::SeqCst);
+        FREED.store(0, Ordering::SeqCst);
+        let mut holder = ManuallyDrop::new(UnsafeCell::new(BlobVec::new::<Elem>()));
+        let column = holder.get();
+        unsafe {
+            (*column).push(Elem {
+                id: 0,
+                column,
+                payload: Box::new(1),
+            });
+            (*column).push(Elem {
+                id: 1,
+                column,
+                payload: Box::new(2),
+            });
+            (*column).push(Elem {
+                id: 2,
+                column,
+                payload: Box::new(3),
+            });
+            let panicked = catch_unwind(AssertUnwindSafe(|| {
+                (*column).swap_remove_raw(2);
+            }));
+            assert!(panicked.is_err());
+            assert_eq!((*column).len(), 0, "nested clear_raw must keep len at 0");
+            assert_eq!(DROPS.load(Ordering::SeqCst), 3);
+            assert_eq!(
+                FREED.load(Ordering::SeqCst),
+                0b111,
+                "every element freed once"
+            );
+            (*column).clear();
+            ManuallyDrop::drop(&mut holder);
+        }
+        assert_eq!(
+            DROPS.load(Ordering::SeqCst),
+            3,
+            "clear/drop freed an element again"
+        );
+        assert_eq!(FREED.load(Ordering::SeqCst), 0b111);
     }
 
     #[test]

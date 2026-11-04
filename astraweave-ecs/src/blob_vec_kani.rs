@@ -277,13 +277,13 @@ impl Drop for DropProbe {
 
 /// Each live element is dropped once, including when a destructor panics.
 ///
-/// `clear` is `drop_last(len)`. `drop_last` publishes the shorter `len` before
-/// `drop_fn`. A panic leaves `len` counting only elements that have not been
-/// dropped, and [`Drop`] for `BlobVec` calls `clear` on that tail. Kani does
-/// not implement `catch_unwind` (model-checking/kani#267), so the harness
-/// applies that split itself: `drop_last` runs through the panicking slot,
-/// then `clear` finishes the rest. `clear_panic_does_not_double_free` runs the
-/// real panic under Miri.
+/// `clear` publishes `len == 0` and drops through the raw tail path. `drop_last`
+/// publishes the surviving prefix the same way. On unwind the guard restores
+/// `len` only when it is still that published length. Kani does not implement
+/// `catch_unwind` (model-checking/kani#267), so the harness applies the
+/// non-reentrant split itself: `drop_last` runs through the panicking slot,
+/// then `clear` finishes the rest. It does not model a nested `clear_raw`.
+/// `clear_panic_does_not_double_free` runs the real panic under Miri.
 #[kani::proof]
 #[kani::unwind(8)]
 fn blob_vec_drops_each_element_once_including_panicking_drop() {
