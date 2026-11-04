@@ -460,7 +460,7 @@ class WorkflowPolicyTest(unittest.TestCase):
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
         watched = nightly_failure_watched_workflows(text)
         known = workflow_display_names()
-        self.assertEqual(len(watched), 13)
+        self.assertEqual(len(watched), 20)
         missing = [name for name in watched if name not in known]
         self.assertEqual(missing, [])
         self.assertIn("determinism-replay", watched)
