@@ -31,8 +31,9 @@ ACTION_MAJOR_FLOORS: dict[str, int] = {
     "actions/cache": 4,
     "actions/github-script": 7,
 }
+_POLICY_ACTION_PATTERN = "|".join(re.escape(action) for action in POLICY_ACTIONS)
 ACTION_USES_RE = re.compile(
-    r"uses:\s*(?P<action>actions/(?:checkout|upload-artifact|download-artifact|cache|github-script))@(?P<ref>[^\s#]+)"
+    rf"uses:\s*(?P<action>{_POLICY_ACTION_PATTERN})@(?P<ref>[^\s#]+)"
 )
 UNPINNED_BRANCH_REFS = frozenset({"main", "master", "HEAD", "latest", "release"})
 UNPINNED_REF_MSG = "unpinned action ref"
@@ -657,6 +658,16 @@ class WorkflowPolicyTest(unittest.TestCase):
             violations.extend(workflow_action_pin_violations(text, path=name))
         self.assertEqual(violations, [])
 
+    def test_policy_actions_have_floors_and_uses_regex(self) -> None:
+        self.assertEqual(set(ACTION_MAJOR_FLOORS), set(POLICY_ACTIONS))
+        for action in POLICY_ACTIONS:
+            violations = workflow_action_pin_violations(f"uses: {action}@main")
+            self.assertEqual(len(violations), 1, action)
+            self.assertIn(UNPINNED_REF_MSG, violations[0])
+            match = ACTION_USES_RE.search(f"uses: {action}@v99")
+            self.assertIsNotNone(match, action)
+            self.assertEqual(match.group("action"), action)
+
     def test_action_ref_rejects_unpinned_branch(self) -> None:
         self.assertIn(UNPINNED_REF_MSG, action_ref_violation("actions/checkout", "main") or "")
         source = inspect.getsource(action_ref_violation)
@@ -700,6 +711,31 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertIsNone(action_ref_violation("actions/checkout", "v7"))
         self.assertIsNone(action_ref_violation("actions/github-script", "v8"))
+
+    def test_action_ref_rejects_malformed_sha(self) -> None:
+        bad_refs = (
+            "a" * 39,
+            "a" * 41,
+            "3d3c42e",
+            "ABCDEF0123456789ABCDEF0123456789ABCDEF01",
+            "0" * 39 + "g",
+        )
+        for ref in bad_refs:
+            msg = action_ref_violation("actions/checkout", ref)
+            self.assertIsNotNone(msg, ref)
+            self.assertIn(NON_SHA_TAG_MSG, msg or "")
+        broken_plus = _broken_action_ref_violation(
+            r're.fullmatch(r"[0-9a-f]{40}", ref)',
+            r're.fullmatch(r"[0-9a-f]+", ref)',
+        )
+        self.assertIsNone(broken_plus("actions/checkout", "a" * 39))
+        self.assertIsNotNone(action_ref_violation("actions/checkout", "a" * 39))
+        broken_dot = _broken_action_ref_violation(
+            r're.fullmatch(r"[0-9a-f]{40}", ref)',
+            r're.fullmatch(r".{40}", ref)',
+        )
+        self.assertIsNone(broken_dot("actions/checkout", "G" * 40))
+        self.assertIsNotNone(action_ref_violation("actions/checkout", "G" * 40))
 
     def test_mutation_ai_scoring_uses_strict_eval(self) -> None:
         text = mutation_testing_text()
