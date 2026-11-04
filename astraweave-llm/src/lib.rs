@@ -1177,7 +1177,7 @@ pub mod tool_guard;
 pub mod cache;
 
 // --- Phi-3 local model (optional, requires heavy GPU/CPU dependencies) ---
-#[cfg(feature = "phi3")]
+#[cfg(any(feature = "phi3", test))]
 pub mod phi3;
 
 // --- Ollama-based models (optional, requires reqwest) ---
@@ -2279,6 +2279,13 @@ impl LlmClient for OllamaChatClient {
 
     fn llm_cache_model_id(&self) -> &str {
         &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        // The streaming chat body sends this. `assemble` defaults `low_latency`
+        // to true, so `complete` takes that body. The non-streaming `Req` sends
+        // no temperature.
+        0.1
     }
 }
 
@@ -4110,6 +4117,198 @@ mod tests {
         assert_qwen_fast_single_field_miss("system_prompt", |client| {
             client.system_prompt = Some("different-profile".to_string());
         });
+    }
+
+    /// One `get` per identity field. Dropping that field's `push_counted` makes
+    /// this return the stored plan at similarity 1.0.
+    #[cfg(feature = "llm_cache")]
+    fn assert_profile_cache_miss(label: &str, stored: &dyn LlmClient, queried: &dyn LlmClient) {
+        use std::time::Instant;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let stored_key = plan_prompt_cache_key(stored, &snap, &reg);
+        let queried_key = plan_prompt_cache_key(queried, &snap, &reg);
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        cache.put(
+            stored_key,
+            CachedPlan {
+                plan: PlanIntent {
+                    plan_id: label.to_string(),
+                    steps: vec![],
+                },
+                created_at: Instant::now(),
+                tokens_saved: 1,
+            },
+        );
+
+        let hit = cache.get(&queried_key);
+        assert!(
+            hit.is_none(),
+            "{label} must miss at similarity 1.0, got {hit:?}"
+        );
+        assert_eq!(cache.stats().similarity_hits, 0);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_url_changes() {
+        let fast = hermes2pro_ollama::Hermes2ProOllama::fast().expect("fast client");
+        let other_url =
+            hermes2pro_ollama::Hermes2ProOllama::new("http://127.0.0.1:11435", fast.model.clone())
+                .expect("client")
+                .with_temperature(fast.temperature)
+                .with_max_tokens(fast.max_tokens);
+        assert_profile_cache_miss("hermes url", &fast, &other_url);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_max_tokens_changes() {
+        let fast = hermes2pro_ollama::Hermes2ProOllama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.max_tokens = fast.max_tokens.saturating_add(1);
+        assert_profile_cache_miss("hermes max_tokens", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_system_prompt_changes() {
+        let fast = hermes2pro_ollama::Hermes2ProOllama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.system_prompt = Some("different-profile".to_string());
+        assert_profile_cache_miss("hermes system_prompt", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_system_prompt_presence_changes() {
+        let absent = hermes2pro_ollama::Hermes2ProOllama::fast()
+            .expect("fast client")
+            .without_system_prompt();
+        let empty = hermes2pro_ollama::Hermes2ProOllama::fast()
+            .expect("fast client")
+            .with_system_prompt("");
+        assert_profile_cache_miss("hermes system_prompt presence", &absent, &empty);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_url_changes() {
+        let fast = phi3_ollama::Phi3Ollama::fast().expect("fast client");
+        let other_url = phi3_ollama::Phi3Ollama::new("http://127.0.0.1:11435", fast.model.clone())
+            .expect("client")
+            .with_temperature(fast.temperature)
+            .with_max_tokens(fast.max_tokens);
+        assert_profile_cache_miss("phi3 ollama url", &fast, &other_url);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_max_tokens_changes() {
+        let fast = phi3_ollama::Phi3Ollama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.max_tokens = fast.max_tokens.saturating_add(1);
+        assert_profile_cache_miss("phi3 ollama max_tokens", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_system_prompt_changes() {
+        let fast = phi3_ollama::Phi3Ollama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.system_prompt = Some("different-profile".to_string());
+        assert_profile_cache_miss("phi3 ollama system_prompt", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_system_prompt_presence_changes() {
+        let absent = phi3_ollama::Phi3Ollama::fast()
+            .expect("fast client")
+            .without_system_prompt();
+        let empty = phi3_ollama::Phi3Ollama::fast()
+            .expect("fast client")
+            .with_system_prompt("");
+        assert_profile_cache_miss("phi3 ollama system_prompt presence", &absent, &empty);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_client_records_streaming_temperature() {
+        let client = OllamaChatClient::new(
+            "http://127.0.0.1:11434".to_string(),
+            "phi3:medium".to_string(),
+        )
+        .expect("client");
+        assert_eq!(client.llm_cache_temperature(), 0.1);
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let key = plan_prompt_cache_key(&client, &snap, &reg);
+        assert_eq!(key.temperature_q, 10);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    fn phi3_medium_probe(model_path: &str, config: phi3::Phi3Config) -> phi3::Phi3Medium {
+        phi3::Phi3Medium::for_cache_probe(model_path, config)
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_max_tokens_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.max_tokens = config.max_tokens.saturating_add(1);
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium max_tokens", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_top_p_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.top_p = 0.5;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium top_p", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_repeat_penalty_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.repeat_penalty = 1.5;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium repeat_penalty", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_device_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.device = phi3::Phi3Device::Cpu;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium device", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_model_path_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let changed = phi3_medium_probe("models/other.gguf", phi3::Phi3Config::default());
+        assert_profile_cache_miss("phi3 medium model_path", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_temperature_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.temperature = 0.2;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium temperature", &base, &changed);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
