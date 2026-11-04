@@ -299,7 +299,9 @@ impl Drop for DropProbe {
 /// interval when that span joins. A matching `len_stamp` restores
 /// `live_len`. A mismatch publishes a prefix that excludes indices
 /// `>= live_len` and excludes a dropped interval that covers
-/// `[dropped_from, live_len)`. An empty interval publishes `live_len`. A
+/// `[dropped_from, live_len)`. A `publish_len` store below the floor is
+/// kept (`live_len` when the interval is empty, otherwise
+/// `from.min(live_len)`). Any other empty interval publishes `live_len`. A
 /// live index between that interval and `live_len` aborts. Kani does not implement `catch_unwind`
 /// (model-checking/kani#267), so the harness applies the non-reentrant split
 /// itself: `drop_last` runs through the panicking slot, then `clear` finishes
