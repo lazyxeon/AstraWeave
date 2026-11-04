@@ -278,12 +278,19 @@ impl Drop for DropProbe {
 /// Each live element is dropped once, including when a destructor panics.
 ///
 /// `clear` publishes `len == 0` and drops through the raw tail path. `drop_last`
-/// publishes the surviving prefix the same way. On unwind the guard restores
-/// `len` only when it is still that published length. Kani does not implement
-/// `catch_unwind` (model-checking/kani#267), so the harness applies the
-/// non-reentrant split itself: `drop_last` runs through the panicking slot,
-/// then `clear` finishes the rest. It does not model a nested `clear_raw`.
-/// `clear_panic_does_not_double_free` runs the real panic under Miri.
+/// publishes the surviving prefix the same way. Re-entry is defined only for
+/// an outer `clear_raw` reached through a raw pointer, with no `&mut BlobVec`
+/// live up the stack. On that path the outer call publishes `len == 0` before
+/// `drop_fn`, a nested `clear_raw` does not drop again, and on unwind the panic
+/// guard restores `len` to the not-yet-dropped tail so those slots are not
+/// freed twice. Re-entry through `swap_remove_raw` (`&mut self`) is undefined
+/// behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or
+/// `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across
+/// `drop_fn`. Kani does not implement `catch_unwind` (model-checking/kani#267),
+/// so the harness applies the non-reentrant split itself: `drop_last` runs
+/// through the panicking slot, then `clear` finishes the rest. It does not
+/// model a nested `clear_raw`. `clear_raw_reenter_panic_restores_undropped_tail`
+/// runs that outer-`clear_raw` panic under Miri.
 #[kani::proof]
 #[kani::unwind(8)]
 fn blob_vec_drops_each_element_once_including_panicking_drop() {
