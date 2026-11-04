@@ -53,7 +53,7 @@ The CI pipeline has been optimized following Rust best practices and includes:
 
 - **toolchain-management.yml**: Multi-version Rust toolchain testing
 - **benchmark.yml**: Performance regression testing
-- **docs.yml**: Documentation building and deployment
+- **pages.yml**: Build the Pages site and deploy the GitHub Actions artifact
 - **release.yml**: Automated release management
 - **security-audit.yml**: Advanced security scanning
 - **scorecard.yml**: OSSF security scorecard

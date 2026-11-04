@@ -1,7 +1,7 @@
 # AstraWeave GitHub Pages Production-Grade Transformation Plan
 
 **Date**: 2026-01-02  
-**Status**: Strategic Plan  
+**Status**: Superseded for deployment. The live site is `.github/workflows/pages.yml`, which builds one directory and publishes it with `actions/upload-pages-artifact` and `actions/deploy-pages`. Samples below that name `docs.yml` are the old branch-publisher plan.  
 **Authors**: Multi-Agent Analysis (Explorer, Auditor, Maintainer, ToT-Reasoner)
 
 ---
@@ -29,10 +29,10 @@ AstraWeave has a **documentation foundation** with 1,078+ files and 2M+ words of
 |-----------|--------|-------|
 | **mdBook Framework** | Working | docs/book.toml configured |
 | **54 Source Pages** | docs/src/ | SUMMARY.md navigation |
-| **Benchmark Dashboard** | Working | tools/benchmark-dashboard/ |
-| **Cargo Doc Integration** | Partial | 5 core crates documented |
-| **GitHub Actions** | 2 Workflows | docs.yml + benchmark-dashboard.yml |
-| **gh-pages Branch** | Exists | Active deployment target |
+| **Benchmark Dashboard** | Working | `docs/archive/benchmark_dashboard/` plus `docs/archive/benchmark_data/` (published under `/dashboard/`) |
+| **Cargo Doc Integration** | Partial | 10 crates (`cargo doc --no-deps`, `pages.yml`) |
+| **GitHub Actions** | `pages.yml` | Artifact deploy. `benchmark-dashboard.yml` still pushes the `gh-pages` branch. |
+| **gh-pages Branch** | Legacy | Still updated by `benchmark-dashboard.yml` and `benchmark_alert.yml` until the first successful `pages.yml` deploy replaces the live site. |
 
 ### Critical Issues Identified
 
@@ -78,13 +78,13 @@ Critical Stubs (All Core Systems):
 
 ### Task 0.1: Unify GitHub Pages Deployment Actions
 
-**Problem**: `docs.yml` uses `JamesIves/github-pages-deploy-action@v4` while `benchmark-dashboard.yml` uses `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, causing mutual destruction.
+**Problem (historical)**: The removed `docs.yml` used `peaceiris/actions-gh-pages@v4` with `keep_files: true` while `benchmark-dashboard.yml` also pushed `gh-pages` (without `force_orphan` in this repository). Branch publishers could overwrite each other's paths. The live publisher is `pages.yml`.
 
-**Solution**: Standardize on `peaceiris/actions-gh-pages@v4` with `keep_files: true` and use subdirectory deployment.
+**Solution (historical — superseded by `pages.yml`)**: The January plan was to standardize branch pushes on `peaceiris/actions-gh-pages@v4` with `keep_files: true` and subdirectory deployment. The Actions artifact workflow replaces the whole site each deploy and does not use `keep_files`.
 
 **Changes Required**:
 
-1. **Update `.github/workflows/docs.yml`**:
+1. **Historical sample for the removed `.github/workflows/docs.yml`** (the live workflow is `pages.yml`):
 ```yaml
 # Replace line 58-63:
 - name: Deploy to GitHub Pages
@@ -124,7 +124,7 @@ Critical Stubs (All Core Systems):
 
 **Problem**: GitHub Pages may process files through Jekyll, breaking certain assets.
 
-**Solution**: Add to `docs.yml` workflow:
+**Historical sample** (the live workflow is `pages.yml`):
 
 ```yaml
 - name: Build mdBook documentation
@@ -212,7 +212,7 @@ traverse-parent-directories = false
 exclude = ["localhost", "127.0.0.1"]
 ```
 
-**Update `.github/workflows/docs.yml`**:
+**Historical sample for the removed `.github/workflows/docs.yml`** (the live workflow is `pages.yml`):
 ```yaml
 - name: Install mdBook and plugins
   run: |
@@ -524,7 +524,7 @@ Or for self-hosted analytics, use Umami.
 
 ### Task 3.5: Automated Link Checking in CI
 
-**Add to `.github/workflows/docs.yml`**:
+**Historical sample for the removed `.github/workflows/docs.yml`** (the live workflow is `pages.yml`):
 ```yaml
 - name: Check for broken links
   run: |
@@ -703,7 +703,7 @@ docs/src/
 - `docs/src/robots.txt`
 
 ### Files to Modify
-- `.github/workflows/docs.yml`
+- `.github/workflows/pages.yml` (replaces the old `docs.yml`)
 - `.github/workflows/benchmark-dashboard.yml`
 - `docs/book.toml`
 - `docs/src/SUMMARY.md`
