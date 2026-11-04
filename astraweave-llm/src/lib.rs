@@ -2,9 +2,10 @@
 #[cfg(feature = "ollama")]
 use anyhow::Context;
 use anyhow::{bail, Result};
-use std::any::Any;
 #[cfg(feature = "ollama")]
 use astraweave_core::{byte_prefix, byte_suffix};
+#[cfg(feature = "ollama")]
+use std::any::Any;
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
@@ -4006,6 +4007,51 @@ mod tests {
             super::plan_prompt_cache_key(&qwen_a, &snap, &reg),
             super::plan_prompt_cache_key(&phi3, &snap, &reg)
         );
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_and_strategic_do_not_share_a_cached_plan_at_default_threshold() {
+        use std::time::Instant;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let fast = qwen3_ollama::Qwen3Ollama::fast().expect("fast client");
+        let strategic = qwen3_ollama::Qwen3Ollama::strategic().expect("strategic client");
+        let fast_key = super::plan_prompt_cache_key(&fast, &snap, &reg);
+        let strategic_key = super::plan_prompt_cache_key(&strategic, &snap, &reg);
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        cache.put(
+            fast_key,
+            CachedPlan {
+                plan: PlanIntent {
+                    plan_id: "fast-plan".to_string(),
+                    steps: vec![],
+                },
+                created_at: Instant::now(),
+                tokens_saved: 1,
+            },
+        );
+
+        let hit = cache.get(&strategic_key);
+        assert!(
+            hit.is_none(),
+            "Qwen3Ollama::fast and ::strategic must not share a plan at similarity 1.0, got {hit:?}"
+        );
+        assert_eq!(cache.stats().similarity_hits, 0);
+
+        let mut same_temperature = fast.clone();
+        same_temperature.enable_thinking = !fast.enable_thinking;
+        same_temperature.max_tokens = fast.max_tokens.saturating_add(1);
+        same_temperature.context_length = fast.context_length.saturating_add(1);
+        same_temperature.system_prompt = Some("different-profile".to_string());
+        let same_temperature_key = super::plan_prompt_cache_key(&same_temperature, &snap, &reg);
+        let same_temperature_hit = cache.get(&same_temperature_key);
+        assert!(
+            same_temperature_hit.is_none(),
+            "thinking, context, max tokens, and system prompt must miss at similarity 1.0, got {same_temperature_hit:?}"
+        );
+        assert_eq!(cache.stats().similarity_hits, 0);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
