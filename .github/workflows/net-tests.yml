@@ -4,21 +4,62 @@ on:
   push:
     branches: [ main ]
   pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'gh-pages/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    name: Affected scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+      reason: ${{ steps.detect.outputs.reason }}
+      full: ${{ steps.detect.outputs.full }}
+      packages: ${{ steps.detect.outputs.packages }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          # Full history. A numeric 0 in `&& 0 || 1` is falsy and becomes
+          # fetch-depth 1, which cannot see the base commit.
+          fetch-depth: 0
+
+      - name: Classify the diff
+        id: detect
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            {
+              echo "run=true"
+              echo "reason=non-pull-request"
+              echo "full=true"
+              echo "packages="
+            } >> "$GITHUB_OUTPUT"
+          else
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            python3 scripts/ci/affected_crates.py \
+              --base "origin/${{ github.base_ref }}" \
+              --head HEAD \
+              --scope net \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
   net-tests:
     name: net-tests
     runs-on: ubuntu-latest
+    needs: scope
+    # Skipped (not omitted) when the diff cannot affect astraweave-net, so a
+    # required check of this name is reported. A failed classify fails this job.
+    if: ${{ !cancelled() && (needs.scope.result == 'failure' || needs.scope.outputs.run == 'true') }}
     timeout-minutes: 30
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
       - uses: actions/checkout@v5
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup

@@ -37,6 +37,6 @@ assignees: ''
 
 <!-- Add any other context about the problem here -->
 
-## Possible Security Implications
+## Security
 
-<!-- Does this bug have any security implications? -->
+Do not file a security issue on this public form. Report it privately at https://github.com/lazyxeon/AstraWeave/security/advisories/new.

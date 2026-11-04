@@ -28,6 +28,9 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 aw-net-proto = { path = "../aw-net-proto" }
 
 [dev-dependencies]
+# Caps the ready-socket test's send buffer so a pre-queued flood cannot
+# leave thousands of frames for the handler to verify after the client drops.
+socket2 = "0.6"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 # TLS test-client plumbing for the family5 wss:// signature-path tests. Versions

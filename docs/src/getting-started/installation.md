@@ -4,18 +4,11 @@ This guide covers detailed installation instructions for AstraWeave on different
 
 ## System Requirements
 
-### Minimum Requirements
-- **CPU**: x64 processor with SSE2 support
-- **Memory**: 4GB RAM (8GB+ recommended for AI models)
-- **GPU**: Vulkan 1.0 compatible graphics card
-- **Storage**: 2GB free space (more for AI models)
-- **Rust**: 1.89.0+ (managed via rust-toolchain.toml)
+### Toolchain
 
-### Recommended Requirements  
-- **CPU**: Multi-core x64 processor (4+ cores)
-- **Memory**: 16GB+ RAM for development and multiple AI models
-- **GPU**: Modern Vulkan 1.2+ compatible GPU with 2GB+ VRAM
-- **Storage**: SSD with 10GB+ free space
+- **Rust**: 1.89.0, pinned in `rust-toolchain.toml`
+- **GPU**: not required for the default headless `hello_companion` run. Windowed crates need a device wgpu can open.
+- Hardware minimums are not measured on this page. The frame sample is on the [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page.
 
 ## Platform-Specific Installation
 

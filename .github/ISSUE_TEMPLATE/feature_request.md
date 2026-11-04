@@ -18,9 +18,9 @@ assignees: ''
 
 <!-- A clear and concise description of any alternative solutions or features you've considered -->
 
-## Security Considerations
+## Security
 
-<!-- Are there any security implications to consider with this feature? -->
+Do not file a security issue on this public form. Report it privately at https://github.com/lazyxeon/AstraWeave/security/advisories/new.
 
 ## Additional Context
 

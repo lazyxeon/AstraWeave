@@ -84,13 +84,7 @@ Frame Budget: 16.67ms
 
 ### Collision Budget
 
-With spatial hashing (99.96% check reduction):
-
-| Objects | Naive | With Hash | Savings |
-|---------|-------|-----------|---------|
-| 100 | 4,950 checks | 2 checks | 99.96% |
-| 1,000 | 499,500 checks | ~20 checks | 99.996% |
-| 10,000 | 49.9M checks | ~200 checks | 99.9996% |
+`PhysicsWorld` uses Rapier's `DefaultBroadPhase`. `SpatialHash` is not that broadphase. The 99.96% reduction is a comment in `astraweave-physics`, not a measured live collision budget. Do not size a frame from that table.
 
 ---
 

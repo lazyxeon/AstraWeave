@@ -8,3 +8,5 @@ description = "Closed-vocabulary documentation-truth lint: Vocab A (poison) / Vo
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+pulldown-cmark = { version = "0.13.5", default-features = false }
+unicode_categories = "0.1.1"

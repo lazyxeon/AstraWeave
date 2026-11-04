@@ -49,32 +49,17 @@ for pos in &mut positions {
 - Group components that are accessed together
 - Use `u32` over `u64` when possible (cache efficiency)
 
-### Entity Spawning
+### Entity spawning
 
-```rust
-// ❌ Slow: One-by-one spawning
-for _ in 0..1000 {
-    world.spawn((Position::default(), Velocity::default()));
-}
-
-// ✅ Fast: Batch spawning
-world.spawn_batch((0..1000).map(|_| (Position::default(), Velocity::default())));
-```
+`astraweave-ecs` has no `spawn_batch`, and `World::spawn` does not take a tuple of components. The legacy `astraweave_core::World::spawn` used by `hello_companion` takes a name, an `IVec2`, a `Team`, hp, and ammo. Do not copy a Bevy spawn loop into this engine.
 
 ---
 
 ## AI Optimization
 
-### GOAP Caching
+### GOAP
 
-GOAP cache hit: 9.8 ns vs cache miss: 286 ns (29× faster)
-
-```rust
-// Enable GOAP caching
-let planner = GoapPlanner::new()
-    .with_cache_size(1000)  // Cache 1000 plans
-    .with_cache_ttl(Duration::from_secs(5));
-```
+`astraweave-ai` has no `GoapPlanner` and no `with_cache_size` builder. `astraweave-behavior` defines `GoapPlanner` in `astraweave-behavior/src/goap.rs`. Advanced GOAP in `astraweave-ai` is `astraweave_ai::goap::AdvancedGOAP` behind `planner_advanced`. The always-compiled `GoapOrchestrator` calls `htn::legacy_goap_plan`. Cache-hit nanoseconds are not on the engine status page.
 
 ### Agent Update Staggering
 
@@ -90,40 +75,22 @@ for (i, agent) in agents.iter_mut().enumerate() {
 ### AIArbiter Cooldown
 
 ```rust
-// Reduce LLM request frequency for better performance
-let arbiter = AIArbiter::new(executor, goap, bt)
-    .with_llm_cooldown(15.0);  // 15 seconds between requests
+#[cfg(feature = "llm_orchestrator")]
+let arbiter = AIArbiter::with_single_executor(executor, goap, bt)
+    .with_llm_cooldown(15.0);
 ```
+
+`AIArbiter::new` takes an `Option<LlmExecutor>` before the orchestrators. The type is not on the sim tick. See [AI Arbiter](../core-systems/ai/arbiter.md).
 
 ---
 
 ## Physics Optimization
 
-### Spatial Hashing
+### Broadphase
 
-AstraWeave's spatial hash reduces collision checks by 99.96%:
+`PhysicsWorld` stores Rapier's `DefaultBroadPhase`. There is no `PhysicsWorld::with_spatial_hash`. `SpatialHash` is a separate type and is not the broadphase the world steps.
 
-```rust
-// Automatic with default physics setup
-let physics = PhysicsWorld::new()
-    .with_spatial_hash(cell_size: 2.0);  // Tune cell size to object density
-```
-
-**Tuning**: Cell size should be ~2× average object radius.
-
-### Rigid Body Batching
-
-```rust
-// Batch physics updates (47µs for 100 bodies)
-physics.step_batch(&mut bodies, dt);
-```
-
-### Sleep Optimization
-
-```rust
-// Enable sleeping for static objects
-body.enable_sleeping(linear_threshold: 0.01, angular_threshold: 0.01);
-```
+`PhysicsWorld::step_batch` and `enable_sleeping` with the call shape previously shown here are not in `astraweave-physics/src/lib.rs`. Step the world through `PhysicsWorld`. Picosecond tables that used to follow this section are not on the engine status page.
 
 ---
 

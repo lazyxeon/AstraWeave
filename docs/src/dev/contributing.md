@@ -25,7 +25,7 @@ Before you start contributing, please:
 1. Read the [Building from Source](building.md) guide
 2. Familiarize yourself with the [Code Style Guide](code-style.md)
 3. Review the [Testing Guide](testing.md)
-4. Check existing [Issues](https://github.com/verdentlabs/astraweave/issues) and [Pull Requests](https://github.com/verdentlabs/astraweave/pulls)
+4. Check existing [Issues](https://github.com/lazyxeon/AstraWeave/issues) and [Pull Requests](https://github.com/lazyxeon/AstraWeave/pulls)
 
 ## How to Contribute
 
@@ -43,7 +43,7 @@ When reporting bugs, please include:
 ```admonish example title="Bug Report Template"
 **Environment:**
 - OS: Windows 11
-- Rust: 1.75.0
+- Rust: 1.89.0, pinned in `rust-toolchain.toml`
 - GPU: NVIDIA RTX 4080
 
 **Steps to Reproduce:**
@@ -107,7 +107,7 @@ Keep PRs focused on a single feature or fix. Large PRs are harder to review and 
 
 ### Prerequisites
 
-- Rust 1.75.0 or later
+- Rust 1.89.0, pinned in `rust-toolchain.toml`
 - Git
 - A supported GPU with Vulkan/DirectX 12/Metal
 
@@ -115,8 +115,8 @@ Keep PRs focused on a single feature or fix. Large PRs are harder to review and 
 
 ```bash
 # Clone the repository
-git clone https://github.com/verdentlabs/astraweave.git
-cd astraweave
+git clone https://github.com/lazyxeon/AstraWeave.git
+cd AstraWeave
 
 # Build the project
 cargo build
@@ -125,7 +125,7 @@ cargo build
 cargo test
 
 # Run examples
-cargo run --example basic_companion
+cargo run -p hello_companion --release
 ```
 
 ### Development Workflow
@@ -390,14 +390,11 @@ Respond to all review comments, even if just to acknowledge them.
 
 ### Getting Help
 
-- **Discord**: Join our [Discord server](https://discord.gg/astraweave)
-- **Discussions**: Use [GitHub Discussions](https://github.com/verdentlabs/astraweave/discussions)
-- **Issues**: Search existing issues before creating new ones
+- **Issues**: [GitHub issues](https://github.com/lazyxeon/AstraWeave/issues). Discussions are disabled on this repository.
 
 ### Stay Updated
 
 - Watch the repository for updates
-- Follow our [blog](https://verdentlabs.com/blog)
-- Subscribe to release notifications
+- Watch [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) for release notifications
 
 Thank you for contributing to AstraWeave! Your efforts help make AI-native gaming better for everyone.

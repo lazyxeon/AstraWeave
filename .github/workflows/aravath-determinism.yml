@@ -11,8 +11,8 @@ on:
   pull_request:
 
 concurrency:
-  group: aravath-determinism-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -27,8 +27,51 @@ env:
   RUST_BACKTRACE: short
 
 jobs:
+  scope:
+    name: Affected scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+      reason: ${{ steps.detect.outputs.reason }}
+      full: ${{ steps.detect.outputs.full }}
+      packages: ${{ steps.detect.outputs.packages }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          # Full history. A numeric 0 in `&& 0 || 1` is falsy and becomes
+          # fetch-depth 1, which cannot see the base commit.
+          fetch-depth: 0
+
+      - name: Classify the diff
+        id: detect
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            {
+              echo "run=true"
+              echo "reason=non-pull-request"
+              echo "full=true"
+              echo "packages="
+            } >> "$GITHUB_OUTPUT"
+          else
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            python3 scripts/ci/affected_crates.py \
+              --base "origin/${{ github.base_ref }}" \
+              --head HEAD \
+              --scope aravath-determinism \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
   golden:
     name: Replay hash (${{ matrix.os }})
+    needs: scope
+    # The matrix must expand even when the diff misses aravath_runtime.
+    # Skipping the job before expansion would drop the per-OS check names.
+    # A failed scope job fails each OS job instead of skipping it.
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     strategy:
@@ -36,19 +79,32 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
+      - name: Fail closed when scope detection fails
+        if: needs.scope.result != 'success'
+        run: exit 1
+
+      - name: Unaffected diff
+        if: needs.scope.result == 'success' && needs.scope.outputs.run != 'true'
+        run: |
+          echo "reason=${{ needs.scope.outputs.reason }} full=${{ needs.scope.outputs.full }}"
+          echo "aravath_runtime is not in the affected set. Golden-hash inputs did not change."
+
       - name: Checkout
+        if: needs.scope.outputs.run == 'true'
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           lfs: true
 
       - name: Install Linux link dependencies
-        if: runner.os == 'Linux'
+        if: needs.scope.outputs.run == 'true' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev libasound2-dev
 
       - name: Install Rust toolchain
+        if: needs.scope.outputs.run == 'true'
         uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
 
       - name: Cache Cargo
+        if: needs.scope.outputs.run == 'true'
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "."
@@ -56,6 +112,7 @@ jobs:
           cache-all-crates: true
 
       - name: Pin baseline CPU
+        if: needs.scope.outputs.run == 'true'
         run: |
           host=$(rustc -vV | sed -n 's/^host: //p')
           case "$host" in
@@ -72,4 +129,5 @@ jobs:
           esac
 
       - name: Replay against the golden hash
+        if: needs.scope.outputs.run == 'true'
         run: cargo test -p aravath_runtime --lib replay_matches_golden_hash -- --nocapture

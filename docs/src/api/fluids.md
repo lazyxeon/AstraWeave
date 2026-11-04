@@ -21,8 +21,9 @@
 
 | Feature | Default | Gates |
 |---|---|---|
-| `parallel` | off | Rayon CPU helpers in `simd_ops` (deterministic, element-wise) |
-| `experimental` | off | Dormant-real solver inventory: `pcisph_system`, `multi_phase`, `warm_start`, `particle_shifting`, `turbulence`, `viscosity_gpu` |
+| `parallel` | off | Declared. The `Cargo.toml` comment says the W.1 removal left it gating nothing. `simd_ops` is gone. |
+
+There is no `experimental` feature. `PcisphSystem` and the other modules named in that old feature (`multi_phase`, `warm_start`, `particle_shifting`, `turbulence`, `viscosity_gpu`) are not in `src/`.
 
 serde support is unconditional (the former decorative `serde` feature was removed in F.1).
 
@@ -47,7 +48,7 @@ system.step(&device, &mut encoder, &queue, dt);
 // Optional per-pass GPU timings (requires Features::TIMESTAMP_QUERY):
 system.enable_gpu_timing(&device, &queue);
 // ... after submit:
-let timings = system.read_gpu_timings(&device); // blocking; diagnostics only
+let timings = system.read_gpu_timings(&device); // Option<Vec<(&str, f32)>>
 ```
 
 Spawn/despawn: `spawn_particles`, `reset_particles`, `despawn_region` (real
@@ -55,15 +56,13 @@ since F.1: despawned particles are flag-skipped by every kernel and parked
 below the world; region membership uses the CPU position cache, exact only
 at spawn/reset time).
 
-### Other real (but production-dormant) surfaces
+### Other names checked in this pass
 
-- **Voxel water**: `WaterVolumeGrid`, `WaterCell`, `MaterialType` — deterministic CPU cellular-automaton water (the campaign's T3 foundation).
-- **Building**: `WaterBuildingManager`, dispensers/drains/wheels (note: `WaterGate`'s flag is not yet read by the sim — known issue, F.3 scope).
-- **Visual effects**: `WaterEffectsManager::from_preset(WaterQualityPreset)` coordinating caustics/foam/god-rays/reflections/underwater/waterfall subsystems.
-- **Terrain analysis**: `analyze_terrain_for_water(&[f32], w, h, &TerrainFluidConfig)` — D8 flow-accumulation river/lake/waterfall detection.
-- **Rendering**: `FluidRenderer` (screen-space fluid rendering: depth → bilateral smooth → shade, plus secondary particles).
-- **Editor types**: `FluidEditorConfig` and friends — forward-design, not yet consumed by `tools/aw_editor`.
-- **Experimental** (feature-gated): `PcisphSystem` — a real GPU PCISPH pipeline with a **fixed** iteration count (no convergence readback; see the module header for honest status).
+- `FluidRenderer` is re-exported from `renderer`.
+- `Particle` and `DynamicObject` are public structs in `lib.rs`.
+- `WaterEffectsManager` is in `water_effects.rs`. `FluidEditorConfig` is in `editor.rs`.
+- `WaterVolumeGrid`, `WaterBuildingManager`, and `PcisphSystem` are not in `src/`. Do not copy them from older pages.
+- The game-loop water field is `astraweave-localsim`. The view-side crate is `astraweave-water`. See the engine status page.
 
 ### Determinism
 

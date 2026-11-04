@@ -113,7 +113,7 @@ Benchmarks already do not run on an ordinary pull request (`pull_request` types 
 | `cargo test -p astraweave-net` | `net-tests.yml` (`--all-features`) on every non-markdown pull request | CI nextest includes `astraweave-net` when that crate is in the affected set. `--all-features` is the part that is not obviously the same invocation. |
 | `cargo audit` / `cargo deny` nightly | `dependency-management.yml` schedule | Same checks as `security-audit.yml`, which already runs on push to `main` and on pull requests. |
 
-`scripts/ci/affected_crates.py` already narrows Comprehensive CI. A workflow-only diff does **not** set `full=true` today (`is_ci_meta` skips `.github/`). `docs/current/CI_ARCHITECTURE.md` records that as "fmt gate only". `Cargo.lock`, `rust-toolchain.toml`, and `.cargo/` do force `full=true`.
+`scripts/ci/affected_crates.py` already narrows Comprehensive CI. Since #475, a diff that edits `.github/workflows/`, `.github/actions/`, or `.github/scripts/` sets `full=true`. [CI_ARCHITECTURE.md](../current/CI_ARCHITECTURE.md) records that row. Other `.github/**` only, for example `CODEOWNERS`, stays fmt gate only. `Cargo.lock`, `rust-toolchain.toml`, and `.cargo/` also force `full=true`.
 
 ## Cache
 

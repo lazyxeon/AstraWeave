@@ -1,0 +1,18 @@
+{
+  "total_mutants": 1,
+  "outcomes": [
+    {
+      "scenario": "Baseline",
+      "summary": "Success"
+    },
+    {
+      "scenario": {
+        "Mutant": {
+          "name": "src/lib.rs:1:1: replace foo with 0"
+        }
+      },
+      "summary": "CaughtMutant",
+      "log_path": "log/mutant.txt"
+    }
+  ]
+}

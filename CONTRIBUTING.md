@@ -61,7 +61,7 @@ rustup show
 
 - Use GitHub Issues for bug reports and feature requests.
 - Include reproduction steps, expected vs. actual results, and logs if available.
-- For security-related reports, follow the process in `SECURITY.md`.
+- For security-related reports, follow `SECURITY.md` and report through GitHub private vulnerability reporting: https://github.com/lazyxeon/AstraWeave/security/advisories/new
 
 ## Communication
 

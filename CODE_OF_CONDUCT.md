@@ -36,7 +36,9 @@ This Code of Conduct applies within all project spaces and also applies when an 
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the maintainers at **security@astraweave.dev**. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported privately to the maintainers through [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new). Put "Code of Conduct" in the report title. Submitting that form attaches your GitHub account to the advisory as a collaborator. GitHub also records a pending credit for you on that advisory, and maintainers can see the credit. All complaints will be reviewed and investigated promptly and fairly.
+
+Maintainers: the report opens in the Triage state. Click **Close security advisory**. Do not click **Accept and open as draft**, and do not publish the advisory. Accepting it opens a draft that can still be published.
 
 All maintainers are obligated to respect the privacy and security of the reporter of any incident.
 

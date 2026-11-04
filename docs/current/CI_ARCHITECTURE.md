@@ -18,7 +18,7 @@ With about eight agent branches open, most of those jobs queued. The same worksp
 
 ## What changed
 
-1. **Benchmarks are off unlabeled pull requests.** `Performance Benchmarks` runs on push to `main` and `develop`, nightly at 05:17 UTC, `workflow_dispatch`, and a pull request whose `run-benchmarks` label was just added (`pull_request` types: `[labeled]`). A later push does not rerun benches; remove and re-add the label, or use `workflow_dispatch`. The 600s per-package cap in `.github/scripts/benchmark-runner.sh` is unchanged. See issue #221.
+1. **Benchmarks are off unlabeled pull requests.** `Performance Benchmarks` runs on push to `main` and `develop`, `workflow_dispatch`, and a pull request whose `run-benchmarks` label was just added (`pull_request` types: `[labeled]`). There is no nightly cron. Push to `main` already runs the 16 shards, and the 05:17 UTC cron ran them again (run `40637628179` used 34625s of runner time). A failure on `main` still opens the nightly-failure issue, because that workflow reports a failed `workflow_run` whose head branch is `main`. A later push does not rerun benches; remove and re-add the label, or use `workflow_dispatch`. The 600s per-package cap in `.github/scripts/benchmark-runner.sh` is unchanged. See issue #221.
 2. **Concurrency on every pull-request workflow.**
 
 ```yaml
@@ -30,7 +30,7 @@ concurrency:
 A new push cancels the previous pull-request run. Pushes to main, tags, and schedules are not cancelled.
 3. **Every job has `timeout-minutes`.** Typical jobs are 30–45. The fast gate is `Gate (fmt, clippy, check)`. Linux tests, the Windows partitions, and MSRV `needs` that gate, so a format or compile failure does not start those runners.
 4. **Two tiers.** Nightly Failure Issue (`workflow_run`) opens or updates a GitHub issue when a nightly or main run of the heavy workflows fails. `workflow_run` fires only after this file is on the default branch.
-5. **Duplicates are gone.** `rust-cache-optimized.yml` is folded into `ci.yml` and deleted. The 15-job unwrap matrix is deleted. One `cargo clippy --lib --no-deps` pass reads `[lints.clippy]` on each crate. sccache (GitHub Actions cache backend) plus one Swatinem `shared-key` per OS (`${{ runner.os }}-astraweave`), `cache-targets: false`, `save-if` only on `refs/heads/main`. Affected crates come from `scripts/ci/affected_crates.py`. Docs-only diffs skip the Rust compile. Windows and Linux pull-request tests each compile once (`cargo nextest archive`, debuginfo off so the archive stays uploadable) and then run three `count:N/3` partitions against that archive. The Linux archive starts when the gate finishes, in parallel with the Windows archive. It is not built inside the gate. Profile `ci-pr-linux-archive` keeps the Linux GPU tests that `ci-pr-archive` skips, and drops only the four `CARGO_BIN_EXE` binaries, which the archive job runs on the build machine. Determinism tests are not retried.
+5. **Duplicates are gone.** `rust-cache-optimized.yml` is folded into `ci.yml` and deleted. The 15-job unwrap matrix is deleted. One `cargo clippy --lib --no-deps` pass reads `[lints.clippy]` on each crate. sccache (GitHub Actions cache backend) plus one Swatinem `shared-key` per OS (`${{ runner.os }}-astraweave`), `cache-targets: false`, `save-if` only on `refs/heads/main`. Affected crates come from `scripts/ci/affected_crates.py`. Docs-only diffs skip the Rust compile. Windows and Linux pull-request tests each compile once (`cargo nextest archive`, debuginfo off so the archive stays uploadable) and then run three `count:N/3` partitions against that archive. The Linux archive starts when the gate finishes, in parallel with the Windows archive. It is not built inside the gate. Profile `ci-pr-linux-archive` keeps the Linux GPU tests that `ci-pr-archive` skips, and drops only the four `CARGO_BIN_EXE` binaries, which the archive job runs on the build machine. Determinism tests are not retried. PR partitions on Linux and Windows set `AW_PERF_ASSERTS=1`, which enforces the astraweave-nav stress ceilings (about 10× the old debug bounds, #575). Nightly and push `test-full` don't set it, and Criterion `stress_latency` tracks latency.
 6. **Required jobs are not queued behind optional compiles.** PBR, Editor CI, and AW Editor tests do not run on `pull_request`. They run on push, their nightly schedule, and `workflow_dispatch`. `cancel-in-progress` is still `${{ github.event_name == 'pull_request' }}` on every workflow that has the block, so a push to `main` or a schedule is never cancelled.
 
 ## Tiers
@@ -48,7 +48,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 | Replay hash, Ubuntu / Windows / macOS, then compare. Nineteen required cases: `planner_pure`, `perception_world`, `gameplay_rng`, `fixed64`, `combat_resolve`, `destruction`, `gameplay_qa_aravath_slice`, `nav_reroute`, `causal_bridge`, `scripted_system`, `weaving`, `traversal`, `traversal_deformed`, `worldgen_columns`, `deformed_chunk`, `local_sim`, `greybox_checkpoint`, `quest_ticks`, `persist_replay`. No path filter. | `hash (ubuntu-latest)`, `hash (windows-latest)`, `hash (macos-latest)`, `compare` |
 | cargo-deny, cargo-audit | `Cargo Deny Check`, `Security Audit (cargo-audit)` |
 
-These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
+These also run on a non-docs pull request when their paths match, and are not in the required set because a path filter would skip them: `net-tests`, trace sync, doc-truth lint, docs, and Miri job `miri-ecs-hotpath` (`miri.yml`; paths `astraweave-ecs/src/blob_vec.rs`, `sparse_set.rs`, and `archetype.rs`). That Miri job is not required. Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
 `PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub treats a skipped required check as missing, which blocks the merge. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
 
@@ -57,7 +57,7 @@ These also run on a non-docs pull request when their paths match, and are not in
 | Work | When |
 |---|---|
 | Full 3-OS `cargo nextest` plus a release build of the core crates, and demo validation | `ci.yml` on push, schedule 04:30 UTC, dispatch. Not on pull requests. |
-| 5-toolchain matrix (stable, 1.89.0, 1.88.0, beta, nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. #375 removes the 50 ms debug wall-clock assert from `view_ring_lod_keeps_the_forest_under_budget`. The test still requires `total > 400` and `kept < 900`. macOS 1.89 on run 39084152246 measured 50.776916 ms, failed `as_millis() < 50`, and skipped `Run clippy with toolchain`. That host-clock assert no longer skips clippy. MSRV stays on the pull request. |
+| 5-toolchain matrix (stable, 1.89.0, 1.88.0, beta, pinned nightly) | `toolchain-management.yml` on push to main, schedule 05:40 UTC, dispatch. The nightly matrix label is `pinned-nightly`. The channel is the date in `.github/rust-nightly-channel` (#560). Miri, sanitizers, and fuzz use that same pin. The checkout sets `lfs: true` (#348) so `ASSET_MANIFEST.tsv` hashes the Aravath blobs, not the pointer files. `Toolchain Validation (1.89.0)` runs workspace clippy `-D warnings`, with that workflow's package excludes. #360 closed the `expect` on schedule registration. #358 is closed. The fix is #360. That 1.89.0 clippy step is expected green. The CI agent is confirming it on main. #375 removes the 50 ms debug wall-clock assert from `view_ring_lod_keeps_the_forest_under_budget`. The test still requires `total > 400` and `kept < 900`. macOS 1.89 on run 39084152246 measured 50.776916 ms, failed `as_millis() < 50`, and skipped `Run clippy with toolchain`. That host-clock assert no longer skips clippy. MSRV stays on the pull request. |
 | Sanitizers | `sanitizers.yml` on push and schedule 03:00 UTC. Not on pull requests. |
 | Coverage | `coverage.yml` on push to main, schedule 06:10 UTC, dispatch. |
 | CodeQL | push to main and weekly (Sunday 03:00 UTC). Not on pull requests. |
@@ -75,16 +75,31 @@ When the same tests also run under nextest (an affected crate on a pull request,
 
 ## Affected crates and docs-only pulls
 
-`scripts/ci/affected_crates.py` reads `git diff` (or `--files` in tests) and `cargo metadata --no-deps`.
+`scripts/ci/affected_crates.py` reads `git diff --no-renames --name-only` (or `--files` in tests) and `cargo metadata --no-deps`. A rename is the old path and the new path, so a Rust file moved onto a docs path is not docs-only, and a move between crates selects both.
 
 | Diff | Result |
 |---|---|
 | Only `docs/**`, `gh-pages/**`, or `*.md` | `docs_only=true`. The gate does not install a toolchain. Test jobs do not start. Determinism still runs. |
 | Root `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`, `.cargo/**`, or `.config/nextest.toml` | `full=true`. Workspace clippy, check, nextest, and MSRV. |
+| `.github/workflows/**`, `.github/actions/**`, or `.github/scripts/**` | `full=true`. A workflow, composite action, or CI script edit runs the full set. |
 | Files under one or more crates | Those crates plus workspace reverse dependencies. |
 | A file that is not docs, not under `.github/`, and not inside a crate | `full=true` (a wrong narrow selection is worse than a full run). |
-| Only `.github/**` | fmt gate only. No crate tests. |
+| Other `.github/**` only (for example `CODEOWNERS`) | fmt gate only. No crate tests. |
 | Push, schedule, or `workflow_dispatch` | `full=true` without consulting the diff. |
+| Pull request whose checkout has no first parent | `full=true`, `reason=missing-merge-parent`. |
+
+`Detect affected crates` checks out with `fetch-depth: 2` and `fetch-tags: false`. On a pull request that checkout is `refs/pull/N/merge`, and the classifier diffs `HEAD^1...HEAD`. The first parent is the base commit of the merge GitHub built. `actions/checkout` treats depth 0 as every branch and every tag, including when `fetch-tags` is false. Run `40747800523` (pull request #484, head `710d84a3`) spent 600s in that fetch. Classify was skipped, and `PR Rust checks` failed because `changes=cancelled`.
+
+`--scope` on the same script sets `run=true` or `run=false` for one heavy workflow. `run=false` only when the diff is known and the expanded crate set misses that scope. An empty diff, any full trigger above, or a scope package missing from metadata sets `run=true`.
+
+| Scope | Workflow | Runs when the expanded set contains |
+|---|---|---|
+| `aravath` | `aravath-windows.yml` | `aravath_runtime`, `aw-save`, or `astraweave-render` |
+| `aravath-determinism` | `aravath-determinism.yml` | `aravath_runtime` |
+| `render-device` | `render-device-validation.yml` | `astraweave-render` or `astraweave-ecs` |
+| `net` | `net-tests.yml` | `astraweave-net` |
+
+Those four workflows still trigger on every pull request. The heavy jobs are conditional. A skipped job reports success to branch protection. `on.paths` is not used: a path filter would leave a required check pending. `determinism-replay.yml` has no scope and no path filter. The Aravath golden-hash matrix still expands when the scope is cold, so the three `Replay hash (...)` check names are created; the compile steps are skipped. `net-tests.yml` no longer uses `paths-ignore` for markdown. A docs-only pull request classifies `run=false` and skips the `net-tests` job by condition instead of omitting the workflow. Push, schedule, and `workflow_dispatch` do not consult the diff.
 
 `scripts/ci/test_affected_crates.py` and `scripts/ci/test_workflow_policy.py` lock this in. `actionlint` 1.7.7 reports no findings on the workflow files.
 
@@ -178,7 +193,7 @@ Require:
 
 Do not require the individual `Test (windows, N/3)` or `Gate` names. On a docs-only pull request those jobs are skipped, and a skipped required check blocks the merge. `PR Rust checks` is the rollup.
 
-Do not require `Test (windows, build archive)` or `Test (windows, N/3)` individually. The rollup fails if the archive build fails or any partition fails. Do not require path-filtered jobs (`net-tests`, trace sync, doc-truth, docs). PBR, Editor CI, and AW Editor tests do not run on pull requests.
+Do not require `Test (windows, build archive)` or `Test (windows, N/3)` individually. The rollup fails if the archive build fails or any partition fails. Do not require path-filtered jobs (`net-tests`, trace sync, doc-truth, docs, Miri `miri-ecs-hotpath`). PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
 `Cargo Deny Check` is safe to require. TLS for reqwest, the websocket client, hf-hub, and ort is rustls, so the `openssl` / `openssl-sys` bans in `deny.toml` are not tripped.
 

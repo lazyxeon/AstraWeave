@@ -2,7 +2,7 @@
 
 Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.2.A** (the 58 `production-status-contested` entries resolved by caller-check; the `99.96%`-family resolved as combinatorial/dormant). The D.3 regression lint must honor these. Keyed on **(file + match-string + reason)** to survive line drift. `lifetime`: **permanent** · **pending-D2.B** (a perf/coverage number; re-evaluated when D.2.B measures it).
 
-**307 distinct allowlist keys** (266 original + 14 added in D.3.1 for the coverage/miri poison generation + 21 added in D.3.2 reconciling the `aw_doc_lint` tool's full-vocab sweep + 6 added on 2026-07-22 for 7 audit-citation hits, with two CI-workshop `check-all` occurrences sharing one `(file, match)` key) covering ~670 KEEP occurrences. The D.3.2 keys cleared the legit allowlist-drift the tool surfaced (sibling literal forms + corpus growth since the 2026-06-13 D.1.C baseline; K=63→11). The `aw_doc_lint` tool now reports **K=11 residual un-allowlisted occurrences** — genuine contamination (fluids `2,560` present-tense, `44+ crates`, `industry precedent` superlatives, the fluids.md stale README citation) ratified for correction in **D.3.2b**, NOT blessed here. (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`.)
+**307 distinct allowlist keys** (266 original + 14 added in D.3.1 for the coverage/miri poison generation + 21 added in D.3.2 reconciling the `aw_doc_lint` tool's full-vocab sweep + 6 added on 2026-07-22 for 7 audit-citation hits, with two CI-workshop `check-all` occurrences sharing one `(file, match)` key + 1 added on 2026-10-28 (#533)) covering ~670 KEEP occurrences. The D.3.2 keys cleared the legit allowlist-drift the tool surfaced (sibling literal forms + corpus growth since the 2026-06-13 D.1.C baseline; K=63→11). The `aw_doc_lint` tool now reports **K=11 residual un-allowlisted occurrences** — genuine contamination (fluids `2,560` present-tense, `44+ crates`, `industry precedent` superlatives, the fluids.md stale README citation) ratified for correction in **D.3.2b**, NOT blessed here. (588 − 1 rewritten by D.2.A: `EDITOR_STATUS_REPORT.md:282`.)
 
 > **D.2.A update:** the 58 `production-status-contested` entries (formerly pending-D2) are now resolved — 1 REWRITE (editor over-claim) and 57 permanent keeps (historical-dated audit assessments, future-target roadmaps, and genuinely-shipped surfaces: glam math, `perform_attack_sweep`, GPU skinning, Core/ECS). The `99.96%` SpatialHash figure is a **combinatorial ratio** (499,500→180 pairs), machine-independent, describing the *dormant* module — permanent honest-dormancy, not a D.2.B perf row.
 >
@@ -336,6 +336,8 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `check-all` | quoted-defect-alias | permanent |
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `test-all` | quoted-defect-alias | permanent |
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `clippy-all` | quoted-defect-alias | permanent |
+<!-- 2026-10-28 (#533) — covers only the verbatim edac4e651 commit-subject quote at CHANGELOG.md:656; any other `59 library crates` in CHANGELOG.md must be corrected, not allowlisted. -->
+| `CHANGELOG.md` | `59 library crates` | dated-record | permanent |
 
 <!-- ALLOWLIST-END -->
 

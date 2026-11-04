@@ -137,49 +137,126 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
     String::from_utf8(buf).context("model body is not utf-8")
 }
 
-/// Read `inner` until `overall` elapses.
+/// How long the next body read may block, and which deadline a timeout is.
+struct ReadWait {
+    wait: std::time::Duration,
+    on_timeout: &'static str,
+}
+
+/// Silence, the current gap, and the stream lifetime.
 ///
-/// Each read waits the silence limit or the time still left, whichever is
-/// shorter. The first error is yielded once. The next poll ends the stream.
+/// `idle` is the silence limit. `overall` caps the same gap: when it is
+/// longer than `idle`, the wait is `idle`, so a caller that passes twice
+/// the idle limit does not get two idle periods. `lifetime` is measured
+/// from `life_started` and does not move when a chunk arrives.
+/// `idle_timeout` is the silence error. The other errors are
+/// `streaming overall deadline` and `streaming lifetime deadline`.
+#[cfg(feature = "ollama")]
+fn next_read_wait(
+    idle: std::time::Duration,
+    overall: std::time::Duration,
+    gap_started: std::time::Instant,
+    lifetime: std::time::Duration,
+    life_started: std::time::Instant,
+    idle_timeout: &'static str,
+) -> Result<ReadWait> {
+    let gap_left = overall.saturating_sub(gap_started.elapsed());
+    let life_left = lifetime.saturating_sub(life_started.elapsed());
+    if life_left.is_zero() {
+        bail!("streaming lifetime deadline");
+    }
+    if gap_left.is_zero() {
+        bail!("streaming overall deadline");
+    }
+    let wait = idle.min(gap_left).min(life_left);
+    let on_timeout = if life_left <= gap_left && life_left < idle {
+        "streaming lifetime deadline"
+    } else if wait < idle {
+        "streaming overall deadline"
+    } else {
+        idle_timeout
+    };
+    Ok(ReadWait { wait, on_timeout })
+}
+
+/// Same length as the 120s [`with_call_deadline`] wrappers.
+///
+/// Default chat, Hermes streaming, and `examples/ollama_probe` use it as
+/// the stream lifetime measured from the request start.
+#[cfg(feature = "ollama")]
+pub const DEFAULT_STREAM_LIFETIME: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Same length as Qwen's 300s [`with_call_deadline`] wrapper.
+#[cfg(feature = "ollama")]
+pub const QWEN_STREAM_LIFETIME: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Read `inner` until silence, the current gap, or `lifetime` ends.
+///
+/// Each read waits the silence limit, the time still left in the current
+/// gap, or the time still left in `lifetime`, whichever is shortest.
+/// `lifetime` starts when this stream is built and does not reset. A
+/// non-empty chunk starts a new gap, so late wakes whose gaps stay inside
+/// `idle` are kept. An empty chunk does not start a gap: an HTTP/2 DATA
+/// frame with no bytes must not postpone the deadline. The first error is
+/// yielded once. The next poll ends the stream.
 #[cfg(feature = "ollama")]
 pub fn bytes_within_deadline<S, T, E>(
     inner: S,
     idle: std::time::Duration,
     overall: std::time::Duration,
+    lifetime: std::time::Duration,
 ) -> impl futures_util::Stream<Item = Result<T>> + Send
 where
     S: futures_util::Stream<Item = Result<T, E>> + Unpin + Send + 'static,
-    T: Send + 'static,
+    T: AsRef<[u8]> + Send + 'static,
     E: std::error::Error + Send + Sync + 'static,
 {
     use futures_util::StreamExt;
-    let started = std::time::Instant::now();
-    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| async move {
-        if stop {
-            return None;
-        }
-        let left = overall.saturating_sub(started.elapsed());
-        if left.is_zero() {
-            return Some((
-                Err(anyhow::anyhow!("streaming overall deadline")),
-                (inner, true),
-            ));
-        }
-        let wait = idle.min(left);
-        match tokio::time::timeout(wait, inner.next()).await {
-            Ok(Some(Ok(chunk))) => Some((Ok(chunk), (inner, false))),
-            Ok(Some(Err(err))) => Some((
-                Err(anyhow::Error::new(err).context("stream body error")),
-                (inner, true),
-            )),
-            Ok(None) => None,
-            Err(_) if wait < idle => Some((
-                Err(anyhow::anyhow!("streaming overall deadline")),
-                (inner, true),
-            )),
-            Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
-        }
-    })
+    futures_util::stream::unfold(
+        (
+            inner,
+            false,
+            std::time::Instant::now(),
+            std::time::Instant::now(),
+        ),
+        move |(mut inner, stop, gap_started, life_started)| async move {
+            if stop {
+                return None;
+            }
+            let decision = match next_read_wait(
+                idle,
+                overall,
+                gap_started,
+                lifetime,
+                life_started,
+                "stream idle timeout",
+            ) {
+                Ok(decision) => decision,
+                Err(err) => {
+                    return Some((Err(err), (inner, true, gap_started, life_started)));
+                }
+            };
+            match tokio::time::timeout(decision.wait, inner.next()).await {
+                Ok(Some(Ok(chunk))) => {
+                    let gap_started = if chunk.as_ref().is_empty() {
+                        gap_started
+                    } else {
+                        std::time::Instant::now()
+                    };
+                    Some((Ok(chunk), (inner, false, gap_started, life_started)))
+                }
+                Ok(Some(Err(err))) => Some((
+                    Err(anyhow::Error::new(err).context("stream body error")),
+                    (inner, true, gap_started, life_started),
+                )),
+                Ok(None) => None,
+                Err(_) => Some((
+                    Err(anyhow::anyhow!(decision.on_timeout)),
+                    (inner, true, gap_started, life_started),
+                )),
+            }
+        },
+    )
 }
 
 /// Split a drained NDJSON block into lines.
@@ -216,14 +293,19 @@ pub(crate) struct NdjsonYield {
 
 /// Scan NDJSON bytes until one error or until `on_line` says to stop.
 ///
-/// Reads wait only the time still left. A bad line does not fail earlier
-/// lines from the same read. After one error the next poll ends the stream,
-/// so a later chunk is not read and the byte cap still applies up to the error.
+/// Each read waits the idle limit, the time still left in the gap since
+/// the last non-empty chunk, or the time still left in `lifetime`,
+/// whichever is shortest. `lifetime` starts when this scan is built.
+/// A non-empty chunk starts a new gap. An empty chunk does not. A bad
+/// line does not fail earlier lines from the same read. After one error
+/// the next poll ends the stream, so a later chunk is not read and the
+/// byte cap still applies up to the error.
 #[cfg(feature = "ollama")]
 pub(crate) fn scan_model_ndjson<S, T, E, F>(
     inner: S,
     idle: std::time::Duration,
     overall: std::time::Duration,
+    lifetime: std::time::Duration,
     on_line: F,
 ) -> impl futures_util::Stream<Item = Result<String>> + Send
 where
@@ -244,7 +326,7 @@ where
         on_line: F,
     }
 
-    let bytes = Box::pin(bytes_within_deadline(inner, idle, overall));
+    let bytes = Box::pin(bytes_within_deadline(inner, idle, overall, lifetime));
     futures_util::stream::unfold(
         ScanState {
             bytes,
@@ -347,6 +429,35 @@ pub async fn read_capped_json<T: serde::de::DeserializeOwned>(
     parse_bounded_model_json(&read_capped_text(response).await?)
 }
 
+/// Read a model body until [`MAX_MODEL_JSON_BYTES`] or `lifetime_left`.
+///
+/// The 64 KiB cap is the same one [`read_capped_text`] uses. A silent read
+/// still ends at the client read timeout when that is shorter. A timeout
+/// on `lifetime_left` is `streaming lifetime deadline`.
+#[cfg(feature = "ollama")]
+pub async fn read_capped_text_within(
+    response: reqwest::Response,
+    lifetime_left: std::time::Duration,
+) -> Result<String> {
+    if lifetime_left.is_zero() {
+        bail!("streaming lifetime deadline");
+    }
+    match tokio::time::timeout(lifetime_left, read_capped_text(response)).await {
+        Ok(result) => result,
+        Err(_) => bail!("streaming lifetime deadline"),
+    }
+}
+
+/// Read and parse a model JSON body until [`MAX_MODEL_JSON_BYTES`] or
+/// `lifetime_left`.
+#[cfg(feature = "ollama")]
+pub async fn read_capped_json_within<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+    lifetime_left: std::time::Duration,
+) -> Result<T> {
+    parse_bounded_model_json(&read_capped_text_within(response, lifetime_left).await?)
+}
+
 #[cfg(test)]
 mod bounded_model_text_tests {
     use super::*;
@@ -422,6 +533,7 @@ mod ndjson_scan_tests {
             chunk_then_hang(b"{\"message\":{\"content\":\"hello\"}}\n\xff\n{\"message\":{\"content\":\"later\"}}\n"),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let started = std::time::Instant::now();
@@ -452,6 +564,7 @@ mod ndjson_scan_tests {
             chunk_then_hang(b"{"),
             idle,
             overall,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let started = std::time::Instant::now();
@@ -477,6 +590,135 @@ mod ndjson_scan_tests {
     }
 
     #[tokio::test]
+    async fn ndjson_scan_keeps_chunks_whose_gaps_stay_inside_the_window() {
+        let idle = std::time::Duration::from_secs(2);
+        let overall = std::time::Duration::from_millis(200);
+        let inner = futures_util::stream::unfold(0u32, |i| async move {
+            if i >= 8 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let line = format!("{{\"message\":{{\"content\":\"n{i:02}\"}}}}\n");
+            Some((Ok::<Vec<u8>, std::io::Error>(line.into_bytes()), i + 1))
+        });
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(inner),
+            idle,
+            overall,
+            std::time::Duration::from_secs(30),
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let items = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut items = Vec::new();
+            while let Some(item) = stream.next().await {
+                items.push(item);
+            }
+            items
+        })
+        .await
+        .expect("scan stopped on the sum of gaps");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed > overall,
+            "stream ended inside the old wall clock ({elapsed:?})"
+        );
+        // Eight 50 ms gaps are 400 ms. Two seconds still fails a scan that
+        // waits out the 2 s idle limit, and it leaves room for a late wake.
+        assert!(
+            elapsed < std::time::Duration::from_secs(2),
+            "eight 50 ms chunks took {elapsed:?}"
+        );
+        assert_eq!(items.len(), 8, "{items:?}");
+        for (i, item) in items.iter().enumerate() {
+            assert_eq!(item.as_ref().expect("token"), &format!("n{i:02}"));
+        }
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_errors_when_a_drip_passes_the_lifetime() {
+        let idle = std::time::Duration::from_secs(2);
+        let overall = idle.saturating_mul(2);
+        let lifetime = std::time::Duration::from_millis(220);
+        let inner = futures_util::stream::unfold(0u32, |i| async move {
+            if i >= 15 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+            Some((Ok::<Vec<u8>, std::io::Error>(vec![b'x']), i + 1))
+        });
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(inner),
+            idle,
+            overall,
+            lifetime,
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut err = None;
+            while let Some(item) = stream.next().await {
+                if let Err(item) = item {
+                    err = Some(item.to_string());
+                    break;
+                }
+            }
+            err
+        })
+        .await
+        .expect("drip ran past the lifetime");
+        let err = outcome.expect("stream ended without an error");
+        assert!(err.contains("streaming lifetime deadline"), "{err}");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(150),
+            "{elapsed:?}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(2), "{elapsed:?}");
+    }
+
+    #[tokio::test]
+    async fn ndjson_scan_does_not_reset_the_gap_on_an_empty_chunk() {
+        let idle = std::time::Duration::from_secs(2);
+        let overall = std::time::Duration::from_millis(150);
+        let inner = futures_util::stream::unfold(0u32, |i| async move {
+            if i >= 12 {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            Some((Ok::<Vec<u8>, std::io::Error>(Vec::new()), i + 1))
+        });
+        let mut stream = Box::pin(scan_model_ndjson(
+            Box::pin(inner),
+            idle,
+            overall,
+            std::time::Duration::from_secs(5),
+            content_line,
+        ));
+        let started = std::time::Instant::now();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            let mut err = None;
+            while let Some(item) = stream.next().await {
+                if let Err(item) = item {
+                    err = Some(item.to_string());
+                    break;
+                }
+            }
+            err
+        })
+        .await
+        .expect("empty chunks postponed the gap deadline");
+        let err = outcome.expect("stream ended without an error");
+        assert!(err.contains("streaming overall deadline"), "{err}");
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(80),
+            "{elapsed:?}"
+        );
+        assert!(elapsed < std::time::Duration::from_secs(1), "{elapsed:?}");
+    }
+
+    #[tokio::test]
     async fn ndjson_scan_stops_when_the_line_says_done() {
         let idle = std::time::Duration::from_secs(5);
         let mut stream = Box::pin(scan_model_ndjson(
@@ -485,6 +727,7 @@ mod ndjson_scan_tests {
             ),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let items = tokio::time::timeout(std::time::Duration::from_millis(500), async {
@@ -511,6 +754,7 @@ mod ndjson_scan_tests {
             Box::pin(first.chain(hang)),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
@@ -538,6 +782,7 @@ mod ndjson_scan_tests {
             Box::pin(first.chain(hang)),
             idle,
             idle,
+            std::time::Duration::from_secs(30),
             content_line,
         ));
         let item = tokio::time::timeout(std::time::Duration::from_millis(500), stream.next())
@@ -546,6 +791,18 @@ mod ndjson_scan_tests {
             .expect("stream ended");
         let err = item.expect_err("content");
         assert!(err.to_string().contains("64 KiB"), "{err}");
+    }
+
+    #[test]
+    fn header_wait_uses_the_lifetime_when_idle_is_longer() {
+        let idle = std::time::Duration::from_secs(400);
+        let lifetime_left = std::time::Duration::from_secs(300);
+        assert_eq!(header_wait(idle, lifetime_left), lifetime_left);
+        assert_eq!(
+            header_wait(std::time::Duration::from_secs(1), lifetime_left),
+            std::time::Duration::from_secs(1)
+        );
+        assert!(header_wait(idle, std::time::Duration::ZERO).is_zero());
     }
 
     #[test]
@@ -760,7 +1017,8 @@ pub fn stream_read_idle() -> std::time::Duration {
 /// Wait `idle` for response headers. The body is not covered.
 ///
 /// `RequestBuilder::timeout` would also cancel a chunked body. Callers that
-/// stream after the headers use [`with_read_idle`] for each read.
+/// stream after the headers use [`bytes_within_deadline`]. A call that has
+/// a stream lifetime passes [`header_wait`] so this wait cannot outlive it.
 #[cfg(feature = "ollama")]
 pub async fn send_for_headers(
     idle: std::time::Duration,
@@ -773,38 +1031,92 @@ pub async fn send_for_headers(
     }
 }
 
-/// Stop a chunked body on the first read error or on `idle` of silence.
-///
-/// One error is yielded, then the stream ends, so a caller can keep bytes
-/// already produced. This is not a total deadline: chunks that keep arriving
-/// are not cut off.
+/// POST an Ollama JSON body. A schema `format` that the server rejects is removed
+/// and the request is sent once more. A body with no schema object keeps the
+/// status-only error string.
 #[cfg(feature = "ollama")]
-pub fn with_read_idle<S, T, E>(
-    inner: S,
-    idle: std::time::Duration,
-) -> impl futures_util::Stream<Item = Result<T>>
-where
-    S: futures_util::Stream<Item = Result<T, E>> + Unpin,
-    E: std::error::Error + Send + Sync + 'static,
-{
-    use futures_util::StreamExt;
-    futures_util::stream::unfold((inner, false), move |(mut inner, stop)| {
-        let idle = idle;
-        async move {
-            if stop {
-                return None;
-            }
-            match tokio::time::timeout(idle, inner.next()).await {
-                Ok(Some(Ok(item))) => Some((Ok(item), (inner, false))),
-                Ok(Some(Err(err))) => Some((
-                    Err(anyhow::Error::new(err).context("stream body error")),
-                    (inner, true),
-                )),
-                Ok(None) => None,
-                Err(_) => Some((Err(anyhow::anyhow!("stream idle timeout")), (inner, true))),
-            }
+pub(crate) async fn post_ollama_json_value(
+    client: &reqwest::Client,
+    url: &str,
+    mut body: serde_json::Value,
+) -> Result<serde_json::Value> {
+    loop {
+        let response = send_for_headers(stream_read_idle(), client.post(url).json(&body).send())
+            .await
+            .context("Failed to send request to Ollama")?;
+        if response.status().is_success() {
+            return read_capped_json(response)
+                .await
+                .context("Failed to parse Ollama response");
         }
-    })
+        let status = response.status();
+        let had_schema = body.get("format").is_some_and(|value| value.is_object());
+        if had_schema {
+            let txt = read_capped_text(response)
+                .await
+                .with_context(|| format!("Ollama status {status} body read failed"))?;
+            if plan_format::schema_format_rejected(status.as_u16(), &txt)
+                && plan_format::take_schema_format(&mut body)
+            {
+                continue;
+            }
+            bail!("Ollama returned error: {status}: {txt}");
+        }
+        bail!("Ollama returned error: {status}");
+    }
+}
+
+/// Header wait: the idle limit, or the time still left in the stream
+/// lifetime, whichever is shorter.
+#[cfg(feature = "ollama")]
+pub fn header_wait(
+    idle: std::time::Duration,
+    lifetime_left: std::time::Duration,
+) -> std::time::Duration {
+    idle.min(lifetime_left)
+}
+
+/// `default`, or a shorter `OLLAMA_STREAM_LIFETIME_MS`.
+///
+/// A missing, zero, non-numeric, or longer value keeps `default`. The
+/// variable cannot extend the call.
+#[cfg(feature = "ollama")]
+pub fn stream_call_lifetime(default: std::time::Duration) -> std::time::Duration {
+    let Ok(raw) = std::env::var("OLLAMA_STREAM_LIFETIME_MS") else {
+        return default;
+    };
+    let Ok(ms) = raw.parse::<u64>() else {
+        return default;
+    };
+    let requested = std::time::Duration::from_millis(ms);
+    if requested.is_zero() || requested >= default {
+        default
+    } else {
+        requested
+    }
+}
+
+/// Wait for headers, stopping at `lifetime_left` when that is shorter
+/// than `idle`.
+///
+/// A timeout caused by the lifetime is `streaming lifetime deadline`.
+/// A timeout caused by `idle` stays `model headers idle timeout`.
+#[cfg(feature = "ollama")]
+pub async fn send_headers_for_call(
+    idle: std::time::Duration,
+    lifetime_left: std::time::Duration,
+    send: impl std::future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+) -> Result<reqwest::Response> {
+    let wait = header_wait(idle, lifetime_left);
+    if wait.is_zero() {
+        bail!("streaming lifetime deadline");
+    }
+    match send_for_headers(wait, send).await {
+        Err(err) if wait < idle && err.to_string().contains("model headers idle timeout") => {
+            Err(err.context("streaming lifetime deadline"))
+        }
+        other => other,
+    }
 }
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
@@ -819,6 +1131,7 @@ pub mod fallback_system;
 pub mod few_shot;
 pub mod heuristics;
 pub mod llm_adapter;
+pub mod plan_format;
 pub mod plan_parser;
 pub mod production_hardening;
 pub mod prompt_template;
@@ -891,6 +1204,21 @@ pub enum PlanSource {
 pub trait LlmClient: Send + Sync {
     /// Complete a prompt and return the full response (blocking until complete)
     async fn complete(&self, prompt: &str) -> Result<String>;
+
+    /// Complete `prompt` and send `format` as Ollama's JSON Schema `format` field.
+    ///
+    /// The default ignores `format` and calls [`complete`](Self::complete).
+    /// Ollama clients attach the object. A 400 that names the schema retries
+    /// once without it. [`parse_llm_plan`] and [`plan_parser::parse_llm_response`]
+    /// still reject a tool that is not in the registry.
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        let _ = format;
+        self.complete(prompt).await
+    }
 
     /// Complete a prompt with streaming support (progressive response delivery)
     ///
@@ -1047,6 +1375,27 @@ impl LlmClient for OllamaClient {
 
         Ok(parsed.response)
     }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        schema: &serde_json::Value,
+    ) -> Result<String> {
+        ensure_model_request(&self.url, self.allow_remote)?;
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": false,
+        });
+        plan_format::insert_schema_format(&mut body, schema);
+        let parsed: serde_json::Value =
+            post_ollama_json_value(&self.client, &format!("{}/api/generate", self.url), body)
+                .await?;
+        parsed["response"]
+            .as_str()
+            .map(str::to_string)
+            .context("Missing 'response' field in Ollama output")
+    }
 }
 
 // New Ollama chat client that targets the local Ollama chat endpoint (e.g. http://127.0.0.1:11434/api/chat)
@@ -1195,10 +1544,14 @@ impl OllamaChatClient {
 }
 
 #[cfg(feature = "ollama")]
-#[async_trait::async_trait]
-impl LlmClient for OllamaChatClient {
-    async fn complete(&self, prompt: &str) -> Result<String> {
+impl OllamaChatClient {
+    async fn complete_with_optional_format(
+        &self,
+        prompt: &str,
+        format_schema: Option<&serde_json::Value>,
+    ) -> Result<String> {
         ensure_model_request(&self.url, self.allow_remote)?;
+        let mut schema_owned = format_schema.cloned();
         #[derive(serde::Serialize)]
         struct Msg<'a> {
             role: &'a str,
@@ -1209,16 +1562,9 @@ impl LlmClient for OllamaChatClient {
             model: &'a str,
             messages: Vec<Msg<'a>>,
             stream: bool,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            format: Option<&'a serde_json::Value>,
         }
-
-        let body = Req {
-            model: &self.model,
-            messages: vec![Msg {
-                role: "user",
-                content: prompt,
-            }],
-            stream: false,
-        };
 
         let client = self.client.clone();
         // Build a non-chunked JSON body string and set Connection: close so the server
@@ -1249,6 +1595,16 @@ impl LlmClient for OllamaChatClient {
         let mut attempt = 0u32;
         while attempt < max_nonstream_attempts && !non_stream_ok && !self.low_latency {
             attempt += 1;
+            let schema_on_this_attempt = schema_owned.is_some();
+            let body = Req {
+                model: &self.model,
+                messages: vec![Msg {
+                    role: "user",
+                    content: prompt,
+                }],
+                stream: false,
+                format: schema_owned.as_ref(),
+            };
             let backoff = std::time::Duration::from_millis(250 * (1 << (attempt - 1)));
             println!(
                 "[ollama] non-stream attempt {}/{} to {} (timeout {}s)",
@@ -1262,6 +1618,7 @@ impl LlmClient for OllamaChatClient {
             enum Attempt {
                 Text(String),
                 Retry,
+                SchemaRejected,
                 Fail(anyhow::Error),
             }
             let timed = tokio::time::timeout(attempt_deadline, async {
@@ -1301,6 +1658,9 @@ impl LlmClient for OllamaChatClient {
                 } else {
                     let status = resp.status();
                     match read_capped_text(resp).await {
+                        Ok(b) if schema_on_this_attempt && plan_format::schema_format_rejected(status.as_u16(), &b) => {
+                            Attempt::SchemaRejected
+                        }
                         Ok(b) => Attempt::Fail(anyhow::anyhow!(
                             "Ollama non-streaming request returned error status {status}: {b}"
                         )),
@@ -1330,6 +1690,9 @@ impl LlmClient for OllamaChatClient {
                     );
                 }
                 Ok(Attempt::Retry) => {}
+                Ok(Attempt::SchemaRejected) => {
+                    schema_owned = None;
+                }
                 Ok(Attempt::Fail(err)) => return Err(err),
             }
 
@@ -1343,27 +1706,33 @@ impl LlmClient for OllamaChatClient {
         // accumulate incoming bytes and try to extract the assistant content as it arrives.
         if text.trim().is_empty() || self.low_latency {
             // Build a streaming request (request the server to stream if it supports it)
+            let mut send_schema = schema_owned.clone();
             let mut stream_body = serde_json::json!({
                 "model": &self.model,
                 "messages": [{ "role": "user", "content": prompt }],
                 "stream": true,
                 "options": { "temperature": 0.1, "num_predict": 512 }
             });
-            if self.force_format_json {
-                stream_body["format"] = serde_json::json!("json");
-            }
+            plan_format::apply_chat_format(
+                &mut stream_body,
+                send_schema.as_ref(),
+                self.force_format_json,
+            );
             if let Some(ka) = &self.keep_alive {
                 stream_body["keep_alive"] = serde_json::json!(ka);
             }
 
             // The stored client set `connect_timeout` in `build_model_client`.
-            // Header wait is a separate deadline. The body stays on the idle loop.
+            // Header waits and the body share this instant. Each header wait
+            // is the idle limit or the time still left, whichever is shorter.
             let start = std::time::Instant::now();
+            let lifetime = stream_call_lifetime(DEFAULT_STREAM_LIFETIME);
 
             let stream_url = format!("{}/api/chat", self.url.trim_end_matches('/'));
             println!("[ollama] initiating streaming POST to {}", stream_url);
-            let resp = send_for_headers(
+            let resp = send_headers_for_call(
                 idle,
+                lifetime.saturating_sub(start.elapsed()),
                 client
                     .post(&stream_url)
                     .header("Accept", "application/json")
@@ -1390,8 +1759,9 @@ impl LlmClient for OllamaChatClient {
                         status
                     );
                     let gen_url = format!("{}/api/generate", self.url.trim_end_matches('/'));
-                    let gen_resp = send_for_headers(
+                    let gen_resp = send_headers_for_call(
                         idle,
+                        lifetime.saturating_sub(start.elapsed()),
                         client
                             .post(&gen_url)
                             .header("Accept", "application/json")
@@ -1410,20 +1780,113 @@ impl LlmClient for OllamaChatClient {
                         Some(gen_resp)
                     } else {
                         let s = gen_resp.status();
-                        let b = read_capped_text(gen_resp).await.with_context(|| {
+                        // The error body shares `start`. Stop at the time
+                        // still left, or at 64 KiB, whichever comes first.
+                        let b = read_capped_text_within(
+                            gen_resp,
+                            lifetime.saturating_sub(start.elapsed()),
+                        )
+                        .await
+                        .with_context(|| {
                             format!("Ollama /api/generate status {s} body read failed")
                         })?;
-                        return Err(anyhow::anyhow!(
-                            "Ollama /api/generate returned error status {s}: {b}"
-                        ));
+                        if send_schema.is_some()
+                            && plan_format::schema_format_rejected(s.as_u16(), &b)
+                        {
+                            let _ = send_schema.take();
+                            if self.force_format_json {
+                                stream_body["format"] = serde_json::json!("json");
+                            } else if let Some(map) = stream_body.as_object_mut() {
+                                map.remove("format");
+                            }
+                            let retry = send_headers_for_call(
+                                idle,
+                                lifetime.saturating_sub(start.elapsed()),
+                                client
+                                    .post(&gen_url)
+                                    .header("Accept", "application/json")
+                                    .header("Content-Type", "application/json")
+                                    .json(&stream_body)
+                                    .send(),
+                            )
+                            .await
+                            .context(
+                                "Failed to retry Ollama /api/generate without the schema format",
+                            )?;
+                            if retry.status().is_success() {
+                                Some(retry)
+                            } else {
+                                let retry_status = retry.status();
+                                let retry_txt = read_capped_text_within(
+                                    retry,
+                                    lifetime.saturating_sub(start.elapsed()),
+                                )
+                                .await
+                                .with_context(|| {
+                                    format!(
+                                        "Ollama /api/generate status {retry_status} body read failed"
+                                    )
+                                })?;
+                                return Err(anyhow::anyhow!(
+                                    "Ollama /api/generate returned error status {retry_status}: {retry_txt}"
+                                ));
+                            }
+                        } else {
+                            return Err(anyhow::anyhow!(
+                                "Ollama /api/generate returned error status {s}: {b}"
+                            ));
+                        }
                     }
                 } else {
-                    let txt = read_capped_text(resp).await.with_context(|| {
-                        format!("Ollama chat API status {status} body read failed")
-                    })?;
-                    return Err(anyhow::anyhow!(
-                        "Ollama chat API returned error status {status}: {txt}"
-                    ));
+                    // The error body shares `start`. Stop at the time
+                    // still left, or at 64 KiB, whichever comes first.
+                    let txt =
+                        read_capped_text_within(resp, lifetime.saturating_sub(start.elapsed()))
+                            .await
+                            .with_context(|| {
+                                format!("Ollama chat API status {status} body read failed")
+                            })?;
+                    if send_schema.take().is_some()
+                        && plan_format::schema_format_rejected(status.as_u16(), &txt)
+                    {
+                        if self.force_format_json {
+                            stream_body["format"] = serde_json::json!("json");
+                        } else if let Some(map) = stream_body.as_object_mut() {
+                            map.remove("format");
+                        }
+                        let retry = send_headers_for_call(
+                            idle,
+                            lifetime.saturating_sub(start.elapsed()),
+                            client
+                                .post(&stream_url)
+                                .header("Accept", "application/json")
+                                .header("Content-Type", "application/json")
+                                .json(&stream_body)
+                                .send(),
+                        )
+                        .await
+                        .context("Failed to initiate streaming request to Ollama")?;
+                        if retry.status().is_success() {
+                            Some(retry)
+                        } else {
+                            let retry_status = retry.status();
+                            let retry_txt = read_capped_text_within(
+                                retry,
+                                lifetime.saturating_sub(start.elapsed()),
+                            )
+                            .await
+                            .with_context(|| {
+                                format!("Ollama chat API status {retry_status} body read failed")
+                            })?;
+                            return Err(anyhow::anyhow!(
+                                "Ollama chat API returned error status {retry_status}: {retry_txt}"
+                            ));
+                        }
+                    } else {
+                        return Err(anyhow::anyhow!(
+                            "Ollama chat API returned error status {status}: {txt}"
+                        ));
+                    }
                 }
             };
 
@@ -1442,8 +1905,14 @@ impl LlmClient for OllamaChatClient {
             let mut assistant_acc = String::new();
             let mut bytes_seen: usize = 0;
             let mut done_flag = false;
+            // Silence stops after one idle period. `overall` caps that same
+            // gap, and when it is longer than `idle` the wait is `idle`.
+            // A non-empty chunk starts a new gap, so late macOS wakes whose
+            // gaps stay inside the idle window are kept. An empty chunk does
+            // not. `lifetime` is measured from `start` and is not reset, so
+            // a one-byte drip stops there instead of at 1 MiB.
             let overall = idle.saturating_mul(2);
-            let stream_started = std::time::Instant::now();
+            let mut gap_started = std::time::Instant::now();
 
             // We'll periodically flush partial assembled assistant output to disk so
             // an interrupted run can still be inspected. Track last flush size.
@@ -1452,26 +1921,33 @@ impl LlmClient for OllamaChatClient {
             let mut first_token_at: Option<std::time::Instant> = None;
             let mut body_error: Option<anyhow::Error> = None;
             loop {
-                let left = overall.saturating_sub(stream_started.elapsed());
-                if left.is_zero() {
-                    body_error = Some(anyhow::anyhow!("streaming overall deadline"));
-                    break;
-                }
-                let wait = idle.min(left);
-                let item = match tokio::time::timeout(wait, stream.next()).await {
-                    Ok(Some(item)) => item,
-                    Ok(None) => break,
-                    Err(_) if stream_started.elapsed() >= overall => {
-                        body_error = Some(anyhow::anyhow!("streaming overall deadline"));
+                let decision = match next_read_wait(
+                    idle,
+                    overall,
+                    gap_started,
+                    lifetime,
+                    start,
+                    "streaming read idle timeout",
+                ) {
+                    Ok(decision) => decision,
+                    Err(err) => {
+                        body_error = Some(err);
                         break;
                     }
+                };
+                let item = match tokio::time::timeout(decision.wait, stream.next()).await {
+                    Ok(Some(item)) => item,
+                    Ok(None) => break,
                     Err(_) => {
-                        body_error = Some(anyhow::anyhow!("streaming read idle timeout"));
+                        body_error = Some(anyhow::anyhow!(decision.on_timeout));
                         break;
                     }
                 };
                 match item {
                     Ok(chunk) => {
+                        if !chunk.is_empty() {
+                            gap_started = std::time::Instant::now();
+                        }
                         // Count bytes before UTF-8 or line filtering. Empty
                         // NDJSON lines and invalid UTF-8 must not stream forever.
                         // A cap error keeps tokens already stored in `assistant_acc`.
@@ -1480,17 +1956,12 @@ impl LlmClient for OllamaChatClient {
                             break;
                         }
                         raw.extend_from_slice(&chunk);
-                        // One pass over this chunk. `drain(..=pos)` once per
-                        // newline shifts the whole tail each time, which is
-                        // quadratic on a newline-only body.
+                        // One pass over bytes already received. The gap
+                        // deadline applies to the next wait, not to lines
+                        // sitting in `raw`.
                         let mut consumed = 0usize;
                         let mut capped = false;
                         while consumed < raw.len() {
-                            if stream_started.elapsed() >= overall {
-                                body_error = Some(anyhow::anyhow!("streaming overall deadline"));
-                                capped = true;
-                                break;
-                            }
                             let Some(rel) = raw[consumed..].iter().position(|&b| b == b'\n') else {
                                 break;
                             };
@@ -1586,6 +2057,10 @@ impl LlmClient for OllamaChatClient {
                     break;
                 }
             }
+            // A lifetime deadline or an idle timeout after at least one token
+            // returns those tokens. The error is returned only when the
+            // stream produced none. A UTF-8 or cap error follows the same
+            // rule: tokens already stored stay.
             if text.trim().is_empty() && assistant_acc.trim().is_empty() {
                 if let Some(err) = body_error {
                     return Err(err);
@@ -1730,6 +2205,23 @@ impl LlmClient for OllamaChatClient {
         // If no recognized JSON shape matched, return the raw text as a last resort.
         // This covers a body with no newline, which never reached `append_capped`.
         finish_capped(text)
+    }
+}
+
+#[cfg(feature = "ollama")]
+#[async_trait::async_trait]
+impl LlmClient for OllamaChatClient {
+    async fn complete(&self, prompt: &str) -> Result<String> {
+        self.complete_with_optional_format(prompt, None).await
+    }
+
+    async fn complete_with_format(
+        &self,
+        prompt: &str,
+        format: &serde_json::Value,
+    ) -> Result<String> {
+        self.complete_with_optional_format(prompt, Some(format))
+            .await
     }
 }
 
@@ -2151,11 +2643,12 @@ fn validate_plan(plan: &PlanIntent, reg: &ToolRegistry) -> Result<()> {
                     bail!("LLM used disallowed tool Revive");
                 }
             }
-            // Phase 7: For new tools, validate generically
-            // TODO: Add specific validation for each tool type
+            // The four arms above stay. Every other variant is the same registry check.
             _ => {
-                // Generic validation for Phase 7 tools - check if tool is registered
-                // More specific validation can be added later per tool
+                let name = s.action_name();
+                if !reg.tools.iter().any(|t| t.name == name) {
+                    bail!("LLM used disallowed tool {name}");
+                }
             }
         }
     }
@@ -2164,6 +2657,12 @@ fn validate_plan(plan: &PlanIntent, reg: &ToolRegistry) -> Result<()> {
 
 /// Maximum allowed coordinate value for plan sanitization
 const MAX_COORD_BOUND: i32 = 100;
+
+/// `i32::abs` panics on `i32::MIN` in debug and wraps in release.
+/// The bound uses the unsigned magnitude so both profiles drop that coordinate.
+fn coord_within_bound(value: i32) -> bool {
+    value.unsigned_abs() <= MAX_COORD_BOUND as u32
+}
 
 /// Sanitize and validate plan for safety
 pub fn sanitize_plan(
@@ -2175,13 +2674,15 @@ pub fn sanitize_plan(
     plan.steps.retain(|step| match step {
         ActionStep::MoveTo { x, y, speed: _ } => {
             // Check bounds (example: within 100 units)
-            (x.abs() <= MAX_COORD_BOUND && y.abs() <= MAX_COORD_BOUND)
+            coord_within_bound(*x)
+                && coord_within_bound(*y)
                 && reg.tools.iter().any(|t| t.name == "MoveTo")
         }
         ActionStep::Throw { item, x, y } => {
             // Check item is allowed
             matches!(item.as_str(), "smoke" | "grenade")
-                && (x.abs() <= MAX_COORD_BOUND && y.abs() <= MAX_COORD_BOUND)
+                && coord_within_bound(*x)
+                && coord_within_bound(*y)
                 && reg.tools.iter().any(|t| t.name == "Throw")
         }
         ActionStep::CoverFire {
@@ -2198,8 +2699,8 @@ pub fn sanitize_plan(
             // Check ally exists (simplified: allow any ally for now, or validate against known ally IDs)
             reg.tools.iter().any(|t| t.name == "Revive")
         }
-        // Phase 7: Accept all new tool types (validation happens in execution layer)
-        _ => true,
+        // Unknown actions stay out unless the registry names them.
+        _ => reg.tools.iter().any(|t| t.name == step.action_name()),
     });
     Ok(())
 }
@@ -3603,6 +4104,53 @@ Done!"#;
     }
 
     #[test]
+    fn sanitize_plan_drops_i32_min_and_max() {
+        use astraweave_core::default_tool_registry;
+
+        let reg = default_tool_registry();
+        let snap = create_test_world_snapshot();
+        let extremes = [i32::MIN, i32::MAX];
+
+        for extreme in extremes {
+            for (x, y) in [(extreme, 0), (0, extreme)] {
+                let move_json = format!(
+                    r#"{{"plan_id":"bounds","steps":[{{"act":"MoveTo","x":{x},"y":{y}}},{{"act":"MoveTo","x":0,"y":0}}]}}"#
+                );
+                let mut plan =
+                    parse_llm_plan(&move_json, &reg).expect("default registry accepts MoveTo");
+                assert_eq!(plan.steps.len(), 2);
+                sanitize_plan(&mut plan, &snap, &reg).unwrap();
+                assert_eq!(
+                    plan.steps,
+                    vec![ActionStep::MoveTo {
+                        x: 0,
+                        y: 0,
+                        speed: None,
+                    }],
+                    "MoveTo ({x},{y}) exceeds MAX_COORD_BOUND"
+                );
+
+                let throw_json = format!(
+                    r#"{{"plan_id":"bounds","steps":[{{"act":"Throw","item":"smoke","x":{x},"y":{y}}},{{"act":"Throw","item":"smoke","x":0,"y":0}}]}}"#
+                );
+                let mut plan =
+                    parse_llm_plan(&throw_json, &reg).expect("default registry accepts Throw");
+                assert_eq!(plan.steps.len(), 2);
+                sanitize_plan(&mut plan, &snap, &reg).unwrap();
+                assert_eq!(
+                    plan.steps,
+                    vec![ActionStep::Throw {
+                        item: "smoke".to_string(),
+                        x: 0,
+                        y: 0,
+                    }],
+                    "Throw ({x},{y}) exceeds MAX_COORD_BOUND"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_sanitize_plan_validates_throw_items() {
         let snap = create_test_world_snapshot();
         let reg = create_test_registry();
@@ -3661,7 +4209,7 @@ Done!"#;
     #[test]
     fn test_sanitize_plan_allows_other_steps() {
         let snap = create_test_world_snapshot();
-        let reg = create_test_registry();
+        let mut reg = create_test_registry();
 
         let mut plan = PlanIntent {
             plan_id: "other-test".to_string(),
@@ -3673,8 +4221,63 @@ Done!"#;
         };
 
         sanitize_plan(&mut plan, &snap, &reg).unwrap();
-        // All these steps should be retained (matched by _ => true)
+        assert!(
+            plan.steps.is_empty(),
+            "Reload, Scan, and Wait are not in this registry"
+        );
+
+        for name in ["Reload", "Scan", "Wait"] {
+            reg.tools.push(ToolSpec {
+                name: name.into(),
+                args: std::collections::BTreeMap::new(),
+            });
+        }
+        plan.steps = vec![
+            ActionStep::Reload,
+            ActionStep::Scan { radius: 10.0 },
+            ActionStep::Wait { duration: 1.0 },
+        ];
+        sanitize_plan(&mut plan, &snap, &reg).unwrap();
         assert_eq!(plan.steps.len(), 3);
+    }
+
+    #[test]
+    fn default_registry_core_steps_validate() {
+        use astraweave_core::default_tool_registry;
+
+        let reg = default_tool_registry();
+        let json = r#"{"plan_id":"core","steps":[
+            {"act":"MoveTo","x":1,"y":2},
+            {"act":"Throw","item":"smoke","x":3,"y":4},
+            {"act":"CoverFire","target_id":99,"duration":2.0},
+            {"act":"Revive","ally_id":1}
+        ]}"#;
+
+        let mut plan = parse_llm_plan(json, &reg).expect("core steps against the default registry");
+        assert_eq!(plan.steps.len(), 4);
+
+        let parsed = plan_parser::parse_llm_response(json, &reg).expect("runtime parser");
+        assert_eq!(parsed.plan.steps.len(), 4);
+
+        let schema = plan_format::plan_format_schema(&reg);
+        let acts: Vec<&str> = schema["properties"]["steps"]["items"]["oneOf"]
+            .as_array()
+            .expect("oneOf")
+            .iter()
+            .filter_map(|branch| branch["properties"]["act"]["enum"][0].as_str())
+            .collect();
+        assert_eq!(acts, ["MoveTo", "Throw", "CoverFire", "Revive"]);
+
+        plan.steps.push(ActionStep::Attack { target_id: 99 });
+        let snap = create_test_world_snapshot();
+        sanitize_plan(&mut plan, &snap, &reg).unwrap();
+        assert_eq!(plan.steps.len(), 4, "Attack is dropped; core steps stay");
+
+        let rejected = parse_llm_plan(
+            r#"{"plan_id":"no","steps":[{"act":"Attack","target_id":99}]}"#,
+            &reg,
+        );
+        assert!(rejected.is_err());
     }
 
     #[test]
@@ -3761,7 +4364,7 @@ Done!"#;
     }
 
     #[test]
-    fn test_validate_plan_allows_generic_steps() {
+    fn test_validate_plan_rejects_unregistered_generic_steps() {
         let reg = create_test_registry();
 
         let plan = PlanIntent {
@@ -3773,9 +4376,21 @@ Done!"#;
             ],
         };
 
-        // These should pass because they match the _ => {} arm
         let result = validate_plan(&plan, &reg);
-        assert!(result.is_ok());
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("disallowed tool Reload"));
+
+        let mut allowed = create_test_registry();
+        for name in ["Reload", "Scan", "Wait"] {
+            allowed.tools.push(ToolSpec {
+                name: name.into(),
+                args: std::collections::BTreeMap::new(),
+            });
+        }
+        assert!(validate_plan(&plan, &allowed).is_ok());
     }
 
     #[test]

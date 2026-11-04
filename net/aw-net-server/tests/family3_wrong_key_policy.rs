@@ -20,7 +20,7 @@ mod common;
 
 use std::time::Duration;
 
-use aw_net_proto::{decode_msg, ClientToServer, ServerToClient, SigningKey};
+use aw_net_proto::{decode_msg, ServerToClient, SigningKey};
 use aw_net_server::{ServerConfig, SignatureFailurePolicy};
 use common::{spawn_test_server, JoinInfo, TestClient, TestServer, IO_TIMEOUT, TEST_CODEC};
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
@@ -129,22 +129,6 @@ async fn recv_snapshot_server_tick(client: &mut TestClient) -> u64 {
             _ => None,
         })
         .await
-}
-
-/// Like `TestClient::assert_ping_pong`, but also skips queued `RateLimited`
-/// replies. Local helper: the harness version panics on any non-Snapshot
-/// message while awaiting the Pong, which makes it unusable right after a
-/// deliberate rate-limit burst (harness gap, reported).
-async fn assert_ping_pong_tolerating_rate_limited(client: &mut TestClient, nano: u128) {
-    client.send_msg(&ClientToServer::Ping { nano }).await;
-    let got = client
-        .recv_until(|m| match m {
-            ServerToClient::Pong { nano: n } => Some(n),
-            ServerToClient::Snapshot { .. } | ServerToClient::RateLimited => None,
-            other => panic!("unexpected message while awaiting Pong: {other:?}"),
-        })
-        .await;
-    assert_eq!(got, nano, "Pong nano does not match the Ping we sent");
 }
 
 /// Bounded poll: keep joining `region` (with clean-close probes) until
@@ -342,21 +326,12 @@ async fn wrong_key_first_message_kicks_with_no_partial_processing() {
     server.shutdown();
 }
 
-/// Battery item 5: wrong key under Warn → the connection STAYS OPEN and the
-/// frames are fully processed (legacy behavior).
+/// Battery item 5: wrong key under Warn does not apply the frame and does
+/// not kick on the first bad tag. A short batch stays open. A tight flood
+/// is charged and closes with 1008 `rate limited`.
 ///
-/// Stays-open proofs: in-order Pongs after each wrong-key batch plus the
-/// snapshot stream still advancing. Full-processing proof: a burst past the
-/// token-bucket capacity draws `RateLimited` — that reply is only reachable
-/// THROUGH the InputFrame processing path (token deduction), so the
-/// unauthenticated frames demonstrably went through legacy processing
-/// rather than being silently dropped. The connection stays open even
-/// after rate limiting (RateLimited is reply-only).
-///
-/// Anti-vacuity: the SAME wrong-key traffic shape kicks on a Kick-policy
-/// twin server (same signing key A) within this test, proving the key-B
-/// signatures genuinely fail verification against key A — i.e. the Warn
-/// server really was surviving verification FAILURES, not passing them.
+/// Anti-vacuity: the first wrong-key frame kicks on a Kick-policy twin
+/// (same signing key A), proving the key-B signatures fail verification.
 #[tokio::test(flavor = "multi_thread")]
 async fn wrong_key_under_warn_stays_open_and_processes_frames() {
     let server_key = key_a();
@@ -391,28 +366,36 @@ async fn wrong_key_under_warn_stays_open_and_processes_frames() {
     }
     client.assert_ping_pong(0x57A2).await;
 
-    // Full-processing proof: 100 further wrong-key frames overrun the token
-    // bucket (30 initial tokens, 60-token cap, 8/s refill, 1 token/frame —
-    // even from a hypothetically full bucket, 100 frames need >=40 refilled
-    // tokens = >=5 s of refill, i.e. >=50 ms per awaited loopback send,
-    // orders of magnitude above reality), so the server MUST reply
-    // RateLimited, which only the InputFrame processing path can emit.
-    for seq in 11u32..=110 {
+    // A few valid frames after the bad batches still apply. Warn did not
+    // kick on the signature, and the bucket still has tokens.
+    for seq in 11u32..=25 {
         client
-            .send_input_frame(seq, u64::from(seq) * 33, b"warn-burst", &wrong_key)
+            .send_input_frame(seq, u64::from(seq) * 33, b"warn-valid-after", &server_key)
             .await;
     }
-    client
-        .recv_until(|m| match m {
-            ServerToClient::RateLimited => Some(()),
-            ServerToClient::Snapshot { .. } => None,
-            other => panic!("unexpected message while awaiting RateLimited: {other:?}"),
-        })
-        .await;
+    client.assert_ping_pong(0x57A3).await;
 
-    // Still open after the burst and the rate limiting.
-    assert_ping_pong_tolerating_rate_limited(&mut client, 0x57A3).await;
-    client.close().await;
+    // Tight wrong-key flood. Stop at the first send error so a peer Close
+    // is the assertion, not a ConnectionReset panic on the next send.
+    for seq in 26u32..=200 {
+        if client
+            .try_send_input_frame(seq, u64::from(seq) * 33, b"warn-burst", &wrong_key)
+            .await
+            .is_err()
+        {
+            break;
+        }
+    }
+    let frame = client
+        .recv_close()
+        .await
+        .expect("wrong-key flood must close");
+    let reason = frame.reason.to_string();
+    assert_eq!(u16::from(frame.code), 1008, "{reason}");
+    assert!(
+        reason.contains("rate limited"),
+        "close reason must say rate limited, got {reason}"
+    );
 
     // Anti-vacuity twin: the identical first wrong-key frame kicks under
     // Kick with the full Close contract.

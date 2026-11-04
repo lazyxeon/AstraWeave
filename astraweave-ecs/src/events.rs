@@ -620,6 +620,11 @@ mod tests {
     #[test]
     fn test_large_event_batch_maintains_order() {
         let mut events = Events::new();
+        // Tree-borrows tracking of a 10_000-event batch OOMs in Miri (#571).
+        // The smaller batch still checks FIFO order.
+        #[cfg(miri)]
+        const BATCH_SIZE: usize = 64;
+        #[cfg(not(miri))]
         const BATCH_SIZE: usize = 10_000;
 
         // Send large batch

@@ -8,7 +8,7 @@ on:
   workflow_run:
     workflows:
       - Comprehensive CI Pipeline
-      - Determinism Replay
+      - determinism-replay
       - Performance Benchmarks
       - Sanitizers
       - Code Coverage
@@ -22,9 +22,11 @@ on:
       - Allocation Measurement
     types: [completed]
 
+# One workflow_run webhook per upstream failure; key by that run id so the 13
+# watched workflows never cancel each other's pending reports (BS-011 / #576).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -37,8 +39,11 @@ jobs:
     timeout-minutes: 10
     if: >-
       github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       (github.event.workflow_run.event == 'schedule' ||
-       github.event.workflow_run.head_branch == 'main')
+       (github.event.workflow_run.head_branch == 'main' &&
+        (github.event.workflow_run.event == 'push' ||
+         github.event.workflow_run.event == 'workflow_dispatch')))
     steps:
       - name: Open or update the issue
         uses: actions/github-script@v7
@@ -77,25 +82,97 @@ jobs:
               }
             }
 
-            const listParams = {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: "open",
-              per_page: 100,
+            const listOpenIssues = async () => {
+              const listParams = {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "open",
+                per_page: 100,
+              };
+              if (labelReady) {
+                listParams.labels = "ci-nightly";
+              }
+              return github.paginate(github.rest.issues.listForRepo, listParams);
             };
-            if (labelReady) {
-              listParams.labels = "ci-nightly";
-            }
-            const existing = await github.paginate(github.rest.issues.listForRepo, listParams);
-            const match = existing.find((issue) => issue.title === title);
-            if (match) {
+
+            const commentOnIssue = async (issueNumber) => {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: match.number,
+                issue_number: issueNumber,
                 body,
               });
-              core.notice(`Updated issue #${match.number}`);
+              core.notice(`Updated issue #${issueNumber}`);
+            };
+
+            const REPORTER_MARKER =
+              "Opened by `.github/workflows/nightly-failure-issue.yml`";
+
+            const isReportableIssue = (issue) =>
+              issue.title === title && !issue.pull_request;
+
+            const pickKeeper = (issues) => {
+              const matches = issues.filter(isReportableIssue);
+              if (matches.length === 0) {
+                return undefined;
+              }
+              matches.sort((a, b) => a.number - b.number);
+              return matches[0];
+            };
+
+            const issueBodyMatches = async (issue) => {
+              if (issue.body && issue.body.includes(REPORTER_MARKER)) {
+                return true;
+              }
+              const full = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+              });
+              return full.data.body.includes(REPORTER_MARKER);
+            };
+
+            const closeAsDuplicateOf = async (issueNumber, keeperNumber) => {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: `Duplicate of #${keeperNumber}. Closing in favor of the canonical nightly issue.`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: "closed",
+                state_reason: "not_planned",
+              });
+            };
+
+            const syncKeeper = async () => {
+              const open = await listOpenIssues();
+              const keeper = pickKeeper(open);
+              if (!keeper) {
+                return undefined;
+              }
+              await commentOnIssue(keeper.number);
+              for (const issue of open) {
+                if (!isReportableIssue(issue) || issue.number === keeper.number) {
+                  continue;
+                }
+                if (!(await issueBodyMatches(issue))) {
+                  continue;
+                }
+                await closeAsDuplicateOf(issue.number, keeper.number);
+              }
+              return keeper;
+            };
+
+            let keeper = await syncKeeper();
+            if (!keeper) {
+              keeper = await syncKeeper();
+            }
+            if (keeper) {
+              core.notice(`Updated issue #${keeper.number}`);
             } else {
               const created = await github.rest.issues.create({
                 owner: context.repo.owner,
@@ -104,5 +181,23 @@ jobs:
                 body,
                 labels: labelReady ? ["ci-nightly"] : [],
               });
-              core.notice(`Opened issue #${created.data.number}`);
+              const open = await listOpenIssues();
+              const reportable = open.filter(isReportableIssue);
+              const older = reportable.find(
+                (issue) => issue.number < created.data.number,
+              );
+              if (older) {
+                await closeAsDuplicateOf(created.data.number, older.number);
+                await commentOnIssue(older.number);
+                core.notice(
+                  `Closed duplicate #${created.data.number}; kept #${older.number}`,
+                );
+              } else {
+                keeper = await syncKeeper();
+                if (keeper) {
+                  core.notice(`Opened issue #${keeper.number}`);
+                } else {
+                  core.notice(`Opened issue #${created.data.number}`);
+                }
+              }
             }
