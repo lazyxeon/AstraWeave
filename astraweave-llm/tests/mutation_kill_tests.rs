@@ -770,6 +770,26 @@ mod cache_tests {
     }
 
     #[test]
+    fn prompt_cache_similarity_skips_different_client_at_threshold_one() {
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        let prompt = "move companion to enemy position attack";
+        let key_client_a = PromptKey::new(prompt, "client-a", "model-a", 0.7, &["MoveTo"]);
+        cache.put(key_client_a, make_cached_plan("client-a-plan"));
+
+        let key_client_b = PromptKey::new(prompt, "client-b", "model-a", 0.7, &["MoveTo"]);
+        let result = cache.get(&key_client_b);
+        assert!(
+            result.is_none(),
+            "identical prompt at similarity 1.0 must miss across clients"
+        );
+        assert_eq!(
+            cache.stats().similarity_hits,
+            0,
+            "cross-client lookup must not count as similarity hit"
+        );
+    }
+
+    #[test]
     fn prompt_cache_eviction_increments_counter() {
         let cache = PromptCache::new(2);
         let k1 = PromptKey::new("prompt one", "client", "m", 0.5, &[]);
