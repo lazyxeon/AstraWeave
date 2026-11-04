@@ -343,6 +343,9 @@ jobs:
           # p0 dispatch skips the AI matrix. A timeout or a missing shard still fails.
           if [ "${{ needs.mutants-ai.result }}" = "skipped" ]; then
             echo "| astraweave-ai | skipped | P1 AI not selected |" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ needs.mutants-ai.result }}" != "success" ]; then
+            echo "::error::astraweave-ai matrix did not succeed (result=${{ needs.mutants-ai.result }}); partial shards must not pass the gate"
+            exit 1
           else
             mapfile -t ai_files < <(find all-results -type f -name outcomes.json | sort | grep '/mutants-ai-results-' || true)
             echo "astraweave-ai shard files: ${#ai_files[@]}"

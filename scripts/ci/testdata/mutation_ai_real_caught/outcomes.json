@@ -1,5 +1,6 @@
 {
   "total_mutants": 1,
+  "end_time": "2026-01-01T00:00:00Z",
   "outcomes": [
     {
       "scenario": "Baseline",
