@@ -1,31 +1,12 @@
 {
   "Version": 1,
-<<<<<<< HEAD
-  "WorkspaceRootPath": "C:\\Users\\pv2br\\source\\repos\\AstraWeave-AI-Native-Gaming-Engine\\",
-=======
-  "WorkspaceRootPath": "C:\\Users\\pv2br\\Documents\\GitHub\\AstraWeave-AI-Native-Gaming-Engine\\",
->>>>>>> c166bdc2743a91f22bf33e8cf6ed31477fde001b
+  "WorkspaceRootPath": "",
   "Documents": [],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-<<<<<<< HEAD
       "DocumentGroups": []
-=======
-      "DocumentGroups": [
-        {
-          "DockedWidth": 200,
-          "SelectedChildIndex": -1,
-          "Children": [
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{cce594b6-0c39-4442-ba28-10c64ac7e89f}"
-            }
-          ]
-        }
-      ]
->>>>>>> c166bdc2743a91f22bf33e8cf6ed31477fde001b
     }
   ]
 }
