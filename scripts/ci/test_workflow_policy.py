@@ -24,6 +24,15 @@ POLICY_ACTIONS = (
     "actions/cache",
     "actions/github-script",
 )
+EXPECTED_POLICY_ACTIONS = frozenset(
+    {
+        "actions/checkout",
+        "actions/upload-artifact",
+        "actions/download-artifact",
+        "actions/cache",
+        "actions/github-script",
+    }
+)
 ACTION_MAJOR_FLOORS: dict[str, int] = {
     "actions/checkout": 7,
     "actions/upload-artifact": 4,
@@ -657,6 +666,9 @@ class WorkflowPolicyTest(unittest.TestCase):
         for name, text in workflow_texts().items():
             violations.extend(workflow_action_pin_violations(text, path=name))
         self.assertEqual(violations, [])
+
+    def test_policy_actions_matches_expected_set(self) -> None:
+        self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
 
     def test_policy_actions_have_floors_and_uses_regex(self) -> None:
         self.assertEqual(set(ACTION_MAJOR_FLOORS), set(POLICY_ACTIONS))
