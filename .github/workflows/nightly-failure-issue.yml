@@ -20,12 +20,18 @@ on:
       - SDK Header and C Harness CI
       - Editor CI
       - Allocation Measurement
+      - Mutation Testing
+      - Fuzz nightly
+      - Miri UB Detection
+      - Kani Formal Verification
+      - OpenSSF Scorecard
+      - Security Audit
     types: [completed]
 
-# One workflow_run webhook per upstream failure; key by that run id so the 13
-# watched workflows never cancel each other's pending reports (BS-011 / #576).
+# Key concurrency by the failing upstream workflow name so reports for different
+# nightlies never share a cancel group (BS-011 / #576).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.name }}
   cancel-in-progress: false
 
 permissions:
