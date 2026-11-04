@@ -254,6 +254,14 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("SCCACHE_GHA_RW_MODE=READ_WRITE", action)
         self.assertNotIn("SCCACHE_GHA_VERSION", action)
         self.assertIn("sccache-populate", action)
+        pop_false = action.index('if [ "$populate" = "false" ]; then')
+        read_only_after_false = action.index(
+            "SCCACHE_GHA_RW_MODE=READ_ONLY", pop_false
+        )
+        main_read_write = action.index(
+            'elif [ "${{ github.ref }}" = "refs/heads/main" ]'
+        )
+        self.assertLess(read_only_after_false, main_read_write)
         self.assertIn("refs/heads/main", action)
         # RUSTFLAGS replaces every rustflags entry. The pin is in cargo config.
         self.assertNotIn("RUSTFLAGS=", action)

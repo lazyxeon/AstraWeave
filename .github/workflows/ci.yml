@@ -534,8 +534,8 @@ jobs:
     name: Test full (macos, build archive)
     runs-on: macos-latest
     needs: [changes, gate]
-    # 90: archive compile plus on-runner bin/probe targets (~40m on run
-    # 41578863044) before partitions start. Partitions stay at 60.
+    # 90: archive compile plus on-runner bin/probe targets. Pre-split run
+    # 41578863044 cancelled at 60m after tests passed; partitions stay at 60.
     timeout-minutes: 90
     if: github.event_name != 'pull_request' && needs.gate.result == 'success'
     steps:
@@ -616,6 +616,9 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
         with:
           install-nextest: "true"
+          # READ_ONLY: three partitions would otherwise WRITE concurrently with
+          # the archive job and amplify ghac rate limits. Each partition still
+          # builds aw_audio_probe (dev profile) before extracting nextest.
           sccache-populate: "false"
 
       - name: macOS runners have no wgpu software adapter

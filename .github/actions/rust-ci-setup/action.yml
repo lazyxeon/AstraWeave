@@ -21,8 +21,10 @@ inputs:
     default: "false"
   sccache-populate:
     description: >-
-      When false, sccache uses READ_ONLY even on main. Archive-partition jobs
-      that only run extracted nextest binaries should not write through ghac.
+      When false, sccache uses READ_ONLY even on main. macOS Test full partition
+      jobs pass false so three nightly runners do not all write through ghac
+      while the archive job populates; each partition still builds
+      aw_audio_probe (dev profile).
     required: false
     default: "true"
 
