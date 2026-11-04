@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 owns: [astraweave-ai, astraweave-behavior, astraweave-context, astraweave-coordination, astraweave-dialogue, astraweave-director, astraweave-embeddings, astraweave-llm, astraweave-memory, astraweave-npc, astraweave-persona, astraweave-prompts, astraweave-rag]
 doc_version: "1.63"
-last_verified_commit: 53e85c0851b9616c03530bab64c7e538a4a5eff9
+last_verified_commit: 808bb6d92fa0881a936439f4068ecfefd764ad88
 ---
 
 # Architecture Trace: AI Pipeline + AI Core + GOAP + Behavior Trees + LLM Integration + Arbiter
