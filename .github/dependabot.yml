@@ -39,6 +39,7 @@ updates:
       actions:
         patterns:
           - "*"
+        group-by: dependency-name
     labels:
       - "dependencies"
       - "ci"
