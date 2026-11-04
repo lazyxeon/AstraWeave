@@ -1469,6 +1469,10 @@ pub struct OllamaChatClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
+    /// Temperature on every `/api/chat` body, including the non-streaming `Req`.
+    /// The cache key uses the same value.
+    const CHAT_TEMPERATURE: f64 = 0.1;
+
     /// Stored endpoint. The first hop is checked again before each request.
     pub fn url(&self) -> &str {
         &self.url
@@ -1617,6 +1621,7 @@ impl OllamaChatClient {
             stream: bool,
             #[serde(skip_serializing_if = "Option::is_none")]
             format: Option<&'a serde_json::Value>,
+            options: serde_json::Value,
         }
 
         let client = self.client.clone();
@@ -1657,6 +1662,7 @@ impl OllamaChatClient {
                 }],
                 stream: false,
                 format: schema_owned.as_ref(),
+                options: serde_json::json!({ "temperature": Self::CHAT_TEMPERATURE }),
             };
             let backoff = std::time::Duration::from_millis(250 * (1 << (attempt - 1)));
             println!(
@@ -1764,7 +1770,7 @@ impl OllamaChatClient {
                 "model": &self.model,
                 "messages": [{ "role": "user", "content": prompt }],
                 "stream": true,
-                "options": { "temperature": 0.1, "num_predict": 512 }
+                "options": { "temperature": Self::CHAT_TEMPERATURE, "num_predict": 512 }
             });
             plan_format::apply_chat_format(
                 &mut stream_body,
@@ -2282,10 +2288,9 @@ impl LlmClient for OllamaChatClient {
     }
 
     fn llm_cache_temperature(&self) -> f32 {
-        // The streaming chat body sends this. `assemble` defaults `low_latency`
-        // to true, so `complete` takes that body. The non-streaming `Req` sends
-        // no temperature.
-        0.1
+        // Streaming and non-streaming chat bodies both send `CHAT_TEMPERATURE`,
+        // including when `OLLAMA_LOW_LATENCY` is off.
+        Self::CHAT_TEMPERATURE as f32
     }
 }
 
@@ -4246,6 +4251,136 @@ mod tests {
         let reg = create_test_registry();
         let key = plan_prompt_cache_key(&client, &snap, &reg);
         assert_eq!(key.temperature_q, 10);
+    }
+
+    /// One POST. Returns the URL and the raw JSON body the client sent.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn capture_one_http_body() -> (String, std::sync::mpsc::Receiver<String>) {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 2048];
+            let body = loop {
+                match sock.read(&mut tmp) {
+                    Ok(0) => break String::new(),
+                    Ok(n) => {
+                        buf.extend_from_slice(&tmp[..n]);
+                        let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+                            continue;
+                        };
+                        let headers = String::from_utf8_lossy(&buf[..end]);
+                        let len = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                if name.eq_ignore_ascii_case("content-length") {
+                                    value.trim().parse::<usize>().ok()
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(0);
+                        let start = end + 4;
+                        while buf.len() < start + len {
+                            match sock.read(&mut tmp) {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                            }
+                        }
+                        let end_body = (start + len).min(buf.len());
+                        break String::from_utf8_lossy(&buf[start..end_body]).into_owned();
+                    }
+                    Err(_) => break String::new(),
+                }
+            };
+            let response = r#"{"message":{"content":"ok"}}"#;
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                response.len()
+            );
+            let _ = sock.write_all(header.as_bytes());
+            let _ = sock.write_all(response.as_bytes());
+            let _ = tx.send(body);
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    /// `low_latency == false` is the `OLLAMA_LOW_LATENCY=0` path. `complete`
+    /// sends the non-streaming `Req`, and that body's temperature must equal
+    /// the recorded cache temperature.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[tokio::test]
+    async fn ollama_chat_nonstream_temperature_matches_recorded_cache() {
+        let (url, body_rx) = capture_one_http_body();
+        let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
+        client.low_latency = false;
+        let text = client.complete("ping").await.expect("non-stream complete");
+        assert_eq!(text, "ok");
+        let body = body_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("request body");
+        let sent: serde_json::Value = serde_json::from_str(&body).expect("json body");
+        assert_eq!(
+            sent["stream"],
+            serde_json::json!(false),
+            "expected the non-stream Req, got {body}"
+        );
+        let sent_temp = sent["options"]["temperature"].as_f64().unwrap_or_else(|| {
+            panic!("non-stream body has no temperature: {body}");
+        });
+        assert!(
+            body.contains("\"temperature\":0.1"),
+            "non-stream temperature must be the JSON number 0.1, got {body}"
+        );
+        let recorded = f64::from(client.llm_cache_temperature());
+        assert!(
+            (sent_temp - recorded).abs() < 1e-6,
+            "recorded temperature {recorded} != sent {sent_temp} in {body}"
+        );
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let key = plan_prompt_cache_key(&client, &snap, &reg);
+        assert_eq!(key.temperature_q, (sent_temp * 100.0).round() as u32);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama", not(feature = "phi3")))]
+    fn cache_id_type_tag(client: &impl LlmClient) -> String {
+        let tag = format!("{:?}", client.type_id());
+        let id = client.llm_cache_client_id();
+        assert!(
+            id.contains(&tag),
+            "cache id {id} is missing concrete type tag {tag}"
+        );
+        tag
+    }
+
+    /// Each profile client id includes its own `TypeId`, and those tags differ.
+    #[cfg(all(feature = "llm_cache", feature = "ollama", not(feature = "phi3")))]
+    #[test]
+    fn cache_client_ids_carry_distinct_concrete_type_tags() {
+        let hermes = hermes2pro_ollama::Hermes2ProOllama::fast().expect("hermes");
+        let phi_ollama = phi3_ollama::Phi3Ollama::fast().expect("phi3 ollama");
+        let qwen = qwen3_ollama::Qwen3Ollama::fast().expect("qwen");
+        let medium = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let tags = [
+            cache_id_type_tag(&hermes),
+            cache_id_type_tag(&phi_ollama),
+            cache_id_type_tag(&qwen),
+            cache_id_type_tag(&medium),
+        ];
+        for (i, left) in tags.iter().enumerate() {
+            for right in tags.iter().skip(i + 1) {
+                assert_ne!(left, right, "concrete type tags must differ");
+            }
+        }
     }
 
     #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
