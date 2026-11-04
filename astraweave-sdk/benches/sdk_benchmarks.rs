@@ -72,12 +72,17 @@ fn bench_world_lifecycle(c: &mut Criterion) {
         })
     });
 
-    // Benchmark: World creation overhead only
+    // Benchmark: World creation overhead only (destroy runs outside the timer)
     group.bench_function("world_create_only", |b| {
-        b.iter(|| {
-            let world = aw_world_create();
-            black_box(world);
-            aw_world_destroy(world);
+        b.iter_custom(|iters| {
+            let mut total = std::time::Duration::ZERO;
+            for _ in 0..iters {
+                let start = std::time::Instant::now();
+                let world = black_box(aw_world_create());
+                total += start.elapsed();
+                aw_world_destroy(world);
+            }
+            total
         })
     });
 
