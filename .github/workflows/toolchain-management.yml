@@ -72,7 +72,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # #205 stores the CC0 Aravath models in Git LFS and records each
           # blob's sha256 in ASSET_MANIFEST.tsv. Without LFS the working
@@ -211,7 +211,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Install MSRV from Cargo.toml
         run: |
@@ -262,7 +262,7 @@ jobs:
         
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -333,7 +333,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Generate toolchain compatibility report
         run: |

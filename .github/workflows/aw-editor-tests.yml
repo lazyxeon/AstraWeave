@@ -35,7 +35,7 @@ jobs:
         
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
 
     - name: Rust CI setup
       uses: ./.github/actions/rust-ci-setup
@@ -104,7 +104,7 @@ jobs:
     
     steps:
     - name: Checkout Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       
     - name: Install Rust Toolchain
       uses: dtolnay/rust-toolchain@1.89.0
