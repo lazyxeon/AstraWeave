@@ -268,7 +268,7 @@ jobs:
           install-nextest: "true"
 
       - name: Download the archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive-linux
           path: target
@@ -387,7 +387,7 @@ jobs:
           install-nextest: "true"
 
       - name: Download the archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive-windows
           path: target
@@ -620,7 +620,7 @@ jobs:
         run: cargo build --locked -p astraweave-audio --bin aw_audio_probe
 
       - name: Download the archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive-windows-full
           path: target
