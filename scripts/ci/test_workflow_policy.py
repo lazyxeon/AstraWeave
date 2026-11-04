@@ -317,6 +317,8 @@ class WorkflowPolicyTest(unittest.TestCase):
             self.assertIn(binary, macos_build)
         self.assertIn("--profile ci ", macos_build)
         self.assertIn("AW_CI_PROFILE: ci-full-archive", macos_part)
+        self.assertIn('sccache-populate: "false"', macos_part)
+        self.assertIn("timeout-minutes: 90", macos_build)
         self.assertNotIn("ci-pr-archive", macos_part)
         self.assertNotIn("ci-pr-linux-archive", macos_part)
         self.assertIn("check-gpu-skip-log.sh", text.split("  test-full-macos:", 1)[1])
@@ -390,6 +392,16 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("CARGO_INCREMENTAL=0", action)
         self.assertIn("SCCACHE_GHA_RW_MODE=READ_ONLY", action)
         self.assertIn("SCCACHE_GHA_RW_MODE=READ_WRITE", action)
+        self.assertNotIn("SCCACHE_GHA_VERSION", action)
+        self.assertIn("sccache-populate", action)
+        pop_false = action.index('if [ "$populate" = "false" ]; then')
+        read_only_after_false = action.index(
+            "SCCACHE_GHA_RW_MODE=READ_ONLY", pop_false
+        )
+        main_read_write = action.index(
+            'elif [ "${{ github.ref }}" = "refs/heads/main" ]'
+        )
+        self.assertLess(read_only_after_false, main_read_write)
         self.assertIn("refs/heads/main", action)
         # RUSTFLAGS replaces every rustflags entry. The pin is in cargo config.
         self.assertNotIn("RUSTFLAGS=", action)

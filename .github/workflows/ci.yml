@@ -542,7 +542,9 @@ jobs:
     name: Test full (macos, build archive)
     runs-on: macos-latest
     needs: [changes, gate]
-    timeout-minutes: 60
+    # 90: archive compile plus on-runner bin/probe targets. Pre-split run
+    # 41578863044 cancelled at 60m after tests passed; partitions stay at 60.
+    timeout-minutes: 90
     if: github.event_name != 'pull_request' && needs.gate.result == 'success'
     steps:
       - name: Checkout
@@ -598,6 +600,10 @@ jobs:
         run: |
           cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
 
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats || true
+
   test-full-macos-part:
     name: Test full (macos, ${{ matrix.partition }}/3)
     runs-on: macos-latest
@@ -618,6 +624,10 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
         with:
           install-nextest: "true"
+          # READ_ONLY: three partitions would otherwise WRITE concurrently with
+          # the archive job and amplify ghac rate limits. Each partition still
+          # builds aw_audio_probe (dev profile) before extracting nextest.
+          sccache-populate: "false"
 
       - name: macOS runners have no wgpu software adapter
         run: |

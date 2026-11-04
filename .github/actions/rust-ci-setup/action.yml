@@ -19,6 +19,14 @@ inputs:
     description: Install cargo-nextest from a prebuilt binary
     required: false
     default: "false"
+  sccache-populate:
+    description: >-
+      When false, sccache uses READ_ONLY even on main. macOS Test full partition
+      jobs pass false so three nightly runners do not all write through ghac
+      while the archive job populates; each partition still builds
+      aw_audio_probe (dev profile).
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -66,7 +74,10 @@ runs:
         # evicts the shared cache. Main pushes and schedules populate it.
         # CARGO_INCREMENTAL=0 is already required; sccache still refuses bins,
         # cdylibs, and proc-macros.
-        if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+        populate="${{ inputs.sccache-populate }}"
+        if [ "$populate" = "false" ]; then
+          echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
+        elif [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
           echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
         else
           echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
