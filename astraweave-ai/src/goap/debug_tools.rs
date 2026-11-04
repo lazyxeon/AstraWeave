@@ -114,7 +114,16 @@ impl PlanDebugger {
         new_state.apply_effects(action.effects());
 
         self.state_history.push(new_state);
+        let previous_step = self.current_step;
         self.current_step += 1;
+        // Not observable on correct code: `+=` is always an advance here. This guard
+        // only turns the cargo-mutants `*=` mutant into a fast `Err` instead of an
+        // unbounded `jump_to_step` loop (shard 1/8 OOM; lazyxeon/AstraWeave#605).
+        if self.current_step <= previous_step {
+            let _ = self.state_history.pop();
+            self.current_step = previous_step;
+            return Err("PlanDebugger step did not advance".to_string());
+        }
 
         Ok(())
     }
@@ -494,6 +503,24 @@ mod tests {
             debugger.current_state().get("step"),
             Some(&StateValue::Int(2))
         );
+    }
+
+    #[test]
+    fn jump_to_step_stops_when_the_step_counter_sticks() {
+        // Exercises jump_to_step on a two-step plan. Removing the advance guard in
+        // step_forward is not observable here; that guard exists only to turn the
+        // `*=` mutant from an OOM crash into a fast failure (see step_forward).
+        let plan = vec!["action1".to_string(), "action2".to_string()];
+        let start = WorldState::new();
+        let actions = vec![
+            create_test_action("action1", vec![("step", StateValue::Int(1))]),
+            create_test_action("action2", vec![("step", StateValue::Int(2))]),
+        ];
+        let mut debugger = PlanDebugger::new(plan, start, actions);
+
+        debugger.jump_to_step(2).unwrap();
+        assert_eq!(debugger.current_step(), 2);
+        assert_eq!(debugger.state_history.len(), 3);
     }
 
     #[test]

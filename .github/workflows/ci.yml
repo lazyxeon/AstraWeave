@@ -229,6 +229,7 @@ jobs:
           pkgs=",${AW_CI_PACKAGES},"
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
             cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+            cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib ollama_assembled
             cargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_
           fi
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
@@ -348,6 +349,7 @@ jobs:
           pkgs=",${AW_CI_PACKAGES},"
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
             cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+            cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib ollama_assembled
             cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_
           fi
           if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then
@@ -591,6 +593,7 @@ jobs:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: |
           cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe
+          cargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib ollama_assembled
 
   test-full-windows-part:
     name: Test full (windows, ${{ matrix.partition }}/3)

@@ -6,6 +6,7 @@ context-aware prompt generation, and adaptive behavior.
 */
 
 use anyhow::{anyhow, Context, Result};
+use astraweave_core::byte_prefix;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -657,8 +658,7 @@ impl LlmPersonaManager {
         }
 
         if cleaned.len() > 2048 {
-            // Truncate if too long
-            return Ok(cleaned[..2048].to_string());
+            return Ok(byte_prefix(&cleaned, 2048).to_string());
         }
 
         Ok(cleaned)
@@ -1002,6 +1002,39 @@ mod tests {
         let metrics = manager.get_metrics().await;
         assert_eq!(metrics.total_interactions, 1);
         assert_eq!(metrics.successful_generations, 1);
+    }
+
+    #[tokio::test]
+    async fn test_clean_and_validate_response_truncates_cjk_at_limit() {
+        let base_persona = BasePersona::default();
+        let llm_client = Arc::new(MockLlm);
+        let embedding_client = Arc::new(MockEmbeddingClient::new());
+        let vector_store = Arc::new(VectorStoreWrapper::new(VectorStore::new(384)));
+
+        let rag_pipeline = RagPipeline::new(
+            embedding_client,
+            vector_store,
+            Some(llm_client.clone()),
+            astraweave_rag::RagConfig::default(),
+        );
+
+        let manager = LlmPersonaManager::new(
+            base_persona,
+            llm_client,
+            rag_pipeline,
+            Arc::new(MockEmbeddingClient::new()),
+        )
+        .await
+        .unwrap();
+
+        let long = format!("{}日", "x".repeat(2046));
+        assert!(long.len() > 2048);
+        assert!(!long.is_char_boundary(2048));
+
+        let cleaned = manager.clean_and_validate_response(&long).await.unwrap();
+        assert!(cleaned.len() <= 2048);
+        assert!(long.starts_with(&cleaned));
+        assert!(std::str::from_utf8(cleaned.as_bytes()).is_ok());
     }
 
     #[test]
