@@ -3,18 +3,27 @@
 set -euo pipefail
 
 base_ref="${1:?base ref name required (e.g. main)}"
+remote_base="refs/remotes/origin/${base_ref}"
+fetch_base="+refs/heads/${base_ref}:${remote_base}"
 
-git fetch --no-tags --filter=blob:none origin "${base_ref}"
+git fetch --no-tags --filter=blob:none origin "${fetch_base}"
 
 attempt=0
-max_attempts=200
-while ! git merge-base "origin/${base_ref}" HEAD >/dev/null 2>&1; do
+max_attempts=20
+while ! git merge-base "${remote_base}" HEAD >/dev/null 2>&1; do
   attempt=$((attempt + 1))
   if [ "${attempt}" -gt "${max_attempts}" ]; then
-    echo "merge-base between origin/${base_ref} and HEAD still unresolved after ${max_attempts} deepen steps" >&2
-    exit 1
+    break
   fi
-  git fetch --deepen=50 --no-tags --filter=blob:none origin HEAD "${base_ref}"
+  git fetch --deepen=50 --no-tags --filter=blob:none origin HEAD "${fetch_base}"
 done
 
-git merge-base "origin/${base_ref}" HEAD
+if ! git merge-base "${remote_base}" HEAD >/dev/null 2>&1; then
+  echo "deepen cap hit; unshallowing" >&2
+  git fetch --unshallow --no-tags --filter=blob:none origin HEAD "${fetch_base}" || true
+fi
+
+git merge-base "${remote_base}" HEAD || {
+  echo "merge-base between origin/${base_ref} and HEAD unresolved after full fetch" >&2
+  exit 1
+}
