@@ -291,7 +291,9 @@ impl Drop for DropProbe {
 /// `[dropped_from, dropped_through)`. Before `drop_fn`, the span
 /// `[index, base + n)` is the done and in-progress range. A nested range
 /// that overlaps that span aborts. A range that does not join the dropped
-/// interval aborts. Kani does not
+/// interval aborts. A call entered at `drop_depth >= 2` aborts. After the
+/// interval is merged, a non-empty interval publishes `len` to
+/// `dropped_from` and an empty interval publishes `base`. Kani does not
 /// implement `catch_unwind` (model-checking/kani#267),
 /// so the harness applies the non-reentrant split itself: `drop_last` runs
 /// through the panicking slot, then `clear` finishes the rest. It does not
