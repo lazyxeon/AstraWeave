@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["manhattan"]};
+window.SIDEBAR_ITEMS = {"fn":["byte_prefix","byte_suffix","ceil_char_boundary","floor_char_boundary","manhattan"]};
