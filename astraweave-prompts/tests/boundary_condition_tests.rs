@@ -134,9 +134,10 @@ fn test_sanitize_variable_name_must_start_with_letter_or_underscore() {
 }
 
 #[test]
-fn test_truncate_input_zero_max_length_is_ellipsis() {
+fn test_truncate_input_zero_max_length_is_empty() {
     let out = truncate_input("hello", 0);
-    assert_eq!(out, "...");
+    assert_eq!(out, "");
+    assert!(out.len() <= 0);
 }
 
 #[test]
