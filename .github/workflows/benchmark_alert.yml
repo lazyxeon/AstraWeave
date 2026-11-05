@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload benchmark shard
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: benchmark-alert-results-${{ github.sha }}-shard-${{ matrix.shard_index }}
           path: benchmark_results/shard-${{ matrix.shard_index }}/
@@ -212,7 +212,7 @@ jobs:
           echo "benchmark_count=$benchmark_count" >> "$GITHUB_OUTPUT"
 
       - name: Upload combined benchmark artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: benchmark-alert-results-${{ github.sha }}
@@ -337,7 +337,7 @@ jobs:
       
       - name: Upload regression report
         if: steps.regression_check.outputs.has_regressions == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: regression-report-${{ github.sha }}
           path: regression_report.md
