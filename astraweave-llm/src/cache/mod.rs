@@ -103,7 +103,10 @@ impl PromptCache {
         let all_keys = self.cache.keys();
 
         for cached_key in &all_keys {
-            // Only compare prompts with same model and similar temperature
+            // Only compare prompts with same client, model, and similar temperature
+            if cached_key.client_id != query_key.client_id {
+                continue;
+            }
             if cached_key.model != query_key.model {
                 continue;
             }
@@ -222,7 +225,7 @@ mod tests {
     #[test]
     fn test_cache_hit_miss() {
         let cache = PromptCache::new(10);
-        let key1 = PromptKey::new("prompt1", "model1", 0.7, &[]);
+        let key1 = PromptKey::new("prompt1", "client", "model1", 0.7, &[]);
 
         // First access - miss
         assert!(cache.get(&key1).is_none());
@@ -251,9 +254,9 @@ mod tests {
     fn test_lru_eviction() {
         let cache = PromptCache::new(2);
 
-        let key1 = PromptKey::new("prompt1", "model1", 0.7, &[]);
-        let key2 = PromptKey::new("prompt2", "model1", 0.7, &[]);
-        let key3 = PromptKey::new("prompt3", "model1", 0.7, &[]);
+        let key1 = PromptKey::new("prompt1", "client", "model1", 0.7, &[]);
+        let key2 = PromptKey::new("prompt2", "client", "model1", 0.7, &[]);
+        let key3 = PromptKey::new("prompt3", "client", "model1", 0.7, &[]);
 
         let plan1 = CachedPlan {
             plan: make_test_plan("plan1"),
@@ -292,7 +295,7 @@ mod tests {
     #[test]
     fn test_cache_stats() {
         let cache = PromptCache::new(10);
-        let key = PromptKey::new("test", "model", 0.7, &[]);
+        let key = PromptKey::new("test", "client", "model", 0.7, &[]);
 
         // Initial stats
         let stats = cache.stats();

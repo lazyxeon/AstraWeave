@@ -59,6 +59,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::any::Any;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -495,6 +496,40 @@ impl Hermes2ProOllama {
 /// Implement LlmClient trait for Ollama-based Hermes 2 Pro
 #[async_trait]
 impl LlmClient for Hermes2ProOllama {
+    fn llm_cache_client_id(&self) -> String {
+        // Length prefixes keep a system prompt or URL that contains ';' from
+        // aliasing another profile. Temperature stays on the cache key.
+        // `num_ctx` is a fixed 8192 in the chat body, so it is not a field here.
+        fn push_counted(out: &mut String, value: &str) {
+            use std::fmt::Write;
+            let _ = write!(out, "{}:{value}", value.len());
+            out.push(';');
+        }
+
+        let mut id = String::new();
+        push_counted(&mut id, self.url());
+        push_counted(&mut id, &format!("{:?}", self.type_id()));
+        push_counted(&mut id, &self.max_tokens.to_string());
+        push_counted(
+            &mut id,
+            if self.system_prompt.is_some() {
+                "1"
+            } else {
+                "0"
+            },
+        );
+        push_counted(&mut id, self.system_prompt.as_deref().unwrap_or(""));
+        id
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        self.temperature
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         self.complete_formatted(prompt, None).await
     }

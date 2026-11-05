@@ -35,6 +35,7 @@ criterion = { version = "0.7", features = ["async_tokio"] }
 env_logger = "0.11"
 mockito = "1.0"
 proptest = "1.5"
+serial_test = "3"
 
 [[bench]]
 name = "llm_benchmarks"
