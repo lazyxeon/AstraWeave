@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Static checks for the CI tiering rules. Does not call GitHub."""
+"""CI tiering checks. Does not call GitHub.
+
+The benchmark.yml Strict step is executed under Actions' pwsh dot-source
+shape (`pwsh -command ". '{0}'"`). A swallowed $LASTEXITCODE fails that test.
+"""
 
 from __future__ import annotations
 
 import inspect
+import json
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -319,6 +327,179 @@ def assert_mutation_summary_checks_out_before_scoring(text: str) -> None:
         raise AssertionError("mutants-summary must score astraweave-ai outcomes")
     if checkout > scoring:
         raise AssertionError("checkout must precede mutation_ai_outcomes.py in mutants-summary")
+
+
+STRICT_THRESHOLD_STEP = "Strict threshold validation (main branch only)"
+BENCHMARK_JSON_ARG = '"benchmark_results/benchmarks.json"'
+THRESHOLDS_JSON_ARG = '".github/benchmark_thresholds.json"'
+
+
+def _step_shell(step_block: str) -> str | None:
+    for line in step_block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("shell:"):
+            return stripped.split(":", 1)[1].strip()
+        if stripped.startswith("run:"):
+            return None
+    return None
+
+
+def _yaml_literal_run(step_block: str) -> str:
+    raw = _run_script(step_block)
+    if not raw.lstrip().startswith("|"):
+        raise AssertionError("Strict threshold step run: must be a literal block")
+    lines = raw.splitlines()[1:]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        raise AssertionError("Strict threshold step run: block is empty")
+    indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
+    cut = min(indents)
+    dedented: list[str] = []
+    for line in lines:
+        if not line.strip():
+            dedented.append("")
+            continue
+        if not line.startswith(" " * cut):
+            raise AssertionError("Strict threshold step run: inconsistent indent")
+        dedented.append(line[cut:])
+    return "\n".join(dedented) + "\n"
+
+
+def strict_threshold_step_body(text: str) -> str:
+    block = job_step_block(text, STRICT_THRESHOLD_STEP)
+    if "continue-on-error:" in block:
+        raise AssertionError("Strict threshold step must not set continue-on-error")
+    if _step_shell(block) != "pwsh":
+        raise AssertionError(
+            "Strict threshold step must use shell: pwsh; Actions dot-sources that shell"
+        )
+    if "github.ref == 'refs/heads/main'" not in block:
+        raise AssertionError("Strict threshold step must stay main-branch only")
+    body = _yaml_literal_run(block)
+    statements = [
+        line.strip()
+        for line in body.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    ]
+    if not any(line.split()[:1] == ["-Strict"] for line in statements):
+        raise AssertionError("Strict threshold step must pass -Strict")
+    if THRESHOLDS_JSON_ARG not in body:
+        raise AssertionError(
+            "Strict threshold step must use .github/benchmark_thresholds.json"
+        )
+    if BENCHMARK_JSON_ARG not in body:
+        raise AssertionError(
+            "Strict threshold step must read benchmark_results/benchmarks.json"
+        )
+    return body
+
+
+def _ps_single_quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _threshold_pair(thresholds: Path) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    data = json.loads(thresholds.read_text(encoding="utf-8"))
+    benchmarks = data.get("benchmarks")
+    if not isinstance(benchmarks, dict) or not benchmarks:
+        raise AssertionError(f"{thresholds} has no benchmarks")
+    for name, spec in benchmarks.items():
+        if not isinstance(spec, dict):
+            continue
+        baseline = spec.get("baseline")
+        max_allowed = spec.get("max_allowed")
+        if not isinstance(baseline, (int, float)) or not isinstance(max_allowed, (int, float)):
+            continue
+        if baseline <= 0 or max_allowed < baseline:
+            continue
+        unit = spec.get("unit", "ns")
+        over = [{"name": name, "value": float(max_allowed) + 1.0, "unit": unit}]
+        under = [{"name": name, "value": float(baseline), "unit": unit}]
+        return over, under
+    raise AssertionError(f"{thresholds} has no benchmark with 0 < baseline <= max_allowed")
+
+
+def _require_pwsh() -> str:
+    pwsh = shutil.which("pwsh")
+    if pwsh is None:
+        raise AssertionError("pwsh is required to prove the Strict step process exit")
+    return pwsh
+
+
+def _run_pwsh(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+
+def _checker_file_exit(benchmark_json: Path, thresholds: Path, root: Path) -> int:
+    proc = _run_pwsh(
+        [
+            _require_pwsh(),
+            "-NoLogo",
+            "-File",
+            str(root / "scripts" / "check_benchmark_thresholds.ps1"),
+            "-BenchmarkJsonPath",
+            str(benchmark_json),
+            "-ThresholdsJsonPath",
+            str(thresholds),
+            "-ShowDetails",
+            "-Strict",
+        ],
+        cwd=root,
+    )
+    return proc.returncode
+
+
+def _dotsource_exit(body: str, benchmark_json: Path, root: Path) -> tuple[int, str]:
+    """Run a step body the way Actions runs shell: pwsh (`pwsh -command ". '{0}'"`)."""
+    rendered = body.replace(BENCHMARK_JSON_ARG, _ps_single_quote(str(benchmark_json)), 1)
+    with tempfile.TemporaryDirectory(prefix="gha-strict-") as tmp:
+        step = Path(tmp) / "gha-strict-step.ps1"
+        step.write_text(rendered, encoding="utf-8")
+        command = ". '{0}'".format(str(step).replace("'", "''"))
+        proc = _run_pwsh(
+            [_require_pwsh(), "-NoLogo", "-Command", command],
+            cwd=root,
+        )
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return proc.returncode, output
+
+
+def assert_strict_threshold_step_propagates_checker_exit(
+    text: str, *, root: Path = ROOT
+) -> None:
+    body = strict_threshold_step_body(text)
+    thresholds = root / ".github" / "benchmark_thresholds.json"
+    over, under = _threshold_pair(thresholds)
+    with tempfile.TemporaryDirectory(prefix="bench-threshold-") as tmp:
+        tmp_path = Path(tmp)
+        over_path = tmp_path / "over.json"
+        under_path = tmp_path / "under.json"
+        over_path.write_text(json.dumps(over), encoding="utf-8")
+        under_path.write_text(json.dumps(under), encoding="utf-8")
+        if _checker_file_exit(over_path, thresholds, root) == 0:
+            raise AssertionError(
+                "check_benchmark_thresholds.ps1 -Strict exits 0 for an over-limit result"
+            )
+        over_code, over_out = _dotsource_exit(body, over_path, root)
+        if over_code == 0:
+            raise AssertionError(
+                "Strict threshold step process exit is 0 when the checker fails\n"
+                + over_out[-1500:]
+            )
+        under_code, under_out = _dotsource_exit(body, under_path, root)
+        if under_code != 0:
+            raise AssertionError(
+                "Strict threshold step process exit is "
+                f"{under_code} when results are within thresholds\n" + under_out[-1500:]
+            )
 
 
 def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
@@ -843,6 +1024,30 @@ class WorkflowPolicyTest(unittest.TestCase):
             ["--verify-shard", str(root / "outcomes.json")]
         )
         self.assertEqual(exit_code, 1)
+
+    def test_strict_threshold_dotsource_fails_when_checker_fails(self) -> None:
+        text = (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8")
+        assert_strict_threshold_step_propagates_checker_exit(text)
+
+    def test_strict_threshold_dotsource_without_reexit_stays_zero(self) -> None:
+        text = (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8")
+        broken = "".join(
+            line
+            for line in text.splitlines(keepends=True)
+            if line.strip() != "exit $LASTEXITCODE"
+        )
+        self.assertNotEqual(broken, text)
+        with self.assertRaises(AssertionError) as caught:
+            assert_strict_threshold_step_propagates_checker_exit(broken)
+        self.assertIn("process exit is 0", str(caught.exception))
+
+    def test_strict_threshold_hardcoded_exit_fails_a_clean_result(self) -> None:
+        text = (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8")
+        broken = text.replace("exit $LASTEXITCODE", "exit 1", 1)
+        self.assertNotEqual(broken, text)
+        with self.assertRaises(AssertionError) as caught:
+            assert_strict_threshold_step_propagates_checker_exit(broken)
+        self.assertIn("within thresholds", str(caught.exception))
 
     def test_mutation_ai_verify_errors_are_required(self) -> None:
         source = (ROOT / "scripts" / "ci" / "mutation_ai_outcomes.py").read_text(encoding="utf-8")

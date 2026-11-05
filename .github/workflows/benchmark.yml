@@ -357,6 +357,9 @@ jobs:
             -ThresholdsJsonPath ".github/benchmark_thresholds.json" `
             -Strict `
             -ShowDetails
+          # Actions dot-sources shell: pwsh. exit in the called script only
+          # sets $LASTEXITCODE, so a -Strict failure would leave the job green.
+          exit $LASTEXITCODE
 
       - name: Report aggregate package status
         if: always()
