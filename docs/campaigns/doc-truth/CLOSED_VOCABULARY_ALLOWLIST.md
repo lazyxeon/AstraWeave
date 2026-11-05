@@ -331,6 +331,7 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/audits/BOARD_STATE_2026-07-19.md` | `check-all` | quoted-defect-alias | permanent |
 | `docs/audits/E3_PREFLIGHT_2026-07.md` | `977` | source-line-citation | permanent |
 | `docs/current/RENDER_SKY_CAMERA_ARCHAEOLOGY.md` | `977` | source-line-citation | permanent |
+| `docs/architecture/net.md` | `977` | source-line-citation | permanent |
 <!-- Justification: quoted defect-alias names in CI-workshop diagnosis; not instructions. -->
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `check-all` | quoted-defect-alias | permanent |
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `check-all` | quoted-defect-alias | permanent |
