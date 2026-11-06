@@ -656,4 +656,4 @@ mod tests {
 
 ### vNEXT
 
-- RFC diagram and sample `repository` URL use `lazyxeon/AstraWeave`; RFC opens via feature request template.
+- The proposal diagram names the step GitHub issue RFC, and an RFC opens through the feature request template.

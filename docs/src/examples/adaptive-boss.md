@@ -13,7 +13,7 @@ The default build uses `BossDirector` from `astraweave-director`. The source als
 ## What It Demonstrates
 
 - **BossDirector**: Heuristic boss planner (default run)
-- **Director budget**: Limited resources for spawns, traps, and terrain edits
+- **Director budget**: `apply_director_plan` spends `spawns` and `terrain_edits`; `traps` stays unchanged
 - **DirectorPlan**: Tagged `ops` list applied through `apply_director_plan`
 - **OathboundWardenDirector** (director crate, `veilweaver_slice` feature): Three-phase warden with telegraphs — not wired from this example's Cargo features yet
 
@@ -83,16 +83,13 @@ The Director receives a perception snapshot containing:
 
 ```rust
 let mut budget = DirectorBudget {
-    traps: 2,      // Can place 2 traps
-    terrain_edits: 2, // Can modify terrain twice
-    spawns: 2,     // Can summon 2 minions
+    traps: 2,
+    terrain_edits: 2,
+    spawns: 2,
 };
 ```
 
-The budget prevents the Director from overwhelming the player. Each action consumes budget:
-- **Spawns**: Summoning minions costs 1 spawn point
-- **Traps**: Placing hazards costs 1 trap point
-- **Terrain edits**: Blocking paths or creating cover costs 1 edit point
+`DirectorOp` is `Fortify`, `SpawnWave`, and `Collapse`. `apply_director_plan` decrements `terrain_edits` by one for each applied `Fortify` or `Collapse`, and decrements `spawns` by one for each applied `SpawnWave`. It does not read `traps`. `spawns: 2` allows two `SpawnWave` ops. `BossDirector` sets `count: 3` on each wave, so one applied wave spawns three minions and still costs one `spawns`.
 
 ### 4. Director Planning (Basic)
 
@@ -126,9 +123,13 @@ The basic `BossDirector` analyzes the world state and generates a plan within bu
 
 `OathboundWardenDirector` uses three phases defined in `veilweaver_warden.rs`. `update_phase` takes one arm per call and does not skip or reverse. `initial` is `enemies[0].hp.max(1)`, captured on the first step that has an enemy.
 
-- **Assessment**: Observes the fight and may fortify a choke. Telegraph: `Chains tense—the Warden studies your form.` Moves to **FulcrumShift** only when current HP is at or below two-thirds of `initial`. HP already at or below one-third still becomes **FulcrumShift** on that call, not **DirectiveOverride**.
-- **FulcrumShift**: Always appends `build_anchor_rupture` (a `Collapse`) before the storm match. `detect_storm_choice` returns **Stabilize** when the objective contains `storm:stabilize` or `stabilize storm`, or when a `storm_route` POI has `pos.x >= 0`. **Redirect** is `storm:redirect`, `redirect storm`, or a `storm_route` POI with `pos.x < 0`. No match keeps the previous choice (`StormChoice::Unknown` until one matches). The telegraph is then `Currents buckle unpredictably.`, and this phase adds no Stabilize or Redirect op. Moves to **DirectiveOverride** only from **FulcrumShift**, when current HP is at or below one-third of `initial`.
-- **DirectiveOverride**: `choose_adaptive_ability` runs once, while `adaptive` is still `None`. An order whose lowercase text contains `bow` or `ranged` selects `AntiRangedField`. Any other order list selects `CounterShockAura`. Stance is hardcoded off, so later steps do not re-read orders.
+On every step where `enemies` is not empty, `step` stores `detect_storm_choice(snap).unwrap_or(self.storm_choice)` before `update_phase`, in every phase. A match replaces the stored choice. A `None` result keeps it. The field starts as `StormChoice::Unknown`. A `storm:stabilize` objective during Assessment stores `Stabilize`, and the first FulcrumShift step uses that stored choice when the objective no longer matches. Detection returns `Option<StormChoice>`. It does not choose a telegraph, and it does not change phase.
+
+`detect_storm_choice` returns on the first match. It checks the objective for `storm:stabilize` or `stabilize storm` (`Stabilize`), then for `storm:redirect` or `redirect storm` (`Redirect`). If the objective misses, the first POI with `k == "storm_route"` returns `Stabilize` when `pos.x >= 0` and `Redirect` when `pos.x < 0`. No match returns `None`.
+
+- **Assessment**: Observes the fight and may fortify a choke when `terrain_edits > 0`. Telegraph: `Chains tense—the Warden studies your form.` Moves to **FulcrumShift** only when current HP is at or below two-thirds of `initial`. HP already at or below one-third still becomes **FulcrumShift** on that call, then waits for a later call to reach **DirectiveOverride**.
+- **FulcrumShift**: Always appends `build_anchor_rupture` (a `Collapse`) before the stored storm choice. Stored **Stabilize** appends `Storm calms—armor plates seal the Warden.` and, when `terrain_edits > 0`, a `Fortify`. Stored **Redirect** appends `Motes surge across the arena—vision falters.` and, when `terrain_edits > 0`, a second `Collapse`. Stored **Unknown** appends `Currents buckle unpredictably.` and adds no further op. Moves to **DirectiveOverride** only from **FulcrumShift**, when current HP is at or below one-third of `initial`.
+- **DirectiveOverride**: `choose_adaptive_ability` runs on the first step in this phase, while `adaptive` is still `None`. Later steps skip it because `adaptive.is_none()` is false. Nothing assigns `adaptive` back to `None`. `stance_ranged` is a local `false` inside `choose_adaptive_ability` and does not gate that call. The first DirectiveOverride step still reads `player.orders`. An order whose lowercase text contains `bow` or `ranged` selects `AntiRangedField`. Any other order list selects `CounterShockAura`.
 
 ## Director System Architecture
 
@@ -149,9 +150,10 @@ The basic `BossDirector` analyzes the world state and generates a plan within bu
 
 ## Telegraph System
 
-When the warden branch is enabled, telegraphs are plain strings on `WardenDirective`:
+When the warden branch is enabled, telegraphs are plain strings on `WardenDirective`. `examples/adaptive_boss` prints one Debug line of the whole `Vec`, `Telegraphs: {:?}` (`examples/adaptive_boss/src/main.rs:54-56`). The loop below is illustrative. It prints each string on its own line, which that binary does not.
 
 ```rust
+// Illustrative. The example prints `Telegraphs: {:?}` of the whole Vec.
 if !directive.telegraphs.is_empty() {
     for telegraph in &directive.telegraphs {
         println!("{}", telegraph);
@@ -159,11 +161,13 @@ if !directive.telegraphs.is_empty() {
 }
 ```
 
-Examples from `veilweaver_warden.rs`:
+Strings `step` pushes in `veilweaver_warden.rs`:
 
-- `Chains tense—the Warden studies your form.` (Assessment)
-- `Storm calms—armor plates seal the Warden.` (FulcrumShift, Stabilize)
-- `Motes surge across the arena—vision falters.` (FulcrumShift, Redirect)
+- `Chains tense—the Warden studies your form.` (Assessment). The binary's Assessment line is `Telegraphs: ["Chains tense—the Warden studies your form."]`.
+- `Storm calms—armor plates seal the Warden.` (FulcrumShift, stored Stabilize)
+- `Motes surge across the arena—vision falters.` (FulcrumShift, stored Redirect)
+- `Currents buckle unpredictably.` (FulcrumShift, stored Unknown)
+- `Warden adapts—activating {:?}.` (DirectiveOverride). The placeholder is the chosen ability's Debug form: `AntiRangedField` or `CounterShockAura`.
 
 ## Key Concepts
 
@@ -172,11 +176,11 @@ Examples from `veilweaver_warden.rs`:
 Unlike traditional boss AI that can spam abilities, the Director operates under resource constraints. This creates:
 - **Strategic decisions**: Trade-offs between aggression and defense
 - **Fair encounters**: Players can anticipate resource depletion
-- **One-shot budget**: Nothing in `astraweave-core` or `astraweave-director` increments `DirectorBudget`. `apply_director_plan` decrements `terrain_edits` and `spawns` only. `traps` is never spent. The remaining-budget line above is that starting budget after one apply.
+- **One-shot budget**: Nothing in `astraweave-core` or `astraweave-director` increments `DirectorBudget`. `apply_director_plan` decrements `terrain_edits` once per applied `Fortify` or `Collapse` and `spawns` once per applied `SpawnWave`. It does not read `traps`. `BossDirector` sets `count: 3` on a wave, so `spawns: 2` is two waves of three minions when those ops are applied. The remaining-budget line above is the example budget after one `Fortify`: `terrain_edits` goes from 2 to 1, and `traps` and `spawns` stay 2.
 
 ### Phase-Based Behavior (warden)
 
-Phase changes only inside `update_phase`. Assessment becomes FulcrumShift at or below two-thirds of the HP captured on the first step that has an enemy. FulcrumShift becomes DirectiveOverride at or below one-third. A single call does not skip Assessment straight to DirectiveOverride. Storm detection runs each step and only chooses Stabilize, Redirect, or the unknown telegraph inside FulcrumShift. It does not change phase.
+Phase changes only inside `update_phase`. Assessment becomes FulcrumShift at or below two-thirds of the HP captured on the first step that has an enemy. FulcrumShift becomes DirectiveOverride at or below one-third. A single call does not skip Assessment straight to DirectiveOverride. On every step with a non-empty `enemies` list, `detect_storm_choice` runs before `update_phase` and keeps the stored choice when it returns `None`. `Currents buckle unpredictably.` is the FulcrumShift telegraph when that stored choice is `Unknown`. Detection does not change phase.
 
 ## Related Examples
 
@@ -188,7 +192,9 @@ Phase changes only inside `update_phase`. Assessment becomes FulcrumShift at or 
 
 ### Empty plan output
 
-The default run uses `BossDirector`. An empty `enemies` list is treated as a target at `player.pos + (6, 0)`. Manhattan distance is 6, so the `dist > 8` fortify arm does not run. The other arm still emits `SpawnWave` when `spawns > 0` and `Collapse` when `terrain_edits > 0`. The plan is empty when those counters are already zero. When distance is greater than 8, `terrain_edits == 0` is enough. `traps` is not read. `OathboundWardenDirector::step` returns empty `ops` when `enemies` is empty. A `BossDirector` plan with no enemy still produces ops while spawn or terrain budget remains.
+The default run uses `BossDirector`. `plan` pushes `Fortify` only when Manhattan distance is greater than 8 and `terrain_edits > 0`. Otherwise it pushes `SpawnWave` when `spawns > 0` and `Collapse` when `terrain_edits > 0`. Distance greater than 8 with `terrain_edits == 0` still pushes `SpawnWave` while `spawns > 0`. `test_plan_with_spawn_budget` (`astraweave-director/src/lib.rs:145-157`) is that case: player `(0, 0)`, enemy `(5, 5)`, Manhattan distance 10, budget `spawns: 1`, `terrain_edits: 0`, `traps: 0`. The plan length is 1 and the op is `SpawnWave`. The plan is empty only when the fortify condition is false and both `spawns` and `terrain_edits` are zero. `traps` is not read.
+
+An empty `enemies` list uses a target at `player.pos + (6, 0)`. That Manhattan distance is 6, so the fortify arm does not run, and the other arm still emits ops while `spawns` or `terrain_edits` remains. `OathboundWardenDirector::step` returns empty `ops` when `enemies` is empty.
 
 ### Warden branch does not compile
 
@@ -205,4 +211,4 @@ Enable `astraweave-director/veilweaver_slice` on the dependency (see `examples/v
 ### vNEXT
 
 - Align run instructions, expected output, phases, and `DirectorPlan` JSON with `examples/adaptive_boss` and `astraweave-director` sources; document that the warden path is not enabled from this example's features today.
-- Warden phase prose matches `update_phase`: one step per call, no skip from Assessment to DirectiveOverride. Storm choice stays inside FulcrumShift. The budget does not recharge, and an empty `BossDirector` plan is the spawn and terrain counters at zero.
+- Warden phase prose matches `update_phase`: one arm per call, no skip from Assessment to DirectiveOverride. Storm detection runs before the phase arm whenever `enemies` is non-empty and keeps the stored choice. `spawns` counts `SpawnWave` ops. A `BossDirector` plan is empty only when `spawns` and `terrain_edits` are both zero. The per-string telegraph loop is labeled illustrative.

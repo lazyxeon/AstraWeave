@@ -405,4 +405,4 @@ Thank you for contributing to AstraWeave! Your efforts help make AI-native gamin
 
 ### vNEXT
 
-- Canonical clone directory and issue-template links for bugs, features, and security reports.
+- Getting Help links `bug_report.md`, `feature_request.md`, and private vulnerability reporting.
