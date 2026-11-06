@@ -292,7 +292,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 - **Status:** Accepted.
 - **Context:** Assets need a stable identity across runs for caching/dependency tracking.
 - **Decision:** `guid_for_path` hashes the lowercased, `\`→`/`-normalized path with SHA-256 and keeps the first 16 bytes as hex (lib.rs:1820-1825).
-- **Consequences:** GUIDs are case-insensitive and separator-insensitive (verified by test `guid_is_deterministic_and_case_insensitive`, lib.rs:1853). Renaming/moving a file changes its GUID. Content is not part of the GUID (content hash is tracked separately in `AssetMetadata.hash`).
+- **Consequences:** GUIDs are case-insensitive and separator-insensitive (verified by test `guid_is_deterministic_and_case_insensitive`, lib.rs:1971). Renaming/moving a file changes its GUID. Content is not part of the GUID (content hash is tracked separately in `AssetMetadata.hash`).
 
 ### Decision: Cells serialized as RON, loaded async via `tokio::fs`
 - **Date:** [Reasoning not recovered from available sources] (module docstring, cell_loader.rs:1-4)
@@ -322,7 +322,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
-| 1 | `guid_for_path` is deterministic and case/separator-insensitive. | Yes | Test `guid_is_deterministic_and_case_insensitive` (lib.rs:1853). |
+| 1 | `guid_for_path` is deterministic and case/separator-insensitive. | Yes | Test `guid_is_deterministic_and_case_insensitive` (lib.rs:1971). |
 | 2 | Meshlet generation requires `indices.len() % 3 == 0`; empty input yields empty output. | Yes | `generate_meshlets` guard (nanite_preprocess.rs:316-322) + tests. |
 | 3 | `Mesh::new` rejects positions not multiple of 3, indices not multiple of 3, and out-of-bounds indices. | Yes | pipeline `mesh.rs:47-73` + `test_mesh_validation`. |
 | 4 | BC7 compression requires width and height divisible by 4. | Yes | `compress_bc7` guard (texture.rs:70-76) + `test_bc7_requires_multiple_of_4`. |
