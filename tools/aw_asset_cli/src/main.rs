@@ -413,7 +413,10 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
         || src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("glb".into())
     {
         let bytes = read_jailed_gltf(src)?;
-        let (_doc, _buffers, _images) = gltf::import_slice(&bytes)?;
+        let base = src.parent().unwrap_or_else(|| Path::new("."));
+        let gltf = gltf::Gltf::from_slice(&bytes)?;
+        let buffers = gltf::import_buffers(&gltf.document, Some(base), gltf.blob)?;
+        let _images = gltf::import_images(&gltf.document, Some(base), &buffers)?;
         // Minimal example: just copy the glTF for now; swap to a meshbin writer later
         fs::copy(src, &out)?;
         if compress {
@@ -728,6 +731,108 @@ mod gltf_jail_tests {
         let err = process_model(&src, dir.to_str().unwrap(), false).expect_err("short header");
         let msg = err.to_string();
         assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cli_external_bin_and_image_are_copied() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-ext-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        fs::write(dir.join("box.bin"), b"box!").expect("bin");
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]))
+            .save(dir.join("tex.png"))
+            .expect("png");
+        let src = dir.join("hero.gltf");
+        fs::write(
+            &src,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "box.bin", "byteLength": 4}],
+                "images": [{"uri": "tex.png"}]
+            }"#,
+        )
+        .expect("gltf");
+        let bytes = fs::read(&src).expect("read");
+        let slice_err = gltf::import_slice(&bytes).expect_err("slice import has no base");
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let out = dir.join("out");
+        let copied = process_model(&src, out.to_str().unwrap(), false).expect("cook");
+        assert!(copied.is_file(), "cook did not copy {}", copied.display());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `aw_asset_cli cook` is the path CI greybox does not run. It must import
+    /// a sibling `.bin` instead of stopping in `gltf::import_slice`.
+    #[test]
+    fn cli_cook_loads_an_external_bin() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-cook-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let src_dir = dir.join("src");
+        let out_dir = dir.join("out");
+        fs::create_dir_all(&src_dir).expect("src");
+        fs::write(src_dir.join("buf.bin"), b"box!").expect("bin");
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]))
+            .save(src_dir.join("tex.png"))
+            .expect("png");
+        let src = src_dir.join("tri.gltf");
+        fs::write(
+            &src,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "buf.bin", "byteLength": 4}],
+                "images": [{"uri": "tex.png"}]
+            }"#,
+        )
+        .expect("gltf");
+        let bytes = fs::read(&src).expect("read");
+        let slice_err = gltf::import_slice(&bytes).expect_err("slice import has no base");
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let cfg_path = dir.join("pipeline.toml");
+        let src_toml = src_dir.display().to_string().replace('\\', "/");
+        let out_toml = out_dir.display().to_string().replace('\\', "/");
+        fs::write(
+            &cfg_path,
+            format!(
+                "source = \"{src_toml}\"\noutput = \"{out_toml}\"\ncompress = false\nvalidate = false\n\n[[rules]]\nkind = \"model\"\nglob = \"*.gltf\"\n"
+            ),
+        )
+        .expect("toml");
+        cook_pipeline(cfg_path.to_str().unwrap()).expect("cook external bin");
+        let cooked = out_dir.join("tri.meshbin");
+        assert!(cooked.is_file(), "cook did not write {}", cooked.display());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `cook` reads each model with `process_model` → `read_jailed_gltf`.
+    /// A FIFO must fail that stat check. `cook_pipeline` also stats the tree
+    /// while scanning, so this test calls the model reader cook uses.
+    #[cfg(unix)]
+    #[test]
+    fn cli_cook_model_reader_rejects_a_fifo_before_open() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-fifo-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("dir");
+        let pipe = dir.join("pipe.gltf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success(), "mkfifo");
+        let out = dir.join("out");
+        let started = std::time::Instant::now();
+        let err = process_model(&pipe, out.to_str().unwrap(), false).expect_err("fifo");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "process_model opened the fifo"
+        );
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
         let _ = fs::remove_dir_all(&dir);
     }
 

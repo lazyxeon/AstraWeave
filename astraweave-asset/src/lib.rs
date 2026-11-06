@@ -711,6 +711,33 @@ pub mod gltf_loader {
             );
         }
 
+        /// A FIFO `open` blocks until a peer connects. Stat must reject it first.
+        #[cfg(unix)]
+        #[test]
+        fn fifo_is_rejected_before_open() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("pipe.glb");
+            let status = std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .expect("mkfifo");
+            assert!(status.success(), "mkfifo");
+            let started = std::time::Instant::now();
+            let err = reject_short_glb_file(&path).expect_err("fifo");
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(2),
+                "reject_short_glb_file opened the fifo"
+            );
+            let msg = err.to_string();
+            assert!(msg.contains("not a regular file"), "{msg}");
+            let again = read_gltf_container(&path).expect_err("fifo read");
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(2),
+                "read_gltf_container opened the fifo"
+            );
+            assert!(again.to_string().contains("not a regular file"), "{again}");
+        }
+
         /// `Read::read` may return one byte. The declared length is still checked.
         struct OneByteReader<'a> {
             data: &'a [u8],
@@ -902,14 +929,14 @@ pub mod gltf_loader {
 
     /// Read a glTF container without letting `st_size` choose the allocation.
     /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
-    /// with `Gltf::from_slice` or `gltf::import_slice` instead of `Gltf::open`
-    /// and `gltf::import`.
+    /// with `Gltf::from_slice`, then `import_buffers` / `import_images`, instead
+    /// of `Gltf::open` and `gltf::import`.
+    ///
+    /// `metadata().is_file()` runs before `File::open`. Opening a FIFO blocks
+    /// until another process connects, so the regular-file check has to happen
+    /// on the stat result.
     pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
-        let mut file =
-            std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-        let meta = file
-            .metadata()
-            .with_context(|| format!("stat {}", path.display()))?;
+        let meta = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
         if !meta.is_file() {
             bail!("GLB {} is not a regular file", path.display());
         }
@@ -920,6 +947,8 @@ pub mod gltf_loader {
                 meta.len()
             );
         }
+        let mut file =
+            std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
         let mut bytes = Vec::new();
         {
             use std::io::Read;
