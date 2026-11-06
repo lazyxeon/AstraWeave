@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
+import auto_retry  # noqa: E402
 import mutation_ai_outcomes  # noqa: E402
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
@@ -880,6 +881,600 @@ class WorkflowPolicyTest(unittest.TestCase):
         stripped = source.replace(f'errors.append("{VERIFY_NO_MUTANTS_ERROR}")', "", 1)
         with self.assertRaises(AssertionError):
             self.assertIn(VERIFY_NO_MUTANTS_ERROR, stripped)
+
+
+AUTO_RETRY_WORKFLOW = WORKFLOWS / "auto-retry.yml"
+AUTO_RETRY_ALLOWLIST = ROOT / ".github" / "flaky-jobs.json"
+AUTO_RETRY_PERMISSIONS = {
+    "actions": "write",
+    "issues": "write",
+    "pull-requests": "write",
+}
+EXPECTED_FLAKY_JOBS = {
+    ("Performance Benchmarks", "Performance Benchmarks (shard 10)"),
+    ("Performance Benchmarks", "Aggregate Benchmark Results"),
+}
+
+
+def _mutant_auto_retry(old: str, new: str) -> dict[str, object]:
+    import sys
+    import types
+
+    source = (ROOT / "scripts" / "ci" / "auto_retry.py").read_text(encoding="utf-8")
+    if old not in source:
+        raise AssertionError(f"mutant anchor missing: {old!r}")
+    mutated = source.replace(old, new, 1)
+    if mutated == source:
+        raise AssertionError("mutant did not change the source")
+    name = "auto_retry_mutant"
+    module = types.ModuleType(name)
+    module.__dict__["__file__"] = str(ROOT / "scripts" / "ci" / "auto_retry.py")
+    sys.modules[name] = module
+    exec(compile(mutated, name, "exec"), module.__dict__)
+    return module.__dict__
+
+
+def permission_maps(text: str) -> list[dict[str, str]]:
+    lines = text.splitlines()
+    maps: list[dict[str, str]] = []
+    index = 0
+    while index < len(lines):
+        match = re.match(r"^(\s*)permissions:\s*$", lines[index])
+        if not match:
+            index += 1
+            continue
+        indent = len(match.group(1))
+        block: dict[str, str] = {}
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if not line.strip():
+                index += 1
+                continue
+            current = len(line) - len(line.lstrip(" "))
+            if current <= indent:
+                break
+            item = re.match(r"^\s+([A-Za-z0-9-]+):\s*(\S+)\s*$", line)
+            if not item:
+                break
+            block[item.group(1)] = item.group(2)
+            index += 1
+        maps.append(block)
+    return maps
+
+
+def run_script_bodies(text: str) -> list[str]:
+    lines = text.splitlines()
+    bodies: list[str] = []
+    index = 0
+    while index < len(lines):
+        folded = re.match(r"^(\s*)run:\s*\|[+-]?\s*$", lines[index])
+        inline = re.match(r"^(\s*)run:\s*(\S.*)$", lines[index])
+        if folded:
+            indent = len(folded.group(1))
+            index += 1
+            buff: list[str] = []
+            while index < len(lines):
+                line = lines[index]
+                if line.strip() and (len(line) - len(line.lstrip(" "))) <= indent:
+                    break
+                buff.append(line)
+                index += 1
+            bodies.append("\n".join(buff))
+            continue
+        if inline:
+            bodies.append(inline.group(2))
+        index += 1
+    return bodies
+
+
+def job_name_declared(workflow_text: str, job: str) -> bool:
+    for line in workflow_text.splitlines():
+        match = re.match(r"^\s*name:\s*(.+?)\s*$", line)
+        if not match:
+            continue
+        declared = match.group(1).strip().strip("\"'")
+        if declared == job:
+            return True
+        if "${{" not in declared:
+            continue
+        pattern = re.escape(declared)
+        pattern = re.sub(r"\\\$\\\{\\\{.*?\\\}\\\}", ".*", pattern)
+        if re.fullmatch(pattern, job):
+            return True
+    return False
+
+
+def workflow_text_by_display_name() -> dict[str, str]:
+    found: dict[str, str] = {}
+    name_re = re.compile(r"^name:\s*(.+?)\s*$")
+    for text in workflow_texts().values():
+        for line in text.splitlines():
+            match = name_re.match(line)
+            if not match:
+                continue
+            value = match.group(1).strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            found[value] = text
+            break
+    return found
+
+
+def auto_retry_violations(text: str, allow_workflows: set[str]) -> list[str]:
+    violations: list[str] = []
+    if "pull_request_target" in text:
+        violations.append("pull_request_target")
+    if "actions/checkout" in text:
+        violations.append("checkout")
+    if re.search(
+        r"ref:\s*\$\{\{\s*github\.event\.workflow_run\.head_sha",
+        text,
+    ):
+        violations.append("checkout-pr-head")
+    if permission_maps(text) != [AUTO_RETRY_PERMISSIONS]:
+        violations.append(f"permissions {permission_maps(text)}")
+    if "continue-on-error" in text:
+        violations.append("continue-on-error")
+    if "|| true" in text:
+        violations.append("ignored-failure")
+    if "github.event.workflow_run.conclusion == 'failure'" not in text:
+        violations.append("missing-failure-conclusion")
+    attempt = re.search(r"github\.event\.workflow_run\.run_attempt < (\d+)", text)
+    if not attempt or int(attempt.group(1)) != 3:
+        violations.append("attempt-cap")
+    watched = nightly_failure_watched_workflows(text)
+    if set(watched) != allow_workflows:
+        violations.append(f"workflows {watched}")
+    known = workflow_display_names()
+    for name in watched:
+        if name not in known:
+            violations.append(f"unknown-workflow {name}")
+    if "name: Record the failure and retry allowlisted jobs" not in text:
+        violations.append("record-step")
+    if "auto_retry.py" not in text:
+        violations.append("record-script")
+    for body in run_script_bodies(text):
+        if "${{" in body:
+            violations.append("untrusted-interpolation")
+            break
+    if "os.environ[\"DEFAULT_BRANCH\"]" not in text or "os.environ[\"REPO\"]" not in text:
+        violations.append("default-branch-fetch")
+    if '".." in branch.split("/")' not in text:
+        violations.append("branch-traversal-check")
+    return violations
+
+
+def _allow(*pairs: tuple[str, str]) -> list[auto_retry.AllowJob]:
+    return [
+        auto_retry.AllowJob(workflow, job, "https://github.com/lazyxeon/AstraWeave/actions/runs/1")
+        for workflow, job in pairs
+    ]
+
+
+def _decide(
+    workflow: str,
+    failed: list[str],
+    allow: list[auto_retry.AllowJob],
+    attempt: int = 1,
+    conclusion: str = "failure",
+) -> auto_retry.Decision:
+    return auto_retry.decide(workflow, failed, allow, attempt, conclusion)
+
+
+class AutoRetryPolicyTest(unittest.TestCase):
+    def test_checked_in_allowlist_matches_proven_flakes(self) -> None:
+        allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
+        pairs = {(item.workflow, item.job) for item in allow}
+        self.assertEqual(pairs, EXPECTED_FLAKY_JOBS)
+        for item in allow:
+            self.assertIn("actions/runs/", item.evidence)
+            self.assertIn("issues/272", item.evidence)
+            self.assertFalse(auto_retry.job_denied(item.workflow, item.job))
+        shard = next(item for item in allow if item.job.endswith("(shard 10)"))
+        aggregate = next(item for item in allow if item.job == "Aggregate Benchmark Results")
+        self.assertIn("41059157117", shard.evidence)
+        self.assertIn("41859768393", shard.evidence)
+        self.assertIn("41081301546", aggregate.evidence)
+        self.assertIn("41076516458", aggregate.evidence)
+        declared = workflow_text_by_display_name()
+        for item in allow:
+            self.assertIn(item.workflow, declared)
+            self.assertTrue(
+                job_name_declared(declared[item.workflow], item.job),
+                item.job,
+            )
+
+    def test_allowlist_only_retries_when_every_failed_job_is_listed(self) -> None:
+        allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
+        shard = "Performance Benchmarks (shard 10)"
+        aggregate = "Aggregate Benchmark Results"
+        self.assertTrue(
+            _decide("Performance Benchmarks", [shard], allow).retry
+        )
+        self.assertTrue(
+            _decide("Performance Benchmarks", [shard, aggregate], allow).retry
+        )
+        self.assertTrue(
+            _decide("Performance Benchmarks", [aggregate], allow).retry
+        )
+        other = "Performance Benchmarks (shard 11)"
+        mixed = _decide("Performance Benchmarks", [shard, other], allow)
+        self.assertFalse(mixed.retry)
+        self.assertEqual(mixed.reason, "not-allowlisted")
+        aw_build = _decide("Performance Benchmarks", ["Benchmarks (aw_build)"], allow)
+        self.assertFalse(aw_build.retry)
+        self.assertEqual(aw_build.reason, "not-allowlisted")
+        wrong_workflow = _decide("Benchmark Regression Alerts", [aggregate], allow)
+        self.assertFalse(wrong_workflow.retry)
+        self.assertEqual(wrong_workflow.reason, "not-allowlisted")
+
+    def test_denylist_wins_even_when_the_job_is_allowlisted(self) -> None:
+        cases = [
+            ("Performance Benchmarks", "Cargo Deny Check"),
+            ("Performance Benchmarks", "cargo-deny"),
+            ("Performance Benchmarks", "cargo_deny"),
+            ("Performance Benchmarks", "cargo audit"),
+            ("Performance Benchmarks", "cargo-audit"),
+            ("Performance Benchmarks", "Security Audit (cargo-audit)"),
+            ("Security Audit", "rollup"),
+            ("Dependency Management & Security", "Security Audit & Dependency Analysis"),
+            ("determinism-replay", "unrelated"),
+            ("Performance Benchmarks", "hash (ubuntu-latest)"),
+            ("Performance Benchmarks", "hash (windows-latest)"),
+            ("Performance Benchmarks", "hash (macos-latest)"),
+            ("Performance Benchmarks", "hash"),
+            ("Aravath determinism", "Replay hash (ubuntu-latest)"),
+            ("Performance Benchmarks", "compare"),
+            ("Performance Benchmarks", "Workflow policy"),
+            ("Performance Benchmarks", "Workflow policy tests"),
+            ("Comprehensive CI Pipeline", "Gate (fmt, clippy, check)"),
+            ("Comprehensive CI Pipeline", "Gate"),
+            ("Comprehensive CI Pipeline", "gate extra"),
+        ]
+        for workflow, job in cases:
+            with self.subTest(workflow=workflow, job=job):
+                self.assertTrue(auto_retry.job_denied(workflow, job), job)
+                allow = _allow((workflow, job))
+                decision = _decide(workflow, [job], allow)
+                self.assertFalse(decision.retry)
+                self.assertEqual(decision.reason, "denylist")
+        self.assertFalse(auto_retry.job_denied("Performance Benchmarks", "gatekeeper"))
+        self.assertFalse(auto_retry.job_denied("Performance Benchmarks", "comparison"))
+        self.assertFalse(
+            auto_retry.job_denied("Performance Benchmarks", "Aggregate Benchmark Results")
+        )
+
+    def test_denylist_rules_are_load_bearing(self) -> None:
+        mutants = [
+            (
+                "return True  # deny:cargo-deny",
+                "return False  # deny:cargo-deny",
+                "Performance Benchmarks",
+                "Cargo Deny Check",
+            ),
+            (
+                "return True  # deny:cargo-audit",
+                "return False  # deny:cargo-audit",
+                "Performance Benchmarks",
+                "cargo-audit",
+            ),
+            (
+                "return True  # deny:security-audit",
+                "return False  # deny:security-audit",
+                "Security Audit",
+                "rollup",
+            ),
+            (
+                "return True  # deny:determinism-replay",
+                "return False  # deny:determinism-replay",
+                "determinism-replay",
+                "unrelated",
+            ),
+            (
+                "return True  # deny:replay-hash",
+                "return False  # deny:replay-hash",
+                "Aravath determinism",
+                "Replay hash (ubuntu-latest)",
+            ),
+            (
+                "return True  # deny:hash-job",
+                "return False  # deny:hash-job",
+                "Performance Benchmarks",
+                "hash (ubuntu-latest)",
+            ),
+            (
+                "return True  # deny:compare",
+                "return False  # deny:compare",
+                "Performance Benchmarks",
+                "compare",
+            ),
+            (
+                "return True  # deny:workflow-policy",
+                "return False  # deny:workflow-policy",
+                "Comprehensive CI Pipeline",
+                "Workflow policy tests",
+            ),
+            (
+                "return True  # deny:gate",
+                "return False  # deny:gate",
+                "Comprehensive CI Pipeline",
+                "Gate (fmt, clippy, check)",
+            ),
+        ]
+        for old, new, workflow, job in mutants:
+            with self.subTest(job=job):
+                self.assertFalse(_decide(workflow, [job], _allow((workflow, job))).retry)
+                namespace = _mutant_auto_retry(old, new)
+                denied = namespace["job_denied"]
+                decide = namespace["decide"]
+                self.assertTrue(callable(denied) and callable(decide))
+                self.assertFalse(denied(workflow, job))
+                allow = [
+                    auto_retry.AllowJob(
+                        workflow,
+                        job,
+                        "https://github.com/lazyxeon/AstraWeave/actions/runs/1",
+                    )
+                ]
+                decision = decide(workflow, [job], allow, 1, "failure")
+                self.assertTrue(decision.retry)
+
+    def test_deny_wins_mutant_retries_a_listed_gate(self) -> None:
+        workflow = "Comprehensive CI Pipeline"
+        job = "Gate (fmt, clippy, check)"
+        real = _decide(workflow, [job], _allow((workflow, job)))
+        self.assertEqual(real.reason, "denylist")
+        namespace = _mutant_auto_retry(
+            "denied = True  # deny-wins",
+            "denied = False  # deny-wins",
+        )
+        decide = namespace["decide"]
+        assert callable(decide)
+        allow = _allow((workflow, job))
+        mutant = decide(workflow, [job], allow, 1, "failure")
+        self.assertTrue(mutant.retry)
+
+    def test_allowlist_check_is_load_bearing(self) -> None:
+        shard = "Performance Benchmarks (shard 10)"
+        other = "Performance Benchmarks (shard 2)"
+        allow = _allow(("Performance Benchmarks", shard))
+        real = _decide("Performance Benchmarks", [shard, other], allow)
+        self.assertEqual(real.reason, "not-allowlisted")
+        namespace = _mutant_auto_retry(
+            "if (workflow, job) not in allowed:  # allowlist-only",
+            "if False:  # allowlist-only",
+        )
+        decide = namespace["decide"]
+        assert callable(decide)
+        mutant = decide("Performance Benchmarks", [shard, other], allow, 1, "failure")
+        self.assertTrue(mutant.retry)
+
+    def test_attempt_cap_and_failure_conclusion(self) -> None:
+        allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
+        shard = ["Performance Benchmarks (shard 10)"]
+        self.assertEqual(auto_retry.MAX_ATTEMPT, 3)
+        self.assertTrue(_decide("Performance Benchmarks", shard, allow, attempt=1).retry)
+        self.assertTrue(_decide("Performance Benchmarks", shard, allow, attempt=2).retry)
+        capped = _decide("Performance Benchmarks", shard, allow, attempt=3)
+        self.assertFalse(capped.retry)
+        self.assertEqual(capped.reason, "attempt-cap")
+        self.assertEqual(
+            _decide("Performance Benchmarks", shard, allow, attempt=0).reason,
+            "attempt-cap",
+        )
+        for conclusion in ("success", "cancelled", "timed_out", "skipped"):
+            decision = _decide(
+                "Performance Benchmarks", shard, allow, conclusion=conclusion
+            )
+            self.assertFalse(decision.retry)
+            self.assertEqual(decision.reason, "not-failure")
+        empty = _decide("Performance Benchmarks", [], allow)
+        self.assertEqual(empty.reason, "no-failed-jobs")
+        namespace = _mutant_auto_retry(
+            "if attempt >= MAX_ATTEMPT:  # attempt-cap",
+            "if False:  # attempt-cap",
+        )
+        decide = namespace["decide"]
+        assert callable(decide)
+        self.assertTrue(decide("Performance Benchmarks", shard, allow, 3, "failure").retry)
+        namespace = _mutant_auto_retry(
+            'if conclusion != "failure":  # failure-only',
+            "if False:  # failure-only",
+        )
+        decide = namespace["decide"]
+        assert callable(decide)
+        self.assertTrue(decide("Performance Benchmarks", shard, allow, 1, "success").retry)
+        namespace = _mutant_auto_retry(
+            "if not failed_jobs:  # empty-failed",
+            "if False:  # empty-failed",
+        )
+        decide = namespace["decide"]
+        assert callable(decide)
+        self.assertTrue(decide("Performance Benchmarks", [], allow, 1, "failure").retry)
+
+    def test_failed_job_names_ignore_success_and_cancelled(self) -> None:
+        payload = [
+            {
+                "jobs": [
+                    {"name": "Performance Benchmarks (shard 10)", "conclusion": "failure"},
+                    {"name": "Performance Benchmarks (shard 0)", "conclusion": "success"},
+                    {"name": "Benchmarks (aw_build)", "conclusion": "cancelled"},
+                    {"name": "  ", "conclusion": "failure"},
+                ]
+            }
+        ]
+        self.assertEqual(
+            auto_retry.failed_job_names(payload),
+            ["Performance Benchmarks (shard 10)"],
+        )
+
+    def test_record_contains_run_attempt_jobs_and_conclusion(self) -> None:
+        record = auto_retry.build_record(
+            "https://github.com/lazyxeon/AstraWeave/actions/runs/41081301546",
+            1,
+            ["Aggregate Benchmark Results", "Performance Benchmarks (shard 10)"],
+            "failure",
+        )
+        self.assertIn("https://github.com/lazyxeon/AstraWeave/actions/runs/41081301546", record)
+        self.assertIn("- Attempt: 1", record)
+        self.assertIn("Aggregate Benchmark Results", record)
+        self.assertIn("Performance Benchmarks (shard 10)", record)
+        self.assertIn("- Conclusion: failure", record)
+        self.assertIn(auto_retry.TRACKING_MARKER, record)
+
+    def test_record_target_is_pr_or_tracking_issue(self) -> None:
+        self.assertEqual(auto_retry.record_destination("schedule", "main", "main"), "issue")
+        self.assertEqual(auto_retry.record_destination("push", "main", "main"), "issue")
+        self.assertEqual(
+            auto_retry.record_destination("pull_request", "cursor/scoped-auto-retry-6226", "main"),
+            "pr",
+        )
+        self.assertEqual(
+            auto_retry.record_destination("workflow_dispatch", "feature", "main"),
+            "pr",
+        )
+        issues = [
+            {"number": 9, "title": auto_retry.TRACKING_TITLE, "pull_request": {"url": "x"}, "body": auto_retry.TRACKING_MARKER},
+            {"number": 40, "title": auto_retry.TRACKING_TITLE, "body": auto_retry.TRACKING_MARKER},
+            {"number": 12, "title": auto_retry.TRACKING_TITLE, "body": auto_retry.TRACKING_MARKER},
+            {"number": 4, "title": "something else", "body": auto_retry.TRACKING_MARKER},
+        ]
+        self.assertEqual(auto_retry.select_tracking_issue(issues), 12)
+
+    def test_record_is_posted_before_rerun(self) -> None:
+        class Transport:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def skip(self, reason: str) -> None:
+                self.calls.append(f"skip:{reason}")
+
+            def post_record(self, record: str) -> None:
+                self.calls.append("post")
+
+            def rerun(self) -> None:
+                self.calls.append("rerun")
+
+        transport = Transport()
+        decision = auto_retry.Decision(True, "retry")
+        auto_retry.run_retry(decision, "record", transport)
+        self.assertEqual(transport.calls, ["post", "rerun"])
+        skipped = Transport()
+        auto_retry.run_retry(auto_retry.Decision(False, "denylist"), "record", skipped)
+        self.assertEqual(skipped.calls, ["skip:denylist"])
+
+        class Boom:
+            def skip(self, reason: str) -> None:
+                raise AssertionError(reason)
+
+            def post_record(self, record: str) -> None:
+                raise RuntimeError("comment failed")
+
+            def rerun(self) -> None:
+                raise AssertionError("rerun must wait for the record")
+
+        with self.assertRaises(RuntimeError):
+            auto_retry.run_retry(auto_retry.Decision(True, "retry"), "record", Boom())
+
+        namespace = _mutant_auto_retry(
+            "    transport.post_record(record)  # record-before-rerun\n    transport.rerun()\n",
+            "    transport.rerun()\n    transport.post_record(record)  # record-before-rerun\n",
+        )
+        run_retry = namespace["run_retry"]
+        decision_type = namespace["Decision"]
+        assert callable(run_retry) and callable(decision_type)
+        swapped = Transport()
+        run_retry(decision_type(True, "retry"), "record", swapped)
+        self.assertEqual(swapped.calls, ["rerun", "post"])
+
+    def test_raw_url_rejects_traversal(self) -> None:
+        url = auto_retry.default_branch_raw_url(
+            "lazyxeon/AstraWeave",
+            "main",
+            ".github/flaky-jobs.json",
+        )
+        self.assertEqual(
+            url,
+            "https://raw.githubusercontent.com/lazyxeon/AstraWeave/main/.github/flaky-jobs.json",
+        )
+        with self.assertRaises(ValueError):
+            auto_retry.default_branch_raw_url("lazyxeon/AstraWeave", "main/../../etc", "a")
+        with self.assertRaises(ValueError):
+            auto_retry.default_branch_raw_url("not a repo", "main", "a")
+
+    def test_workflow_policy_accepts_the_checked_in_file(self) -> None:
+        text = AUTO_RETRY_WORKFLOW.read_text(encoding="utf-8")
+        allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
+        self.assertEqual(auto_retry_violations(text, {item.workflow for item in allow}), [])
+        self.assertNotIn("actions/checkout", text)
+        self.assertNotIn("pull_request_target", text)
+        self.assertIn("GH_TOKEN: ${{ github.token }}", text)
+        self.assertNotIn("github.token", (ROOT / "scripts" / "ci" / "auto_retry.py").read_text(encoding="utf-8"))
+        self.assertNotIn("shell=True", (ROOT / "scripts" / "ci" / "auto_retry.py").read_text(encoding="utf-8"))
+        bodies = run_script_bodies(text)
+        self.assertGreaterEqual(len(bodies), 2)
+        self.assertTrue(any("auto_retry.py" in body for body in bodies))
+        for body in bodies:
+            self.assertNotIn("${{", body)
+            self.assertNotIn("github.event.workflow_run.head_sha", body)
+
+    def test_workflow_mutants_fail_the_policy(self) -> None:
+        text = AUTO_RETRY_WORKFLOW.read_text(encoding="utf-8")
+        allow_workflows = {workflow for workflow, _job in EXPECTED_FLAKY_JOBS}
+        mutants = {
+            "contents-permission": text.replace(
+                "permissions:\n",
+                "permissions:\n  contents: read\n",
+                1,
+            ),
+            "attempt-cap": text.replace("run_attempt < 3", "run_attempt < 9", 1),
+            "checkout-head": text.replace(
+                "    steps:\n",
+                "    steps:\n"
+                "      - name: Checkout pull request head\n"
+                "        uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          ref: ${{ github.event.workflow_run.head_sha }}\n",
+                1,
+            ),
+            "interpolate-branch": text.replace(
+                "run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py",
+                "run: echo ${{ github.event.workflow_run.head_branch }}",
+                1,
+            ),
+            "drop-record-step": text.replace(
+                "name: Record the failure and retry allowlisted jobs",
+                "name: Rerun quietly",
+                1,
+            ),
+            "continue-on-error": text.replace(
+                "        run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py\n",
+                "        run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py\n"
+                "        continue-on-error: true\n",
+                1,
+            ),
+            "ignore-failure": text.replace(
+                "run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py",
+                "run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py || true",
+                1,
+            ),
+            "extra-workflow": text.replace(
+                "      - Performance Benchmarks\n",
+                "      - Performance Benchmarks\n      - determinism-replay\n",
+                1,
+            ),
+            "pull-request-target": text.replace(
+                "on:\n",
+                "on:\n  pull_request_target:\n",
+                1,
+            ),
+        }
+        self.assertEqual(auto_retry_violations(text, allow_workflows), [])
+        for name, mutant in mutants.items():
+            with self.subTest(mutant=name):
+                self.assertNotEqual(mutant, text)
+                self.assertTrue(auto_retry_violations(mutant, allow_workflows), name)
 
 
 if __name__ == "__main__":

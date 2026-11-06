@@ -1,0 +1,73 @@
+name: Auto Retry
+
+# workflow_run reads this file from the default branch. A pull request copy
+# does not run until it is merged. The workflows list is the exact `name:`
+# of each workflow that has a job in .github/flaky-jobs.json.
+
+on:
+  workflow_run:
+    workflows:
+      - Performance Benchmarks
+    types: [completed]
+
+permissions:
+  actions: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    name: Retry allowlisted flakes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.run_attempt < 3
+    steps:
+      - name: Fetch the retry script from the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import urllib.request
+
+          repo = os.environ["REPO"]
+          branch = os.environ["DEFAULT_BRANCH"]
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+              raise SystemExit("refusing REPO")
+          if not re.fullmatch(r"[A-Za-z0-9._/-]+", branch) or ".." in branch.split("/"):
+              raise SystemExit("refusing DEFAULT_BRANCH")
+          root = pathlib.Path("/tmp/auto-retry")
+          for rel in ("scripts/ci/auto_retry.py", ".github/flaky-jobs.json"):
+              if not re.fullmatch(r"[A-Za-z0-9._/-]+", rel) or ".." in rel.split("/"):
+                  raise SystemExit("refusing path")
+              dest = root / rel
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              url = f"https://raw.githubusercontent.com/{repo}/{branch}/{rel}"
+              urllib.request.urlretrieve(url, dest)
+          PY
+
+      - name: Record the failure and retry allowlisted jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+          UPSTREAM_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          UPSTREAM_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          UPSTREAM_HTML_URL: ${{ github.event.workflow_run.html_url }}
+          UPSTREAM_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          UPSTREAM_EVENT: ${{ github.event.workflow_run.event }}
+          UPSTREAM_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          UPSTREAM_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          AUTO_RETRY_ALLOWLIST: /tmp/auto-retry/.github/flaky-jobs.json
+        run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py
