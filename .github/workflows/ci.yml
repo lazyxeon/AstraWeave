@@ -582,7 +582,7 @@ jobs:
         run: cargo nextest run --locked --profile ci -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key
 
       - name: Upload the archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nextest-archive-macos-full
           path: target/nextest-archive.tar.zst
@@ -630,7 +630,7 @@ jobs:
         run: cargo build --locked -p astraweave-audio --bin aw_audio_probe
 
       - name: Download the archive
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nextest-archive-macos-full
           path: target
@@ -648,7 +648,7 @@ jobs:
 
       - name: Upload GPU skip log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gpu-skip-macos-full-${{ matrix.partition }}
           path: target/gpu-skip-reasons.txt
@@ -678,7 +678,7 @@ jobs:
           [ "$parts" = "success" ]
 
       - name: Download GPU skip logs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: gpu-skip-macos-full-*
           path: gpu-skip-parts
