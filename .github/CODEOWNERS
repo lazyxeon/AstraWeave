@@ -1,0 +1,5 @@
+# @lazyxeon owns these policy paths. No other ownership rule.
+.github/workflows/** @lazyxeon
+deny.toml @lazyxeon
+AGENTS.md @lazyxeon
+.github/CODEOWNERS @lazyxeon
