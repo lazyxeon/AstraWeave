@@ -198,7 +198,7 @@ Do not require `Test (ubuntu, build archive)`, `Test (windows, build archive)`, 
 
 `Cargo Deny Check` is safe to require. TLS for reqwest, the websocket client, hf-hub, and ort is rustls, so the `openssl` / `openssl-sys` bans in `deny.toml` are not tripped.
 
-`aravath-windows.yml` job `cargo-audit, cargo-deny, SBOM` installs `cargo-audit` 0.22.2, `cargo-deny` 0.20.2, and `cargo-cyclonedx` 0.5.9 from sha256-pinned musl builds via `.github/scripts/install-prebuilt-cargo-tool.sh`. It still runs `cargo deny`, `cargo audit`, `scripts/check-aravath-network.sh`, and `cargo cyclonedx`. That job is not in the require list above. `Cargo Deny Check` and `Security Audit (cargo-audit)` stay the pull-request gate for those two tools.
+`aravath-windows.yml` job `cargo-audit, cargo-deny, SBOM` installs `cargo-audit` 0.22.2, `cargo-deny` 0.20.2, and `cargo-cyclonedx` 0.5.9 from sha256-pinned musl builds via `.github/scripts/install-prebuilt-cargo-tool.sh`. It runs `scripts/ci/scan_cargo_locks.sh` (`deny`, then `audit`) over every tracked `Cargo.lock`, plus `scripts/check-aravath-network.sh` and `cargo cyclonedx`. That job is not in the require list above. `Cargo Deny Check` and `Security Audit (cargo-audit)` stay the pull-request gate for those two tools, and they call the same script.
 
 ## Queue wait and execution time
 

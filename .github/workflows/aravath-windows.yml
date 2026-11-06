@@ -145,7 +145,7 @@ jobs:
         run: |
           # The advisory database clone flakes on a cold runner.
           for attempt in 1 2 3 4; do
-            if cargo deny check --hide-inclusion-graph advisories bans licenses sources; then
+            if bash scripts/ci/scan_cargo_locks.sh deny --hide-inclusion-graph; then
               exit 0
             fi
             echo "cargo deny attempt ${attempt} failed; retrying"
@@ -160,7 +160,7 @@ jobs:
           db="${CARGO_HOME:-$HOME/.cargo}/advisory-db"
           for attempt in 1 2 3 4; do
             rm -rf "$db"
-            if cargo audit; then
+            if bash scripts/ci/scan_cargo_locks.sh audit; then
               exit 0
             fi
             echo "cargo audit attempt ${attempt} failed; retrying"
