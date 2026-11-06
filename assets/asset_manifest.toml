@@ -209,7 +209,7 @@ format = "exr"
 handle = "sky_night"
 provider = "polyhaven"
 type = "hdri"
-id = "night_street"
+id = "moonless_golf"
 resolution = "2k"
 format = "exr"
 
