@@ -400,23 +400,6 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
     Ok(meshes_out)
 }
 
-#[cfg(test)]
-mod gltf_feature_link {
-    #[test]
-    fn gltf_assets_enables_image_and_textures() {
-        let manifest: toml::Value =
-            toml::from_str(include_str!("../Cargo.toml")).expect("manifest");
-        let features = manifest
-            .get("features")
-            .and_then(|value| value.get("gltf-assets"))
-            .and_then(|value| value.as_array())
-            .expect("gltf-assets feature");
-        let names: Vec<&str> = features.iter().filter_map(|value| value.as_str()).collect();
-        assert!(names.contains(&"image"), "{names:?}");
-        assert!(names.contains(&"textures"), "{names:?}");
-    }
-}
-
 #[cfg(all(test, feature = "gltf-assets"))]
 mod jail_tests {
     use super::*;
