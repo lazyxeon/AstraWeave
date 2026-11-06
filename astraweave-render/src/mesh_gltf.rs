@@ -154,7 +154,7 @@ fn load_capped_gltf_images(
         base,
         buffers,
         astraweave_asset::image_limits::MAX_IMAGE_ALLOC,
-        astraweave_asset::MAX_GLTF_BUFFER,
+        astraweave_asset::image_limits::MAX_IMAGE_ALLOC,
     )
 }
 
@@ -218,6 +218,24 @@ fn load_capped_gltf_images_capped(
     Ok(images)
 }
 
+/// Reject a regular file over `cap` from metadata, then read only `declared` bytes.
+#[cfg(feature = "gltf-assets")]
+fn read_declared_gltf_file(path: &std::path::Path, declared: u64, cap: u64) -> Result<Vec<u8>> {
+    let meta = std::fs::metadata(path).with_context(|| format!("open {}", path.display()))?;
+    if meta.is_file() && meta.len() > cap {
+        anyhow::bail!("{} is {} bytes, cap is {cap}", path.display(), meta.len());
+    }
+    let file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut data = Vec::new();
+    {
+        use std::io::Read;
+        Read::take(file, declared)
+            .read_to_end(&mut data)
+            .with_context(|| format!("read {}", path.display()))?;
+    }
+    Ok(data)
+}
+
 #[cfg(feature = "gltf-assets")]
 fn load_capped_gltf_buffers(
     document: &gltf::Document,
@@ -248,7 +266,7 @@ fn load_capped_gltf_buffers(
             }
             gltf::buffer::Source::Uri(uri) => {
                 let path = jailed_gltf_file(base, uri)?;
-                astraweave_asset::read_capped_file(&path, cap)?
+                read_declared_gltf_file(&path, declared, cap)?
             }
         };
         if data.len() as u64 > cap {
@@ -264,16 +282,15 @@ fn load_capped_gltf_buffers(
                 buffer.index()
             );
         }
-        // `gltf::import_buffers` keeps `byteLength`, not the whole file.
-        // `read_capped_file` may have filled the 256 MiB cap. `truncate`
-        // would keep that allocation, so the retained buffer is a copy of
-        // the declared prefix. The pad runs after that cut.
-        let mut data = Vec::from(&data[..declared as usize]);
-        while data.len() % 4 != 0 {
-            data.push(0);
-        }
+        // Keep `byteLength`, padded up to a 4-byte boundary. Allocating that
+        // length up front does not double capacity the way `Vec::from` plus
+        // `push` does when `byteLength` is not a multiple of 4.
+        let declared_len = declared as usize;
+        let padded = declared_len.saturating_add(3) & !3;
+        let mut kept_bytes = vec![0u8; padded];
+        kept_bytes[..declared_len].copy_from_slice(&data[..declared_len]);
         kept = next;
-        buffers.push(gltf::buffer::Data(data));
+        buffers.push(gltf::buffer::Data(kept_bytes));
     }
     Ok(buffers)
 }
@@ -381,6 +398,23 @@ pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMe
     }
     attach_sidecar_pbr_maps(path, &mut meshes_out)?;
     Ok(meshes_out)
+}
+
+#[cfg(test)]
+mod gltf_feature_link {
+    #[test]
+    fn gltf_assets_enables_image_and_textures() {
+        let manifest: toml::Value =
+            toml::from_str(include_str!("../Cargo.toml")).expect("manifest");
+        let features = manifest
+            .get("features")
+            .and_then(|value| value.get("gltf-assets"))
+            .and_then(|value| value.as_array())
+            .expect("gltf-assets feature");
+        let names: Vec<&str> = features.iter().filter_map(|value| value.as_str()).collect();
+        assert!(names.contains(&"image"), "{names:?}");
+        assert!(names.contains(&"textures"), "{names:?}");
+    }
 }
 
 #[cfg(all(test, feature = "gltf-assets"))]
@@ -526,7 +560,56 @@ mod jail_tests {
         assert_eq!(buffers.len(), 1);
         assert_eq!(&buffers[0].0[..5], b"ABCDE");
         assert_eq!(buffers[0].0.len(), 8);
+        assert_eq!(buffers[0].0.capacity(), 8);
         assert_eq!(&buffers[0].0[5..], &[0, 0, 0]);
+    }
+
+    #[test]
+    fn unaligned_buffers_allocate_the_padded_length() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.bin"), vec![1u8; 64]).expect("a");
+        std::fs::write(dir.path().join("b.bin"), vec![2u8; 64]).expect("b");
+        let json = r#"{
+            "asset": {"version": "2.0"},
+            "buffers": [
+                {"uri": "a.bin", "byteLength": 5},
+                {"uri": "b.bin", "byteLength": 9}
+            ]
+        }"#;
+        let gltf = gltf::Gltf::from_slice(json.as_bytes()).expect("parse");
+        let buffers =
+            load_capped_gltf_buffers(&gltf.document, dir.path(), gltf.blob).expect("pad both");
+        assert_eq!(buffers[0].0.len(), 8);
+        assert_eq!(buffers[0].0.capacity(), 8);
+        assert_eq!(buffers[1].0.len(), 12);
+        assert_eq!(buffers[1].0.capacity(), 12);
+        let retained = buffers[0].0.capacity() + buffers[1].0.capacity();
+        assert_eq!(retained, 20);
+    }
+
+    #[test]
+    fn external_buffer_reads_the_declared_prefix_not_the_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin = dir.path().join("wide.bin");
+        let file = std::fs::File::create(&bin).expect("create");
+        let cap = astraweave_asset::MAX_GLTF_BUFFER;
+        file.set_len(cap).expect("sparse len");
+        drop(file);
+        let json = r#"{
+            "asset": {"version": "2.0"},
+            "buffers": [{"uri": "wide.bin", "byteLength": 5}]
+        }"#;
+        let gltf = gltf::Gltf::from_slice(json.as_bytes()).expect("parse");
+        let started = std::time::Instant::now();
+        let buffers = load_capped_gltf_buffers(&gltf.document, dir.path(), gltf.blob)
+            .expect("declared prefix");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "buffer read allocated the file instead of byteLength"
+        );
+        assert_eq!(buffers[0].0.len(), 8);
+        assert_eq!(buffers[0].0.capacity(), 8);
+        assert_eq!(&buffers[0].0[..5], &[0, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -652,6 +735,34 @@ mod jail_tests {
         let alone = gltf::Gltf::from_slice(one.as_bytes()).expect("parse one");
         load_capped_gltf_images_capped(&alone.document, dir.path(), &[], first, u64::MAX)
             .expect("one image at the cap");
+    }
+
+    #[test]
+    fn decoded_image_pixels_that_sum_past_the_production_cap_are_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let edge = astraweave_asset::image_limits::MAX_IMAGE_EDGE;
+        let full = image::RgbaImage::from_pixel(edge, edge, image::Rgba([0, 0, 0, 255]));
+        full.save(dir.path().join("full.png")).expect("full png");
+        let one = image::RgbaImage::from_pixel(1, 1, image::Rgba([255, 0, 0, 255]));
+        one.save(dir.path().join("one.png")).expect("one png");
+        let both = r#"{
+            "asset": {"version": "2.0"},
+            "images": [{"uri": "full.png"}, {"uri": "one.png"}]
+        }"#;
+        let gltf = gltf::Gltf::from_slice(both.as_bytes()).expect("parse");
+        let err =
+            load_capped_gltf_images(&gltf.document, dir.path(), &[]).expect_err("decoded sum");
+        let msg = format!("{err:#}");
+        let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+        assert!(
+            msg.contains("decoded bytes") && msg.contains(&cap.to_string()),
+            "{msg}"
+        );
+        let alone = r#"{"asset":{"version":"2.0"},"images":[{"uri":"full.png"}]}"#;
+        let single = gltf::Gltf::from_slice(alone.as_bytes()).expect("parse one");
+        let images = load_capped_gltf_images(&single.document, dir.path(), &[])
+            .expect("one image at the decoded cap");
+        assert_eq!(images[0].pixels.len() as u64, cap);
     }
 
     #[test]

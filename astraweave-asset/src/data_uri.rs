@@ -73,13 +73,34 @@ pub fn read_capped_data_uri(uri: &str, cap: u64) -> Result<Vec<u8>> {
         .split_once(',')
         .map(|(_, data)| data)
         .context("Invalid data URI")?;
-    let estimate = (payload.len() as u64).saturating_mul(3) / 4;
+    let estimate = base64_decoded_len(payload);
     if estimate > cap {
         bail!("data URI is {estimate} bytes, cap is {cap}");
     }
-    base64::engine::general_purpose::STANDARD
-        .decode(payload)
-        .context("decode data URI")
+    let mut decoded = vec![0u8; estimate as usize];
+    let written = base64::engine::general_purpose::STANDARD
+        .decode_slice(payload, &mut decoded)
+        .context("decode data URI")?;
+    decoded.truncate(written);
+    Ok(decoded)
+}
+
+/// Decoded byte length of a standard base64 payload, treating `=` as padding.
+///
+/// `(len * 3) / 4` counts padding as payload. `TQ==` is one byte, and a
+/// length that is `1` mod 3 estimates two bytes over the real decode.
+fn base64_decoded_len(payload: &str) -> u64 {
+    let bytes = payload.as_bytes();
+    let mut padding = 0u64;
+    if bytes.last() == Some(&b'=') {
+        padding += 1;
+        if bytes.len() >= 2 && bytes[bytes.len() - 2] == b'=' {
+            padding += 1;
+        }
+    }
+    (bytes.len() as u64 / 4)
+        .saturating_mul(3)
+        .saturating_sub(padding)
 }
 
 /// Decode a `data:` image URI at [`MAX_IMAGE_ALLOC`].
@@ -140,5 +161,38 @@ mod tests {
         let err = read_capped_data_uri("data:application/octet-stream;base64,AAAA", 2)
             .expect_err("over the caller cap");
         assert!(format!("{err:#}").contains("cap is 2"));
+    }
+
+    #[test]
+    fn padded_payload_exactly_at_the_cap_decodes() {
+        let one = read_capped_data_uri("data:application/octet-stream;base64,TQ==", 1)
+            .expect("TQ== is one byte");
+        assert_eq!(one, b"M");
+        assert_eq!(one.capacity(), 1);
+        let under = read_capped_data_uri("data:application/octet-stream;base64,TQ==", 0)
+            .expect_err("cap 0");
+        assert!(
+            format!("{under:#}").contains("1 bytes") && format!("{under:#}").contains("cap is 0"),
+            "{under}"
+        );
+
+        let raw = vec![0xA5u8; 4];
+        let payload = base64::engine::general_purpose::STANDARD.encode(&raw);
+        assert!(payload.ends_with("=="), "{payload}");
+        let uri = format!("data:application/octet-stream;base64,{payload}");
+        let exact = read_capped_data_uri(&uri, raw.len() as u64).expect("exact cap");
+        assert_eq!(exact, raw);
+        assert_eq!(exact.capacity(), raw.len());
+        let inflated = (payload.len() as u64).saturating_mul(3) / 4;
+        assert!(
+            inflated > raw.len() as u64,
+            "old estimate should exceed the decode"
+        );
+        let rejected = read_capped_data_uri(&uri, raw.len() as u64 - 1).expect_err("one under");
+        let msg = format!("{rejected:#}");
+        assert!(
+            msg.contains(&raw.len().to_string()) && !msg.contains(&inflated.to_string()),
+            "{msg}"
+        );
     }
 }

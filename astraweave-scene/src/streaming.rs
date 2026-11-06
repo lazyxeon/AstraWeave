@@ -74,6 +74,12 @@ pub struct WorldPartitionManager {
     event_listeners: Vec<Box<dyn Fn(StreamingEvent) + Send + Sync>>,
     load_failure_tx: Sender<LoadFailure>,
     load_failures: Receiver<LoadFailure>,
+    /// Failed coords that are still inside the desired radius.
+    ///
+    /// Draining a failure removes the coord from `loading_cells`. Without this
+    /// set, the same `update` puts it back in `to_load` and a single slot
+    /// retries the failure instead of starting another cell.
+    retry_hold: HashSet<GridCoord>,
 }
 
 impl WorldPartitionManager {
@@ -89,6 +95,7 @@ impl WorldPartitionManager {
             event_listeners: Vec::new(),
             load_failure_tx,
             load_failures,
+            retry_hold: HashSet::new(),
         }
     }
 
@@ -118,11 +125,18 @@ impl WorldPartitionManager {
 
         drop(partition); // Release read lock
 
-        // Cells to load (in desired but not active/loading)
+        // A failure stays held while the coord is still desired. Leaving the
+        // radius drops the hold, so a later return can try again.
+        self.retry_hold
+            .retain(|coord| desired_cells.contains(coord));
+
+        // Cells to load (in desired but not active/loading/held)
         let to_load: Vec<GridCoord> = desired_cells
             .iter()
             .filter(|coord| {
-                !self.active_cells.contains(coord) && !self.loading_cells.contains(coord)
+                !self.active_cells.contains(coord)
+                    && !self.loading_cells.contains(coord)
+                    && !self.retry_hold.contains(coord)
             })
             .copied()
             .collect();
@@ -172,7 +186,8 @@ impl WorldPartitionManager {
             return Ok(());
         }
 
-        // Mark as loading
+        // Mark as loading. An explicit force-load may retry a held coord.
+        self.retry_hold.remove(&coord);
         self.loading_cells.insert(coord);
 
         {
@@ -320,6 +335,7 @@ impl WorldPartitionManager {
     /// Handle load failure
     async fn handle_load_failure(&mut self, coord: GridCoord, error: String) {
         self.loading_cells.remove(&coord);
+        self.retry_hold.insert(coord);
 
         let mut partition = self.partition.write().await;
         if let Some(cell) = partition.get_cell_mut(coord) {
@@ -823,6 +839,93 @@ mod tests {
         mgr.update(glam::Vec3::ZERO).await.unwrap();
         assert_eq!(mgr.metrics().failed_loads, 1);
         assert!(!mgr.is_cell_loading(coord));
+    }
+
+    #[tokio::test]
+    async fn failed_cell_inside_the_radius_does_not_starve_the_next_cell() {
+        let root = std::env::current_dir().expect("cwd");
+        let cells = root.join("assets/cells");
+        std::fs::create_dir_all(&cells).expect("cells dir");
+        let bad_path = cells.join("0_0_0.ron");
+        let good_path = cells.join("1_0_0.ron");
+        let _bad_cleanup = FileCleanup(bad_path.clone());
+        let _good_cleanup = FileCleanup(good_path.clone());
+        std::fs::write(
+            &bad_path,
+            r#"(
+                coord: [0, 0, 0],
+                entities: [],
+                assets: [
+                    (path: "missing_hold.gltf", kind: Mesh, guid: None),
+                ],
+                metadata: None,
+            )"#,
+        )
+        .expect("bad cell");
+        std::fs::write(
+            &good_path,
+            r#"(
+                coord: [1, 0, 0],
+                entities: [],
+                assets: [],
+                metadata: None,
+            )"#,
+        )
+        .expect("good cell");
+
+        let partition = Arc::new(RwLock::new(WorldPartition::new(GridConfig::default())));
+        let mut mgr = WorldPartitionManager::new(
+            Arc::clone(&partition),
+            StreamingConfig {
+                streaming_radius: 60.0,
+                max_concurrent_loads: 1,
+                ..Default::default()
+            },
+        );
+        let events: Arc<Mutex<Vec<StreamingEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = Arc::clone(&events);
+        mgr.add_event_listener(move |event| {
+            events_clone.lock().unwrap().push(event);
+        });
+
+        let camera = glam::Vec3::new(100.0, 50.0, 50.0);
+        let bad = GridCoord::new(0, 0, 0);
+        let good = GridCoord::new(1, 0, 0);
+        mgr.update(camera).await.unwrap();
+        assert!(
+            mgr.is_cell_loading(bad),
+            "the nearer failure must take the only slot"
+        );
+        assert!(!mgr.is_cell_loading(good));
+
+        let mut released = false;
+        for _ in 0..50 {
+            mgr.update(camera).await.unwrap();
+            if mgr.metrics().failed_loads == 1 && !mgr.is_cell_loading(bad) {
+                released = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(released, "failed cell stayed in the only streaming slot");
+        assert!(
+            mgr.is_cell_loading(good),
+            "the next desired cell did not start"
+        );
+        assert_eq!(mgr.metrics().failed_loads, 1);
+
+        mgr.update(camera).await.unwrap();
+        assert_eq!(mgr.metrics().failed_loads, 1);
+        assert!(!mgr.is_cell_loading(bad));
+        assert!(mgr.is_cell_loading(good));
+        let started = events.lock().unwrap().clone();
+        let bad_starts = started
+            .iter()
+            .filter(
+                |event| matches!(event, StreamingEvent::CellLoadStarted(coord) if *coord == bad),
+            )
+            .count();
+        assert_eq!(bad_starts, 1);
     }
 
     #[tokio::test]

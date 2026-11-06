@@ -8,8 +8,8 @@ domain: physics-world
 lifecycle_status: active
 integration_status: partial
 owns: [astraweave-scene]
-doc_version: "1.4"
-last_verified_commit: daf183220
+doc_version: "1.5"
+last_verified_commit: 7190b402
 ---
 
 # Architecture Trace: Scene System (Scene Graph, World Partition, Streaming, GPU Resources)
@@ -20,8 +20,8 @@ last_verified_commit: daf183220
 |---|---|
 | **System name** | Scene System (scene graph, world partition, cell streaming, GPU resource manager) |
 | **Primary crates** | `astraweave-scene` (with `astraweave-asset` for cell loading, `astraweave-ecs` for the ECS scene-graph layer) |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `daf183220` (parent of the second-load guard; that parent releases a failed coord from `loading_cells` in `take_load_failures`, and `force_load_cell` still calls `start_load_cell` while the coord is already loading. `6858cd2c` is not an ancestor after the rebase onto `7ea1d200`). |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `7190b402` (parent of the failure hold; that parent drains `take_load_failures` before `to_load`, so a failed coord inside the radius is started again in the same `update` and can keep the only streaming slot). Prior `daf183220` (parent of the second-load guard; that parent releases a failed coord from `loading_cells` in `take_load_failures`, and `force_load_cell` still calls `start_load_cell` while the coord is already loading. `6858cd2c` is not an ancestor after the rebase onto `7ea1d200`). |
 | **Last verified date** | 2026-11-06 |
 | **Status** | Mixed. Some surfaces are wired into runtime consumers; the streaming + GPU-budget + PartitionedScene + ECS scene-graph layers are in-design-but-tested (production callers only in `examples/` and tests). See §6 and §11. |
 | **Owner notes** | Derived from forensic data-flow analysis of `astraweave-scene` on 2026-06-24. The crate is a single member but is best understood as five loosely-coupled sub-layers (see §1). |
@@ -151,7 +151,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 **Outputs:** mutates `loading_cells`/`active_cells`, mutates the `Cell` state behind the `Arc<RwLock<WorldPartition>>`, emits `StreamingEvent`s.
 **Notes (non-obvious behavior):**
 - The async file path is **fire-and-forget**: `start_load_cell` spawns a task and returns `Ok(())` immediately (`streaming.rs:275`). A successful load still does not move the coord from `loading_cells` to `active_cells`. `finish_load_cell` (streaming.rs:304-318) is annotated `#[allow(dead_code)]` at `streaming.rs:304` and is never invoked.
-- A failed read or a missing `.ron` sends `LoadFailure` and does not set `Unloaded` in the task. The next `update` drains that channel in `take_load_failures` (streaming.rs:297-301) and calls `handle_load_failure` (streaming.rs:321-331), which removes the coord from `loading_cells`, sets `Unloaded`, emits `CellLoadFailed`, and increments `failed_loads`. The `Ok` bytes are still not stored on the `Cell`. The spawned task's `Result` is not joined. The asset-manager hand-off remains an Open Question — see §11.
+- A failed read or a missing `.ron` sends `LoadFailure` and does not set `Unloaded` in the task. The next `update` drains that channel in `take_load_failures` before it builds `to_load`, and calls `handle_load_failure`, which removes the coord from `loading_cells`, inserts it in `retry_hold`, sets `Unloaded`, emits `CellLoadFailed`, and increments `failed_loads`. `to_load` skips a held coord, so one permanently failing cell inside the radius does not take the only slot from the next desired cell. The hold drops when the coord leaves `cells_in_radius`. `force_load_cell` still starts a held coord. The `Ok` bytes are still not stored on the `Cell`. The spawned task's `Result` is not joined. The asset-manager hand-off remains an Open Question — see §11.
 - The hard-coded path template is `assets/cells/{x}_{y}_{z}.ron` (`streaming.rs:193-196`).
 
 #### Stage: `astraweave-asset::cell_loader`
