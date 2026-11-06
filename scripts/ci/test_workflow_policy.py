@@ -1291,6 +1291,39 @@ def _mutant_decide(
     )
 
 
+BOT_MARKER_LINE = "<!-- aw-bot: auto-retry -->"
+
+
+def _record_marker_violations(namespace: dict[str, object]) -> list[str]:
+    """Every generated retry comment starts with the bot marker."""
+    violations: list[str] = []
+    if namespace.get("BOT_MARKER") != BOT_MARKER_LINE:
+        violations.append("constant")
+    build_record = namespace["build_record"]
+    duplicate_comment = namespace["duplicate_comment"]
+    tracking_issue_body = namespace["tracking_issue_body"]
+    assert callable(build_record) and callable(duplicate_comment) and callable(tracking_issue_body)
+    record = build_record(
+        "https://github.com/lazyxeon/AstraWeave/actions/runs/41081301546",
+        1,
+        ["Aggregate Benchmark Results"],
+        "failure",
+    )
+    duplicate = duplicate_comment(4)
+    issue = tracking_issue_body()
+    if not isinstance(record, str) or not record.splitlines() or record.splitlines()[0] != BOT_MARKER_LINE:
+        violations.append("record")
+    if (
+        not isinstance(duplicate, str)
+        or not duplicate.splitlines()
+        or duplicate.splitlines()[0] != BOT_MARKER_LINE
+    ):
+        violations.append("duplicate")
+    if not isinstance(issue, str) or not issue.splitlines() or issue.splitlines()[0] != BOT_MARKER_LINE:
+        violations.append("issue-body")
+    return violations
+
+
 class AutoRetryPolicyTest(unittest.TestCase):
     def test_checked_in_allowlist_matches_proven_flakes(self) -> None:
         allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
@@ -1700,6 +1733,36 @@ class AutoRetryPolicyTest(unittest.TestCase):
         self.assertTrue(auto_retry.tracking_issue_body().startswith(auto_retry.BOT_MARKER))
         self.assertIn(auto_retry.TRACKING_MARKER, auto_retry.tracking_issue_body())
         self.assertTrue(auto_retry.duplicate_comment(12).startswith(auto_retry.BOT_MARKER))
+
+    def test_record_comments_start_with_the_bot_marker(self) -> None:
+        self.assertEqual(_record_marker_violations(auto_retry.__dict__), [])
+        mutants = {
+            "drop-record-marker": (
+                '            BOT_MARKER,\n            "Auto-retry record.",',
+                '            "Auto-retry record.",',
+                "record",
+            ),
+            "drop-duplicate-marker": (
+                'return f"{BOT_MARKER}\\nDuplicate of #{keeper}."',
+                'return f"Duplicate of #{keeper}."',
+                "duplicate",
+            ),
+            "drop-issue-marker": (
+                '        f"{BOT_MARKER}\\n"\n'
+                '        "One issue for scoped auto-retry records. Each retry is a comment "',
+                '        "One issue for scoped auto-retry records. Each retry is a comment "',
+                "issue-body",
+            ),
+            "rename-marker": (
+                'BOT_MARKER = "<!-- aw-bot: auto-retry -->"',
+                'BOT_MARKER = "not a marker"',
+                "constant",
+            ),
+        }
+        for name, (old, new, expected) in mutants.items():
+            with self.subTest(mutant=name):
+                violations = _record_marker_violations(_mutant_auto_retry(old, new))
+                self.assertIn(expected, violations)
 
     def test_record_target_is_pr_or_tracking_issue(self) -> None:
         self.assertEqual(auto_retry.record_destination("schedule", "main", "main"), "issue")
