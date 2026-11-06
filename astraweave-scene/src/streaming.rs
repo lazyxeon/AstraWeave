@@ -784,7 +784,7 @@ mod tests {
         std::fs::write(
             &cell_path,
             r#"(
-                coord: [9001, 0, 0],
+                coord: (9001, 0, 0),
                 entities: [],
                 assets: [
                     (path: "missing_9001.gltf", kind: Mesh, guid: None),
@@ -831,10 +831,17 @@ mod tests {
             );
         }
         let captured = events.lock().unwrap().clone();
-        assert!(captured.iter().any(|event| matches!(
-            event,
-            StreamingEvent::CellLoadFailed(failed, _) if *failed == coord
-        )));
+        let message = captured.iter().find_map(|event| match event {
+            StreamingEvent::CellLoadFailed(failed, message) if *failed == coord => {
+                Some(message.as_str())
+            }
+            _ => None,
+        });
+        let message = message.expect("cell load did not fail");
+        assert!(
+            message.contains("Failed to load mesh") && message.contains("missing_9001.gltf"),
+            "expected the missing-mesh error, got {message}"
+        );
 
         mgr.update(glam::Vec3::ZERO).await.unwrap();
         assert_eq!(mgr.metrics().failed_loads, 1);
@@ -853,7 +860,7 @@ mod tests {
         std::fs::write(
             &bad_path,
             r#"(
-                coord: [0, 0, 0],
+                coord: (0, 0, 0),
                 entities: [],
                 assets: [
                     (path: "missing_hold.gltf", kind: Mesh, guid: None),
@@ -865,7 +872,7 @@ mod tests {
         std::fs::write(
             &good_path,
             r#"(
-                coord: [1, 0, 0],
+                coord: (1, 0, 0),
                 entities: [],
                 assets: [],
                 metadata: None,
@@ -913,6 +920,18 @@ mod tests {
             "the next desired cell did not start"
         );
         assert_eq!(mgr.metrics().failed_loads, 1);
+        let captured = events.lock().unwrap().clone();
+        let message = captured.iter().find_map(|event| match event {
+            StreamingEvent::CellLoadFailed(failed, message) if *failed == bad => {
+                Some(message.as_str())
+            }
+            _ => None,
+        });
+        let message = message.expect("held cell load did not fail");
+        assert!(
+            message.contains("Failed to load mesh") && message.contains("missing_hold.gltf"),
+            "expected the missing-mesh error, got {message}"
+        );
 
         mgr.update(camera).await.unwrap();
         assert_eq!(mgr.metrics().failed_loads, 1);
