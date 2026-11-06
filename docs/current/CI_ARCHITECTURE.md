@@ -178,12 +178,38 @@ The 2026-10-15 measurement was 8 allocs and 4112 bytes on a settled `PhysicsWorl
 
 ## Required status checks
 
-Set these on `main`. Names are the job `name:` values. After this pull request's first check run, confirm them against `gh pr checks` and adjust if GitHub prefixes the workflow name.
+Ruleset 7941616 (Admin Authorization) on `main` requires three contexts that do not report on `pull_request`: `Code coverage` (integration 15368), `CodeQL` (integration 57789), and `Analyze (rust)` (integration 15368). `strict_required_status_checks_policy` is true. This file does not change that ruleset. There is no check run named `Code coverage`. `coverage.yml` runs on push to `main`, schedule, and `workflow_dispatch`; its job name is `Generate Code Coverage`. `CodeQL` was not a check run on pull-request heads, and it was not a check run on main `d01720a8` after `Analyze (rust)` succeeded. `Analyze (rust)` is the CodeQL Actions job (app id 15368). It reports on push to `main`. It does not report on `pull_request`.
+
+The rollup check-run name is `PR Rust checks`. The app id is 15368 (`github-actions`). The job `if` is `always() && github.event_name == 'pull_request'`, so the check is created on every pull request. A docs-only pull request does not skip it. Pull request #700 (head `f2949be1`, only `docs/sitrep_log.md`) run `42123942320` (`pull_request`) completed check run `127583654852` as success. Pull request #597 (head `58621da5`, `AGENTS.md` only) run `40965117538` completed check run `123771336889` as success. On a push to `main` the same job is skipped. Required checks read the pull-request head, so that push skip does not leave a pull request pending.
+
+`gh pr checks` prints the check-run `name`. It does not prefix the workflow name. The compare job's check-run name is `compare`, not `determinism-replay / compare`.
+
+Require these contexts, each with integration id 15368. On the #700 head every one of them completed success, and none of the three ruleset contexts above was present. The same nine were success on docs-only #597 and #616 and on `.github/dependabot.yml` pull request #645.
+
+```json
+{
+  "strict_required_status_checks_policy": true,
+  "do_not_enforce_on_create": false,
+  "required_status_checks": [
+    {"context": "PR Rust checks", "integration_id": 15368},
+    {"context": "compare", "integration_id": 15368},
+    {"context": "hash (ubuntu-latest)", "integration_id": 15368},
+    {"context": "hash (windows-latest)", "integration_id": 15368},
+    {"context": "hash (macos-latest)", "integration_id": 15368},
+    {"context": "Cargo Deny Check", "integration_id": 15368},
+    {"context": "Security Audit (cargo-audit)", "integration_id": 15368},
+    {"context": "pack-managed paths untracked + ignore surfaces current", "integration_id": 15368},
+    {"context": "OpenSSF Scorecard Analysis", "integration_id": 15368}
+  ]
+}
+```
+
+That object replaces `parameters` on the `required_status_checks` rule. The owner applies it. Drop `Code coverage`, `CodeQL`, and `Analyze (rust)`.
 
 Require:
 
 - `PR Rust checks`
-- `determinism-replay / compare`
+- `compare`
 - `hash (ubuntu-latest)`
 - `hash (windows-latest)`
 - `hash (macos-latest)`
