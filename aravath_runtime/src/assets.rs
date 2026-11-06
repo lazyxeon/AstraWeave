@@ -4,7 +4,7 @@
 //! lives under `target/`, so that case falls back to the repo assets.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -213,17 +213,54 @@ pub fn import_model(
     Vec<gltf::image::Data>,
 )> {
     let path = confine_existing(&asset_dir(), path)?;
-    validate_model_file(&path)?;
-    gltf::import(&path).with_context(|| format!("import {}", path.display()))
+    import_validated_model(&path)
 }
 
-pub fn validate_model_file(path: &Path) -> Result<()> {
+fn read_model_bytes(path: &Path) -> Result<Vec<u8>> {
     regular_file(path, MAX_MODEL_BYTES)?;
-    let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let mut file = fs::File::open(path).with_context(|| format!("read {}", path.display()))?;
+    let mut bytes = Vec::new();
+    std::io::Read::take(&mut file, MAX_MODEL_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read {}", path.display()))?;
     if bytes.len() as u64 > MAX_MODEL_BYTES {
         bail!("model {} exceeds {MAX_MODEL_BYTES} bytes", path.display());
     }
-    let json = model_json(path, &bytes)?;
+    Ok(bytes)
+}
+
+fn import_validated_model(
+    path: &Path,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    let bytes = read_model_bytes(path)?;
+    validate_model_bytes(path, &bytes)?;
+    // Parse the bytes just read. `gltf::import` would open the path again and
+    // `Glb::from_reader` would allocate `declared - 12` from that second file.
+    astraweave_asset::gltf_loader::reject_short_glb_header(&bytes)?;
+    // `import_slice` has no base directory and rejects a jailed sibling `.bin`
+    // or image. Parse the bytes already read, then resolve those URIs beside
+    // the model. `Glb::from_reader` stays off this path.
+    let base = path.parent().context("model has no directory")?;
+    let gltf =
+        gltf::Gltf::from_slice(&bytes).with_context(|| format!("import {}", path.display()))?;
+    let buffers = gltf::import_buffers(&gltf.document, Some(base), gltf.blob)
+        .with_context(|| format!("import {}", path.display()))?;
+    let images = gltf::import_images(&gltf.document, Some(base), &buffers)
+        .with_context(|| format!("import {}", path.display()))?;
+    Ok((gltf.document, buffers, images))
+}
+
+pub fn validate_model_file(path: &Path) -> Result<()> {
+    let bytes = read_model_bytes(path)?;
+    validate_model_bytes(path, &bytes)
+}
+
+fn validate_model_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let json = model_json(path, bytes)?;
     let mut uris = Vec::new();
     collect_uris(&json, &mut uris);
     if uris.len() > 64 {
@@ -575,6 +612,116 @@ mod tests {
             "{}",
             validate_model_file(&path).unwrap_err()
         );
+    }
+
+    #[test]
+    fn padded_short_glb_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("shorter than the 12-byte header"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn oversized_declared_length_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the 22 bytes available"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn external_bin_and_image_import_beside_the_model() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("box.bin"), b"box!").unwrap();
+        // 1x1 RGBA PNG, pixels 9, 8, 7, 6. The runtime image crate has no png
+        // encoder; the bytes are the file the glTF importer reads.
+        let png: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 224, 228,
+            96, 103, 3, 0, 0, 85, 0, 31, 173, 202, 66, 241, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66,
+            96, 130,
+        ];
+        fs::write(dir.path().join("tex.png"), png).unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "box.bin", "byteLength": 4}],
+                "images": [{"uri": "tex.png"}]
+            }"#,
+        )
+        .unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let bytes = fs::read(&path).unwrap();
+        let slice_err = gltf::import_slice(&bytes).unwrap_err();
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let (_doc, buffers, images) = import_validated_model(&path).unwrap();
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert_eq!(images.len(), 1);
+        assert_eq!((images[0].width, images[0].height), (1, 1));
+        assert_eq!(&images[0].pixels[..4], &[9, 8, 7, 6]);
+    }
+
+    /// Props import goes through `import_validated_model`. A FIFO must fail
+    /// the stat check. `File::open` on a FIFO blocks until a peer connects.
+    #[cfg(unix)]
+    #[test]
+    fn prop_import_rejects_a_fifo_before_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pipe.gltf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(status.success(), "mkfifo");
+        let started = std::time::Instant::now();
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "import_validated_model opened the fifo"
+        );
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
     }
 
     #[test]
