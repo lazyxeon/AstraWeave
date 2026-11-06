@@ -363,6 +363,17 @@ class WorkflowPolicyTest(unittest.TestCase):
         }
         self.assertEqual(missing, {})
 
+    def test_auto_retry_has_no_top_level_write_permissions(self) -> None:
+        text = AUTO_RETRY_WORKFLOW.read_text(encoding="utf-8")
+        self.assertEqual(root_level_write_permission_offenders(text), [])
+        leaked = text.replace(
+            "permissions: {}\n",
+            "permissions:\n  actions: write\n",
+            1,
+        )
+        self.assertNotEqual(leaked, text)
+        self.assertEqual(root_level_write_permission_offenders(leaked), ["actions:write"])
+
     def test_determinism_replay_is_not_path_filtered(self) -> None:
         text = (WORKFLOWS / "determinism-replay.yml").read_text(encoding="utf-8")
         self.assertNotIn("paths-ignore", text)
@@ -914,13 +925,94 @@ def _mutant_auto_retry(old: str, new: str) -> dict[str, object]:
     return module.__dict__
 
 
+def _permission_value_is_write(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in ("read", "none"):
+        return False
+    return True
+
+
+def _jobs_line_index(lines: list[str]) -> int | None:
+    for index, line in enumerate(lines):
+        if line == "jobs:" or line.startswith("jobs:"):
+            return index
+    return None
+
+
+def root_level_write_permission_offenders(text: str) -> list[str]:
+    """Top-level permissions before `jobs:` must not grant write (or bool true)."""
+    lines = text.splitlines()
+    jobs = _jobs_line_index(lines)
+    head = lines[:jobs] if jobs is not None else lines
+    offenders: list[str] = []
+    index = 0
+    while index < len(head):
+        match = re.match(r"^permissions:\s*(.*)\s*$", head[index])
+        if not match:
+            index += 1
+            continue
+        rest = match.group(1).strip()
+        if rest == "{}":
+            index += 1
+            continue
+        if rest:
+            index += 1
+            continue
+        index += 1
+        while index < len(head):
+            line = head[index]
+            if not line.strip():
+                index += 1
+                continue
+            if not line.startswith(" "):
+                break
+            current = len(line) - len(line.lstrip(" "))
+            if current == 0:
+                break
+            item = re.match(r"^\s+([A-Za-z0-9-]+):\s*(\S+)\s*$", line)
+            if not item:
+                break
+            key, val = item.group(1), item.group(2)
+            if _permission_value_is_write(val):
+                offenders.append(f"{key}:{val}")
+            index += 1
+    return offenders
+
+
+def extract_job_block(text: str, job_key: str) -> str:
+    """Return the YAML lines for one `jobs.<job_key>` entry (for permission_maps)."""
+    lines = text.splitlines()
+    prefix = f"  {job_key}:"
+    start = -1
+    for index, line in enumerate(lines):
+        if line == prefix or line.startswith(prefix + " "):
+            start = index
+            break
+    if start < 0:
+        raise AssertionError(f"missing job {job_key!r}")
+    block_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        if re.match(r"^  [A-Za-z0-9_.-]+:\s*", line):
+            break
+        block_lines.append(line)
+    return "\n".join(block_lines)
+
+
 def permission_maps(text: str) -> list[dict[str, str]]:
     lines = text.splitlines()
     maps: list[dict[str, str]] = []
     index = 0
     while index < len(lines):
-        match = re.match(r"^(\s*)permissions:\s*$", lines[index])
+        match = re.match(r"^(\s*)permissions:\s*(.*)\s*$", lines[index])
         if not match:
+            index += 1
+            continue
+        rest = match.group(2).strip()
+        if rest == "{}":
+            maps.append({})
+            index += 1
+            continue
+        if rest:
             index += 1
             continue
         indent = len(match.group(1))
@@ -1012,8 +1104,11 @@ def auto_retry_violations(text: str, allow_workflows: set[str]) -> list[str]:
         text,
     ):
         violations.append("checkout-pr-head")
-    if permission_maps(text) != [AUTO_RETRY_PERMISSIONS]:
-        violations.append(f"permissions {permission_maps(text)}")
+    retry_job = extract_job_block(text, "retry")
+    if permission_maps(retry_job) != [AUTO_RETRY_PERMISSIONS]:
+        violations.append(f"permissions {permission_maps(retry_job)}")
+    if root_level_write_permission_offenders(text):
+        violations.append(f"top-level-write {root_level_write_permission_offenders(text)}")
     if "continue-on-error" in text:
         violations.append("continue-on-error")
     if "|| true" in text or re.search(r"\|\|\s*exit\s+0\b", text):
@@ -1707,8 +1802,13 @@ class AutoRetryPolicyTest(unittest.TestCase):
         allow_workflows = {workflow for workflow, _job in EXPECTED_FLAKY_JOBS}
         mutants = {
             "contents-permission": text.replace(
-                "permissions:\n",
-                "permissions:\n  contents: read\n",
+                "    permissions:\n      actions: write\n",
+                "    permissions:\n      contents: read\n      actions: write\n",
+                1,
+            ),
+            "top-level-write": text.replace(
+                "permissions: {}\n",
+                "permissions:\n  actions: write\n",
                 1,
             ),
             "attempt-cap": text.replace("run_attempt < 3", "run_attempt < 9", 1),
