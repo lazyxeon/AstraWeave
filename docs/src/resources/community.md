@@ -1,13 +1,13 @@
 # Community
 
-AstraWeave is developed in the [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) repository. GitHub issues are the working contact channel. This repository does not publish a Discord invite, a social account, or an `astraweave.dev` mailbox. GitHub Discussions are disabled (`has_discussions` is false). Blank issues are disabled; open the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) and pick **Bug report** or **Feature request**.
+AstraWeave is developed in the [lazyxeon/AstraWeave](https://github.com/lazyxeon/AstraWeave) repository. GitHub issues are the working contact channel. This repository does not publish a Discord invite, a social account, or an `astraweave.dev` mailbox. GitHub Discussions are disabled (`has_discussions` is false). Blank issues are disabled. File a [bug report](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) or a [feature request](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md). Those URLs select `bug_report.md` and `feature_request.md`. The chooser also lists `bug.md` and `feature.md`, which share those display names and have no security section. Security reports go to [private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new).
 
 ## GitHub
 
 | Resource | Description |
 |----------|-------------|
 | [Repository](https://github.com/lazyxeon/AstraWeave) | Source and pull requests |
-| [Issues](https://github.com/lazyxeon/AstraWeave/issues) | Browse open reports; use the chooser to file new ones |
+| [Issues](https://github.com/lazyxeon/AstraWeave/issues) | Browse open reports; file new ones with the template links below |
 | [Releases](https://github.com/lazyxeon/AstraWeave/releases) | Tags the repository has published |
 
 The old Discussions URLs `github.com/astraweave/astraweave` and `github.com/lazyxeon/Veilweaver-Threads-of-Eternity` are not this repository. Do not use them.
@@ -67,7 +67,7 @@ There is no public event calendar, office hours, or sponsorship desk in this rep
 
 | Purpose | Contact |
 |---------|---------|
-| General inquiries | [Issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) (**Bug report** or **Feature request**) |
+| General inquiries | [Bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) or [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
 | Security issues | [GitHub private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new) |
 | Sponsorship | [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
 | Press | [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) |
@@ -85,4 +85,4 @@ There is no public event calendar, office hours, or sponsorship desk in this rep
 
 ### vNEXT
 
-- Issue chooser, bug/feature templates, and private security reporting links (#579); keeps #513 docs-truth community page.
+- `bug_report.md` and `feature_request.md` links, plus private security reporting (#579). The chooser is not the filing path: `bug.md` and `feature.md` share those display names. Keeps the #513 community page.

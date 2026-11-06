@@ -523,7 +523,7 @@ When reporting issues, include:
 
 ### Community Resources
 
-- **GitHub Issues**: [Issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) — bug reports and feature requests; security reports go to [private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new)
+- **GitHub Issues**: [Bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) and [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md). Security reports go to [private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new).
 
 ### Known Limitations
 
@@ -549,4 +549,4 @@ AstraWeave is under active development. Known limitations:
 
 ### vNEXT
 
-- Community resources link to issue chooser and private security reporting; `cargo check --workspace` comment matches behavior.
+- Community resources link to `bug_report.md`, `feature_request.md`, and private security reporting; `cargo check --workspace` comment matches behavior.

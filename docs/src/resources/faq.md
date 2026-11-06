@@ -188,7 +188,7 @@ Yes! Both Apache 2.0 and MIT licenses permit commercial use. Attribution is appr
 
 ### Where can I get help?
 
-- **GitHub Issues**: Use the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose) — **Bug report** for defects, **Feature request** for ideas (blank issues are disabled)
+- **GitHub Issues**: [Bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) for defects and [Feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md) for ideas (blank issues are disabled; those URLs avoid the chooser's duplicate titles)
 - **Documentation**: This site
 - **Examples**: `examples/` directory in the repository
 - **Security**: [Private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new), not a public issue
@@ -206,4 +206,4 @@ Open a [bug report](https://github.com/lazyxeon/AstraWeave/issues/new?template=b
 
 ### vNEXT
 
-- Getting-help links use issue chooser and templates; security points to private advisories.
+- Getting-help links use `bug_report.md` and `feature_request.md`; security points to private advisories.

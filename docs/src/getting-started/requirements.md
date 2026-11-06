@@ -212,10 +212,10 @@ cargo run -p hello_companion --release
 2. [Build from source](../dev/building.md)
 3. [First companion](first-companion.md)
 
-Questions go to the [issue chooser](https://github.com/lazyxeon/AstraWeave/issues/new/choose).
+Questions use the [bug report template](https://github.com/lazyxeon/AstraWeave/issues/new?template=bug_report.md) or the [feature request template](https://github.com/lazyxeon/AstraWeave/issues/new?template=feature_request.md). Security reports go to [private vulnerability reporting](https://github.com/lazyxeon/AstraWeave/security/advisories/new). Blank issues are disabled. The issue chooser is not a question form, and it also lists `bug.md` and `feature.md` under the same display names.
 
 ## Revision history
 
 ### vNEXT
 
-- Questions link to GitHub issue templates (main already documents toolchain check without `system_check`).
+- Questions link to `bug_report.md`, `feature_request.md`, and private vulnerability reporting.
