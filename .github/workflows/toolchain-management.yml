@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   schedule:
     # A main push runs Toolchain Validation (1.89.0) only.
-    # stable, 1.88.0, beta, and pinned-nightly are the extra job.
+    # stable, beta, and pinned-nightly are the extra job.
     # MSRV stays on pull requests inside ci.yml, and this workflow still checks MSRV.
     - cron: "40 5 * * *"
   workflow_dispatch:
@@ -69,7 +69,17 @@ jobs:
 
       - name: Select the matrix compiler
         shell: bash
-        run: echo "RUSTUP_TOOLCHAIN=${{ matrix.toolchain }}" >> "$GITHUB_ENV"
+        env:
+          MATRIX_TOOLCHAIN: ${{ matrix.toolchain }}
+        run: |
+          case "${MATRIX_TOOLCHAIN}" in
+            ""|*[!A-Za-z0-9._-]*)
+              echo "matrix toolchain must match [A-Za-z0-9._-]"
+              exit 1
+              ;;
+          esac
+          echo "RUSTUP_TOOLCHAIN=${MATRIX_TOOLCHAIN}" >> "$GITHUB_ENV"
+          echo "AW_SELECTED_TOOLCHAIN=${MATRIX_TOOLCHAIN}" >> "$GITHUB_ENV"
 
       - name: Install system dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -94,7 +104,18 @@ jobs:
           echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
 
       - name: Validate toolchain configuration
+        shell: bash
         run: |
+          active="$(rustup show active-toolchain | tail -n 1)"
+          case "${active}" in
+            "${AW_SELECTED_TOOLCHAIN}-"*"(overridden by environment variable RUSTUP_TOOLCHAIN)")
+              ;;
+            *)
+              echo "active toolchain must start with ${AW_SELECTED_TOOLCHAIN} and be overridden by RUSTUP_TOOLCHAIN"
+              echo "got: ${active}"
+              exit 1
+              ;;
+          esac
           echo "=== Rust Toolchain Information ==="
           rustc --version
           cargo --version
@@ -178,9 +199,10 @@ jobs:
     name: Toolchain Validation (${{ matrix.toolchain }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    # Schedule and dispatch only. stable, 1.88.0, and beta fail the workflow.
+    # Schedule and dispatch only. stable and beta fail the workflow.
     # The pinned-nightly row stays continue-on-error. Its all-features check
     # still ends in `|| true`, the same swallow the old matrix used.
+    # Removing that swallow is a follow-up; this pull request does not touch it.
     if: github.event_name != 'push'
     strategy:
       fail-fast: false
@@ -192,8 +214,6 @@ jobs:
             toolchain: stable
           - os: macos-latest
             toolchain: stable
-          - os: ubuntu-latest
-            toolchain: "1.88.0"
           - os: ubuntu-latest
             toolchain: beta
           # Dated nightly from .github/rust-nightly-channel (#560).
@@ -220,6 +240,7 @@ jobs:
           components: rustfmt, clippy, rust-src, rust-analyzer
 
       - name: Set up Rust toolchain
+        id: extra-rust
         if: ${{ !matrix.experimental }}
         uses: dtolnay/rust-toolchain@master
         with:
@@ -229,12 +250,43 @@ jobs:
       - name: Select the matrix compiler
         if: ${{ !matrix.experimental }}
         shell: bash
-        run: echo "RUSTUP_TOOLCHAIN=${{ github.event.inputs.toolchain_version || matrix.toolchain }}" >> "$GITHUB_ENV"
+        env:
+          REQUESTED_TOOLCHAIN: ${{ github.event.inputs.toolchain_version }}
+          INSTALLED_TOOLCHAIN: ${{ steps.extra-rust.outputs.name }}
+        run: |
+          # The dispatch string is not a rustup channel. `outputs.name` is the
+          # toolchain the action parsed and installed (`stable minus 1 release`
+          # becomes `1.N`). Never write the raw input into GITHUB_ENV.
+          if [ -n "${REQUESTED_TOOLCHAIN}" ]; then
+            relative='^(stable minus [0-9]+ releases?|stable [0-9]+ (year|month|week|day)s? ago)$'
+            if [[ ! "${REQUESTED_TOOLCHAIN}" =~ ^[A-Za-z0-9._-]+$ ]] && [[ ! "${REQUESTED_TOOLCHAIN}" =~ $relative ]]; then
+              echo "toolchain_version must match [A-Za-z0-9._-] or a dtolnay/rust-toolchain relative spec"
+              exit 1
+            fi
+          fi
+          case "${INSTALLED_TOOLCHAIN}" in
+            ""|*[!A-Za-z0-9._-]*)
+              echo "installed toolchain name must match [A-Za-z0-9._-]"
+              exit 1
+              ;;
+          esac
+          echo "RUSTUP_TOOLCHAIN=${INSTALLED_TOOLCHAIN}" >> "$GITHUB_ENV"
+          echo "AW_SELECTED_TOOLCHAIN=${INSTALLED_TOOLCHAIN}" >> "$GITHUB_ENV"
 
       - name: Select the pinned nightly
         if: matrix.experimental
         shell: bash
-        run: echo "RUSTUP_TOOLCHAIN=$AW_NIGHTLY" >> "$GITHUB_ENV"
+        env:
+          PINNED_NIGHTLY: ${{ env.AW_NIGHTLY }}
+        run: |
+          case "${PINNED_NIGHTLY}" in
+            ""|*[!A-Za-z0-9._-]*)
+              echo "pinned nightly must match [A-Za-z0-9._-]"
+              exit 1
+              ;;
+          esac
+          echo "RUSTUP_TOOLCHAIN=${PINNED_NIGHTLY}" >> "$GITHUB_ENV"
+          echo "AW_SELECTED_TOOLCHAIN=${PINNED_NIGHTLY}" >> "$GITHUB_ENV"
 
       - name: Install system dependencies (Ubuntu)
         if: matrix.os == 'ubuntu-latest'
@@ -259,7 +311,18 @@ jobs:
           echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
 
       - name: Validate toolchain configuration
+        shell: bash
         run: |
+          active="$(rustup show active-toolchain | tail -n 1)"
+          case "${active}" in
+            "${AW_SELECTED_TOOLCHAIN}-"*"(overridden by environment variable RUSTUP_TOOLCHAIN)")
+              ;;
+            *)
+              echo "active toolchain must start with ${AW_SELECTED_TOOLCHAIN} and be overridden by RUSTUP_TOOLCHAIN"
+              echo "got: ${active}"
+              exit 1
+              ;;
+          esac
           echo "=== Rust Toolchain Information ==="
           rustc --version
           cargo --version
@@ -408,13 +471,38 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up Rust toolchain
+        id: perf-rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
 
       - name: Select the matrix compiler
         shell: bash
-        run: echo "RUSTUP_TOOLCHAIN=${{ matrix.toolchain }}" >> "$GITHUB_ENV"
+        env:
+          INSTALLED_TOOLCHAIN: ${{ steps.perf-rust.outputs.name }}
+        run: |
+          case "${INSTALLED_TOOLCHAIN}" in
+            ""|*[!A-Za-z0-9._-]*)
+              echo "installed toolchain name must match [A-Za-z0-9._-]"
+              exit 1
+              ;;
+          esac
+          echo "RUSTUP_TOOLCHAIN=${INSTALLED_TOOLCHAIN}" >> "$GITHUB_ENV"
+          echo "AW_SELECTED_TOOLCHAIN=${INSTALLED_TOOLCHAIN}" >> "$GITHUB_ENV"
+
+      - name: Require the selected compiler
+        shell: bash
+        run: |
+          active="$(rustup show active-toolchain | tail -n 1)"
+          case "${active}" in
+            "${AW_SELECTED_TOOLCHAIN}-"*"(overridden by environment variable RUSTUP_TOOLCHAIN)")
+              ;;
+            *)
+              echo "active toolchain must start with ${AW_SELECTED_TOOLCHAIN} and be overridden by RUSTUP_TOOLCHAIN"
+              echo "got: ${active}"
+              exit 1
+              ;;
+          esac
 
       - name: Install system dependencies
         run: |
