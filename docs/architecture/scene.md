@@ -105,7 +105,7 @@ There is also an animation sub-pipeline in the same `ecs` module:
 ```text
 [Camera Vec3 position]
     │
-    │ WorldPartitionManager::update(camera_position)      streaming.rs:118-170 (also :331)
+    │ WorldPartitionManager::update(camera_position)      streaming.rs:118-170
     ▼
 [Desired cells computed]
     file: world_partition.rs:498-514  WorldPartition::cells_in_radius
@@ -116,11 +116,11 @@ There is also an animation sub-pipeline in the same `ecs` module:
     ▼
 [to_load / to_unload sets, throttled by max_concurrent_loads]
     │
-    │ start_load_cell(coord)                              streaming.rs:173-291 (also :148)
-    │   - LRU fast path: if cached, mark Loaded synchronously (streaming.rs:175-187, also :267)
+    │ start_load_cell(coord)                              streaming.rs:173-291
+    │   - LRU fast path: if cached, mark Loaded synchronously (streaming.rs:175-187)
     │   - else mark Loading, tokio::spawn async file load
     ▼
-[tokio task: load_cell_from_ron + load_asset]            streaming.rs:206-286 (also :334)
+[tokio task: load_cell_from_ron + load_asset]            streaming.rs:206-286
     file: astraweave-asset/src/cell_loader.rs (load_cell_from_ron, load_asset)
     role: read assets/cells/{x}_{y}_{z}.ron, map AssetKind -> AssetType
     key data: cell.entity_blueprints, cell.metadata, cell.assets; cell.state=Loaded
@@ -133,7 +133,7 @@ There is also an animation sub-pipeline in the same `ecs` module:
 [CellEntities + entity_cells maps + SceneEvent queue]
 ```
 
-GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that is NOT invoked anywhere in `streaming.rs`. The unload path in `streaming.rs:350-380` (also :269) only flips `CellState` and comments that GPU release is "in real implementation" — it does not call `GpuResourceBudget::unload_cell`.
+GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that is NOT invoked anywhere in `streaming.rs`. The unload path in `streaming.rs:350-380` only flips `CellState` and comments that GPU release is "in real implementation" — it does not call `GpuResourceBudget::unload_cell`.
 
 ### Stage-by-stage detail
 
@@ -145,7 +145,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 **Notes:** This is a **2D ring** — it iterates `dx, dz` only and forces `y = 0` (`world_partition.rs:505`). The richer 3D frustum culling in `Frustum::cells_in_frustum` (`world_partition.rs:286-314`) exists but is NOT used by the streaming `update` path; `update` calls `cells_in_radius`, not the frustum method.
 
 #### Stage: `WorldPartitionManager::start_load_cell`
-**File:** [`streaming.rs:173-291`](../../astraweave-scene/src/streaming.rs) (also [`:148`](../../astraweave-scene/src/streaming.rs))
+**File:** [`streaming.rs:173-291`](../../astraweave-scene/src/streaming.rs)
 **Role:** Begin loading a cell, either from LRU cache (fast) or via a spawned tokio task that reads a `.ron` file.
 **Inputs:** `GridCoord`.
 **Outputs:** mutates `loading_cells`/`active_cells`, mutates the `Cell` state behind the `Arc<RwLock<WorldPartition>>`, emits `StreamingEvent`s.
@@ -157,7 +157,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 #### Stage: `astraweave-asset::cell_loader`
 **File:** [`astraweave-asset/src/cell_loader.rs`](../../astraweave-asset/src/cell_loader.rs)
 **Role:** Parse a cell `.ron` into `CellData { entities: Vec<EntityData>, assets: Vec<AssetRef>, metadata }`.
-**Notes:** `streaming.rs` maps `cell_loader::AssetKind` → `world_partition::AssetType` (`streaming.rs:257-271`; `AssetRef` conversion into `cell.assets` at `streaming.rs:255-272`, also `:192` and `:260`) and copies `EntityData` → `CellEntityBlueprint` (`streaming.rs:231-241`). See cross-link in §4.
+**Notes:** `streaming.rs` maps `cell_loader::AssetKind` → `world_partition::AssetType` (`streaming.rs:257-271`; `AssetRef` conversion into `cell.assets` at `streaming.rs:255-272`) and copies `EntityData` → `CellEntityBlueprint` (`streaming.rs:231-241`). See cross-link in §4.
 
 #### Stage: `GpuResourceBudget` (parallel, not wired to streaming)
 **File:** [`gpu_resource_manager.rs`](../../astraweave-scene/src/gpu_resource_manager.rs)
