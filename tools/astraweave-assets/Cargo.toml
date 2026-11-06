@@ -14,7 +14,7 @@ path = "src/main.rs"
 # CLI and config
 clap = { version = "4.5", features = ["derive", "cargo"] }
 serde = { version = "1.0", features = ["derive"] }
-toml = "0.8"
+toml = "1.1"
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
@@ -24,7 +24,7 @@ async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 
 # Hashing and integrity
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 
 # Progress and UI

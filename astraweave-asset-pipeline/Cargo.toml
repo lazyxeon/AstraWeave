@@ -18,7 +18,7 @@ serde_json = "1.0"
 basis-universal = { version = "0.3", optional = true }
 
 # Mesh optimization (already added in Week 5 Action 19)
-meshopt = "0.6"
+meshopt = "0.7"
 
 # Byte manipulation
 bytemuck = "1.18"
@@ -35,7 +35,7 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio-test = "0.4"
-criterion = "0.5"
+criterion = "0.7"
 
 [[bench]]
 name = "pipeline_adversarial"
