@@ -61,7 +61,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
     │ fs::read(...) by caller (editor / example)
     ▼
 [Stage A1: format detect + container parse]
-    file: astraweave-asset/src/lib.rs  (gltf_loader, lib.rs:296+)
+    file: astraweave-asset/src/lib.rs  (gltf_loader, lib.rs:306+)
     role: GLB magic check ("glTF"), split JSON + BIN chunks
     key data: gltf::Gltf document + buffer blobs
     │
@@ -70,7 +70,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
     │ load_skeleton / load_animations
     ▼
 [Stage A2: accessor decode → CPU structs]
-    file: astraweave-asset/src/lib.rs  (lib.rs:419-1808)
+    file: astraweave-asset/src/lib.rs  (lib.rs:428-1923)
     role: decode positions/normals/tangents/uv/indices, PBR material factors
           + KHR extension fields, skeleton joints, animation channels
     key data: MeshData / MaterialData / ImageData / SkinnedMeshData /
@@ -95,13 +95,13 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
     │ cell_loader::load_asset(asset_ref, assets_root)   (async)
     ▼
 [Stage B2: per-asset byte load + header validation]
-    file: astraweave-asset/src/cell_loader.rs:223-308
+    file: astraweave-asset/src/cell_loader.rs:223-318
     role: read raw bytes; validate GLB/PNG/JPEG magic by extension
     key data: Vec<u8> raw asset bytes (NOT decoded into MeshData here)
     │
     ▼
 [astraweave-scene WorldPartitionManager::update drives this]
-    file: astraweave-scene/src/streaming.rs:100-271
+    file: astraweave-scene/src/streaming.rs:118-170
 ```
 
 ### Path C — mesh → meshlet LOD hierarchy (DORMANT preprocess; example-only)
@@ -130,11 +130,11 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 ### Stage-by-stage detail
 
 #### Stage A1/A2: glTF loaders (`gltf_loader` module)
-**File:** `astraweave-asset/src/lib.rs:296-1808` (module `gltf_loader`).
+**File:** `astraweave-asset/src/lib.rs:306-1923` (module `gltf_loader`).
 **Role:** Pure-CPU glTF/GLB decode behind the default-on `gltf` feature.
 **Inputs:** Raw `&[u8]` (GLB binary or `.gltf` JSON, including `data:` URI buffers).
 **Outputs:** `MeshData` (positions/normals/tangents/texcoords/indices, lib.rs:339), `MaterialData` (full PBR factor set + KHR_materials_transmission/ior/emissive_strength/clearcoat fields, lib.rs:367), `ImageData`, `SkinnedMeshData` (lib.rs:984), `Skeleton` (lib.rs:1019), `AnimationClip` (lib.rs:1052).
-**Notes:** Embedded image decode uses `decode_limited_image` (`image_limits.rs`): a 4096-pixel edge and a 64 MiB allocation cap (measured in-repo packs top out at 1024²). `read_limited_image_bytes` stops a file read at 64 MiB before decode. A non-`data:` glTF image file URI is percent-decoded, then `safe_under`, then that read. A `data:` image uses `read_capped_data_image`, which rejects the padding-aware decoded length before base64 decode. `TQ==` at cap 1 is one byte. `read_capped_data_image` and `read_capped_data_uri` live in `data_uri.rs`. `image_limits.rs` does not reference base64, because `astraweave-blend` includes that file by path. An image buffer view uses `checked_add` and rejects an end past the parent before the slice. `gltf_loader::load_uri_bytes` percent-decodes, rejects a scheme, and stops at 256 MiB before the read. A texture `load_asset` runs that file read on `spawn_blocking`. The editor `load_gltf` path uses `open_capped_gltf`: `read_capped_file`, `reject_glb_header`, then `Gltf::from_slice`. It does not call `Gltf::open`. External buffers are read up to `byteLength` after a metadata reject over 256 MiB, then stored in a `Vec` allocated at the 4-byte padded length. Encoded image bytes and decoded pixels each sum against 64 MiB. `gltf-assets` enables `image` and `textures`. `open_limited_image` uses the file read. Render, blend texture import, and the asset CLI call `decode_limited_image`. `tools/aw_asset_cli` still calls `Gltf::open` (`main.rs:384`). This change does not put `reject_glb_header` in front of that call. `load_gltf_bytes` (lib.rs:312) is a Phase-0 header-only validator that does not decode. Real decode entrypoints are `load_first_mesh_from_glb_bytes` (lib.rs:428), `load_all_meshes_merged` (lib.rs:496), `load_first_mesh_and_material` (lib.rs:583), and the skinned variants `load_skinned_mesh_complete` (lib.rs:1393) / `load_first_skinned_mesh_and_idle` (lib.rs:1592). Material defaults follow glTF spec defaults (e.g. `metallic_factor: 1.0`, `ior: 1.5`, lib.rs:392-415).
+**Notes:** Embedded image decode uses `decode_limited_image` (`image_limits.rs`): a 4096-pixel edge and a 64 MiB allocation cap (measured in-repo packs top out at 1024²). `read_limited_image_bytes` stops a file read at 64 MiB before decode. A non-`data:` glTF image file URI is percent-decoded, then `safe_under`, then that read. A `data:` image uses `read_capped_data_image`, which rejects the padding-aware decoded length before base64 decode. `TQ==` at cap 1 is one byte. `read_capped_data_image` and `read_capped_data_uri` live in `data_uri.rs`. `image_limits.rs` does not reference base64, because `astraweave-blend` includes that file by path. An image buffer view uses `checked_add` and rejects an end past the parent before the slice. `gltf_loader::load_uri_bytes` percent-decodes, rejects a scheme, and stops at 256 MiB before the read. A texture `load_asset` runs that file read on `spawn_blocking`. The editor `load_gltf` path uses `open_capped_gltf`: `read_capped_file`, `reject_glb_header`, then `Gltf::from_slice`. It does not call `Gltf::open`. External buffers are read up to `byteLength` after a metadata reject over 256 MiB, then stored in a `Vec` allocated at the 4-byte padded length. Encoded image bytes and decoded pixels each sum against 64 MiB. `gltf-assets` enables `image` and `textures`. `open_limited_image` uses the file read. Render, blend texture import, and the asset CLI call `decode_limited_image`. `tools/aw_asset_cli` still calls `Gltf::open` (`main.rs:384`). This change does not put `reject_glb_header` in front of that call. `load_gltf_bytes` (lib.rs:312) is a Phase-0 header-only validator that does not decode. Real decode entrypoints are `load_first_mesh_from_glb_bytes` (lib.rs:428), `load_all_meshes_merged` (lib.rs:496), `load_first_mesh_and_material` (lib.rs:583), and the skinned variants `load_skinned_mesh_complete` (lib.rs:1393) / `load_first_skinned_mesh_and_idle` (lib.rs:1592). Material defaults follow glTF spec defaults (e.g. `metallic_factor: 1.0`, `ior: 1.5`, lib.rs:401-424).
 
 #### Stage B1: Cell RON deserialize
 **File:** `astraweave-asset/src/cell_loader.rs:104-220`.
@@ -144,7 +144,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 **Notes:** `EntityData` carries a transform (`position`/`rotation` quaternion/`scale`), an optional `mesh` path, an optional `material` layer index, and extensible `Vec<ComponentData>` (cell_loader.rs:49-66). `add_asset` deduplicates by `path` (cell_loader.rs:133-138). `cell_path_from_coord` formats `"{}_{}_{}.ron"` (cell_loader.rs:321). A texture `AssetKind` uses `read_limited_image_bytes` on `spawn_blocking`.
 
 #### Stage B2: Per-asset byte load + magic validation
-**File:** `astraweave-asset/src/cell_loader.rs:223-308`.
+**File:** `astraweave-asset/src/cell_loader.rs:223-318`.
 **Role:** Read raw asset bytes from `safe_under(assets_root, asset_ref.path)` and run a lightweight magic-number check (GLB `b"glTF"`, PNG `\x89PNG\r\n\x1a\n`, JPEG `0xFF D8 FF`). Parent segments and absolute paths are rejected. glTF buffer and image file URIs in `gltf_loader::load_uri_bytes` use the same `safe_under` against the process current directory. `data:` URIs stay in memory.
 **Inputs:** `&AssetRef`, `assets_root: &Path`.
 **Outputs:** `Vec<u8>` raw bytes — NOT decoded into `MeshData`. Decode is the consumer's responsibility.
@@ -166,7 +166,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 | **GUID** | 128-bit hex digest (`SHA-256` of lowercased, forward-slash-normalized path, first 16 bytes) identifying an asset. | `guid_for_path` (lib.rs:1937); `AssetDatabase`, `AssetCache` |
 | **`AssetKind` (root)** | Crate-root asset-category enum used by `AssetDatabase`: `Mesh, Texture, Audio, Dialogue, Material, Animation, Script, BlenderSource, Other`. `#[non_exhaustive]`. | lib.rs:3373 |
 | **`AssetKind` (cell)** | Cell-loader's own enum: `Mesh, Texture, Material, Audio, Animation, Other` (no Dialogue/Script/BlenderSource). `#[non_exhaustive]`. | cell_loader.rs:12-21 |
-| **`AssetMetadata`** | DB record: guid, path, kind, content hash, deps, mtime, size. | lib.rs:3244-3252 |
+| **`AssetMetadata`** | DB record: guid, path, kind, content hash, deps, mtime, size. | astraweave-asset/src/lib.rs:3361-3369 |
 | **`AssetRef`** | Cell-level reference to an asset (path + cell `AssetKind` + optional guid). | cell_loader.rs:23-47 |
 | **`CellData`** | Serialized World-Partition cell (entities + asset refs + metadata). | cell_loader.rs:104-147 |
 | **Meshlet** | Triangle cluster with local vertex list, `u8` triangle indices, `AABB`, `BoundingCone`, LOD level/error. | nanite_preprocess.rs:142-215 |
@@ -198,7 +198,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 | Consumer | Interface used | Wired? | Notes |
 |---|---|---|---|
-| `astraweave-scene` | `cell_loader::{load_cell_from_ron, load_asset, CellData, EntityData, AssetRef, AssetKind, CellMetadata, ComponentData}` | **Yes** | Runtime streaming: `WorldPartitionManager::update` → `start_load_cell` → `load_cell_data`/`load_asset_data` (`streaming.rs:147-271`). |
+| `astraweave-scene` | `cell_loader::{load_cell_from_ron, load_asset, CellData, EntityData, AssetRef, AssetKind, CellMetadata, ComponentData}` | **Yes** | Runtime streaming: `WorldPartitionManager::update` → `start_load_cell` → `load_cell_data`/`load_asset_data` (`streaming.rs:118-291`). |
 | `astraweave-render` | `AssetDatabase`, `AssetKind`, `AssetMetadata` via `residency.rs` | **Partial** | `ResidencyManager` (render/src/residency.rs) takes `Arc<Mutex<AssetDatabase>>`; re-exported at `lib.rs:237` but constructed only in render tests/benches (no production caller found). |
 | `astraweave-gameplay` | `cell_loader::ComponentData` (`veilweaver_slice.rs:273`) | **Test-only** | The single `use astraweave_asset::cell_loader::ComponentData` is inside `#[cfg(test)] mod tests` (`veilweaver_slice.rs:270-273`); no production-path use of `astraweave_asset` exists in `astraweave-gameplay/src` (verified by `grep -rn astraweave_asset astraweave-gameplay/src` → only line 273). Corrected during 1.1 verification (was "Yes / Single typed import"). |
 | `astraweave-scripting` | declared dep, **no `use`** | **No** | Declared-but-unused Cargo dependency (`Cargo.toml:19`); scripting uses its own `loader::ScriptLoader`. Matches CLAUDE.md Key-Lesson-8 "declared-but-unused Cargo deps". |
@@ -214,7 +214,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ### Bidirectional / Coupled
 
-- **`AssetDatabase` ↔ hot-reload:** `AssetDatabase` owns a `tokio::sync::watch` channel (`hot_reload_tx`/`rx`, lib.rs:3275-3276); `AssetWatcher` (lib.rs:3497) wraps the DB in `Arc<Mutex<…>>`, runs a `notify` filesystem watcher with a debounced background thread, and calls `invalidate_asset` which fires the watch channel. `ResidencyManager::with_hot_reload` consumes a `watch::Receiver` to drain invalidations. This whole loop is exercised only by tests today.
+- **`AssetDatabase` ↔ hot-reload:** `AssetDatabase` owns a `tokio::sync::watch` channel (`hot_reload_tx`/`rx`, lib.rs:3392-3393); `AssetWatcher` (lib.rs:3614) wraps the DB in `Arc<Mutex<…>>`, runs a `notify` filesystem watcher with a debounced background thread, and calls `invalidate_asset` which fires the watch channel. `ResidencyManager::with_hot_reload` consumes a `watch::Receiver` to drain invalidations. This whole loop is exercised only by tests today.
 
 ---
 
@@ -252,7 +252,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 | Texture compression (CLI) | `tools/aw_asset_cli/src/main.rs:298+` (`process_texture` shells out to `toktx`/`basisu`), `tools/aw_asset_cli/src/texture_baker.rs` | Active | The CLI does NOT call `astraweave-asset-pipeline`; it implements its own compression by invoking external CLI tools. |
 | Asset validation | `astraweave-asset-pipeline/src/validator.rs` (`AssetValidator`) | In-design (no caller) | — |
 | Asset validation (CLI) | `tools/aw_asset_cli/src/validators.rs` (`validate_texture`, `validate_ktx2_mipmaps`, `validate_material_toml`) + `validators_original.rs` | Active | The CLI has its own validator family, parallel to the pipeline crate's. |
-| Mesh format validation | `cell_loader::validate_mesh_format`/`validate_texture_format` (magic-number, cell_loader.rs:272-308); `gltf_loader::load_gltf_bytes` (header check, lib.rs:312) | Both Active | Two lightweight validators in the same crate for overlapping purposes (cell-load path vs generic glTF entry). |
+| Mesh format validation | `cell_loader::validate_mesh_format`/`validate_texture_format` (magic-number, cell_loader.rs:282-299 / `302-318`); `gltf_loader::load_gltf_bytes` (header check, lib.rs:312) | Both Active | Two lightweight validators in the same crate for overlapping purposes (cell-load path vs generic glTF entry). |
 
 ### Naming collisions
 
@@ -273,22 +273,21 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 - **Trap:** `gltf_loader::load_gltf_bytes` looks like the loader.
   **Why it's confusing:** Name + position.
-  **What's actually true:** It only validates the GLB header / detects JSON (lib.rs:301-327, comment "Phase 0 scope"). The decoding entrypoints are the `load_first_mesh_*` / `load_*_skinned_*` functions.
+  **What's actually true:** It only validates the GLB header / detects JSON (lib.rs:312-336, comment "Phase 0 scope"). The decoding entrypoints are the `load_first_mesh_*` / `load_*_skinned_*` functions.
 
 - **Trap:** `astraweave-scripting` depends on `astraweave-asset`.
   **What's actually true:** It never `use`s it; the dependency is unused (Cargo.toml:19).
 
-### Discarded-Result residue
+### Hot-reload send resilience
 
-- `astraweave-scene/src/streaming.rs:193` uses `let _ = Self::load_asset_data(asset_ref, assets_root).await;` — the per-asset byte-load Result is discarded in the streaming loop. This is a consumer-side pattern, surfaced here because it touches the cell-loader output. (CLAUDE.md flags `let _ =` on fallible asset I/O as a hazard; recorded as an open question in §11, not a recommendation.)
-- `astraweave-asset/src/lib.rs:3375` (`invalidate_asset`) and `lib.rs:3579` (watcher channel send) use `.ok()` on `watch`/`mpsc` sends — intentional fire-and-forget on channels with possibly-dropped receivers.
+- `invalidate_asset` ignores the watch-send result (`lib.rs:3492`); the watcher ignores its mpsc-send result with `let _ = tx.send(guid)` (`lib.rs:3696`).
 
 ---
 
 ## 7. Decision Log
 
 ### Decision: Deterministic path-based GUIDs (SHA-256, 128-bit)
-- **Date:** [Reasoning not recovered from available sources] (code comment "Phase 2 foundations", lib.rs:1817)
+- **Date:** [Reasoning not recovered from available sources] (code comment "Phase 2 foundations", lib.rs:1934)
 - **Status:** Accepted.
 - **Context:** Assets need a stable identity across runs for caching/dependency tracking.
 - **Decision:** `guid_for_path` hashes the lowercased, `\`→`/`-normalized path with SHA-256 and keeps the first 16 bytes as hex (lib.rs:1937).
@@ -337,7 +336,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 ## 9. Performance & Resource Profile
 
 ### Hot paths
-- **Cell streaming load** (`cell_loader::load_cell_from_ron` + `load_asset`): runs from `WorldPartitionManager::update` as the camera moves. RON parse + raw byte read per cell; budget governed by `StreamingConfig` in `astraweave-scene`. Async via `tokio::fs` to stay off the simulation thread.
+- **Cell streaming load** (`cell_loader::load_cell_from_ron` + `load_asset`): runs from `WorldPartitionManager::update` as the camera moves. RON parse + raw byte read per cell; budget governed by `StreamingConfig` in `astraweave-scene`. Cell RON and non-mesh/non-texture asset reads use `tokio::fs`; mesh and texture reads use `spawn_blocking` (`cell_loader.rs:228-251`).
 
 ### Cold paths
 - **glTF decode** (`gltf_loader::load_*`): on-demand at load/import time, not per-frame. Allocates full vertex/material/animation buffers.
@@ -345,7 +344,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 - **Pipeline transforms** (BC7/ASTC/optimize): offline bake only (would be, if wired).
 
 ### Resource ownership
-- `AssetDatabase`: owns all `AssetMetadata`, path→GUID map, and forward/reverse dependency graphs (lib.rs:3270-3277). Typically shared as `Arc<Mutex<AssetDatabase>>` by `AssetWatcher` and `ResidencyManager`.
+- `AssetDatabase`: owns all `AssetMetadata`, path→GUID map, and forward/reverse dependency graphs (lib.rs:3387-3394). Typically shared as `Arc<Mutex<AssetDatabase>>` by `AssetWatcher` and `ResidencyManager`.
 - `MeshletHierarchy` / `MeshData`: owned by the caller after load; this crate retains nothing.
 
 ---
@@ -366,7 +365,6 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 - **[RESOLVED 2026-06-30, R-series M2/E4]** ~~Why does `tools/aw_editor` depend on `astraweave-asset-pipeline` (`Cargo.toml:99`) with no `use`?~~ **Stale / planned-but-unwired dep — now dropped** (relabel-and-defer beat). The editor authors via `astraweave-asset` (`Cargo.toml:82`, load-bearing: `AssetDatabase`, `gltf_loader`, `blend_import`); it never referenced the pipeline crate.
 - **Why does `astraweave-scripting` depend on `astraweave-asset` with no `use` (`Cargo.toml:19`)?** Declared-but-unused; candidate for the CLAUDE.md Key-Lesson-8 inventory.
 - **Will the CPU `nanite_preprocess` output ever feed the render crate's GPU Nanite path?** No shared on-disk format connects `MeshletHierarchy` (RON) to `GpuMeshlet` today; the bridge, if intended, is not implemented.
-- **Should `astraweave-scene/src/streaming.rs:193` discard the asset-load Result (`let _ = …`)?** CLAUDE.md flags this pattern on fallible asset I/O. Surfaced as a question for the scene/streaming owner.
 - **Should the two `AssetKind` enums be unified or given an explicit conversion?** They diverge in variant sets and have no bridge function.
 - **Pipeline default feature mismatch:** `astraweave-asset-pipeline` sets `default = ["astc"]` and `astc = ["basis-universal"]`, but `basis-universal` is declared `optional = true`. [NEEDS VERIFICATION] whether `default` builds pull it in correctly in all configurations.
   - *1.1 verification note (not a resolution — this is a parked decision):* The relevant lines are `Cargo.toml:45` (`default = ["astc"]`), `:47` (`astc = ["basis-universal"]`), `:18` (`basis-universal = { version = "0.3", optional = true }`). Because the `astc` feature lists the bare optional-dependency name `basis-universal` (the implicit-feature form, not `dep:basis-universal`), enabling `astc` activates the optional dependency, so a plain `cargo build -p astraweave-asset-pipeline` (default features) does pull in `basis-universal`. The marker is retained because no build matrix / CI run was executed to confirm behavior across all feature-flag combinations (e.g. `--no-default-features --features bc7`), per the read-only constraint of this pass.
@@ -413,7 +411,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ## Appendix B: Historical context
 
-The crate carries explicit "Phase 0 / Phase 2 foundations" markers (lib.rs:302, 316, 1812, 1817), indicating an incremental build-out where header-only validators and GUID/cache scaffolding landed before full decoders. The glTF decoders, cell loader, and `AssetDatabase` matured into wired runtime use; `nanite_preprocess` and `astraweave-asset-pipeline` were built to completeness and tested but never adopted by a runtime consumer, while `tools/aw_asset_cli` grew its own independent compression/validation. The `render → aw_asset_cli` Cargo dependency (`astraweave-render/Cargo.toml:61`; the `astraweave-asset` dep is the adjacent line 60 — verified at commit `7c29b8182`) is an unusual production→tool direction flagged in ARCHITECTURE_MAP.md (anomaly #2; ARCHITECTURE_MAP.md still cites the dep as Cargo.toml:60, which is the `astraweave-asset` line) and is orthogonal to this crate, but it is the reason the CLI's compression path — rather than `astraweave-asset-pipeline` — is reachable from the render-side asset story.
+The crate carries explicit "Phase 0 / Phase 2 foundations" markers (lib.rs:311, 312, 1923, 1934), indicating an incremental build-out where header-only validators and GUID/cache scaffolding landed before full decoders. The glTF decoders, cell loader, and `AssetDatabase` matured into wired runtime use; `nanite_preprocess` and `astraweave-asset-pipeline` were built to completeness and tested but never adopted by a runtime consumer, while `tools/aw_asset_cli` grew its own independent compression/validation. The `render → aw_asset_cli` Cargo dependency (`astraweave-render/Cargo.toml:61`; the `astraweave-asset` dep is the adjacent line 60 — verified at commit `7c29b8182`) is an unusual production→tool direction flagged in ARCHITECTURE_MAP.md (anomaly #2; ARCHITECTURE_MAP.md still cites the dep as Cargo.toml:60, which is the `astraweave-asset` line) and is orthogonal to this crate, but it is the reason the CLI's compression path — rather than `astraweave-asset-pipeline` — is reachable from the render-side asset story.
 
 ---
 
