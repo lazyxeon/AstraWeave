@@ -64,10 +64,10 @@ jobs:
       # security-audit.yml is the pull-request gate. #423 tracks a check
       # that the ignore count in those two files does not rise.
       - name: Run security audit
-        run: cargo audit
+        run: bash scripts/ci/scan_cargo_locks.sh audit
 
       - name: Run cargo-deny check
-        run: cargo deny check
+        run: bash scripts/ci/scan_cargo_locks.sh deny
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -100,7 +100,7 @@ jobs:
           
           echo "### Security Audit Results" >> audit-report.md
           echo '```' >> audit-report.md
-          cargo audit --format json >> audit-report.md 2>&1 || true
+          bash scripts/ci/scan_cargo_locks.sh audit --format json >> audit-report.md 2>&1
           echo '```' >> audit-report.md
           echo "" >> audit-report.md
           

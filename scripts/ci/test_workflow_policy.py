@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import inspect
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -342,6 +343,140 @@ def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
         raise AssertionError("summary must require DECIDED and SCORE")
 
 
+SCAN_LOCKS_SCRIPT = ROOT / "scripts" / "ci" / "scan_cargo_locks.sh"
+# Jobs that already run cargo audit / cargo deny. Each mode must scan every lock.
+REQUIRED_LOCK_SCANS = {
+    "security-audit.yml": ("audit", "deny"),
+    "dependency-management.yml": ("audit", "deny"),
+    "aravath-windows.yml": ("audit", "deny"),
+}
+_LS_FILES_RE = re.compile(
+    r"git\s+ls-files\s+--\s+(?P<specs>(?:'[^']*'|\"[^\"]*\")(?:\s+(?:'[^']*'|\"[^\"]*\"))*)"
+)
+_GREP_V_RE = re.compile(
+    r"grep\s+-v(?:\s+-[EF])?\s+'([^']+)'|grep\s+-v(?:\s+-[EF])?\s+\"([^\"]+)\""
+)
+_SCAN_CALL_RE = re.compile(r"scan_cargo_locks\.sh\s+(audit|deny)\b")
+
+
+def tracked_cargo_locks() -> list[str]:
+    """Every tracked path whose file name is Cargo.lock."""
+    raw = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT)
+    locks: list[str] = []
+    for entry in raw.split(b"\0"):
+        if not entry:
+            continue
+        path = entry.decode()
+        if path == "Cargo.lock" or path.endswith("/Cargo.lock"):
+            locks.append(path)
+    return sorted(locks)
+
+
+def _uncomment(script: str) -> str:
+    kept: list[str] = []
+    for line in script.splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        kept.append(line.split("#", 1)[0])
+    return "\n".join(kept)
+
+
+def discovery_specs(script: str) -> list[str]:
+    match = _LS_FILES_RE.search(_uncomment(script))
+    if not match:
+        return []
+    return [part[1:-1] for part in re.findall(r"'[^']*'|\"[^\"]*\"", match.group("specs"))]
+
+
+def locks_discovered_by(script: str) -> list[str]:
+    specs = discovery_specs(script)
+    if not specs:
+        return []
+    raw = subprocess.check_output(
+        ["git", "ls-files", "--", *specs],
+        cwd=ROOT,
+        text=True,
+    )
+    found = [line.strip() for line in raw.splitlines() if line.strip()]
+    excluded = [group for match in _GREP_V_RE.finditer(_uncomment(script)) for group in match.groups() if group]
+    if excluded:
+        found = [lock for lock in found if not any(pat in lock for pat in excluded)]
+    return sorted(set(found))
+
+
+def _scan_failure_ignored(script: str) -> bool:
+    for line in _uncomment(script).splitlines():
+        if "cargo audit" in line or "cargo deny" in line or "scan_cargo_locks.sh" in line:
+            if "|| true" in line or "||true" in line:
+                return True
+    return False
+
+
+def missing_scanned_locks(script: str, tool: str, tracked: list[str] | None = None) -> list[str]:
+    """Tracked Cargo.lock paths `tool` (`audit` or `deny`) would not scan."""
+    if tool not in {"audit", "deny"}:
+        raise ValueError(tool)
+    tracked = tracked_cargo_locks() if tracked is None else list(tracked)
+    code = _uncomment(script)
+    if _scan_failure_ignored(script):
+        return tracked
+    if tool == "audit":
+        uses_lock = 'cargo audit --file "$lock"' in code
+    else:
+        uses_lock = (
+            'manifest="$(dirname -- "$lock")/Cargo.toml"' in code
+            and 'cargo deny --manifest-path "$manifest" check' in code
+        )
+    if not uses_lock:
+        return tracked
+    discovered = set(locks_discovered_by(script))
+    return [lock for lock in tracked if lock not in discovered]
+
+
+def _workflow_steps(text: str) -> list[str]:
+    return re.split(r"(?m)^ {6}- ", text)[1:]
+
+
+def cargo_lock_scan_gaps(workflow_text: str, scanner_text: str) -> list[str]:
+    """Gaps in one workflow. Empty means every audit/deny step scans every lock."""
+    gaps: list[str] = []
+    tracked = tracked_cargo_locks()
+    for step in _workflow_steps(workflow_text):
+        head = step.splitlines()[0].strip() if step else ""
+        code = _uncomment(step)
+        if "scan_cargo_locks.sh" not in code and not re.search(r"\bcargo audit\b|\bcargo deny\b", code):
+            continue
+        if re.search(r"continue-on-error:\s*true", step):
+            gaps.append(f"continue-on-error on {head}")
+        if _scan_failure_ignored(step):
+            gaps.append(f"ignored failure on {head}")
+        calls = _SCAN_CALL_RE.findall(code)
+        bare = re.search(r"\bcargo audit\b|\bcargo deny\b", code)
+        if not calls and bare:
+            gaps.append(f"{head}: cargo audit/deny does not scan every tracked Cargo.lock")
+            continue
+        if "scan_cargo_locks.sh" in code and not calls:
+            gaps.append(f"{head}: scan_cargo_locks.sh call has no audit or deny mode")
+        for mode in calls:
+            missing = missing_scanned_locks(scanner_text, mode, tracked)
+            if missing:
+                gaps.append(f"{head}: {mode} misses {', '.join(missing)}")
+    return gaps
+
+
+def lock_scan_policy_gaps(texts: dict[str, str], scanner_text: str) -> list[str]:
+    gaps: list[str] = []
+    for name, modes in REQUIRED_LOCK_SCANS.items():
+        text = texts[name]
+        for mode in modes:
+            needle = f"scan_cargo_locks.sh {mode}"
+            if needle not in text:
+                gaps.append(f"{name}: missing {needle}")
+    for name, text in texts.items():
+        gaps.extend(f"{name}: {gap}" for gap in cargo_lock_scan_gaps(text, scanner_text))
+    return gaps
+
+
 class WorkflowPolicyTest(unittest.TestCase):
     def test_pr_workflows_cancel_only_pull_requests(self) -> None:
         offenders = []
@@ -485,15 +620,97 @@ class WorkflowPolicyTest(unittest.TestCase):
         for tool in ("cargo-audit", "cargo-deny", "cargo-cyclonedx"):
             self.assertIn(f"install-prebuilt-cargo-tool.sh {tool}", text)
             self.assertIn(f"  {tool})", script)
-        self.assertIn("cargo audit", text)
-        self.assertIn("cargo deny check", text)
+        self.assertIn("scan_cargo_locks.sh audit", text)
+        self.assertIn("scan_cargo_locks.sh deny", text)
         self.assertIn("cargo cyclonedx", text)
+        scanner = SCAN_LOCKS_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('cargo audit --file "$lock"', scanner)
+        self.assertIn('cargo deny --manifest-path "$manifest" check', scanner)
         # Versions stay the ones the job used to cargo-install.
         self.assertIn("0.22.2", script)
         self.assertIn("0.20.2", script)
         self.assertIn("0.5.9", script)
         self.assertIn("9bd3e599314f50810c9d98b8b68a617ff9d3cc20873968d90b29d121f6b226ff", script)
         self.assertIn('"$tool" cyclonedx --version', script)
+
+    def test_every_tracked_cargo_lock_is_scanned(self) -> None:
+        tracked = tracked_cargo_locks()
+        self.assertGreaterEqual(len(tracked), 4)
+        for lock in (
+            "Cargo.lock",
+            "tools/parse_probe/Cargo.lock",
+            "astraweave-ecs/fuzz/Cargo.lock",
+            "crates/astraweave-blend/fuzz/Cargo.lock",
+        ):
+            self.assertIn(lock, tracked)
+        scanner = SCAN_LOCKS_SCRIPT.read_text(encoding="utf-8")
+        self.assertEqual(missing_scanned_locks(scanner, "audit", tracked), [])
+        self.assertEqual(missing_scanned_locks(scanner, "deny", tracked), [])
+        self.assertEqual(lock_scan_policy_gaps(workflow_texts(), scanner), [])
+        # The root spec and the nested spec are both required. `**/Cargo.lock`
+        # does not match Cargo.lock at the repo root.
+        self.assertEqual(
+            locks_discovered_by("git ls-files -- '**/Cargo.lock'\n"),
+            [lock for lock in tracked if lock != "Cargo.lock"],
+        )
+        self.assertEqual(locks_discovered_by("git ls-files -- 'Cargo.lock'\n"), ["Cargo.lock"])
+
+    def test_lock_scan_misses_a_dropped_lockfile(self) -> None:
+        tracked = tracked_cargo_locks()
+        scanner = SCAN_LOCKS_SCRIPT.read_text(encoding="utf-8")
+        root_only = scanner.replace(
+            "git ls-files -- '**/Cargo.lock' 'Cargo.lock'",
+            "git ls-files -- 'Cargo.lock'",
+            1,
+        )
+        missing = missing_scanned_locks(root_only, "audit", tracked)
+        self.assertIn("tools/parse_probe/Cargo.lock", missing)
+        self.assertIn("astraweave-ecs/fuzz/Cargo.lock", missing)
+        self.assertIn("crates/astraweave-blend/fuzz/Cargo.lock", missing)
+        self.assertNotIn("Cargo.lock", missing)
+        nested_only = scanner.replace(
+            "git ls-files -- '**/Cargo.lock' 'Cargo.lock'",
+            "git ls-files -- '**/Cargo.lock'",
+            1,
+        )
+        self.assertEqual(missing_scanned_locks(nested_only, "deny", tracked), ["Cargo.lock"])
+        filtered = scanner.replace(
+            "git ls-files -- '**/Cargo.lock' 'Cargo.lock'",
+            "git ls-files -- '**/Cargo.lock' 'Cargo.lock' | grep -v 'tools/parse_probe/Cargo.lock'",
+            1,
+        )
+        self.assertEqual(
+            missing_scanned_locks(filtered, "audit", tracked),
+            ["tools/parse_probe/Cargo.lock"],
+        )
+        bare_audit = scanner.replace('cargo audit --file "$lock"', "cargo audit", 1)
+        self.assertEqual(missing_scanned_locks(bare_audit, "audit", tracked), tracked)
+        ignored = scanner.replace(
+            'cargo audit --file "$lock" "$@"',
+            'cargo audit --file "$lock" "$@" || true',
+            1,
+        )
+        self.assertEqual(missing_scanned_locks(ignored, "audit", tracked), tracked)
+
+        texts = workflow_texts()
+        security = texts["security-audit.yml"]
+        mutated = dict(texts)
+        mutated["security-audit.yml"] = security.replace(
+            "bash scripts/ci/scan_cargo_locks.sh audit",
+            "cargo audit",
+            1,
+        )
+        gaps = lock_scan_policy_gaps(mutated, scanner)
+        self.assertTrue(any("does not scan every tracked Cargo.lock" in gap for gap in gaps))
+        self.assertTrue(any("security-audit.yml: missing scan_cargo_locks.sh audit" in gap for gap in gaps))
+        softened = security.replace(
+            "run: bash scripts/ci/scan_cargo_locks.sh audit",
+            "continue-on-error: true\n        run: bash scripts/ci/scan_cargo_locks.sh audit || true",
+            1,
+        )
+        step_gaps = cargo_lock_scan_gaps(softened, scanner)
+        self.assertTrue(any("continue-on-error" in gap for gap in step_gaps))
+        self.assertTrue(any("ignored failure" in gap for gap in step_gaps))
 
     def test_sccache_pull_requests_are_read_only(self) -> None:
         action = (ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml").read_text(encoding="utf-8")
@@ -546,8 +763,8 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("name: cargo-audit, cargo-deny, SBOM", windows)
         self.assertIn("name: Volumetrics validation on lavapipe", windows)
         self.assertIn("name: Build, test, and upload greybox", windows)
-        self.assertIn("cargo audit", windows)
-        self.assertIn("cargo deny check", windows)
+        self.assertIn("scan_cargo_locks.sh audit", windows)
+        self.assertIn("scan_cargo_locks.sh deny", windows)
         self.assertIn("cargo cyclonedx", windows)
         render = texts["render-device-validation.yml"]
         self.assertIn("name: Startup passes (lavapipe)", render)
