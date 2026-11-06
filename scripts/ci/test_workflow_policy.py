@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
+import miri_hotpath  # noqa: E402
 import mutation_ai_outcomes  # noqa: E402
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
@@ -142,6 +143,51 @@ def _exec_action_ref_violation_from_source(source: str):
 def _broken_action_ref_violation(old: str, new: str):
     source = inspect.getsource(action_ref_violation).replace(old, new, 1)
     return _exec_action_ref_violation_from_source(source)
+
+
+def github_path_match(pattern: str, path: str) -> bool:
+    """Match one GitHub Actions `paths` glob. `*` does not cross `/`. `**` does."""
+    regex: list[str] = ["^"]
+    index = 0
+    while index < len(pattern):
+        if pattern.startswith("**", index):
+            regex.append(".*")
+            index += 2
+        elif pattern[index] == "*":
+            regex.append("[^/]*")
+            index += 1
+        else:
+            regex.append(re.escape(pattern[index]))
+            index += 1
+    regex.append("$")
+    return re.fullmatch("".join(regex), path) is not None
+
+
+def pull_request_paths(text: str) -> list[str]:
+    in_pr = False
+    in_paths = False
+    paths: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("  pull_request:"):
+            in_pr = True
+            in_paths = False
+            continue
+        if in_pr and line and not line.startswith(" "):
+            break
+        if not in_pr:
+            continue
+        if line.startswith("    paths:"):
+            in_paths = True
+            continue
+        if not in_paths:
+            continue
+        quoted = re.match(r"^\s+- '([^']+)'\s*$", line)
+        if quoted:
+            paths.append(quoted.group(1))
+            continue
+        if line.strip() and not line.strip().startswith("#"):
+            break
+    return paths
 
 
 def workflow_texts() -> dict[str, str]:
@@ -880,6 +926,69 @@ class WorkflowPolicyTest(unittest.TestCase):
         stripped = source.replace(f'errors.append("{VERIFY_NO_MUTANTS_ERROR}")', "", 1)
         with self.assertRaises(AssertionError):
             self.assertIn(VERIFY_NO_MUTANTS_ERROR, stripped)
+
+
+    def test_miri_pull_request_paths_cover_hot_path_and_renames(self) -> None:
+        text = (WORKFLOWS / "miri.yml").read_text(encoding="utf-8")
+        paths = pull_request_paths(text)
+        self.assertTrue(paths, "miri.yml pull_request paths")
+        for watched in miri_hotpath.WATCHED:
+            self.assertIn(watched, paths)
+        for prefix in miri_hotpath.WATCHED_PREFIXES:
+            self.assertTrue(
+                any(path.startswith(prefix) or path.rstrip("/") == prefix.rstrip("/") for path in paths),
+                prefix,
+            )
+        self.assertIn("astraweave-ecs/**", paths)
+        # GitHub lists a rename's destination. A new name under the crate must
+        # still select the workflow (#589 item 4).
+        renamed = "astraweave-ecs/src/column_store.rs"
+        self.assertTrue(any(github_path_match(pattern, renamed) for pattern in paths), renamed)
+        self.assertTrue(
+            any(github_path_match(pattern, "astraweave-ecs/src/blob_vec_kani.rs") for pattern in paths)
+        )
+        self.assertTrue(
+            any(github_path_match(pattern, "astraweave-ecs/src/events.rs") for pattern in paths)
+        )
+        hot = text.split("miri-ecs-hotpath:", 1)[1].split("\n  miri-sdk:", 1)[0]
+        self.assertIn("blob_vec:: sparse_set:: archetype:: events::", hot)
+        self.assertIn('python3 scripts/ci/miri_hotpath.py', hot)
+        self.assertIn('--base "HEAD^1"', hot)
+        self.assertIn("fetch-depth: 2", hot)
+        self.assertNotIn("continue-on-error", hot)
+        self.assertNotIn("|| true", hot)
+        self.assertNotIn("|| exit 0", hot)
+
+    def test_miri_hotpath_selector_counts_old_rename_paths(self) -> None:
+        # `--no-renames` lists the deleted path and the new path. The old
+        # path is what makes a pure rename of blob_vec.rs run Miri.
+        renamed = miri_hotpath.classify(
+            ["astraweave-ecs/src/column_store.rs", "astraweave-ecs/src/blob_vec.rs"]
+        )
+        self.assertEqual(renamed["run"], "true")
+        self.assertEqual(renamed["reason"], "watched")
+        for path in (
+            "astraweave-ecs/src/blob_vec_kani.rs",
+            "astraweave-ecs/src/events.rs",
+            "astraweave-ecs/src/sparse_set.rs",
+            "astraweave-ecs/src/archetype.rs",
+            ".github/workflows/miri.yml",
+            ".github/rust-nightly-channel",
+            ".github/actions/rust-nightly/action.yml",
+        ):
+            result = miri_hotpath.classify([path])
+            self.assertEqual(result["run"], "true", path)
+            self.assertEqual(result["reason"], "watched", path)
+        skipped = miri_hotpath.classify(["astraweave-ecs/src/rng.rs"])
+        self.assertEqual(skipped["run"], "false")
+        self.assertEqual(skipped["reason"], "not-hot-path")
+        empty = miri_hotpath.classify([])
+        self.assertEqual(empty["run"], "true")
+        self.assertEqual(empty["reason"], "empty-diff")
+        source = (ROOT / "scripts" / "ci" / "miri_hotpath.py").read_text(encoding="utf-8")
+        self.assertIn("diff_files", source)
+        diff_source = (ROOT / "scripts" / "ci" / "affected_crates.py").read_text(encoding="utf-8")
+        self.assertIn('"--no-renames"', diff_source)
 
 
 if __name__ == "__main__":

@@ -275,32 +275,25 @@ impl Drop for DropProbe {
     }
 }
 
-/// Each live element is dropped once, including when a destructor panics.
+/// `drop_last` of a suffix, then `clear` of the prefix, drops each element once.
 ///
-/// `clear` publishes `len == 0` and drops through the raw tail path. `drop_last`
-/// publishes the surviving prefix the same way. Re-entry is defined only for
-/// an outer `clear_raw` reached through a raw pointer, with no `&mut BlobVec`
-/// live up the stack. On that path the outer call publishes `len == 0` before
-/// `drop_fn`, a nested `clear_raw` does not drop again, and on unwind the panic
-/// guard restores `len` to the not-yet-dropped tail so those slots are not
-/// freed twice. Re-entry through `swap_remove_raw` (`&mut self`) is undefined
-/// behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or
-/// `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across
-/// `drop_fn`. Kani does not implement `catch_unwind` (model-checking/kani#267),
-/// so the harness applies the non-reentrant split itself: `drop_last` runs
-/// through the panicking slot, then `clear` finishes the rest. It does not
-/// model a nested `clear_raw`. `clear_raw_reenter_panic_restores_undropped_tail`
-/// runs that outer-`clear_raw` panic under Miri.
+/// This harness does not cover #531. `DropProbe` never panics, so `PanicGuard`
+/// does not run and `thread::panicking()` is not observed. Kani does not
+/// implement `catch_unwind` (model-checking/kani#267): `rust_begin_unwind` is
+/// unsupported. An early return in this harness would still not execute the
+/// guard, so it would not be a proof of the unwind. The unwind is the Miri
+/// tests `clear_panic_does_not_double_free`, `clear_panic_drops_each_element_once`,
+/// `clear_and_drop_publish_len_before_drop_fn`, and
+/// `drop_panic_finishes_tail_and_frees_column`.
 #[kani::proof]
 #[kani::unwind(8)]
-fn blob_vec_drops_each_element_once_including_panicking_drop() {
+fn blob_vec_drop_last_then_clear_drops_each_element_once() {
     const MAX: usize = 2;
     let count: usize = kani::any();
     kani::assume(count > 0 && count <= MAX);
-    // How many elements `clear` drops from the end before the panicking one,
-    // not counting the panicking slot itself.
-    let dropped_before_panic: usize = kani::any();
-    kani::assume(dropped_before_panic < count);
+    // How many elements `drop_last` drops from the end before `clear`.
+    let suffix: usize = kani::any();
+    kani::assume(suffix < count);
 
     let mut drops = [0u8; MAX];
     let ptr = drops.as_mut_ptr();
@@ -316,9 +309,7 @@ fn blob_vec_drops_each_element_once_including_panicking_drop() {
         i += 1;
     }
 
-    // The panicking destructor runs (the slot is committed) and then aborts
-    // the rest of that `clear`. `+ 1` is that slot.
-    blob.drop_last(dropped_before_panic + 1);
+    blob.drop_last(suffix + 1);
     blob.clear();
 
     i = 0;
@@ -326,10 +317,10 @@ fn blob_vec_drops_each_element_once_including_panicking_drop() {
         unsafe {
             kani::assert(
                 *ptr.add(i) == 1,
-                "each element is dropped exactly once, including after a panicking drop",
+                "drop_last then clear drops each element exactly once",
             );
         }
         i += 1;
     }
-    kani::assert(blob.len() == 0, "the tail clear empties the column");
+    kani::assert(blob.len() == 0, "clear empties the column");
 }
