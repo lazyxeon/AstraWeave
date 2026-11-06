@@ -4,7 +4,7 @@
 //! lives under `target/`, so that case falls back to the repo assets.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -216,6 +216,19 @@ pub fn import_model(
     import_validated_model(&path)
 }
 
+fn read_model_bytes(path: &Path) -> Result<Vec<u8>> {
+    regular_file(path, MAX_MODEL_BYTES)?;
+    let mut file = fs::File::open(path).with_context(|| format!("read {}", path.display()))?;
+    let mut bytes = Vec::new();
+    std::io::Read::take(&mut file, MAX_MODEL_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("read {}", path.display()))?;
+    if bytes.len() as u64 > MAX_MODEL_BYTES {
+        bail!("model {} exceeds {MAX_MODEL_BYTES} bytes", path.display());
+    }
+    Ok(bytes)
+}
+
 fn import_validated_model(
     path: &Path,
 ) -> Result<(
@@ -223,21 +236,21 @@ fn import_validated_model(
     Vec<gltf::buffer::Data>,
     Vec<gltf::image::Data>,
 )> {
-    validate_model_file(path)?;
-    // `validate_model_file` reads the JSON chunk and ignores the total length
-    // at bytes 8..12. `gltf::import` then calls `Glb::from_reader`, which
-    // allocates `declared - 12` before it knows the file is shorter.
-    astraweave_asset::gltf_loader::reject_short_glb_file(path)?;
-    gltf::import(path).with_context(|| format!("import {}", path.display()))
+    let bytes = read_model_bytes(path)?;
+    validate_model_bytes(path, &bytes)?;
+    // Parse the bytes just read. `gltf::import` would open the path again and
+    // `Glb::from_reader` would allocate `declared - 12` from that second file.
+    astraweave_asset::gltf_loader::reject_short_glb_header(&bytes)?;
+    gltf::import_slice(&bytes).with_context(|| format!("import {}", path.display()))
 }
 
 pub fn validate_model_file(path: &Path) -> Result<()> {
-    regular_file(path, MAX_MODEL_BYTES)?;
-    let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    if bytes.len() as u64 > MAX_MODEL_BYTES {
-        bail!("model {} exceeds {MAX_MODEL_BYTES} bytes", path.display());
-    }
-    let json = model_json(path, &bytes)?;
+    let bytes = read_model_bytes(path)?;
+    validate_model_bytes(path, &bytes)
+}
+
+fn validate_model_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let json = model_json(path, bytes)?;
     let mut uris = Vec::new();
     collect_uris(&json, &mut uris);
     if uris.len() > 64 {

@@ -379,10 +379,10 @@ fn jail_gltf_uri(base: &Path, uri: &str) -> Result<()> {
     Ok(())
 }
 
-fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
-    astraweave_asset::gltf_loader::reject_short_glb_file(path)?;
+fn read_jailed_gltf(path: &Path) -> Result<Vec<u8>> {
+    let bytes = astraweave_asset::gltf_loader::read_gltf_container(path)?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = gltf::Gltf::open(path)?;
+    let doc = gltf::Gltf::from_slice(&bytes)?;
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source() {
             jail_gltf_uri(base, uri)?;
@@ -393,7 +393,11 @@ fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
             jail_gltf_uri(base, uri)?;
         }
     }
-    Ok(())
+    Ok(bytes)
+}
+
+fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
+    read_jailed_gltf(path).map(|_| ())
 }
 
 fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> {
@@ -408,8 +412,8 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
     if src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("gltf".into())
         || src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("glb".into())
     {
-        reject_escaping_gltf_uris(src)?;
-        let (_doc, _buffers, _images) = gltf::import(src)?;
+        let bytes = read_jailed_gltf(src)?;
+        let (_doc, _buffers, _images) = gltf::import_slice(&bytes)?;
         // Minimal example: just copy the glTF for now; swap to a meshbin writer later
         fs::copy(src, &out)?;
         if compress {

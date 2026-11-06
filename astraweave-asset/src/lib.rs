@@ -685,6 +685,32 @@ pub mod gltf_loader {
             reject_short_glb_file(&path).expect("declared length matches the file");
         }
 
+        /// `st_size` above the container cap is rejected before the read.
+        /// A sparse file can set that length without storing the payload.
+        #[test]
+        fn container_longer_than_the_cap_is_an_error() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("sparse.glb");
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&12u32.to_le_bytes());
+            std::fs::write(&path, &bytes).expect("write");
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .expect("open");
+            let len = MAX_GLB_CONTAINER_BYTES + 1;
+            file.set_len(len).expect("set_len");
+            drop(file);
+            let err = reject_short_glb_file(&path).expect_err("over the cap");
+            let msg = err.to_string();
+            assert!(
+                msg.contains(&len.to_string())
+                    && msg.contains(&MAX_GLB_CONTAINER_BYTES.to_string()),
+                "{msg}"
+            );
+        }
+
         /// `Read::read` may return one byte. The declared length is still checked.
         struct OneByteReader<'a> {
             data: &'a [u8],
@@ -868,11 +894,17 @@ pub mod gltf_loader {
         reject_declared_glb_length(&header[..n], available)
     }
 
-    /// Same check as [`reject_short_glb_header`], with the file length as the
-    /// hint. `Glb::from_reader` would allocate `declared - 12` before it
-    /// learns the file is shorter, so this fails closed first. The header is
-    /// filled until 12 bytes or EOF, so a short `read` cannot skip the check.
-    pub fn reject_short_glb_file(path: &std::path::Path) -> Result<()> {
+    /// `Glb::from_reader` allocates `declared - 12` before it reads the file.
+    /// A sparse file can report that length in `st_size` without storing it.
+    /// [`read_gltf_container`] stops at this many bytes and callers parse the
+    /// slice, so that allocation is the bytes already read.
+    pub const MAX_GLB_CONTAINER_BYTES: u64 = 256 * 1024 * 1024;
+
+    /// Read a glTF container without letting `st_size` choose the allocation.
+    /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
+    /// with `Gltf::from_slice` or `gltf::import_slice` instead of `Gltf::open`
+    /// and `gltf::import`.
+    pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
         let mut file =
             std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
         let meta = file
@@ -881,11 +913,34 @@ pub mod gltf_loader {
         if !meta.is_file() {
             bail!("GLB {} is not a regular file", path.display());
         }
-        let available = meta.len();
-        let mut header = [0u8; 12];
-        let n = read_header_or_eof(&mut file, &mut header)
-            .with_context(|| format!("read {}", path.display()))?;
-        reject_declared_glb_length(&header[..n], available)
+        if meta.len() > MAX_GLB_CONTAINER_BYTES {
+            bail!(
+                "GLB {} is {} bytes; limit is {MAX_GLB_CONTAINER_BYTES}",
+                path.display(),
+                meta.len()
+            );
+        }
+        let mut bytes = Vec::new();
+        {
+            use std::io::Read;
+            Read::take(&mut file, MAX_GLB_CONTAINER_BYTES + 1)
+                .read_to_end(&mut bytes)
+                .with_context(|| format!("read {}", path.display()))?;
+        }
+        if bytes.len() as u64 > MAX_GLB_CONTAINER_BYTES {
+            bail!(
+                "GLB {} exceeds {MAX_GLB_CONTAINER_BYTES} bytes",
+                path.display()
+            );
+        }
+        reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;
+        Ok(bytes)
+    }
+
+    /// Same check as [`reject_short_glb_header`] on the bytes
+    /// [`read_gltf_container`] actually read.
+    pub fn reject_short_glb_file(path: &std::path::Path) -> Result<()> {
+        read_gltf_container(path).map(|_| ())
     }
 
     fn read_glb(bytes: &[u8]) -> Result<gltf::binary::Glb<'_>> {

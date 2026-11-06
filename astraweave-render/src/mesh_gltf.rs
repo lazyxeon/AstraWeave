@@ -27,10 +27,14 @@ fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
 }
 
 #[cfg(feature = "gltf-assets")]
-fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
-    astraweave_asset::gltf_loader::reject_short_glb_file(path)?;
+fn gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
+    astraweave_asset::gltf_loader::read_gltf_container(path)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn reject_escaping_gltf_uris(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let doc = gltf::Gltf::open(path)?;
+    let doc = gltf::Gltf::from_slice(bytes)?;
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source() {
             jail_gltf_uri(base, uri)?;
@@ -47,8 +51,9 @@ fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
 #[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
-    reject_escaping_gltf_uris(path)?;
-    let (doc, buffers, images) = gltf::import(path)?;
+    let bytes = gltf_container(path)?;
+    reject_escaping_gltf_uris(path, &bytes)?;
+    let (doc, buffers, images) = gltf::import_slice(&bytes)?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
         for prim in mesh.primitives() {
