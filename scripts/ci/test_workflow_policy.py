@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
-"""Static checks for the CI tiering rules. Does not call GitHub."""
+"""CI workflow policy checks. Does not call GitHub.
+
+The benchmark-alert test runs that step under pwsh with the Actions runner
+wrapper. It does not dispatch a workflow.
+"""
 
 from __future__ import annotations
 
 import inspect
+import json
+import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -279,6 +288,212 @@ def _python_run_lines(run: str) -> list[str]:
         for line in run.splitlines()
         if "python3 scripts/ci/mutation_ai_outcomes.py" in line
     ]
+
+
+# actions/runner ScriptHandler.FixUpScriptContents for `shell: pwsh`, then
+# `pwsh -command ". '{0}'"`. Issue #693: a bare dot-source is not that wrapper.
+_RUNNER_PWSH_PREAMBLE = "$ErrorActionPreference = 'stop'\n"
+_RUNNER_PWSH_EPILOGUE = (
+    "if ((Test-Path -LiteralPath variable:\\LASTEXITCODE)) { exit $LASTEXITCODE }\n"
+)
+_STATUS_FN_RE = re.compile(r"\b(?:success|always|cancelled|failure)\s*\(")
+_STATUS_GUARD_RE = re.compile(
+    r"(?:!\s*cancelled|always|failure|success|cancelled)\s*\(\s*\)\s*(?:&&|\|\|)\s*"
+)
+_STEP_OUTPUT_RE = re.compile(
+    r"steps\.([A-Za-z_][A-Za-z0-9_]*)\.outputs\.([A-Za-z_][A-Za-z0-9_]*)"
+)
+_ALERT_ISSUE_STEPS = (
+    "Create GitHub issue for regression",
+    "Upload regression report",
+)
+
+
+def pwsh_run_body(step_block: str) -> str:
+    if "run: |" not in step_block:
+        raise AssertionError("step has no literal run block")
+    lines = step_block.split("run: |", 1)[1].splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    indents = [len(line) - len(line.lstrip(" ")) for line in lines if line.strip()]
+    if not indents:
+        raise AssertionError("empty pwsh run block")
+    cut = min(indents)
+    body = "\n".join(line[cut:] if line.strip() else "" for line in lines)
+    return body.rstrip() + "\n"
+
+
+def step_if_expression(step_block: str) -> str:
+    for line in step_block.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("if:"):
+            continue
+        value = stripped[3:].strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        return value
+    raise AssertionError("step is missing if:")
+
+
+def github_step_if_runs(
+    expr: str,
+    *,
+    failed: bool,
+    cancelled: bool,
+    outputs: dict[tuple[str, str], str],
+) -> bool:
+    """Evaluate a step `if:` the way Actions does, including implicit success()."""
+    raw = expr.strip()
+    if raw.startswith("${{") and raw.endswith("}}"):
+        raw = raw[3:-2].strip()
+    if _STATUS_FN_RE.search(raw) is None:
+        raw = f"success() && ({raw})"
+
+    def lookup(match: re.Match[str]) -> str:
+        return repr(outputs.get((match.group(1), match.group(2)), ""))
+
+    translated = _STEP_OUTPUT_RE.sub(lookup, raw)
+    translated = translated.replace("&&", " and ").replace("||", " or ")
+    translated = re.sub(r"!(?!=)", " not ", translated)
+    translated = re.sub(r"\bcancelled\s*\(", "cancelled_fn(", translated)
+    if not re.fullmatch(r"[A-Za-z0-9_ \t\(\)\'\"=<>!]+", translated):
+        raise AssertionError(f"unsupported if expression: {expr!r} -> {translated!r}")
+
+    def success() -> bool:
+        return (not failed) and (not cancelled)
+
+    def always() -> bool:
+        return True
+
+    def cancelled_fn() -> bool:
+        return cancelled
+
+    def failure() -> bool:
+        return failed
+
+    try:
+        value = eval(  # noqa: S307 — workflow if, builtins removed
+            translated,
+            {"__builtins__": {}},
+            {
+                "success": success,
+                "always": always,
+                "cancelled_fn": cancelled_fn,
+                "failure": failure,
+                "True": True,
+                "False": False,
+            },
+        )
+    except Exception as exc:
+        raise AssertionError(f"could not evaluate {expr!r}: {exc}") from exc
+    if not isinstance(value, bool):
+        raise AssertionError(f"if expression did not return a bool: {expr!r}")
+    return value
+
+
+def without_status_guard(expr: str) -> str:
+    stripped = expr
+    for _ in range(4):
+        updated = _STATUS_GUARD_RE.sub("", stripped, count=1)
+        if updated == stripped:
+            break
+        stripped = updated
+    if stripped == expr:
+        raise AssertionError(f"status guard was not removed from {expr!r}")
+    return stripped
+
+
+def assert_alert_followup_runs(text: str) -> None:
+    """Issue and upload steps run after a failed check that set has_regressions."""
+    outputs = {("regression_check", "has_regressions"): "true"}
+    for name in _ALERT_ISSUE_STEPS:
+        block = job_step_block(text, name)
+        if "continue-on-error" in block:
+            raise AssertionError(f"{name} must not use continue-on-error")
+        expr = step_if_expression(block)
+        runs = github_step_if_runs(
+            expr, failed=True, cancelled=False, outputs=outputs
+        )
+        if not runs:
+            raise AssertionError(
+                f"{name} if-guard does not run after regression_check fails "
+                "with has_regressions=true"
+            )
+        skipped = github_step_if_runs(
+            expr,
+            failed=True,
+            cancelled=False,
+            outputs={("regression_check", "has_regressions"): "false"},
+        )
+        if skipped:
+            raise AssertionError(f"{name} runs when has_regressions is false")
+
+
+def run_alert_check_in_runner(body: str, mode: str) -> tuple[int, str, bool]:
+    """Run the check step body inside the real runner pwsh wrapper."""
+    if shutil.which("pwsh") is None:
+        raise AssertionError("pwsh is required to run the Actions runner wrapper")
+    with tempfile.TemporaryDirectory(prefix="benchmark-alert-") as raw:
+        workspace = Path(raw)
+        scripts = workspace / "scripts"
+        scripts.mkdir()
+        shutil.copy(
+            ROOT / "scripts" / "check_benchmark_thresholds.ps1",
+            scripts / "check_benchmark_thresholds.ps1",
+        )
+        github = workspace / ".github"
+        github.mkdir()
+        (github / "benchmark_thresholds.json").write_text(
+            json.dumps(
+                {
+                    "benchmarks": {
+                        "sample": {
+                            "baseline": 100,
+                            "max_allowed": 150,
+                            "unit": "ns",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        results = workspace / "benchmark_results"
+        results.mkdir()
+        if mode == "regression":
+            payload = [{"name": "sample", "value": 200, "unit": "ns"}]
+        elif mode == "clean":
+            payload = [{"name": "sample", "value": 100, "unit": "ns"}]
+        elif mode == "checker_error":
+            payload = None
+        else:
+            raise AssertionError(f"unknown alert fixture {mode}")
+        if payload is not None:
+            (results / "benchmarks.json").write_text(
+                json.dumps(payload), encoding="utf-8"
+            )
+        script_path = workspace / "runner-step.ps1"
+        contents = _RUNNER_PWSH_PREAMBLE + body + _RUNNER_PWSH_EPILOGUE
+        script_path.write_text(contents, encoding="utf-8")
+        github_output = workspace / "github_output.txt"
+        github_output.write_text("", encoding="utf-8")
+        env = os.environ.copy()
+        env["GITHUB_OUTPUT"] = str(github_output)
+        env["GITHUB_REF_NAME"] = "main"
+        command = f". '{script_path}'"
+        proc = subprocess.run(
+            ["pwsh", "-command", command],
+            cwd=workspace,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = github_output.read_text(encoding="utf-8")
+        report = (workspace / "regression_report.md").is_file()
+        if mode == "clean" and proc.returncode != 0:
+            detail = (proc.stdout + "\n" + proc.stderr)[-2000:]
+            raise AssertionError(f"clean check exited {proc.returncode}: {detail}")
+        return proc.returncode, output, report
 
 
 def assert_mutation_summary_requires_ai_success(text: str) -> None:
@@ -880,6 +1095,59 @@ class WorkflowPolicyTest(unittest.TestCase):
         stripped = source.replace(f'errors.append("{VERIFY_NO_MUTANTS_ERROR}")', "", 1)
         with self.assertRaises(AssertionError):
             self.assertIn(VERIFY_NO_MUTANTS_ERROR, stripped)
+
+    def test_benchmark_alert_issue_runs_after_failed_regression_check(self) -> None:
+        alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
+        check = job_step_block(alert, "Check for regressions")
+        if "continue-on-error" in check:
+            raise AssertionError("regression_check must fail the job")
+        if "shell: pwsh" not in check:
+            raise AssertionError("regression_check must stay shell: pwsh")
+        body = pwsh_run_body(check)
+        if "-Strict" not in body:
+            raise AssertionError("benchmark_alert regression check lost -Strict")
+        if "exit 0" in body:
+            raise AssertionError("regression_check must stay red; do not exit 0")
+
+        strict = job_step_block(
+            (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8"),
+            "Strict threshold validation (main branch only)",
+        )
+        if "-Strict" not in strict:
+            raise AssertionError("benchmark.yml -Strict was changed")
+        if "continue-on-error" in strict:
+            raise AssertionError("benchmark.yml strict step must not continue on error")
+
+        code, output, report = run_alert_check_in_runner(body, "regression")
+        self.assertNotEqual(code, 0)
+        self.assertIn("has_regressions=true", output)
+        self.assertTrue(report)
+
+        code, output, report = run_alert_check_in_runner(body, "clean")
+        self.assertEqual(code, 0)
+        self.assertIn("has_regressions=false", output)
+        self.assertFalse(report)
+
+        code, _output, _report = run_alert_check_in_runner(body, "checker_error")
+        self.assertNotEqual(code, 0)
+
+        assert_alert_followup_runs(alert)
+        mutant = alert
+        for name in _ALERT_ISSUE_STEPS:
+            expr = step_if_expression(job_step_block(mutant, name))
+            stripped = without_status_guard(expr)
+            self.assertNotEqual(stripped, expr)
+            self.assertFalse(
+                github_step_if_runs(
+                    stripped,
+                    failed=True,
+                    cancelled=False,
+                    outputs={("regression_check", "has_regressions"): "true"},
+                )
+            )
+            mutant = mutant.replace(expr, stripped, 1)
+        with self.assertRaises(AssertionError):
+            assert_alert_followup_runs(mutant)
 
 
 if __name__ == "__main__":
