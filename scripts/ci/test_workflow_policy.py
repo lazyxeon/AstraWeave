@@ -1016,13 +1016,20 @@ def auto_retry_violations(text: str, allow_workflows: set[str]) -> list[str]:
         violations.append(f"permissions {permission_maps(text)}")
     if "continue-on-error" in text:
         violations.append("continue-on-error")
-    if "|| true" in text:
+    if "|| true" in text or re.search(r"\|\|\s*exit\s+0\b", text):
         violations.append("ignored-failure")
     if "github.event.workflow_run.conclusion == 'failure'" not in text:
         violations.append("missing-failure-conclusion")
+    if "github.event.workflow_run.conclusion == 'timed_out'" not in text:
+        violations.append("timed-out-candidate")
     attempt = re.search(r"github\.event\.workflow_run\.run_attempt < (\d+)", text)
     if not attempt or int(attempt.group(1)) != 3:
         violations.append("attempt-cap")
+    if (
+        "github.event.workflow_run.head_repository.full_name == github.repository"
+        not in text
+    ):
+        violations.append("fork-repository")
     watched = nightly_failure_watched_workflows(text)
     if set(watched) != allow_workflows:
         violations.append(f"workflows {watched}")
@@ -1038,10 +1045,47 @@ def auto_retry_violations(text: str, allow_workflows: set[str]) -> list[str]:
         if "${{" in body:
             violations.append("untrusted-interpolation")
             break
-    if "os.environ[\"DEFAULT_BRANCH\"]" not in text or "os.environ[\"REPO\"]" not in text:
-        violations.append("default-branch-fetch")
-    if '".." in branch.split("/")' not in text:
-        violations.append("branch-traversal-check")
+    if 'os.environ["REPO"]' not in text or 'os.environ["SCRIPT_SHA"]' not in text:
+        violations.append("pinned-fetch")
+    if 're.fullmatch(r"[0-9a-fA-F]{40}"' not in text or "/{sha}/" not in text:
+        violations.append("sha-pin")
+    if "github.sha" not in text:
+        violations.append("unpinned-fetch")
+    if 'host != "raw.githubusercontent.com"' not in text or "refusing redirect" not in text:
+        violations.append("redirect-guard")
+    if '".." in rel.split("/")' not in text:
+        violations.append("path-traversal-check")
+    for host in re.findall(r"https://([^/\s\"']+)", text):
+        bare = host.split("@")[-1].split(":")[0]
+        if bare != "raw.githubusercontent.com":
+            violations.append(f"raw-host {bare}")
+            break
+    return violations
+
+
+def benchmark_artifact_violations(text: str) -> list[str]:
+    violations: list[str] = []
+    if re.search(r"(?m)^\s*overwrite\s*:", text):
+        violations.append("overwrite")
+    names = re.findall(
+        r"name: benchmark-results-\$\{\{ github\.sha \}\}[^\n]*",
+        text,
+    )
+    if len(names) != 2:
+        violations.append("artifact-name-count")
+    for name in names:
+        if "${{ github.run_attempt }}" not in name:
+            violations.append("attempt-name")
+    if "benchmark-results-${{ github.sha }}-shard-*" not in text:
+        violations.append("download-pattern")
+    if "--prune-older-shard-attempts benchmark-shards" not in text:
+        violations.append("prune")
+    if "*-shard-${shard_index}-attempt-*" not in text:
+        violations.append("attempt-glob")
+    if text.count("success() &&") < 2:
+        violations.append("upload-success-guard")
+    if text.count("continue-on-error:") != 2:
+        violations.append("continue-on-error")
     return violations
 
 
@@ -1052,14 +1096,104 @@ def _allow(*pairs: tuple[str, str]) -> list[auto_retry.AllowJob]:
     ]
 
 
+LOG_143 = "\n".join(
+    [
+        "2026-10-30T13:24:47.9573516Z ##[error]Process completed with exit code 143.",
+    ]
+)
+LOG_LOST_RUNNER = (
+    "2026-10-30T13:24:47.9569595Z ##[error]The runner has received a shutdown signal. "
+    "This can happen when the runner service is stopped, or a manually started runner is canceled."
+)
+LOG_ARTIFACT = (
+    "2026-10-30T17:59:23.4758365Z ##[error]Unable to download artifact(s): "
+    "Unable to download and extract artifact: Artifact download failed after 5 retries."
+)
+LOG_MISSING = "Missing shard artifacts:\nshard-10"
+LOG_CRATES = "error: failed to download from `https://index.crates.io/config.json`"
+LOG_TIMEOUT = "curl: (28) Connection timed out after 30000 milliseconds"
+LOG_CACHE = "##[warning]Failed to restore cache entry. connect ETIMEDOUT"
+LOG_CACHE_RESTORE = "##[warning]Failed to restore: connect ETIMEDOUT 10.0.0.1:443"
+LOG_PACKAGE = "\n".join(
+    [
+        "Failed packages: 2",
+        "Healthy: false",
+        "##[error]Process completed with exit code 1.",
+    ]
+)
+LOG_BOILERPLATE = "\n".join(
+    [
+        "SCCACHE_IDLE_TIMEOUT: 0",
+        "CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse",
+        "# https://rust-lang.zulipchat.com/#narrow/stream/246057-t-cargo/topic/timeout.20investigation",
+        "##[start-action display=Work around spurious network errors in curl 8.0",
+        "cache-all-crates: true",
+        'echo "Missing shard artifacts:"',
+        "Artifact download completed successfully.",
+        "Artifact download URL: https://github.com/example/artifacts/1",
+        "Process completed with exit code 1.",
+        "also writes hits the service rate limit (cache write errors) and",
+        "Updating crates.io index",
+    ]
+)
+AGGREGATE_DOWNLOAD_STEPS = (
+    ("Download benchmark shards", "success"),
+    ("Upload combined benchmark artifact", "success"),
+    ("Strict threshold validation (main branch only)", "skipped"),
+    ("Enforce benchmark shard health", "failure"),
+)
+
+
+def _observed(
+    names: list[str],
+    logs: dict[str, str] | None = None,
+    steps: dict[str, tuple[tuple[str, str], ...]] | None = None,
+    cls: type | None = None,
+) -> list:
+    kind = cls or auto_retry.ObservedJob
+    logs = logs or {}
+    steps = steps or {}
+    return [kind(name, logs.get(name, ""), tuple(steps.get(name, ()))) for name in names]
+
+
 def _decide(
     workflow: str,
     failed: list[str],
     allow: list[auto_retry.AllowJob],
     attempt: int = 1,
     conclusion: str = "failure",
+    logs: dict[str, str] | None = None,
+    steps: dict[str, tuple[tuple[str, str], ...]] | None = None,
 ) -> auto_retry.Decision:
-    return auto_retry.decide(workflow, failed, allow, attempt, conclusion)
+    return auto_retry.decide(
+        workflow,
+        _observed(failed, logs, steps),
+        allow,
+        attempt,
+        conclusion,
+    )
+
+
+def _mutant_decide(
+    namespace: dict[str, object],
+    workflow: str,
+    failed: list[str],
+    allow: list,
+    attempt: int = 1,
+    conclusion: str = "failure",
+    logs: dict[str, str] | None = None,
+    steps: dict[str, tuple[tuple[str, str], ...]] | None = None,
+):
+    decide = namespace["decide"]
+    observed = namespace["ObservedJob"]
+    assert callable(decide)
+    return decide(
+        workflow,
+        _observed(failed, logs, steps, cls=observed),
+        allow,
+        attempt,
+        conclusion,
+    )
 
 
 class AutoRetryPolicyTest(unittest.TestCase):
@@ -1089,25 +1223,51 @@ class AutoRetryPolicyTest(unittest.TestCase):
         allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
         shard = "Performance Benchmarks (shard 10)"
         aggregate = "Aggregate Benchmark Results"
+        shard_logs = {shard: LOG_143}
+        both_logs = {shard: LOG_143, aggregate: LOG_MISSING}
         self.assertTrue(
-            _decide("Performance Benchmarks", [shard], allow).retry
+            _decide("Performance Benchmarks", [shard], allow, logs=shard_logs).retry
         )
         self.assertTrue(
-            _decide("Performance Benchmarks", [shard, aggregate], allow).retry
+            _decide("Performance Benchmarks", [shard, aggregate], allow, logs=both_logs).retry
         )
-        self.assertTrue(
-            _decide("Performance Benchmarks", [aggregate], allow).retry
+        cited = _decide(
+            "Performance Benchmarks",
+            [aggregate],
+            allow,
+            logs={aggregate: LOG_ARTIFACT},
+            steps={aggregate: AGGREGATE_DOWNLOAD_STEPS},
         )
+        self.assertTrue(cited.retry)
+        self.assertEqual(cited.signatures, ("artifact-download",))
         other = "Performance Benchmarks (shard 11)"
-        mixed = _decide("Performance Benchmarks", [shard, other], allow)
+        mixed = _decide(
+            "Performance Benchmarks",
+            [shard, other],
+            allow,
+            logs={shard: LOG_143, other: LOG_143},
+        )
         self.assertFalse(mixed.retry)
         self.assertEqual(mixed.reason, "not-allowlisted")
-        aw_build = _decide("Performance Benchmarks", ["Benchmarks (aw_build)"], allow)
+        aw_build = _decide(
+            "Performance Benchmarks",
+            ["Benchmarks (aw_build)"],
+            allow,
+            logs={"Benchmarks (aw_build)": LOG_143},
+        )
         self.assertFalse(aw_build.retry)
         self.assertEqual(aw_build.reason, "not-allowlisted")
-        wrong_workflow = _decide("Benchmark Regression Alerts", [aggregate], allow)
+        wrong_workflow = _decide(
+            "Benchmark Regression Alerts",
+            [aggregate],
+            allow,
+            logs={aggregate: LOG_ARTIFACT},
+        )
         self.assertFalse(wrong_workflow.retry)
         self.assertEqual(wrong_workflow.reason, "not-allowlisted")
+        nameless = _decide("Performance Benchmarks", [shard], allow)
+        self.assertFalse(nameless.retry)
+        self.assertEqual(nameless.reason, "no-signature")
 
     def test_denylist_wins_even_when_the_job_is_allowlisted(self) -> None:
         cases = [
@@ -1130,19 +1290,34 @@ class AutoRetryPolicyTest(unittest.TestCase):
             ("Performance Benchmarks", "Workflow policy tests"),
             ("Comprehensive CI Pipeline", "Gate (fmt, clippy, check)"),
             ("Comprehensive CI Pipeline", "Gate"),
+            ("Comprehensive CI Pipeline", "Gate("),
             ("Comprehensive CI Pipeline", "gate extra"),
+            ("Comprehensive CI Pipeline", "Ga\u200bte"),
+            ("Comprehensive CI Pipeline", "G\u0430te"),
+            ("Comprehensive CI Pipeline", "\uff27\uff41\uff54\uff45"),
+            ("determinism replay", "unrelated"),
+            ("Comprehensive CI Pipeline", "PR Rust checks"),
+            ("Comprehensive CI Pipeline", "Detect affected crates"),
+            ("Comprehensive CI Pipeline", "Test (ubuntu, build archive)"),
+            ("Comprehensive CI Pipeline", "Test (ubuntu, 1/3)"),
+            ("Comprehensive CI Pipeline", "Test (windows, 2/3)"),
+            ("Comprehensive CI Pipeline", "Minimum Supported Rust Version"),
+            ("Sanitizers", "Determinism Validation"),
         ]
         for workflow, job in cases:
             with self.subTest(workflow=workflow, job=job):
                 self.assertTrue(auto_retry.job_denied(workflow, job), job)
                 allow = _allow((workflow, job))
-                decision = _decide(workflow, [job], allow)
+                decision = _decide(workflow, [job], allow, logs={job: LOG_143})
                 self.assertFalse(decision.retry)
                 self.assertEqual(decision.reason, "denylist")
         self.assertFalse(auto_retry.job_denied("Performance Benchmarks", "gatekeeper"))
         self.assertFalse(auto_retry.job_denied("Performance Benchmarks", "comparison"))
         self.assertFalse(
             auto_retry.job_denied("Performance Benchmarks", "Aggregate Benchmark Results")
+        )
+        self.assertFalse(
+            auto_retry.job_denied("Performance Benchmarks", "Performance Benchmarks (shard 10)")
         )
 
     def test_denylist_rules_are_load_bearing(self) -> None:
@@ -1201,23 +1376,48 @@ class AutoRetryPolicyTest(unittest.TestCase):
                 "Comprehensive CI Pipeline",
                 "Gate (fmt, clippy, check)",
             ),
+            (
+                "return True  # deny:pr-rust",
+                "return False  # deny:pr-rust",
+                "Comprehensive CI Pipeline",
+                "PR Rust checks",
+            ),
+            (
+                "return True  # deny:detect-affected",
+                "return False  # deny:detect-affected",
+                "Comprehensive CI Pipeline",
+                "Detect affected crates",
+            ),
+            (
+                "return True  # deny:msrv",
+                "return False  # deny:msrv",
+                "Comprehensive CI Pipeline",
+                "Minimum Supported Rust Version",
+            ),
+            (
+                "return True  # deny:required-test",
+                "return False  # deny:required-test",
+                "Comprehensive CI Pipeline",
+                "Test (ubuntu, 1/3)",
+            ),
+            (
+                "return True  # deny:determinism-validation",
+                "return False  # deny:determinism-validation",
+                "Sanitizers",
+                "Determinism Validation",
+            ),
         ]
         for old, new, workflow, job in mutants:
             with self.subTest(job=job):
-                self.assertFalse(_decide(workflow, [job], _allow((workflow, job))).retry)
+                allow = _allow((workflow, job))
+                self.assertFalse(_decide(workflow, [job], allow, logs={job: LOG_143}).retry)
                 namespace = _mutant_auto_retry(old, new)
                 denied = namespace["job_denied"]
-                decide = namespace["decide"]
-                self.assertTrue(callable(denied) and callable(decide))
+                self.assertTrue(callable(denied))
                 self.assertFalse(denied(workflow, job))
-                allow = [
-                    auto_retry.AllowJob(
-                        workflow,
-                        job,
-                        "https://github.com/lazyxeon/AstraWeave/actions/runs/1",
-                    )
-                ]
-                decision = decide(workflow, [job], allow, 1, "failure")
+                decision = _mutant_decide(
+                    namespace, workflow, [job], allow, logs={job: LOG_143}
+                )
                 self.assertTrue(decision.retry)
 
     def test_deny_wins_mutant_retries_a_listed_gate(self) -> None:
@@ -1229,10 +1429,8 @@ class AutoRetryPolicyTest(unittest.TestCase):
             "denied = True  # deny-wins",
             "denied = False  # deny-wins",
         )
-        decide = namespace["decide"]
-        assert callable(decide)
         allow = _allow((workflow, job))
-        mutant = decide(workflow, [job], allow, 1, "failure")
+        mutant = _mutant_decide(namespace, workflow, [job], allow, logs={job: LOG_143})
         self.assertTrue(mutant.retry)
 
     def test_allowlist_check_is_load_bearing(self) -> None:
@@ -1241,57 +1439,101 @@ class AutoRetryPolicyTest(unittest.TestCase):
         allow = _allow(("Performance Benchmarks", shard))
         real = _decide("Performance Benchmarks", [shard, other], allow)
         self.assertEqual(real.reason, "not-allowlisted")
+        logs = {shard: LOG_143, other: LOG_143}
+        real = _decide("Performance Benchmarks", [shard, other], allow, logs=logs)
+        self.assertEqual(real.reason, "not-allowlisted")
         namespace = _mutant_auto_retry(
-            "if (workflow, job) not in allowed:  # allowlist-only",
+            "if (workflow, job.name) not in allowed:  # allowlist-only",
             "if False:  # allowlist-only",
         )
-        decide = namespace["decide"]
-        assert callable(decide)
-        mutant = decide("Performance Benchmarks", [shard, other], allow, 1, "failure")
+        mutant = _mutant_decide(
+            namespace,
+            "Performance Benchmarks",
+            [shard, other],
+            allow,
+            logs=logs,
+        )
         self.assertTrue(mutant.retry)
 
     def test_attempt_cap_and_failure_conclusion(self) -> None:
         allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
         shard = ["Performance Benchmarks (shard 10)"]
+        logs = {shard[0]: LOG_143}
         self.assertEqual(auto_retry.MAX_ATTEMPT, 3)
-        self.assertTrue(_decide("Performance Benchmarks", shard, allow, attempt=1).retry)
-        self.assertTrue(_decide("Performance Benchmarks", shard, allow, attempt=2).retry)
-        capped = _decide("Performance Benchmarks", shard, allow, attempt=3)
+        self.assertTrue(
+            _decide("Performance Benchmarks", shard, allow, attempt=1, logs=logs).retry
+        )
+        self.assertTrue(
+            _decide("Performance Benchmarks", shard, allow, attempt=2, logs=logs).retry
+        )
+        capped = _decide("Performance Benchmarks", shard, allow, attempt=3, logs=logs)
         self.assertFalse(capped.retry)
         self.assertEqual(capped.reason, "attempt-cap")
         self.assertEqual(
-            _decide("Performance Benchmarks", shard, allow, attempt=0).reason,
+            _decide("Performance Benchmarks", shard, allow, attempt=0, logs=logs).reason,
             "attempt-cap",
         )
-        for conclusion in ("success", "cancelled", "timed_out", "skipped"):
+        for conclusion in ("success", "cancelled", "skipped"):
             decision = _decide(
-                "Performance Benchmarks", shard, allow, conclusion=conclusion
+                "Performance Benchmarks",
+                shard,
+                allow,
+                conclusion=conclusion,
+                logs=logs,
             )
             self.assertFalse(decision.retry)
             self.assertEqual(decision.reason, "not-failure")
+        timed = _decide(
+            "Performance Benchmarks",
+            shard,
+            allow,
+            conclusion="timed_out",
+            logs=logs,
+        )
+        self.assertTrue(timed.retry)
+        timed_plain = _decide(
+            "Performance Benchmarks", shard, allow, conclusion="timed_out"
+        )
+        self.assertEqual(timed_plain.reason, "no-signature")
         empty = _decide("Performance Benchmarks", [], allow)
         self.assertEqual(empty.reason, "no-failed-jobs")
         namespace = _mutant_auto_retry(
             "if attempt >= MAX_ATTEMPT:  # attempt-cap",
             "if False:  # attempt-cap",
         )
-        decide = namespace["decide"]
-        assert callable(decide)
-        self.assertTrue(decide("Performance Benchmarks", shard, allow, 3, "failure").retry)
+        self.assertTrue(
+            _mutant_decide(
+                namespace,
+                "Performance Benchmarks",
+                shard,
+                allow,
+                attempt=3,
+                logs=logs,
+            ).retry
+        )
         namespace = _mutant_auto_retry(
-            'if conclusion != "failure":  # failure-only',
+            "if conclusion not in CANDIDATE_CONCLUSIONS:  # failure-only",
             "if False:  # failure-only",
         )
-        decide = namespace["decide"]
-        assert callable(decide)
-        self.assertTrue(decide("Performance Benchmarks", shard, allow, 1, "success").retry)
+        self.assertTrue(
+            _mutant_decide(
+                namespace,
+                "Performance Benchmarks",
+                shard,
+                allow,
+                conclusion="success",
+                logs=logs,
+            ).retry
+        )
         namespace = _mutant_auto_retry(
             "if not failed_jobs:  # empty-failed",
             "if False:  # empty-failed",
         )
-        decide = namespace["decide"]
-        assert callable(decide)
-        self.assertTrue(decide("Performance Benchmarks", [], allow, 1, "failure").retry)
+        self.assertTrue(
+            _mutant_decide(
+                namespace, "Performance Benchmarks", [], allow, conclusion="failure"
+            ).retry
+        )
 
     def test_failed_job_names_ignore_success_and_cancelled(self) -> None:
         payload = [
@@ -1308,6 +1550,34 @@ class AutoRetryPolicyTest(unittest.TestCase):
             auto_retry.failed_job_names(payload),
             ["Performance Benchmarks (shard 10)"],
         )
+        timed = [
+            {
+                "jobs": [
+                    {
+                        "id": 7,
+                        "name": "Performance Benchmarks (shard 10)",
+                        "conclusion": "timed_out",
+                        "steps": [
+                            {"name": "Run benchmarks", "conclusion": "failure"},
+                        ],
+                    },
+                    {"name": "Benchmarks (aw_build)", "conclusion": "cancelled"},
+                ]
+            }
+        ]
+        observed = auto_retry.candidate_jobs(timed)
+        self.assertEqual(
+            [(job.name, job.conclusion, job.job_id, job.steps) for job in observed],
+            [
+                (
+                    "Performance Benchmarks (shard 10)",
+                    "timed_out",
+                    7,
+                    (("Run benchmarks", "failure"),),
+                )
+            ],
+        )
+        self.assertEqual(auto_retry.failed_job_names(timed), [])
 
     def test_record_contains_run_attempt_jobs_and_conclusion(self) -> None:
         record = auto_retry.build_record(
@@ -1321,7 +1591,20 @@ class AutoRetryPolicyTest(unittest.TestCase):
         self.assertIn("Aggregate Benchmark Results", record)
         self.assertIn("Performance Benchmarks (shard 10)", record)
         self.assertIn("- Conclusion: failure", record)
+        self.assertIn("- Signatures: (none)", record)
         self.assertIn(auto_retry.TRACKING_MARKER, record)
+        self.assertEqual(record.splitlines()[0], auto_retry.BOT_MARKER)
+        signed = auto_retry.build_record(
+            "https://github.com/lazyxeon/AstraWeave/actions/runs/41081301546",
+            1,
+            ["Aggregate Benchmark Results"],
+            "failure",
+            ("artifact-download",),
+        )
+        self.assertIn("- Signatures: artifact-download", signed)
+        self.assertTrue(auto_retry.tracking_issue_body().startswith(auto_retry.BOT_MARKER))
+        self.assertIn(auto_retry.TRACKING_MARKER, auto_retry.tracking_issue_body())
+        self.assertTrue(auto_retry.duplicate_comment(12).startswith(auto_retry.BOT_MARKER))
 
     def test_record_target_is_pr_or_tracking_issue(self) -> None:
         self.assertEqual(auto_retry.record_destination("schedule", "main", "main"), "issue")
@@ -1459,6 +1742,32 @@ class AutoRetryPolicyTest(unittest.TestCase):
                 "run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py || true",
                 1,
             ),
+            "ignore-exit-0": text.replace(
+                "run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py",
+                "run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py || exit 0",
+                1,
+            ),
+            "foreign-raw-host": text.replace(
+                "https://raw.githubusercontent.com/",
+                "https://evil.example/",
+                1,
+            ),
+            "drop-redirect-guard": text.replace(
+                'host != "raw.githubusercontent.com"',
+                'host == "raw.githubusercontent.com"',
+                1,
+            ),
+            "unpinned-fetch": text.replace("/{sha}/", "/{branch}/", 1),
+            "fork-repository": text.replace(
+                "      github.event.workflow_run.head_repository.full_name == github.repository\n",
+                "",
+                1,
+            ),
+            "drop-timed-out": text.replace(
+                "github.event.workflow_run.conclusion == 'timed_out'",
+                "github.event.workflow_run.conclusion == 'success'",
+                1,
+            ),
             "extra-workflow": text.replace(
                 "      - Performance Benchmarks\n",
                 "      - Performance Benchmarks\n      - determinism-replay\n",
@@ -1475,6 +1784,271 @@ class AutoRetryPolicyTest(unittest.TestCase):
             with self.subTest(mutant=name):
                 self.assertNotEqual(mutant, text)
                 self.assertTrue(auto_retry_violations(mutant, allow_workflows), name)
+
+    def test_infra_signature_matches_cited_flakes_and_rejects_regressions(self) -> None:
+        self.assertEqual(auto_retry.infra_signature(LOG_143), "exit-143")
+        self.assertEqual(auto_retry.infra_signature(LOG_LOST_RUNNER), "lost-runner")
+        self.assertEqual(auto_retry.infra_signature(LOG_ARTIFACT), "artifact-download")
+        self.assertEqual(auto_retry.infra_signature(LOG_MISSING), "missing-shard-artifact")
+        self.assertEqual(auto_retry.infra_signature(LOG_CRATES), "crates-io")
+        self.assertEqual(auto_retry.infra_signature(LOG_TIMEOUT), "network-timeout")
+        self.assertEqual(auto_retry.infra_signature(LOG_CACHE), "cache-download")
+        self.assertEqual(auto_retry.infra_signature(LOG_CACHE_RESTORE), "cache-download")
+        self.assertIsNone(auto_retry.infra_signature(LOG_PACKAGE))
+        self.assertIsNone(auto_retry.infra_signature(LOG_BOILERPLATE))
+        self.assertIsNone(auto_retry.infra_signature("exit code 1430"))
+        allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
+        shard = "Performance Benchmarks (shard 10)"
+        aggregate = "Aggregate Benchmark Results"
+        package = _decide(
+            "Performance Benchmarks", [shard], allow, logs={shard: LOG_PACKAGE}
+        )
+        self.assertEqual(package.reason, "no-signature")
+        both = _decide(
+            "Performance Benchmarks",
+            [shard, aggregate],
+            allow,
+            logs={shard: LOG_LOST_RUNNER, aggregate: LOG_MISSING},
+        )
+        self.assertTrue(both.retry)
+        self.assertEqual(both.signatures, ("lost-runner", "missing-shard-artifact"))
+        strict = _decide(
+            "Performance Benchmarks",
+            [aggregate],
+            allow,
+            logs={aggregate: LOG_ARTIFACT},
+            steps={
+                aggregate: (("Strict threshold validation (main branch only)", "failure"),)
+            },
+        )
+        self.assertEqual(strict.reason, "strict-threshold")
+        self.assertFalse(strict.retry)
+
+    def test_signature_and_strict_checks_are_load_bearing(self) -> None:
+        allow = auto_retry.load_allowlist(AUTO_RETRY_ALLOWLIST)
+        shard = "Performance Benchmarks (shard 10)"
+        aggregate = "Aggregate Benchmark Results"
+        real = _decide(
+            "Performance Benchmarks", [shard], allow, logs={shard: LOG_PACKAGE}
+        )
+        self.assertEqual(real.reason, "no-signature")
+        namespace = _mutant_auto_retry(
+            "if any(infra_signature(job.log) is None for job in failed_jobs):  # infra-signature",
+            "if False:  # infra-signature",
+        )
+        mutant = _mutant_decide(
+            namespace,
+            "Performance Benchmarks",
+            [shard],
+            allow,
+            logs={shard: LOG_PACKAGE},
+        )
+        self.assertTrue(mutant.retry)
+        steps = {
+            aggregate: (("Strict threshold validation (main branch only)", "failure"),)
+        }
+        real_strict = _decide(
+            "Performance Benchmarks",
+            [aggregate],
+            allow,
+            logs={aggregate: LOG_143},
+            steps=steps,
+        )
+        self.assertEqual(real_strict.reason, "strict-threshold")
+        namespace = _mutant_auto_retry(
+            "if any(strict_step_failed(job.steps) for job in failed_jobs):  # strict-exclusion",
+            "if False:  # strict-exclusion",
+        )
+        mutant_strict = _mutant_decide(
+            namespace,
+            "Performance Benchmarks",
+            [aggregate],
+            allow,
+            logs={aggregate: LOG_143},
+            steps=steps,
+        )
+        self.assertTrue(mutant_strict.retry)
+
+    def test_name_normalization_is_load_bearing(self) -> None:
+        cases = [
+            (
+                'text = unicodedata.normalize("NFKC", value)  # norm:nfkc',
+                "text = value  # norm:nfkc",
+                "Comprehensive CI Pipeline",
+                "\uff27\uff41\uff54\uff45",
+            ),
+            (
+                'text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")  # norm:zero-width',
+                "text = text  # norm:zero-width",
+                "Comprehensive CI Pipeline",
+                "Ga\u200bte",
+            ),
+            (
+                "text = text.translate(_HOMOGLYPHS)  # norm:homoglyph",
+                "text = text  # norm:homoglyph",
+                "Comprehensive CI Pipeline",
+                "G\u0430te",
+            ),
+            (
+                'text = text.replace("-", " ").replace("_", " ")  # norm:separators',
+                "text = text  # norm:separators",
+                "determinism-replay",
+                "unrelated",
+            ),
+        ]
+        for old, new, workflow, job in cases:
+            with self.subTest(job=job):
+                self.assertTrue(auto_retry.job_denied(workflow, job))
+                namespace = _mutant_auto_retry(old, new)
+                denied = namespace["job_denied"]
+                self.assertTrue(callable(denied))
+                self.assertFalse(denied(workflow, job))
+                allow = _allow((workflow, job))
+                decision = _mutant_decide(
+                    namespace, workflow, [job], allow, logs={job: LOG_143}
+                )
+                self.assertTrue(decision.retry)
+
+    def test_open_pr_matches_head_branch_and_repository(self) -> None:
+        repo = "lazyxeon/AstraWeave"
+        branch = "cursor/scoped-auto-retry-6226"
+        pulls = [
+            {
+                "number": 1,
+                "state": "open",
+                "head": {"ref": "other", "repo": {"full_name": repo}},
+            },
+            {
+                "number": 3,
+                "state": "open",
+                "head": {"ref": branch, "repo": {"full_name": "fork/AstraWeave"}},
+            },
+            {
+                "number": 9,
+                "state": "open",
+                "head": {"ref": branch, "repo": {"full_name": repo}},
+            },
+            {
+                "number": 4,
+                "state": "closed",
+                "head": {"ref": branch, "repo": {"full_name": repo}},
+            },
+        ]
+        self.assertEqual(auto_retry.select_open_pr(pulls, branch, repo), 9)
+        self.assertIsNone(auto_retry.select_open_pr(pulls, "missing", repo))
+        self.assertFalse(auto_retry.repository_matches("fork/AstraWeave", repo))
+        self.assertFalse(auto_retry.repository_matches("", repo))
+        self.assertTrue(auto_retry.repository_matches(repo, repo))
+
+    def test_live_attempt_blocks_a_stale_listener(self) -> None:
+        self.assertEqual(auto_retry.live_run_guard(1, 3, "completed"), "stale-attempt")
+        self.assertEqual(auto_retry.live_run_guard(3, 3, "completed"), "attempt-cap")
+        self.assertEqual(auto_retry.live_run_guard(1, 1, "in_progress"), "run-in-progress")
+        self.assertIsNone(auto_retry.live_run_guard(2, 2, "completed"))
+        attempt, status, conclusion = auto_retry.parse_run(
+            {"run_attempt": 2, "status": "completed", "conclusion": "failure"}
+        )
+        self.assertEqual((attempt, status, conclusion), (2, "completed", "failure"))
+        with self.assertRaises(ValueError):
+            auto_retry.parse_run({"run_attempt": True, "status": "completed", "conclusion": "failure"})
+        self.assertIn("filter=latest", auto_retry.jobs_path("lazyxeon/AstraWeave", "99"))
+        namespace = _mutant_auto_retry("filter=latest", "filter=all")
+        path = namespace["jobs_path"]
+        assert callable(path)
+        self.assertNotIn("filter=latest", path("lazyxeon/AstraWeave", "99"))
+
+    def test_prune_keeps_the_newest_shard_attempt(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            kept_names = []
+            for name in (
+                "benchmark-results-abc-shard-10-attempt-1",
+                "benchmark-results-abc-shard-10-attempt-2",
+                "benchmark-results-abc-shard-11",
+                "notes.txt",
+            ):
+                path = root / name
+                if name == "notes.txt":
+                    path.write_text("keep", encoding="utf-8")
+                    continue
+                path.mkdir()
+                (path / "benchmarks.json").write_text("[]", encoding="utf-8")
+                kept_names.append(name)
+            removed = auto_retry.prune_older_shard_attempts(root)
+            self.assertEqual(removed, ["benchmark-results-abc-shard-10-attempt-1"])
+            self.assertFalse((root / "benchmark-results-abc-shard-10-attempt-1").exists())
+            self.assertTrue((root / "benchmark-results-abc-shard-10-attempt-2").is_dir())
+            self.assertTrue((root / "benchmark-results-abc-shard-11").is_dir())
+            self.assertTrue((root / "notes.txt").is_file())
+            self.assertEqual(auto_retry.prune_older_shard_attempts(root / "missing"), [])
+
+    def test_fetch_refuses_a_redirect_off_raw_githubusercontent(self) -> None:
+        import textwrap
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+
+        text = AUTO_RETRY_WORKFLOW.read_text(encoding="utf-8")
+        marker = "def raw_url("
+        start = text.rfind("\n", 0, text.index(marker)) + 1
+        end = text.index("urllib.request.install_opener")
+        chunk = textwrap.dedent(text[start:end])
+        namespace: dict[str, object] = {"re": re, "urllib": urllib}
+        exec(compile(chunk, "auto-retry.yml", "exec"), namespace)
+        raw_url = namespace["raw_url"]
+        reject_redirect = namespace["reject_redirect"]
+        handler_type = namespace["RawRedirectHandler"]
+        assert callable(raw_url) and callable(reject_redirect) and callable(handler_type)
+        sha = "a" * 40
+        url = raw_url("lazyxeon/AstraWeave", sha, "scripts/ci/auto_retry.py")
+        self.assertEqual(
+            url,
+            f"https://raw.githubusercontent.com/lazyxeon/AstraWeave/{sha}/scripts/ci/auto_retry.py",
+        )
+        reject_redirect(url)
+        for bad in (
+            "https://evil.example/auto_retry.py",
+            "https://raw.githubusercontent.com.evil.example/a",
+            "http://raw.githubusercontent.com/lazyxeon/AstraWeave/main/a",
+            "https://user:pass@raw.githubusercontent.com/lazyxeon/AstraWeave/a",
+        ):
+            with self.assertRaises(urllib.error.URLError):
+                reject_redirect(bad)
+        with self.assertRaises(SystemExit):
+            raw_url("lazyxeon/AstraWeave", sha, "../etc/passwd")
+        handler = handler_type()
+        with self.assertRaises(urllib.error.URLError):
+            handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/x")
+
+    def test_benchmark_artifacts_are_attempt_aware(self) -> None:
+        text = (WORKFLOWS / "benchmark.yml").read_text(encoding="utf-8")
+        self.assertEqual(benchmark_artifact_violations(text), [])
+        mutants = {
+            "overwrite": text.replace(
+                "name: benchmark-results-${{ github.sha }}-attempt-${{ github.run_attempt }}\n",
+                "name: benchmark-results-${{ github.sha }}-attempt-${{ github.run_attempt }}\n"
+                "          overwrite: true\n",
+                1,
+            ),
+            "drop-attempt": text.replace(
+                "-attempt-${{ github.run_attempt }}",
+                "",
+                1,
+            ),
+            "drop-success-guard": text.replace("success() &&\n", "", 1),
+            "extra-continue-on-error": text.replace(
+                "continue-on-error: true\n",
+                "continue-on-error: true\n        continue-on-error: true\n",
+                1,
+            ),
+        }
+        for name, mutant in mutants.items():
+            with self.subTest(mutant=name):
+                self.assertNotEqual(mutant, text)
+                self.assertTrue(benchmark_artifact_violations(mutant), name)
 
 
 if __name__ == "__main__":
