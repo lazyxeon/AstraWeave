@@ -22,5 +22,5 @@ astraweave-audio   = { path = "../astraweave-audio" }
 astraweave-gameplay = { path = "../astraweave-gameplay" }   # for dialogue/quests types if needed
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 astraweave-physics = { path = "../astraweave-physics" }

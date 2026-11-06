@@ -30,7 +30,7 @@ async-trait = "0.1"
 regex = "1.12"
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 
 # dialogue_bench exceeded the 600s per-target cap on main 0758171b.
 [[bench]]

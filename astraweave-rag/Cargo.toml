@@ -22,11 +22,11 @@ astraweave-prompts = { path = "../astraweave-prompts" }
 astraweave-llm = { path = "../astraweave-llm" }
 
 # Vector operations
-nalgebra = "0.33"
+nalgebra = "0.35"
 
 # Concurrent data structures
 dashmap = "6.1"
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 # Date and time
 chrono = { version = "0.4", features = ["serde"] }

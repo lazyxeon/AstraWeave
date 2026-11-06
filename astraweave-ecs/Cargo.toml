@@ -19,7 +19,7 @@ rand = { workspace = true }
 # enabled, the only non-optional transitive dep is `anyhow`, which ecs already
 # pulls in — so this adds zero new build cost.
 astraweave-profiling = { path = "../astraweave-profiling" }
-tracy-client = { version = "0.18", optional = true }
+tracy-client = { version = "0.19", optional = true }
 # Optional — only pulled in when `fast-alloc` is enabled. Allows CountingAlloc
 # to forward to MiMalloc instead of the System allocator for the mimalloc
 # experiment.
