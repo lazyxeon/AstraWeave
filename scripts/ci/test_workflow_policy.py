@@ -197,6 +197,39 @@ def has_pull_request(text: str) -> bool:
     return False
 
 
+LLM_NO_DEFAULT_CLIPPY = (
+    "cargo clippy -p astraweave-llm --no-default-features -- -D warnings"
+)
+
+
+def assert_llm_no_default_clippy_guard(text: str) -> None:
+    """The gate runs the no-default-features clippy and does not swallow it."""
+    parts = text.split("\n  gate:\n", 1)
+    if len(parts) != 2:
+        raise AssertionError("ci.yml is missing the gate job")
+    gate = parts[1].split("\n  test-linux-build:\n", 1)[0]
+    marker = "name: Clippy astraweave-llm without default features"
+    if gate.count(marker) != 1:
+        raise AssertionError(
+            "gate job must contain one astraweave-llm no-default-features clippy step"
+        )
+    step = gate.split(marker, 1)[1].split("\n      - name:", 1)[0]
+    if step.count(LLM_NO_DEFAULT_CLIPPY) != 1:
+        raise AssertionError(f"clippy guard must run exactly: {LLM_NO_DEFAULT_CLIPPY}")
+    if "set -euo pipefail" not in step:
+        raise AssertionError("clippy guard must fail closed")
+    if "continue-on-error" in step:
+        raise AssertionError("clippy guard must not use continue-on-error")
+    if "|| true" in step or "||true" in step:
+        raise AssertionError("clippy guard must not ignore failures")
+    if '[ "$AW_CI_FULL" = "true" ]' not in step:
+        raise AssertionError("clippy guard must run on full CI")
+    if '[[ "$pkgs" == *",astraweave-llm,"* ]]' not in step:
+        raise AssertionError("clippy guard must run when astraweave-llm is affected")
+    if "needs.changes.outputs.docs_only != 'true'" not in step:
+        raise AssertionError("clippy guard must not run on docs-only pulls")
+
+
 def jobs_missing_timeout(text: str) -> list[str]:
     lines = text.splitlines()
     in_jobs = False
@@ -449,6 +482,29 @@ class WorkflowPolicyTest(unittest.TestCase):
             _kind, package, binary = stripped.split(" ", 2)
             self.assertIn(f"package(={package})", linux)
             self.assertIn(f"binary(={binary})", linux)
+
+    def test_llm_no_default_features_clippy_is_a_hard_gate(self) -> None:
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        assert_llm_no_default_clippy_guard(text)
+        self.assertIn("pull_request:", text)
+        dropped = text.replace(LLM_NO_DEFAULT_CLIPPY, "cargo check -p astraweave-llm", 1)
+        with self.assertRaises(AssertionError):
+            assert_llm_no_default_clippy_guard(dropped)
+        ignored = text.replace(
+            LLM_NO_DEFAULT_CLIPPY,
+            f"{LLM_NO_DEFAULT_CLIPPY} || true",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_llm_no_default_clippy_guard(ignored)
+        softened = text.replace(
+            "      - name: Clippy astraweave-llm without default features\n",
+            "      - name: Clippy astraweave-llm without default features\n"
+            "        continue-on-error: true\n",
+            1,
+        )
+        with self.assertRaises(AssertionError):
+            assert_llm_no_default_clippy_guard(softened)
 
     def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
         listed = []
