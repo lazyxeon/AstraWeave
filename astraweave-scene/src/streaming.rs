@@ -381,7 +381,7 @@ impl WorldPartitionManager {
 
     /// Force load a specific cell
     pub async fn force_load_cell(&mut self, coord: GridCoord) -> Result<()> {
-        if self.active_cells.contains(&coord) {
+        if self.active_cells.contains(&coord) || self.loading_cells.contains(&coord) {
             return Ok(());
         }
         self.start_load_cell(coord).await
@@ -823,6 +823,35 @@ mod tests {
         mgr.update(glam::Vec3::ZERO).await.unwrap();
         assert_eq!(mgr.metrics().failed_loads, 1);
         assert!(!mgr.is_cell_loading(coord));
+    }
+
+    #[tokio::test]
+    async fn force_load_while_loading_does_not_start_a_second_task() {
+        let partition = Arc::new(RwLock::new(WorldPartition::new(GridConfig::default())));
+        let mut mgr = WorldPartitionManager::new(
+            Arc::clone(&partition),
+            StreamingConfig {
+                streaming_radius: 0.0,
+                max_concurrent_loads: 1,
+                ..Default::default()
+            },
+        );
+        let events: Arc<Mutex<Vec<StreamingEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let events_clone = Arc::clone(&events);
+        mgr.add_event_listener(move |event| {
+            events_clone.lock().unwrap().push(event);
+        });
+        let coord = GridCoord::new(9002, 0, 0);
+        mgr.force_load_cell(coord).await.unwrap();
+        mgr.force_load_cell(coord).await.unwrap();
+        let started = events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|event| matches!(event, StreamingEvent::CellLoadStarted(c) if *c == coord))
+            .count();
+        assert_eq!(started, 1);
+        assert!(mgr.is_cell_loading(coord));
     }
 
     struct FileCleanup(std::path::PathBuf);

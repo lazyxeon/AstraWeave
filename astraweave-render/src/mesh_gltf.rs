@@ -154,6 +154,7 @@ fn load_capped_gltf_images(
         base,
         buffers,
         astraweave_asset::image_limits::MAX_IMAGE_ALLOC,
+        astraweave_asset::MAX_GLTF_BUFFER,
     )
 }
 
@@ -163,8 +164,10 @@ fn load_capped_gltf_images_capped(
     base: &std::path::Path,
     buffers: &[gltf::buffer::Data],
     cap: u64,
+    decoded_cap: u64,
 ) -> Result<Vec<gltf::image::Data>> {
     let mut kept = 0u64;
+    let mut decoded_kept = 0u64;
     let mut images = Vec::new();
     for image in document.images() {
         let bytes = match image.source() {
@@ -201,6 +204,15 @@ fn load_capped_gltf_images_capped(
         kept = next;
         let decoded =
             astraweave_asset::decode_limited_image(&bytes).context("decode glTF image")?;
+        // The running total above is the encoded file. A solid 4096² PNG is
+        // small on disk and 64 MiB after decode, so the decoded pixels get
+        // their own total.
+        let decoded_len = decoded.as_bytes().len() as u64;
+        let decoded_next = decoded_kept.saturating_add(decoded_len);
+        if decoded_next > decoded_cap {
+            anyhow::bail!("glTF images total {decoded_next} decoded bytes, cap is {decoded_cap}");
+        }
+        decoded_kept = decoded_next;
         images.push(dynamic_to_gltf_image(decoded));
     }
     Ok(images)
@@ -227,7 +239,7 @@ fn load_capped_gltf_buffers(
         if next > cap {
             anyhow::bail!("glTF buffers total {next} bytes, cap is {cap}");
         }
-        let mut data = match buffer.source() {
+        let data = match buffer.source() {
             gltf::buffer::Source::Bin => blob
                 .take()
                 .ok_or_else(|| anyhow!("missing glTF BIN for buffer {}", buffer.index()))?,
@@ -253,9 +265,10 @@ fn load_capped_gltf_buffers(
             );
         }
         // `gltf::import_buffers` keeps `byteLength`, not the whole file.
-        // The pad runs after that cut, so a short declaration cannot retain
-        // the rest of a file that still fit under the per-buffer cap.
-        data.truncate(declared as usize);
+        // `read_capped_file` may have filled the 256 MiB cap. `truncate`
+        // would keep that allocation, so the retained buffer is a copy of
+        // the declared prefix. The pad runs after that cut.
+        let mut data = Vec::from(&data[..declared as usize]);
         while data.len() % 4 != 0 {
             data.push(0);
         }
@@ -627,7 +640,7 @@ mod jail_tests {
         let first = std::fs::metadata(dir.path().join("a.png"))
             .expect("meta")
             .len();
-        let err = load_capped_gltf_images_capped(&gltf.document, dir.path(), &[], first)
+        let err = load_capped_gltf_images_capped(&gltf.document, dir.path(), &[], first, u64::MAX)
             .expect_err("image sum");
         let msg = format!("{err:#}");
         assert!(
@@ -637,8 +650,24 @@ mod jail_tests {
         assert!(!msg.contains("decode"), "{msg}");
         let one = r#"{"asset":{"version":"2.0"},"images":[{"uri":"a.png"}]}"#;
         let alone = gltf::Gltf::from_slice(one.as_bytes()).expect("parse one");
-        load_capped_gltf_images_capped(&alone.document, dir.path(), &[], first)
+        load_capped_gltf_images_capped(&alone.document, dir.path(), &[], first, u64::MAX)
             .expect("one image at the cap");
+    }
+
+    #[test]
+    fn decoded_image_pixels_that_sum_past_the_cap_are_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let image = image::RgbImage::from_pixel(1, 1, image::Rgb([255, 0, 0]));
+        image.save(dir.path().join("a.png")).expect("png");
+        let json = r#"{"asset":{"version":"2.0"},"images":[{"uri":"a.png"}]}"#;
+        let gltf = gltf::Gltf::from_slice(json.as_bytes()).expect("parse");
+        let err = load_capped_gltf_images_capped(&gltf.document, dir.path(), &[], u64::MAX, 0)
+            .expect_err("decoded pixels");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("decoded bytes") && msg.contains("cap is 0"),
+            "{msg}"
+        );
     }
 
     #[test]

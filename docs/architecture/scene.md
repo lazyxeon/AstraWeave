@@ -8,8 +8,8 @@ domain: physics-world
 lifecycle_status: active
 integration_status: partial
 owns: [astraweave-scene]
-doc_version: "1.3"
-last_verified_commit: 6858cd2c
+doc_version: "1.4"
+last_verified_commit: daf183220
 ---
 
 # Architecture Trace: Scene System (Scene Graph, World Partition, Streaming, GPU Resources)
@@ -20,9 +20,9 @@ last_verified_commit: 6858cd2c
 |---|---|
 | **System name** | Scene System (scene graph, world partition, cell streaming, GPU resource manager) |
 | **Primary crates** | `astraweave-scene` (with `astraweave-asset` for cell loading, `astraweave-ecs` for the ECS scene-graph layer) |
-| **Document version** | 1.3 |
-| **Last verified against commit** | `6858cd2c` (parent of the failure-slot release; that parent still sets `Unloaded` inside the spawned task, leaves the coord in `loading_cells`, and cites the pre-insert streaming lines. The pre-rebase stamp `bfd94fe9` is not an ancestor). |
-| **Last verified date** | 2026-10-25 |
+| **Document version** | 1.4 |
+| **Last verified against commit** | `daf183220` (parent of the second-load guard; that parent releases a failed coord from `loading_cells` in `take_load_failures`, and `force_load_cell` still calls `start_load_cell` while the coord is already loading. `6858cd2c` is not an ancestor after the rebase onto `7ea1d200`). |
+| **Last verified date** | 2026-11-06 |
 | **Status** | Mixed. Some surfaces are wired into runtime consumers; the streaming + GPU-budget + PartitionedScene + ECS scene-graph layers are in-design-but-tested (production callers only in `examples/` and tests). See §6 and §11. |
 | **Owner notes** | Derived from forensic data-flow analysis of `astraweave-scene` on 2026-06-24. The crate is a single member but is best understood as five loosely-coupled sub-layers (see §1). |
 
