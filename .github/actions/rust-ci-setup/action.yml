@@ -51,7 +51,7 @@ runs:
         fi
 
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.9
+      uses: mozilla-actions/sccache-action@v0.0.11
 
     - name: Enable sccache
       shell: bash
