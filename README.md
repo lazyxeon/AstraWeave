@@ -8,6 +8,16 @@
   <a href="rust-toolchain.toml"><img alt="Rust 1.89.0" src="https://img.shields.io/badge/rust-1.89.0-orange"></a>
 </p>
 
+<p align="center">
+  📚 <a href="docs/">Documentation</a> •
+  📊 <a href="docs/masters/MASTER_BENCHMARK_REPORT.md">Benchmarks</a> •
+  🗺️ <a href="docs/ROADMAP.md">Roadmap</a> •
+  🧪 <a href="docs/current/MASTER_COVERAGE_REPORT.md">Coverage</a> •
+  🕸️ <a href="https://lazyxeon.github.io/AstraWeave/architecture/">Workspace Map</a> •
+  ⚡ <a href="https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/">Benchmark dashboard</a> •
+  🌐 <a href="https://lazyxeon.github.io/AstraWeave/">GitHub Pages</a>
+</p>
+
 AstraWeave is an AI-native game engine with a deterministic ECS. Companions are part of the simulation. Local LLMs propose. The deterministic simulation validates and executes. Assets in the tree are CC0.
 
 <p align="center">
