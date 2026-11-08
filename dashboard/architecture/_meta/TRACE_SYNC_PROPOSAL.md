@@ -24,6 +24,13 @@
 - **`schema_version` stays `1`** — both fields are optional, backward-compatible additions.
 - **Still deferred (§14):** cargo-`metadata`-derived topology and the curated `map_overlay.json` (both for a future *full-regeneration* model; the in-place surgery here doesn't need them). The map's multi-crate secondary-node statuses (e.g. the 12 non-primary crates under `ai_pipeline`) remain curated — per-crate status isn't expressible in per-trace front-matter.
 
+## Correction (2026-11-07): in sync is not renderable
+
+- **What broke.** From `f1109340` (2026-10-15, combat) the published map rendered zero nodes. `combat.md`, `destruction.md` and `veil.md` declared `runtime_edges` from crates with no map node. `validate` only checks that a target is a *workspace crate*; the node set is curated, so a workspace crate need not be on the map. `render_map` added the edges anyway. `cytoscape()` throws on an edge whose endpoint is not a node, which aborted the page script. `--check` kept passing because the committed map matched what the tool would write. The v1 note above ("`--check` … guarantees … publishes a current map") assumed sync implied a loadable page. It did not.
+- **Fix.** `render_map` no longer emits a runtime edge unless both endpoints are map nodes, and it runs `map_integrity` on the final JSON: every edge endpoint is a node, every node domain is declared, node ids are unique. Any problem fails `--write` and `--check` before anything is written. Adding a trace with `runtime_edges` for a crate that is not on the map now fails CI with the node to add.
+- **Data.** Added nodes for `astraweave-combat`, `astraweave-destruction`, `astraweave-veil` and `aravath_runtime`, with their cargo normal-dependency edges to nodes already on the map.
+- **Viewer.** `workspace_map.html` drops edges with a missing endpoint before `cytoscape()` and shows the count in the header. This is a fallback so one bad record cannot blank the map; the gate above is the control.
+
 ---
 
 ## 1. Problem
