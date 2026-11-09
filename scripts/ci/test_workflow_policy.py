@@ -7,6 +7,7 @@ wrapper. It does not dispatch a workflow.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import os
@@ -21,6 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
+import miri_hotpath  # noqa: E402
 import mutation_ai_outcomes  # noqa: E402
 
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
@@ -151,6 +153,474 @@ def _exec_action_ref_violation_from_source(source: str):
 def _broken_action_ref_violation(old: str, new: str):
     source = inspect.getsource(action_ref_violation).replace(old, new, 1)
     return _exec_action_ref_violation_from_source(source)
+
+
+def _indent_of(line: str) -> int:
+    if "\t" in line:
+        raise AssertionError("workflow YAML uses a tab")
+    return len(line) - len(line.lstrip(" "))
+
+
+def _unquote_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        inner = value[1:-1]
+        if value[0] == "'":
+            return inner.replace("''", "'")
+        return (
+            inner.replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+            .replace("\\\\", "\\")
+        )
+    return value
+
+
+def _strip_plain_comment(value: str) -> str:
+    if value.startswith("'") or value.startswith('"') or value.startswith("["):
+        return value
+    mark = value.find(" #")
+    if mark == -1:
+        return value
+    return value[:mark].rstrip()
+
+
+def _parse_flow_sequence(value: str) -> list[str]:
+    if not (value.startswith("[") and value.endswith("]")):
+        raise AssertionError(f"not a flow sequence: {value!r}")
+    inner = value[1:-1].strip()
+    if not inner:
+        return []
+    parts: list[str] = []
+    buf: list[str] = []
+    quote = ""
+    for char in inner:
+        if quote:
+            buf.append(char)
+            if char == quote:
+                quote = ""
+            continue
+        if char in "'\"":
+            quote = char
+            buf.append(char)
+            continue
+        if char == ",":
+            parts.append("".join(buf).strip())
+            buf = []
+            continue
+        buf.append(char)
+    if quote:
+        raise AssertionError(f"unclosed quote in {value!r}")
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return [_unquote_scalar(part) for part in parts]
+
+
+def _parse_scalar(value: str) -> object:
+    value = _strip_plain_comment(value.strip())
+    if value == "":
+        return None
+    if value == "[]":
+        return []
+    if value == "{}":
+        return {}
+    if value.startswith("["):
+        return _parse_flow_sequence(value)
+    return _unquote_scalar(value)
+
+
+def _block_scalar(lines: list[str], start: int, parent_indent: int, style: str) -> tuple[str, int]:
+    raw: list[str] = []
+    index = start
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            peek = index + 1
+            while peek < len(lines) and not lines[peek].strip():
+                peek += 1
+            if peek >= len(lines) or _indent_of(lines[peek]) <= parent_indent:
+                break
+            while index < peek:
+                raw.append("")
+                index += 1
+            continue
+        if _indent_of(line) <= parent_indent:
+            break
+        raw.append(line)
+        index += 1
+    content_indent = None
+    for line in raw:
+        if line == "":
+            continue
+        content_indent = _indent_of(line)
+        break
+    if content_indent is None:
+        body = ""
+    else:
+        pieces: list[str] = []
+        for line in raw:
+            if line == "":
+                pieces.append("")
+                continue
+            if _indent_of(line) < content_indent:
+                raise AssertionError("block scalar lost its indentation")
+            pieces.append(line[content_indent:])
+        if style.startswith("|"):
+            body = "\n".join(pieces)
+            if style != "|-":
+                body += "\n"
+        else:
+            # Folded scalars (`>` / `>-`). A blank line is a paragraph break.
+            paragraphs: list[str] = []
+            current: list[str] = []
+            for piece in pieces:
+                if piece == "":
+                    if current:
+                        paragraphs.append(" ".join(current))
+                        current = []
+                    continue
+                current.append(piece)
+            if current:
+                paragraphs.append(" ".join(current))
+            body = "\n".join(paragraphs)
+            if style == ">":
+                body += "\n"
+    return body, index
+
+
+def _parse_mapping(lines: list[str], indent: int) -> dict[str, object]:
+    mapping: dict[str, object] = {}
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith("#"):
+            index += 1
+            continue
+        current = _indent_of(line)
+        if current < indent:
+            break
+        if current != indent:
+            raise AssertionError(f"unexpected indent in workflow YAML: {line!r}")
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            raise AssertionError(f"list item where a key was expected: {line!r}")
+        key, separator, rest = stripped.partition(":")
+        if separator != ":" or not key or key.startswith("-"):
+            raise AssertionError(f"not a YAML key: {line!r}")
+        key = _unquote_scalar(key.strip())
+        rest = rest.strip()
+        if rest in {"|", "|-", "|+", ">", ">-", ">+"}:
+            value, index = _block_scalar(lines, index + 1, indent, rest)
+            mapping[key] = value
+            continue
+        if rest != "":
+            mapping[key] = _parse_scalar(rest)
+            index += 1
+            continue
+        index += 1
+        nested: list[str] = []
+        while index < len(lines):
+            nxt = lines[index]
+            if not nxt.strip():
+                peek = index + 1
+                while peek < len(lines) and not lines[peek].strip():
+                    peek += 1
+                if peek >= len(lines) or _indent_of(lines[peek]) <= indent:
+                    break
+                while index < peek:
+                    nested.append(lines[index])
+                    index += 1
+                continue
+            if lines[index].lstrip().startswith("#") and _indent_of(lines[index]) <= indent:
+                index += 1
+                continue
+            if _indent_of(lines[index]) <= indent:
+                break
+            nested.append(lines[index])
+            index += 1
+        while nested and not nested[-1].strip():
+            nested.pop()
+        content = next(
+            (
+                line
+                for line in nested
+                if line.strip() and not line.lstrip().startswith("#")
+            ),
+            None,
+        )
+        if content is None:
+            mapping[key] = None
+            continue
+        child = _indent_of(content)
+        if content.lstrip().startswith("- "):
+            mapping[key] = _parse_list(nested, child)
+        else:
+            mapping[key] = _parse_mapping(nested, child)
+    return mapping
+
+
+def _parse_list(lines: list[str], indent: int) -> list[object]:
+    items: list[object] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith("#"):
+            index += 1
+            continue
+        current = _indent_of(line)
+        if current < indent:
+            break
+        stripped = line.lstrip()
+        if current != indent or not stripped.startswith("- "):
+            raise AssertionError(f"expected a list item: {line!r}")
+        rest = stripped[2:].strip()
+        index += 1
+        item_lines: list[str] = []
+        mapping_item = (":" in rest) or rest.endswith(":")
+        if mapping_item:
+            item_lines.append(" " * (indent + 2) + rest)
+        while index < len(lines):
+            nxt = lines[index]
+            if not nxt.strip():
+                peek = index + 1
+                while peek < len(lines) and not lines[peek].strip():
+                    peek += 1
+                if peek >= len(lines):
+                    break
+                peek_indent = _indent_of(lines[peek])
+                peek_stripped = lines[peek].lstrip()
+                if peek_indent < indent or (
+                    peek_indent == indent and peek_stripped.startswith("- ")
+                ):
+                    break
+                while index < peek:
+                    item_lines.append(lines[index])
+                    index += 1
+                continue
+            nxt_indent = _indent_of(nxt)
+            if nxt_indent < indent:
+                break
+            if nxt_indent == indent and nxt.lstrip().startswith("- "):
+                break
+            if nxt_indent == indent and nxt.lstrip().startswith("#"):
+                index += 1
+                continue
+            item_lines.append(nxt)
+            index += 1
+        if not mapping_item:
+            items.append(_parse_scalar(rest))
+            continue
+        items.append(_parse_mapping(item_lines, indent + 2))
+    return items
+
+
+def parse_workflow(text: str) -> dict[str, object]:
+    """Parse a GitHub workflow. Scalars stay strings, so `on` is not a boolean."""
+    lines = text.splitlines()
+    parsed = _parse_mapping(lines, 0)
+    if not isinstance(parsed, dict) or "jobs" not in parsed:
+        raise AssertionError("workflow YAML has no jobs mapping")
+    return parsed
+
+
+
+RUST_NIGHTLY_ACTION = "./.github/actions/rust-nightly"
+MIRI_HOTPATH_JOB = "miri-ecs-hotpath"
+MIRI_DECIDE_JOB = "miri-ecs-hotpath-decide"
+MIRI_HOTPATH_IF = (
+    "github.event_name == 'pull_request' && "
+    "needs.miri-ecs-hotpath-decide.outputs.run == 'true'"
+)
+MIRI_DECIDE_IF = "github.event_name == 'pull_request'"
+MIRI_DECIDE_RUN = (
+    "set -euo pipefail\n"
+    "if ! git rev-parse --verify --quiet 'HEAD^1' >/dev/null; then\n"
+    "  {\n"
+    '    echo "run=true"\n'
+    '    echo "reason=missing-merge-parent"\n'
+    '  } >> "$GITHUB_OUTPUT"\n'
+    "  exit 0\n"
+    "fi\n"
+    "python3 scripts/ci/miri_hotpath.py \\\n"
+    '  --base "HEAD^1" \\\n'
+    "  --head HEAD \\\n"
+    '  --github-output "$GITHUB_OUTPUT"\n'
+)
+MIRI_HOTPATH_RUN = (
+    "set -euo pipefail\n"
+    "log=$(mktemp)\n"
+    'cargo +"$AW_NIGHTLY" miri test -p astraweave-ecs --lib -- \\\n'
+    "  blob_vec:: sparse_set:: archetype:: events:: --test-threads=1 \\\n"
+    '  2>&1 | tee "$log"\n'
+    "if grep -E -q 'test result: ok\\. 0 passed;' \"$log\"; then\n"
+    '  echo "Miri name filter matched no tests. A renamed module is not covered."\n'
+    "  exit 1\n"
+    "fi\n"
+)
+MIRI_HOTPATH_ENV = {
+    "MIRIFLAGS": "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance",
+    "CARGO_TERM_COLOR": "never",
+}
+MIRI_PERMISSIONS = {"contents": "read", "actions": "write"}
+MIRI_SUMMARY_LINE = (
+    'echo "| ecs blob_vec/sparse_set/archetype/events | '
+    "${{ needs.miri-ecs-hotpath.result == 'success' && '✅ Pass' "
+    "|| needs.miri-ecs-hotpath.result == 'skipped' && 'skipped' "
+    "|| '❌ Fail' }} |\" >> $GITHUB_STEP_SUMMARY"
+)
+MIRI_FAIL_IF = (
+    "needs.miri-ecs.result == 'failure' || "
+    "needs.miri-ecs-tests.result == 'failure' || "
+    "needs.miri-ecs-hotpath-decide.result == 'failure' || "
+    "needs.miri-ecs-hotpath.result == 'failure' || "
+    "needs.miri-sdk.result == 'failure' || "
+    "needs.miri-core.result == 'failure'"
+)
+GIT_DIFF_ARGV = ["git", "diff", "--no-renames", "--name-only", "*args"]
+
+
+def git_diff_argvs(source: str) -> list[list[str]]:
+    """Constant git-diff argument lists, with a starred `args` kept as '*args'."""
+    tree = ast.parse(source)
+    found: list[list[str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        name = func.attr if isinstance(func, ast.Attribute) else func.id if isinstance(func, ast.Name) else ""
+        if name != "run":
+            continue
+        arg = node.args[0]
+        if not isinstance(arg, ast.List):
+            continue
+        constants: list[str] = []
+        is_diff = False
+        for elt in arg.elts:
+            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                constants.append(elt.value)
+            elif isinstance(elt, ast.Starred) and isinstance(elt.value, ast.Name) and elt.value.id == "args":
+                constants.append("*args")
+            else:
+                constants.append("?")
+        if constants[:2] == ["git", "diff"]:
+            is_diff = True
+        if is_diff:
+            found.append(constants)
+    return found
+
+
+def assert_git_diff_has_no_rename_detection(source: str) -> None:
+    found = git_diff_argvs(source)
+    if found != [GIT_DIFF_ARGV]:
+        raise AssertionError(f"git diff argv must be {GIT_DIFF_ARGV}, got {found}")
+
+
+def _job(workflow: dict[str, object], name: str) -> dict[str, object]:
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict) or name not in jobs or not isinstance(jobs[name], dict):
+        raise AssertionError(f"missing job {name}")
+    return jobs[name]
+
+
+def _steps(job: dict[str, object], job_name: str) -> list[dict[str, object]]:
+    steps = job.get("steps")
+    if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+        raise AssertionError(f"{job_name} steps are not a list of mappings")
+    return steps
+
+
+def assert_miri_hotpath_guard(text: str) -> None:
+    """The hot-path Miri job runs only on run=true and does not swallow a failure."""
+    workflow = parse_workflow(text)
+    if workflow.get("permissions") != MIRI_PERMISSIONS:
+        raise AssertionError(f"miri.yml permissions must be {MIRI_PERMISSIONS}")
+    jobs = workflow["jobs"]
+    if not isinstance(jobs, dict):
+        raise AssertionError("miri.yml jobs are missing")
+    for job_name, job in jobs.items():
+        if isinstance(job, dict) and "permissions" in job:
+            raise AssertionError(f"{job_name} must not set its own permissions")
+    on = workflow.get("on")
+    if not isinstance(on, dict) or "pull_request" not in on:
+        raise AssertionError("miri.yml must run on pull_request")
+    if on.get("pull_request") is not None:
+        raise AssertionError(
+            "pull_request must not use a paths filter; GitHub lists only a rename destination"
+        )
+    if "schedule" not in on or "workflow_dispatch" not in on:
+        raise AssertionError("weekly Miri and workflow_dispatch must stay")
+    decide = _job(workflow, MIRI_DECIDE_JOB)
+    hot = _job(workflow, MIRI_HOTPATH_JOB)
+    if decide.get("if") != MIRI_DECIDE_IF:
+        raise AssertionError(f"decide job if must be {MIRI_DECIDE_IF!r}")
+    if decide.get("outputs") != {
+        "run": "${{ steps.hot.outputs.run }}",
+        "reason": "${{ steps.hot.outputs.reason }}",
+    }:
+        raise AssertionError("decide job must publish run and reason")
+    if hot.get("needs") != MIRI_DECIDE_JOB:
+        raise AssertionError("Miri job must need the decide job")
+    if hot.get("if") != MIRI_HOTPATH_IF:
+        raise AssertionError(f"Miri job if must be {MIRI_HOTPATH_IF!r}, got {hot.get('if')!r}")
+    for job_name, job in ((MIRI_DECIDE_JOB, decide), (MIRI_HOTPATH_JOB, hot)):
+        for step in _steps(job, job_name):
+            if "if" in step:
+                raise AssertionError(f"{job_name} step {step.get('name')!r} must not have an if")
+            if "continue-on-error" in step:
+                raise AssertionError(f"{job_name} step {step.get('name')!r} uses continue-on-error")
+    decide_steps = [step for step in _steps(decide, MIRI_DECIDE_JOB) if step.get("id") == "hot"]
+    if len(decide_steps) != 1 or decide_steps[0].get("run") != MIRI_DECIDE_RUN:
+        raise AssertionError("decide script was edited")
+    run_steps = [
+        step
+        for step in _steps(hot, MIRI_HOTPATH_JOB)
+        if step.get("name") == "Run Miri on BlobVec, SparseSet, Archetype, and Events"
+    ]
+    if len(run_steps) != 1:
+        raise AssertionError("hot-path Miri run step must exist once")
+    if run_steps[0].get("env") != MIRI_HOTPATH_ENV or run_steps[0].get("run") != MIRI_HOTPATH_RUN:
+        raise AssertionError(
+            "hot-path Miri command was edited\n"
+            f"got run {run_steps[0].get('run')!r}"
+        )
+    installs = []
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        for step in job.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            if step.get("name") == "Install pinned Rust nightly with Miri":
+                installs.append((job_name, step))
+            with_map = step.get("with")
+            if isinstance(with_map, dict) and with_map.get("toolchain") == "nightly":
+                raise AssertionError(f"{job_name} unpins the nightly toolchain")
+    if not installs:
+        raise AssertionError("miri.yml does not install the pinned nightly")
+    for job_name, step in installs:
+        if step.get("uses") != RUST_NIGHTLY_ACTION or step.get("with") != {"components": "miri, rust-src"}:
+            raise AssertionError(f"{job_name} nightly install must use {RUST_NIGHTLY_ACTION}")
+    summary = _job(workflow, "miri-summary")
+    if summary.get("needs") != [
+        "miri-ecs",
+        "miri-ecs-tests",
+        MIRI_DECIDE_JOB,
+        MIRI_HOTPATH_JOB,
+        "miri-sdk",
+        "miri-core",
+        "miri-physics",
+        "miri-ai",
+    ]:
+        raise AssertionError("summary must need the decide job and the Miri job")
+    if summary.get("if") != "always()":
+        raise AssertionError("summary must still run when the Miri job is skipped")
+    summary_steps = _steps(summary, "miri-summary")
+    if MIRI_SUMMARY_LINE not in str(summary_steps[0].get("run")):
+        raise AssertionError("summary must print skipped, not Pass, when the Miri job is skipped")
+    fail = [step for step in summary_steps if step.get("name") == "Fail if critical crates failed"]
+    if len(fail) != 1 or fail[0].get("if") != MIRI_FAIL_IF:
+        raise AssertionError("summary must fail when the decide job or the Miri job fails")
+
 
 
 def workflow_texts() -> dict[str, str]:
@@ -1148,6 +1618,172 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+
+    def test_miri_hotpath_is_a_hard_gate(self) -> None:
+        text = (WORKFLOWS / "miri.yml").read_text(encoding="utf-8")
+        diff_source = (ROOT / "scripts" / "ci" / "affected_crates.py").read_text(encoding="utf-8")
+        assert_miri_hotpath_guard(text)
+        assert_git_diff_has_no_rename_detection(diff_source)
+        # `0 passed` must not match a real run such as `10 passed` or `100 passed`.
+        nothing = re.compile(r"test result: ok\. 0 passed;")
+        self.assertIsNotNone(
+            nothing.search(
+                "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 458 filtered out;"
+            )
+        )
+        self.assertIsNone(
+            nothing.search(
+                "test result: ok. 97 passed; 0 failed; 0 ignored; 0 measured; 361 filtered out;"
+            )
+        )
+        self.assertIsNone(nothing.search("test result: ok. 100 passed; 0 failed;"))
+        self.assertIsNone(nothing.search("test result: ok. 10 passed; 0 failed;"))
+        install = (
+            "      - name: Install pinned Rust nightly with Miri\n"
+            "        uses: ./.github/actions/rust-nightly\n"
+            "        with:\n"
+            "          components: miri, rust-src\n"
+            "\n"
+            "      - name: Cache cargo registry\n"
+            "        uses: actions/cache@v6\n"
+            "        with:\n"
+            "          path: |\n"
+            "            ~/.cargo/registry\n"
+            "            ~/.cargo/git\n"
+            "          key: ${{ runner.os }}-miri-ecs-hotpath-"
+        )
+        nightly = install.replace(
+            "        uses: ./.github/actions/rust-nightly\n"
+            "        with:\n"
+            "          components: miri, rust-src\n",
+            "        uses: dtolnay/rust-toolchain@master\n"
+            "        with:\n"
+            "          toolchain: nightly\n"
+            "          components: miri, rust-src\n",
+            1,
+        )
+        self.assertEqual(text.count(install), 1)
+        mutants = {
+            "or brace exit": text.replace(
+                '            2>&1 | tee "$log"\n',
+                '            2>&1 | tee "$log" || { exit 0; }\n',
+                1,
+            ),
+            "or colon": text.replace(
+                '            2>&1 | tee "$log"\n',
+                '            2>&1 | tee "$log" || :\n',
+                1,
+            ),
+            "or exit 0": text.replace(
+                '            2>&1 | tee "$log"\n',
+                '            2>&1 | tee "$log" || exit 0\n',
+                1,
+            ),
+            "or true": text.replace(
+                '            2>&1 | tee "$log"\n',
+                '            2>&1 | tee "$log" || true\n',
+                1,
+            ),
+            "set +e": text.replace(
+                "          set -euo pipefail\n          log=$(mktemp)\n",
+                "          set -euo pipefail\n          set +e\n          log=$(mktemp)\n",
+                1,
+            ),
+            "step if false": text.replace(
+                "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n",
+                "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n"
+                "        if: false\n",
+                1,
+            ),
+            "continue-on-error": text.replace(
+                "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n",
+                "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n"
+                "        continue-on-error: true\n",
+                1,
+            ),
+            "run when false": text.replace(
+                "needs.miri-ecs-hotpath-decide.outputs.run == 'true'",
+                "needs.miri-ecs-hotpath-decide.outputs.run == 'false'",
+                1,
+            ),
+            "fail open on empty": text.replace(
+                "needs.miri-ecs-hotpath-decide.outputs.run == 'true'",
+                "needs.miri-ecs-hotpath-decide.outputs.run != 'false'",
+                1,
+            ),
+            "toolchain nightly": text.replace(install, nightly, 1),
+            "permissions write-all": text.replace(
+                "permissions:\n  contents: read\n  actions: write\n",
+                "permissions: write-all\n",
+                1,
+            ),
+            "paths filter hides a move out": text.replace(
+                "  pull_request:\n",
+                "  pull_request:\n    paths:\n      - 'astraweave-ecs/**'\n",
+                1,
+            ),
+        }
+        for name, mutant in mutants.items():
+            with self.subTest(name):
+                self.assertNotEqual(mutant, text, name)
+                with self.assertRaises(AssertionError):
+                    assert_miri_hotpath_guard(mutant)
+        renamed_argv = diff_source.replace(
+            '["git", "diff", "--no-renames", "--name-only", *args]',
+            '["git", "diff", "--no-renames", "--find-renames", "--name-only", *args]',
+            1,
+        )
+        self.assertNotEqual(renamed_argv, diff_source)
+        with self.assertRaises(AssertionError):
+            assert_git_diff_has_no_rename_detection(renamed_argv)
+
+    def test_miri_hotpath_selector_counts_old_rename_paths(self) -> None:
+        # `--no-renames` lists the deleted path and the new path. The old
+        # path is what makes a pure rename of blob_vec.rs run Miri.
+        renamed = miri_hotpath.classify(
+            ["astraweave-ecs/src/column_store.rs", "astraweave-ecs/src/blob_vec.rs"]
+        )
+        self.assertEqual(renamed["run"], "true")
+        self.assertEqual(renamed["reason"], "watched")
+        for path in (
+            "astraweave-ecs/src/blob_vec_kani.rs",
+            "astraweave-ecs/src/events.rs",
+            "astraweave-ecs/src/sparse_set.rs",
+            "astraweave-ecs/src/archetype.rs",
+            ".github/workflows/miri.yml",
+            ".github/rust-nightly-channel",
+            ".github/actions/rust-nightly/action.yml",
+        ):
+            result = miri_hotpath.classify([path])
+            self.assertEqual(result["run"], "true", path)
+            self.assertEqual(result["reason"], "watched", path)
+        skipped = miri_hotpath.classify(["astraweave-ecs/src/rng.rs"])
+        self.assertEqual(skipped["run"], "false")
+        self.assertEqual(skipped["reason"], "not-hot-path")
+        # The crate glob covers rng.rs and does not by itself run Miri.
+        self.assertEqual(miri_hotpath.SOURCE_GLOBS, ("astraweave-ecs/**",))
+        self.assertEqual(miri_hotpath.DEST_GLOBS, ("astraweave-ecs/**",))
+        self.assertTrue(miri_hotpath.matches_crate_glob("astraweave-ecs/src/rng.rs"))
+        self.assertTrue(miri_hotpath.matches_crate_glob("astraweave-ecs/src/blob_vec.rs"))
+        self.assertTrue(miri_hotpath.matches_crate_glob("astraweave-ecs/src/column_store.rs"))
+        self.assertFalse(miri_hotpath.matches_crate_glob("other/blob_vec.rs"))
+        # `--no-renames` lists the deleted source, so a move out of the crate runs.
+        moved_out = miri_hotpath.classify(
+            ["other/blob_vec.rs", "astraweave-ecs/src/blob_vec.rs"]
+        )
+        self.assertEqual(moved_out["run"], "true")
+        self.assertEqual(moved_out["reason"], "watched")
+        destination_only = miri_hotpath.classify(["other/blob_vec.rs"])
+        self.assertEqual(destination_only["run"], "false")
+        self.assertEqual(destination_only["reason"], "not-hot-path")
+        empty = miri_hotpath.classify([])
+        self.assertEqual(empty["run"], "true")
+        self.assertEqual(empty["reason"], "empty-diff")
+        source = (ROOT / "scripts" / "ci" / "miri_hotpath.py").read_text(encoding="utf-8")
+        self.assertIn("diff_files", source)
+        diff_source = (ROOT / "scripts" / "ci" / "affected_crates.py").read_text(encoding="utf-8")
+        self.assertIn('"--no-renames"', diff_source)
 
 
 if __name__ == "__main__":

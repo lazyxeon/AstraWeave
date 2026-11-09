@@ -1,8 +1,14 @@
 # AstraWeave Miri UB Detection Workflow
 # Runs Miri on unsafe-heavy crates to detect undefined behavior.
 # Schedule: Weekly (Saturday 2 AM UTC)
-# Pull requests that touch BlobVec, SparseSet, or Archetype also run the
-# ECS hot-path job. The nightly channel is .github/rust-nightly-channel (#560).
+# Pull requests are not path-filtered. GitHub lists a rename's destination
+# and can omit the source, so a paths filter misses a move of blob_vec.rs
+# out of astraweave-ecs/. The decide job runs on every pull request and
+# reads git diff --no-renames, so the old path counts. Miri runs in a second
+# job only when that decision is run=true. run=false skips the job; the
+# summary prints skipped, not Pass. An empty diff and a missing HEAD^1
+# still run Miri. A name filter that matches nothing fails the step.
+# The nightly channel is .github/rust-nightly-channel (#560).
 #
 # Miri detects:
 # - Out-of-bounds memory access, use-after-free
@@ -27,14 +33,9 @@ on:
         description: 'Seed range for -Zmiri-many-seeds (e.g., 0..16)'
         required: false
         default: '0..16'
+  # No paths filter. A move of a watched file out of astraweave-ecs/ lists
+  # only the destination, which a crate glob cannot see (#718).
   pull_request:
-    paths:
-      - 'astraweave-ecs/src/blob_vec.rs'
-      - 'astraweave-ecs/src/sparse_set.rs'
-      - 'astraweave-ecs/src/archetype.rs'
-      - '.github/workflows/miri.yml'
-      - '.github/rust-nightly-channel'
-      - '.github/actions/rust-nightly/**'
 
 env:
   CARGO_TERM_COLOR: always
@@ -43,6 +44,11 @@ env:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# contents stays read. actions: write is the cache save. Not write-all.
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   miri-ecs:
@@ -117,13 +123,48 @@ jobs:
         env:
           MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
 
-  miri-ecs-hotpath:
-    name: Miri - ECS blob_vec/sparse_set/archetype
+  miri-ecs-hotpath-decide:
+    name: Miri - ECS hot path decision
     if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.hot.outputs.run }}
+      reason: ${{ steps.hot.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Depth 2 is the merge commit and both parents. The hot-path
+          # decision diffs HEAD^1 the same way ci.yml does.
+          fetch-depth: 2
+          fetch-tags: false
+
+      - name: Decide whether the hot path changed
+        id: hot
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet 'HEAD^1' >/dev/null; then
+            {
+              echo "run=true"
+              echo "reason=missing-merge-parent"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 scripts/ci/miri_hotpath.py \
+            --base "HEAD^1" \
+            --head HEAD \
+            --github-output "$GITHUB_OUTPUT"
+
+  miri-ecs-hotpath:
+    name: Miri - ECS blob_vec/sparse_set/archetype/events
+    needs: miri-ecs-hotpath-decide
+    if: github.event_name == 'pull_request' && needs.miri-ecs-hotpath-decide.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Install pinned Rust nightly with Miri
         uses: ./.github/actions/rust-nightly
@@ -143,12 +184,20 @@ jobs:
       - name: Setup Miri
         run: cargo +$AW_NIGHTLY miri setup
 
-      - name: Run Miri on BlobVec, SparseSet, and Archetype
-        run: |
-          cargo +$AW_NIGHTLY miri test -p astraweave-ecs --lib -- \
-            blob_vec:: sparse_set:: archetype:: --test-threads=1
+      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events
         env:
           MIRIFLAGS: "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance"
+          CARGO_TERM_COLOR: never
+        run: |
+          set -euo pipefail
+          log=$(mktemp)
+          cargo +"$AW_NIGHTLY" miri test -p astraweave-ecs --lib -- \
+            blob_vec:: sparse_set:: archetype:: events:: --test-threads=1 \
+            2>&1 | tee "$log"
+          if grep -E -q 'test result: ok\. 0 passed;' "$log"; then
+            echo "Miri name filter matched no tests. A renamed module is not covered."
+            exit 1
+          fi
 
   miri-sdk:
     name: Miri - astraweave-sdk --lib --tests
@@ -297,7 +346,7 @@ jobs:
     name: Miri Summary
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [miri-ecs, miri-ecs-tests, miri-ecs-hotpath, miri-sdk, miri-core, miri-physics, miri-ai]
+    needs: [miri-ecs, miri-ecs-tests, miri-ecs-hotpath-decide, miri-ecs-hotpath, miri-sdk, miri-core, miri-physics, miri-ai]
     if: always()
     steps:
       - name: Check Miri Results
@@ -308,7 +357,7 @@ jobs:
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-ecs --lib | ${{ needs.miri-ecs.result == 'success' && '✅ Pass' || needs.miri-ecs.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-ecs --tests | ${{ needs.miri-ecs-tests.result == 'success' && '✅ Pass' || needs.miri-ecs-tests.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| ecs blob_vec/sparse_set/archetype | ${{ needs.miri-ecs-hotpath.result == 'success' && '✅ Pass' || needs.miri-ecs-hotpath.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| ecs blob_vec/sparse_set/archetype/events | ${{ needs.miri-ecs-hotpath.result == 'success' && '✅ Pass' || needs.miri-ecs-hotpath.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-sdk --lib --tests | ${{ needs.miri-sdk.result == 'success' && '✅ Pass' || needs.miri-sdk.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-core | ${{ needs.miri-core.result == 'success' && '✅ Pass' || needs.miri-core.result == 'skipped' && 'skipped' || '❌ Fail' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| astraweave-physics | non-blocking until #558 |" >> $GITHUB_STEP_SUMMARY
@@ -321,6 +370,7 @@ jobs:
         if: >-
           needs.miri-ecs.result == 'failure' ||
           needs.miri-ecs-tests.result == 'failure' ||
+          needs.miri-ecs-hotpath-decide.result == 'failure' ||
           needs.miri-ecs-hotpath.result == 'failure' ||
           needs.miri-sdk.result == 'failure' ||
           needs.miri-core.result == 'failure'

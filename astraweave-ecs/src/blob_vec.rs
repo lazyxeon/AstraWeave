@@ -488,9 +488,9 @@ impl BlobVec {
     /// Drop the last `n` live elements.
     ///
     /// `n` is clamped to `len`. Forwards to the raw entry. This `&mut self`
-    /// stays live across `drop_fn`. Crate-visible so the Kani split in
-    /// `blob_vec_kani` can resume the tail the way [`Drop`] does after a
-    /// panicking destructor.
+    /// stays live across `drop_fn`. Crate-visible so `blob_vec_kani` can drop
+    /// a suffix and then [`Self::clear`] the prefix. That harness does not
+    /// panic and does not cover #531.
     ///
     /// Re-entry is defined only for an outer `clear_raw` reached through a raw
     /// pointer, with no `&mut BlobVec` live up the stack. On that path the outer
@@ -609,24 +609,76 @@ impl BlobVec {
     }
 }
 
+/// Free the column allocation. `len` must already be 0.
+///
+/// # Safety
+///
+/// `blob` must point at a live `BlobVec`. Every initialized element has
+/// already been dropped. A zero-sized column and a `capacity == 0` column
+/// were never allocated.
+unsafe fn free_allocation(blob: *mut BlobVec) {
+    let item_layout = ptr::read(ptr::addr_of!((*blob).item_layout));
+    let capacity = ptr::read(ptr::addr_of!((*blob).capacity));
+    if item_layout.size() == 0 || capacity == 0 {
+        return;
+    }
+    let data = ptr::read(ptr::addr_of!((*blob).data));
+    let layout = allocation_layout(item_layout, capacity);
+    // SAFETY: `data` was allocated with `layout`. The size is non-zero
+    // because `item_layout.size() > 0` and `capacity > 0`.
+    dealloc(data.as_ptr(), layout);
+    ptr::write(ptr::addr_of_mut!((*blob).capacity), 0);
+    ptr::write(
+        ptr::addr_of_mut!((*blob).data),
+        dangling_aligned(item_layout.align()),
+    );
+}
+
+/// Drop every live element, then free the column, including when an element
+/// destructor panics.
+///
+/// `clear_raw` publishes `len == 0` and drops from the end. If `drop_fn`
+/// panics, `PanicGuard` restores `len` to the not-yet-dropped tail and the
+/// panic starts leaving `clear_raw`. `Finish` then runs: it drops that tail
+/// and frees the allocation before the panic leaves [`Drop`]. Without `Finish`,
+/// the `dealloc` after `clear` is skipped and both the tail and the column
+/// buffer leak (#589 item 2).
+///
+/// A panic during [`BlobVec::clear`] does not come through here. The column
+/// is still alive, `PanicGuard` restores `len`, and the caller drops the tail.
+///
+/// # Safety
+///
+/// `blob` must point at a live `BlobVec` that this call is dropping. No other
+/// `&mut BlobVec` is used for the rest of the drop.
+unsafe fn finish_drop(blob: *mut BlobVec) {
+    struct Finish {
+        blob: *mut BlobVec,
+    }
+
+    impl Drop for Finish {
+        fn drop(&mut self) {
+            // SAFETY: `blob` is the column `finish_drop` is dropping. On the
+            // success path `len` is already 0. On unwind it is the tail
+            // `PanicGuard` restored, which has not been dropped yet.
+            unsafe {
+                BlobVec::clear_raw(self.blob);
+                free_allocation(self.blob);
+            }
+        }
+    }
+
+    let _finish = Finish { blob };
+    BlobVec::clear_raw(blob);
+}
+
 impl Drop for BlobVec {
-    #[allow(clippy::expect_used)] // INVARIANT: layout params are identical to those used at allocation time
     fn drop(&mut self) {
-        self.clear();
-
-        // Zero-sized columns use a dangling pointer and `capacity == usize::MAX`.
-        // They were never allocated.
-        if self.item_layout.size() == 0 || self.capacity == 0 {
-            return;
-        }
-
-        let layout = allocation_layout(self.item_layout, self.capacity);
-
-        // SAFETY: `self.data` was allocated with this layout. The size is
-        // non-zero because `item_layout.size() > 0` and `capacity > 0`.
-        unsafe {
-            dealloc(self.data.as_ptr(), layout);
-        }
+        let blob = ptr::from_mut(self);
+        // SAFETY: `blob` points at this value. `finish_drop` drops the live
+        // elements and frees the allocation, including when an element
+        // destructor panics.
+        unsafe { finish_drop(blob) }
     }
 }
 
@@ -1450,9 +1502,11 @@ mod tests {
 
     /// Panics on the first destructor so the panic guard runs.
     ///
-    /// Deleting the restore (leaving `len` at the published 0) fails both
-    /// `len == 1` asserts. `clear()` and in-place [`Drop`] each publish `len`
-    /// before `drop_fn` and then finish the undropped element once.
+    /// Deleting the restore (leaving `len` at the published 0) fails the
+    /// `clear` length assert and the in-place [`Drop`] drop-count assert.
+    /// `clear()` publishes `len` and leaves the undropped tail for the caller.
+    /// [`Drop`] drops that restored tail and frees the column before the
+    /// panic leaves the destructor.
     #[test]
     fn clear_and_drop_publish_len_before_drop_fn() {
         use std::mem::ManuallyDrop;
@@ -1507,14 +1561,100 @@ mod tests {
         }));
         assert!(panicked.is_err());
         assert_eq!(
-            blob.len(),
-            1,
-            "in-place Drop must restore the undropped tail"
+            DROPS.load(Ordering::SeqCst),
+            2,
+            "Drop must drop the tail PanicGuard restored"
         );
-        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+        assert_eq!(blob.len(), 0);
+        assert_eq!(blob.capacity(), 0, "Drop must free the column");
         unsafe {
             ptr::drop_in_place(&mut *blob);
         }
+        assert_eq!(
+            DROPS.load(Ordering::SeqCst),
+            2,
+            "a second drop must not drop again"
+        );
+    }
+
+    /// A panic that escapes [`Drop`] must not leak the not-yet-dropped tail
+    /// or the column allocation (#589 item 2).
+    ///
+    /// The destructor that panics frees its own `Box` first. Fields a
+    /// panicking `Drop` does not itself drop are leaked by Rust; `BlobVec`
+    /// must still drop the other elements and free the column.
+    #[test]
+    fn drop_panic_finishes_tail_and_frees_column() {
+        use std::mem::ManuallyDrop;
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static DROPS: AtomicUsize = AtomicUsize::new(0);
+
+        struct Slot {
+            payload: Option<Box<u32>>,
+            panic_on_drop: bool,
+        }
+
+        impl Drop for Slot {
+            fn drop(&mut self) {
+                let _freed = self.payload.take();
+                DROPS.fetch_add(1, Ordering::SeqCst);
+                if self.panic_on_drop {
+                    panic!("element drop during column drop");
+                }
+            }
+        }
+
+        fn push_slot(blob: &mut BlobVec, value: u32, panic_on_drop: bool) {
+            unsafe {
+                blob.push(Slot {
+                    payload: Some(Box::new(value)),
+                    panic_on_drop,
+                });
+            }
+        }
+
+        fn assert_finished(blob: &BlobVec, drops: usize) {
+            assert_eq!(DROPS.load(Ordering::SeqCst), drops);
+            assert_eq!(blob.len(), 0);
+            assert_eq!(blob.capacity(), 0, "column allocation must be freed");
+        }
+
+        // The last slot is dropped first and panics. The prefix is the tail
+        // `PanicGuard` restores. `Finish` must drop it and free the buffer.
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = ManuallyDrop::new(BlobVec::new::<Slot>());
+        push_slot(&mut blob, 1, false);
+        push_slot(&mut blob, 2, true);
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
+            ptr::drop_in_place(&mut *blob);
+        }));
+        assert!(panicked.is_err());
+        assert_finished(&blob, 2);
+        unsafe { ptr::drop_in_place(&mut *blob) };
+        assert_eq!(DROPS.load(Ordering::SeqCst), 2);
+
+        // Every element is reached before the panic. `len` is restored to 0.
+        // The column buffer must still be freed.
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = ManuallyDrop::new(BlobVec::new::<Slot>());
+        push_slot(&mut blob, 1, true);
+        let panicked = catch_unwind(AssertUnwindSafe(|| unsafe {
+            ptr::drop_in_place(&mut *blob);
+        }));
+        assert!(panicked.is_err());
+        assert_finished(&blob, 1);
+        unsafe { ptr::drop_in_place(&mut *blob) };
+        assert_eq!(DROPS.load(Ordering::SeqCst), 1);
+
+        // Owned `drop` (not in-place) takes the same path. Miri's leak check
+        // is the buffer and the sibling `Box`.
+        DROPS.store(0, Ordering::SeqCst);
+        let mut blob = BlobVec::new::<Slot>();
+        push_slot(&mut blob, 1, false);
+        push_slot(&mut blob, 2, true);
+        assert!(catch_unwind(AssertUnwindSafe(|| drop(blob))).is_err());
         assert_eq!(DROPS.load(Ordering::SeqCst), 2);
     }
 
