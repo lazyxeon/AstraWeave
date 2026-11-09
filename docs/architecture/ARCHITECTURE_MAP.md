@@ -825,7 +825,7 @@ Frame Start
 
 | Workflow | Schedule | Crates | Timeout |
 |----------|----------|--------|---------|
-| `miri.yml` | Weekly (Sat 2 AM UTC). PR path filter `miri-ecs-hotpath` on `astraweave-ecs/src/{blob_vec,sparse_set,archetype}.rs`. Nightly pin: `.github/rust-nightly-channel` (#560) | ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), ai (60m). PR job: blob_vec/sparse_set/archetype (45m) | Per-crate |
+| `miri.yml` | Weekly (Sat 2 AM UTC). Pull requests have no path filter. `miri-ecs-hotpath` runs only when `miri_hotpath.py` sets `run=true`; `run=false` skips that job (summary prints skipped). Nightly pin: `.github/rust-nightly-channel` (#560) | ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), ai (60m). PR job: blob_vec/sparse_set/archetype/events (45m) | Per-crate |
 | `kani.yml` | Weekly (Sun 3 AM UTC) | ecs (120m), math (60m), sdk (60m), core (90m) | Per-crate |
 | `net-tests.yml` | Push to main + every PR | `astraweave-net` (`--all-features --verbose`) | Per-crate |
 | `sanitizers.yml` | (per workflow) | P1 array includes `astraweave-net`, `astraweave-asset`, `astraweave-memory`, `astraweave-context` | Per-crate |

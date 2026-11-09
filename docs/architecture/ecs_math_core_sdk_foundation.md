@@ -8,8 +8,8 @@ domain: core
 lifecycle_status: active
 integration_status: wired
 owns: [astraweave-alloc, astraweave-core, astraweave-ecs, astraweave-math, astraweave-sdk]
-doc_version: "1.19"
-last_verified_commit: d54ce13ed9e24727e68ac5b4dcd623263c5b44a2
+doc_version: "1.20"
+last_verified_commit: 2ce9ee9ad3263161fd9efab94066092c6dc5f789
 ---
 
 # Architecture Trace: ECS Substrate + Math / Core / SDK Primitives
@@ -20,12 +20,14 @@ last_verified_commit: d54ce13ed9e24727e68ac5b4dcd623263c5b44a2
 |---|---|
 | **System name** | ECS substrate + Math / Core / SDK primitives (foundation layer) |
 | **Primary crates** | `astraweave-ecs`, `astraweave-math`, `astraweave-core`, `astraweave-sdk` |
-| **Document version** | 1.19 |
-| **Last verified against commit** | `d54ce13ed9e24727e68ac5b4dcd623263c5b44a2` |
-| **Last verified date** | 2026-11-06 |
+| **Document version** | 1.20 |
+| **Last verified against commit** | `2ce9ee9ad3263161fd9efab94066092c6dc5f789` |
+| **Last verified date** | 2026-11-09 |
 | **Status** | Active foundation. `astraweave-ecs` and `astraweave-math` are canonical; `astraweave-core` contains a canonical schema **plus** a transitional legacy `World` that bridges to ECS; `astraweave-sdk` is a stable C ABI surface with a single in-tree consumer (`examples/sdk_c_harness`) and an otherwise out-of-tree audience. |
 | **Owner notes** | This trace covers four related-but-distinct foundation crates as one document, per Andrew's request. Note: the doc is a foundation **layer**, not a single tightly-coupled system. Per-crate roles are kept distinct throughout. Deep investigation pass 2026-05-10 resolved the `lib_new.rs` status, corrected the SDK-consumer claim (one in-tree example exists), added the loom-tests + `simd`-feature-no-op findings, and refined Invariant 8 against the actual JSON-serializer code paths.<br><br>**R-series M1 trace-honesty (2026-06-30) — per-crate verified verdicts (the group `active/wired` front-matter syncs to the primary crate `astraweave-core` only):** `astraweave-core`, `astraweave-ecs`, `astraweave-sdk` are **VERIFIED-PRODUCTION** (`sdk` via the R3 island-by-design FFI boundary carve-out). **`astraweave-math` is individually COMPILES-BUT-ORPHANED** — off the v1.0 critical path; its only workspace consumer is `examples/profiling_demo` (the "canonical" framing above is aspirational for `math`). `astraweave-alloc` is **WIRED-BUT-UNTESTED** (0 tests). |
 
+> **Revision notice — 2026-11-09 (v1.20).** Pull-request Miri has no `paths` filter. `miri-ecs-hotpath` runs only when the decide job sets `run=true`; a `run=false` decision skips that job and the summary prints skipped. A name filter that matches no tests fails the step. Checked at `2ce9ee9ad3263161fd9efab94066092c6dc5f789`.
+>
 > **Revision notice — 2026-11-06 (v1.19).** The Kani harness was renamed to `blob_vec_drop_last_then_clear_drops_each_element_once`. `Drop` for `BlobVec` now uses `finish_drop`. This supersedes the 2026-10-29 revision notice on panicking drops and Kani harness naming. Checked at `d54ce13ed9e24727e68ac5b4dcd623263c5b44a2`.
 >
 > **Revision notice — 2026-11-04 (v1.18).** Re-entry is defined only for an outer `clear_raw` reached through a raw pointer, with no `&mut BlobVec` live up the stack. On that path the outer call publishes `len == 0` before `drop_fn`, a nested `clear_raw` does not drop again, and on unwind the panic guard restores `len` to the not-yet-dropped tail so those slots are not freed twice. Re-entry through `swap_remove_raw` (`&mut self`) is undefined behavior, as is re-entry during `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to`, each of which keeps a `&mut BlobVec` live across `drop_fn`. `drop_detached_tail` is not `#[inline(never)]`. `clear_raw_reenter_panic_restores_undropped_tail` (`astraweave-ecs/src/blob_vec.rs:1532`) is that outer path; deleting the restore at `blob_vec.rs:573` leaves `len == 0`. Checked at `634017802`.
@@ -553,7 +555,7 @@ There are several distinct flows through this layer. The first is the canonical 
   - `astraweave-math/benches/`: `simd_benchmarks.rs`, `simd_mat_benchmarks.rs`, `simd_quat_benchmarks.rs`, `simd_movement.rs`
   - `astraweave-sdk/benches/`: `sdk_benchmarks.rs`, `sdk_adversarial.rs`
 - **Miri validation (UB detection):**
-  - CI workflow `.github/workflows/miri.yml`. Weekly jobs: `astraweave-ecs --lib`, `astraweave-ecs --tests`, `astraweave-sdk --lib --tests`, `astraweave-core --lib`, `astraweave-ai --lib`, and `astraweave-physics --lib`. Physics stays non-blocking until #558 (libm x86 `sqrtf`). A pull request that edits `blob_vec.rs`, `blob_vec_kani.rs`, `sparse_set.rs`, `archetype.rs`, or `events.rs` runs Miri on `blob_vec`, `sparse_set`, `archetype`, and `events`. `astraweave-ecs/**` is also a path so a rename whose destination stays in the crate starts the workflow; the job runs Miri only when `git diff --no-renames` touches a watched path. The nightly channel is `.github/rust-nightly-channel` (#560). `events::tests::test_large_event_batch_maintains_order` uses 64 events under `cfg(miri)` and 10_000 otherwise (#571). Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md`: 1,059 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour (the dated `MIRI_VALIDATION_REPORT.md` records the earlier 977).
+  - CI workflow `.github/workflows/miri.yml`. Weekly jobs: `astraweave-ecs --lib`, `astraweave-ecs --tests`, `astraweave-sdk --lib --tests`, `astraweave-core --lib`, `astraweave-ai --lib`, and `astraweave-physics --lib`. Physics stays non-blocking until #558 (libm x86 `sqrtf`). A pull request that edits `blob_vec.rs`, `blob_vec_kani.rs`, `sparse_set.rs`, `archetype.rs`, or `events.rs` runs Miri on `blob_vec`, `sparse_set`, `archetype`, and `events`. The pull request trigger has no `paths` filter, so a move of a watched file out of `astraweave-ecs/` still starts the workflow when GitHub lists only the destination; the hot-path job runs Miri when the merge checkout has no first parent (`missing-merge-parent`), when the diff path list is empty (`empty-diff`), or when `git diff --no-renames` touches a watched path (see `docs/current/CI_ARCHITECTURE.md`). The nightly channel is `.github/rust-nightly-channel` (#560). `events::tests::test_large_event_batch_maintains_order` uses 64 events under `cfg(miri)` and 10_000 otherwise (#571). Per `docs/architecture/ARCHITECTURE_MAP.md:577`: `ecs` (120m), `core` (90m). Per `docs/campaigns/doc-truth/CLAIMS_REGISTRY.md`: 1,059 tests across `ecs`, `math`, `core`, `sdk` with ZERO undefined behaviour (the dated `MIRI_VALIDATION_REPORT.md` records the earlier 977).
 - **Kani formal verification:**
   - CI workflow `.github/workflows/kani.yml`, weekly. Per `docs/architecture/ARCHITECTURE_MAP.md:578`: `ecs` (120m), `math` (60m), `sdk` (60m), `core` (90m).
   - Proof files (per `docs/architecture/ARCHITECTURE_MAP.md:546-550`):
@@ -586,6 +588,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.20 | 2026-11-09 | Pull-request Miri has no `paths` filter. `run=false` skips `miri-ecs-hotpath` (summary prints skipped, not Pass). A name filter that matches no tests fails. Stamp names `2ce9ee9ad3263161fd9efab94066092c6dc5f789`. |
 | 1.19 | 2026-11-06 | The Kani drop harness does not cover #531. `Drop` frees the restored tail and the column when an element destructor panics (invariant 19). `miri.yml` paths include `blob_vec_kani.rs`, `events.rs`, and `astraweave-ecs/**`. Stamp names `d54ce13ed9e24727e68ac5b4dcd623263c5b44a2`. |
 | 1.18 | 2026-11-04 | Re-entry is defined only for outer `clear_raw` through a raw pointer; re-entry through `swap_remove_raw`, `clear`, `Drop`, `drop_last`, or `swap_remove_raw_to` is undefined behavior. Panic guard restores the not-yet-dropped tail only on the outer path (invariant 19). Stamp names `634017802`. |
 | 1.17 | 2026-10-29 | `drop_fn` must not re-enter this `BlobVec`. `drop_last` returns when `len` is already 0 (invariant 19). |
