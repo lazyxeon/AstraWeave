@@ -43,7 +43,7 @@ updates:
     labels:
       - "dependencies"
       - "ci"
-    # v0.0.10+ hard-fails toolchain jobs on flaky sccache v0.19.0 release downloads (#721).
+    # TEMPORARY: remove per #725 (504 on sccache download, see #721).
     ignore:
       - dependency-name: "mozilla-actions/sccache-action"
         versions: [">=0.0.10"]
