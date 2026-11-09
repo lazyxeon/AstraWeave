@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import ast
 import inspect
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -437,22 +440,24 @@ MIRI_DECIDE_RUN = (
     "  --head HEAD \\\n"
     '  --github-output "$GITHUB_OUTPUT"\n'
 )
+MIRI_FILTER_GUARD = (
+    "for m in blob_vec sparse_set archetype events; do "
+    'grep -q "^test ${m}::" "$log" || '
+    '{ echo "Miri filter ${m}:: matched no tests"; exit 1; }; done'
+)
 MIRI_HOTPATH_RUN = (
     "set -euo pipefail\n"
     "log=$(mktemp)\n"
     'cargo +"$AW_NIGHTLY" miri test -p astraweave-ecs --lib -- \\\n'
     "  blob_vec:: sparse_set:: archetype:: events:: --test-threads=1 \\\n"
     '  2>&1 | tee "$log"\n'
-    "if grep -E -q 'test result: ok\\. 0 passed;' \"$log\"; then\n"
-    '  echo "Miri name filter matched no tests. A renamed module is not covered."\n'
-    "  exit 1\n"
-    "fi\n"
-)
+) + MIRI_FILTER_GUARD + "\n"
+MIRI_FILTERS = ("blob_vec", "sparse_set", "archetype", "events")
 MIRI_HOTPATH_ENV = {
     "MIRIFLAGS": "-Zmiri-symbolic-alignment-check -Zmiri-strict-provenance",
     "CARGO_TERM_COLOR": "never",
 }
-MIRI_PERMISSIONS = {"contents": "read", "actions": "write"}
+MIRI_PERMISSIONS = {"contents": "read"}
 MIRI_SUMMARY_LINE = (
     'echo "| ecs blob_vec/sparse_set/archetype/events | '
     "${{ needs.miri-ecs-hotpath.result == 'success' && '✅ Pass' "
@@ -524,13 +529,21 @@ def assert_miri_hotpath_guard(text: str) -> None:
     """The hot-path Miri job runs only on run=true and does not swallow a failure."""
     workflow = parse_workflow(text)
     if workflow.get("permissions") != MIRI_PERMISSIONS:
-        raise AssertionError(f"miri.yml permissions must be {MIRI_PERMISSIONS}")
+        raise AssertionError(
+            f"miri.yml workflow permissions must be {MIRI_PERMISSIONS}, "
+            f"got {workflow.get('permissions')!r}"
+        )
     jobs = workflow["jobs"]
-    if not isinstance(jobs, dict):
+    if not isinstance(jobs, dict) or not jobs:
         raise AssertionError("miri.yml jobs are missing")
     for job_name, job in jobs.items():
-        if isinstance(job, dict) and "permissions" in job:
-            raise AssertionError(f"{job_name} must not set its own permissions")
+        if not isinstance(job, dict) or job.get("permissions") != MIRI_PERMISSIONS:
+            got = job.get("permissions") if isinstance(job, dict) else job
+            raise AssertionError(
+                f"{job_name} permissions must be {MIRI_PERMISSIONS}, got {got!r}"
+            )
+    if MIRI_FILTER_GUARD not in MIRI_HOTPATH_RUN:
+        raise AssertionError("the per-filter guard is not pinned in the hot-path run")
     on = workflow.get("on")
     if not isinstance(on, dict) or "pull_request" not in on:
         raise AssertionError("miri.yml must run on pull_request")
@@ -612,6 +625,22 @@ def assert_miri_hotpath_guard(text: str) -> None:
     if len(fail) != 1 or fail[0].get("if") != MIRI_FAIL_IF:
         raise AssertionError("summary must fail when the decide job or the Miri job fails")
 
+
+def run_miri_filter_guard(log_text: str) -> tuple[int, str]:
+    """Run the pinned per-filter shell block against one Miri log."""
+    if MIRI_FILTER_GUARD not in MIRI_HOTPATH_RUN:
+        raise AssertionError("filter guard drifted from the hot-path run block")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "miri.log"
+        path.write_text(log_text, encoding="utf-8")
+        completed = subprocess.run(
+            ["bash", "-c", MIRI_FILTER_GUARD],
+            env={"log": str(path), "PATH": os.environ["PATH"]},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    return completed.returncode, completed.stdout + completed.stderr
 
 
 def workflow_texts() -> dict[str, str]:
@@ -1357,20 +1386,8 @@ class WorkflowPolicyTest(unittest.TestCase):
         diff_source = (ROOT / "scripts" / "ci" / "affected_crates.py").read_text(encoding="utf-8")
         assert_miri_hotpath_guard(text)
         assert_git_diff_has_no_rename_detection(diff_source)
-        # `0 passed` must not match a real run such as `10 passed` or `100 passed`.
-        nothing = re.compile(r"test result: ok\. 0 passed;")
-        self.assertIsNotNone(
-            nothing.search(
-                "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 458 filtered out;"
-            )
-        )
-        self.assertIsNone(
-            nothing.search(
-                "test result: ok. 97 passed; 0 failed; 0 ignored; 0 measured; 361 filtered out;"
-            )
-        )
-        self.assertIsNone(nothing.search("test result: ok. 100 passed; 0 failed;"))
-        self.assertIsNone(nothing.search("test result: ok. 10 passed; 0 failed;"))
+        self.assertIn(MIRI_FILTER_GUARD, text)
+        self.assertNotIn("test result: ok\\. 0 passed;", text)
         install = (
             "      - name: Install pinned Rust nightly with Miri\n"
             "        uses: ./.github/actions/rust-nightly\n"
@@ -1446,8 +1463,28 @@ class WorkflowPolicyTest(unittest.TestCase):
             ),
             "toolchain nightly": text.replace(install, nightly, 1),
             "permissions write-all": text.replace(
-                "permissions:\n  contents: read\n  actions: write\n",
+                "permissions:\n  contents: read\n",
                 "permissions: write-all\n",
+                1,
+            ),
+            "actions write restored": text.replace(
+                "permissions:\n  contents: read\n",
+                "permissions:\n  contents: read\n  actions: write\n",
+                1,
+            ),
+            "contents write": text.replace(
+                "permissions:\n  contents: read\n",
+                "permissions:\n  contents: write\n",
+                1,
+            ),
+            "job actions write": text.replace(
+                "    permissions:\n      contents: read\n",
+                "    permissions:\n      contents: read\n      actions: write\n",
+                1,
+            ),
+            "job omits permissions": text.replace(
+                "    permissions:\n      contents: read\n",
+                "",
                 1,
             ),
             "paths filter hides a move out": text.replace(
@@ -1469,6 +1506,47 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertNotEqual(renamed_argv, diff_source)
         with self.assertRaises(AssertionError):
             assert_git_diff_has_no_rename_detection(renamed_argv)
+
+    def test_miri_filter_guard_fails_when_one_filter_matches_nothing(self) -> None:
+        # A rename of only blob_vec leaves sparse_set, archetype, and events
+        # matching. The summary is N passed, not 0 passed. Each filter is
+        # required on its own.
+        missing = (
+            ROOT / "scripts" / "ci" / "testdata" / "hotpath_missing_blob_vec.txt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("blob_vec::", missing)
+        self.assertIsNone(re.search(r"^test blob_vec::", missing, re.MULTILINE))
+        for name in ("sparse_set", "archetype", "events"):
+            self.assertIsNotNone(
+                re.search(rf"^test {name}::", missing, re.MULTILINE), name
+            )
+        self.assertIn("59 passed", missing)
+        self.assertNotIn("0 passed", missing)
+        code, output = run_miri_filter_guard(missing)
+        self.assertEqual(code, 1)
+        self.assertIn("Miri filter blob_vec:: matched no tests", output)
+
+        covered = (
+            "running 97 tests\n"
+            "test blob_vec::tests::drop_once ... ok\n"
+            "test sparse_set::tests::insert_and_get ... ok\n"
+            "test archetype::tests::spawn_entity ... ok\n"
+            "test events::tests::batch_order ... ok\n"
+            "test result: ok. 97 passed; 0 failed; 0 ignored; 0 measured; "
+            "361 filtered out; finished in 1.20s\n"
+        )
+        code, output = run_miri_filter_guard(covered)
+        self.assertEqual(code, 0, output)
+        for name in MIRI_FILTERS:
+            renamed = "".join(
+                line
+                for line in covered.splitlines(keepends=True)
+                if not line.startswith(f"test {name}::")
+            )
+            self.assertNotEqual(renamed, covered, name)
+            code, output = run_miri_filter_guard(renamed)
+            self.assertEqual(code, 1, name)
+            self.assertIn(f"Miri filter {name}:: matched no tests", output)
 
     def test_miri_hotpath_selector_counts_old_rename_paths(self) -> None:
         # `--no-renames` lists the deleted path and the new path. The old

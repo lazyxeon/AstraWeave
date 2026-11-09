@@ -1,0 +1,6 @@
+running 59 tests
+warning: module blob_vec:: was renamed; the filter still lists blob_vec::
+test sparse_set::tests::insert_and_get ... ok
+test archetype::tests::spawn_entity ... ok
+test events::tests::batch_order ... ok
+test result: ok. 59 passed; 0 failed; 0 ignored; 0 measured; 399 filtered out; finished in 1.20s

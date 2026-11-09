@@ -7,7 +7,9 @@
 # reads git diff --no-renames, so the old path counts. Miri runs in a second
 # job only when that decision is run=true. run=false skips the job; the
 # summary prints skipped, not Pass. An empty diff and a missing HEAD^1
-# still run Miri. A name filter that matches nothing fails the step.
+# still run Miri. The Miri step fails unless the log has a line starting
+# with `test blob_vec::`, `test sparse_set::`, `test archetype::`, and
+# `test events::`.
 # The nightly channel is .github/rust-nightly-channel (#560).
 #
 # Miri detects:
@@ -45,16 +47,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# contents stays read. actions: write is the cache save. Not write-all.
+# contents: read on the workflow and on each job. actions/cache saves with
+# the runner's ACTIONS_RUNTIME_TOKEN, not GITHUB_TOKEN. This file does not
+# call the Actions API, so it does not grant actions: write.
 permissions:
   contents: read
-  actions: write
 
 jobs:
   miri-ecs:
     name: Miri - astraweave-ecs
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
@@ -95,6 +100,8 @@ jobs:
     name: Miri - astraweave-ecs --tests
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
@@ -127,6 +134,8 @@ jobs:
     name: Miri - ECS hot path decision
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     outputs:
       run: ${{ steps.hot.outputs.run }}
@@ -161,6 +170,8 @@ jobs:
     needs: miri-ecs-hotpath-decide
     if: github.event_name == 'pull_request' && needs.miri-ecs-hotpath-decide.outputs.run == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -194,15 +205,14 @@ jobs:
           cargo +"$AW_NIGHTLY" miri test -p astraweave-ecs --lib -- \
             blob_vec:: sparse_set:: archetype:: events:: --test-threads=1 \
             2>&1 | tee "$log"
-          if grep -E -q 'test result: ok\. 0 passed;' "$log"; then
-            echo "Miri name filter matched no tests. A renamed module is not covered."
-            exit 1
-          fi
+          for m in blob_vec sparse_set archetype events; do grep -q "^test ${m}::" "$log" || { echo "Miri filter ${m}:: matched no tests"; exit 1; }; done
 
   miri-sdk:
     name: Miri - astraweave-sdk --lib --tests
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
@@ -238,6 +248,8 @@ jobs:
     name: Miri - astraweave-core
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
@@ -273,6 +285,8 @@ jobs:
     name: Miri - astraweave-physics
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
@@ -311,6 +325,8 @@ jobs:
     name: Miri - astraweave-ai
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
@@ -345,6 +361,8 @@ jobs:
   miri-summary:
     name: Miri Summary
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 10
     needs: [miri-ecs, miri-ecs-tests, miri-ecs-hotpath-decide, miri-ecs-hotpath, miri-sdk, miri-core, miri-physics, miri-ai]
     if: always()
