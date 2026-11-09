@@ -200,34 +200,358 @@ def has_pull_request(text: str) -> bool:
 LLM_NO_DEFAULT_CLIPPY = (
     "cargo clippy -p astraweave-llm --no-default-features -- -D warnings"
 )
+LLM_NO_DEFAULT_CLIPPY_STEP = "Clippy astraweave-llm without default features"
+# The gate step's `run` block, after YAML `|` dedent. Exact, so a comment,
+# `set +e`, `||`, an inverted branch, or `if false` cannot keep the test green.
+LLM_NO_DEFAULT_CLIPPY_RUN = (
+    "set -euo pipefail\n"
+    'pkgs=",${AW_CI_PACKAGES},"\n'
+    'if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then\n'
+    f"  {LLM_NO_DEFAULT_CLIPPY}\n"
+    "else\n"
+    '  echo "astraweave-llm is not in the affected set; skipping the no-default-features clippy"\n'
+    "fi\n"
+)
+LLM_NO_DEFAULT_CLIPPY_IF = "needs.changes.outputs.docs_only != 'true'"
+LLM_NO_DEFAULT_CLIPPY_ENV = {
+    "AW_CI_FULL": "${{ needs.changes.outputs.full }}",
+    "AW_CI_PACKAGES": "${{ needs.changes.outputs.packages }}",
+}
+
+
+def _indent_of(line: str) -> int:
+    if "\t" in line:
+        raise AssertionError("workflow YAML uses a tab")
+    return len(line) - len(line.lstrip(" "))
+
+
+def _unquote_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+        inner = value[1:-1]
+        if value[0] == "'":
+            return inner.replace("''", "'")
+        return (
+            inner.replace("\\n", "\n")
+            .replace("\\t", "\t")
+            .replace('\\"', '"')
+            .replace("\\\\", "\\")
+        )
+    return value
+
+
+def _strip_plain_comment(value: str) -> str:
+    if value.startswith("'") or value.startswith('"') or value.startswith("["):
+        return value
+    mark = value.find(" #")
+    if mark == -1:
+        return value
+    return value[:mark].rstrip()
+
+
+def _parse_flow_sequence(value: str) -> list[str]:
+    if not (value.startswith("[") and value.endswith("]")):
+        raise AssertionError(f"not a flow sequence: {value!r}")
+    inner = value[1:-1].strip()
+    if not inner:
+        return []
+    parts: list[str] = []
+    buf: list[str] = []
+    quote = ""
+    for char in inner:
+        if quote:
+            buf.append(char)
+            if char == quote:
+                quote = ""
+            continue
+        if char in "'\"":
+            quote = char
+            buf.append(char)
+            continue
+        if char == ",":
+            parts.append("".join(buf).strip())
+            buf = []
+            continue
+        buf.append(char)
+    if quote:
+        raise AssertionError(f"unclosed quote in {value!r}")
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return [_unquote_scalar(part) for part in parts]
+
+
+def _parse_scalar(value: str) -> object:
+    value = _strip_plain_comment(value.strip())
+    if value == "":
+        return None
+    if value == "[]":
+        return []
+    if value == "{}":
+        return {}
+    if value.startswith("["):
+        return _parse_flow_sequence(value)
+    return _unquote_scalar(value)
+
+
+def _block_scalar(lines: list[str], start: int, parent_indent: int, style: str) -> tuple[str, int]:
+    raw: list[str] = []
+    index = start
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            peek = index + 1
+            while peek < len(lines) and not lines[peek].strip():
+                peek += 1
+            if peek >= len(lines) or _indent_of(lines[peek]) <= parent_indent:
+                break
+            while index < peek:
+                raw.append("")
+                index += 1
+            continue
+        if _indent_of(line) <= parent_indent:
+            break
+        raw.append(line)
+        index += 1
+    content_indent = None
+    for line in raw:
+        if line == "":
+            continue
+        content_indent = _indent_of(line)
+        break
+    if content_indent is None:
+        body = ""
+    else:
+        pieces: list[str] = []
+        for line in raw:
+            if line == "":
+                pieces.append("")
+                continue
+            if _indent_of(line) < content_indent:
+                raise AssertionError("block scalar lost its indentation")
+            pieces.append(line[content_indent:])
+        if style.startswith("|"):
+            body = "\n".join(pieces)
+            if style != "|-":
+                body += "\n"
+        else:
+            # Folded scalars (`>` / `>-`). A blank line is a paragraph break.
+            paragraphs: list[str] = []
+            current: list[str] = []
+            for piece in pieces:
+                if piece == "":
+                    if current:
+                        paragraphs.append(" ".join(current))
+                        current = []
+                    continue
+                current.append(piece)
+            if current:
+                paragraphs.append(" ".join(current))
+            body = "\n".join(paragraphs)
+            if style == ">":
+                body += "\n"
+    return body, index
+
+
+def _parse_mapping(lines: list[str], indent: int) -> dict[str, object]:
+    mapping: dict[str, object] = {}
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith("#"):
+            index += 1
+            continue
+        current = _indent_of(line)
+        if current < indent:
+            break
+        if current != indent:
+            raise AssertionError(f"unexpected indent in workflow YAML: {line!r}")
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            raise AssertionError(f"list item where a key was expected: {line!r}")
+        key, separator, rest = stripped.partition(":")
+        if separator != ":" or not key or key.startswith("-"):
+            raise AssertionError(f"not a YAML key: {line!r}")
+        key = _unquote_scalar(key.strip())
+        rest = rest.strip()
+        if rest in {"|", "|-", "|+", ">", ">-", ">+"}:
+            value, index = _block_scalar(lines, index + 1, indent, rest)
+            mapping[key] = value
+            continue
+        if rest != "":
+            mapping[key] = _parse_scalar(rest)
+            index += 1
+            continue
+        index += 1
+        nested: list[str] = []
+        while index < len(lines):
+            nxt = lines[index]
+            if not nxt.strip():
+                peek = index + 1
+                while peek < len(lines) and not lines[peek].strip():
+                    peek += 1
+                if peek >= len(lines) or _indent_of(lines[peek]) <= indent:
+                    break
+                while index < peek:
+                    nested.append(lines[index])
+                    index += 1
+                continue
+            if lines[index].lstrip().startswith("#") and _indent_of(lines[index]) <= indent:
+                index += 1
+                continue
+            if _indent_of(lines[index]) <= indent:
+                break
+            nested.append(lines[index])
+            index += 1
+        while nested and not nested[0].strip():
+            nested.pop(0)
+        while nested and not nested[-1].strip():
+            nested.pop()
+        if not nested:
+            mapping[key] = None
+            continue
+        child = _indent_of(nested[0])
+        if nested[0].lstrip().startswith("- "):
+            mapping[key] = _parse_list(nested, child)
+        else:
+            mapping[key] = _parse_mapping(nested, child)
+    return mapping
+
+
+def _parse_list(lines: list[str], indent: int) -> list[object]:
+    items: list[object] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith("#"):
+            index += 1
+            continue
+        current = _indent_of(line)
+        if current < indent:
+            break
+        stripped = line.lstrip()
+        if current != indent or not stripped.startswith("- "):
+            raise AssertionError(f"expected a list item: {line!r}")
+        rest = stripped[2:].strip()
+        index += 1
+        item_lines: list[str] = []
+        mapping_item = (":" in rest) or rest.endswith(":")
+        if mapping_item:
+            item_lines.append(" " * (indent + 2) + rest)
+        while index < len(lines):
+            nxt = lines[index]
+            if not nxt.strip():
+                peek = index + 1
+                while peek < len(lines) and not lines[peek].strip():
+                    peek += 1
+                if peek >= len(lines):
+                    break
+                peek_indent = _indent_of(lines[peek])
+                peek_stripped = lines[peek].lstrip()
+                if peek_indent < indent or (
+                    peek_indent == indent and peek_stripped.startswith("- ")
+                ):
+                    break
+                while index < peek:
+                    item_lines.append(lines[index])
+                    index += 1
+                continue
+            nxt_indent = _indent_of(nxt)
+            if nxt_indent < indent:
+                break
+            if nxt_indent == indent and nxt.lstrip().startswith("- "):
+                break
+            if nxt_indent == indent and nxt.lstrip().startswith("#"):
+                index += 1
+                continue
+            item_lines.append(nxt)
+            index += 1
+        if not mapping_item:
+            items.append(_parse_scalar(rest))
+            continue
+        items.append(_parse_mapping(item_lines, indent + 2))
+    return items
+
+
+def parse_workflow(text: str) -> dict[str, object]:
+    """Parse a GitHub workflow. Scalars stay strings, so `on` is not a boolean."""
+    lines = text.splitlines()
+    parsed = _parse_mapping(lines, 0)
+    if not isinstance(parsed, dict) or "jobs" not in parsed:
+        raise AssertionError("workflow YAML has no jobs mapping")
+    return parsed
 
 
 def assert_llm_no_default_clippy_guard(text: str) -> None:
-    """The gate runs the no-default-features clippy and does not swallow it."""
-    parts = text.split("\n  gate:\n", 1)
-    if len(parts) != 2:
+    """The gate job runs the no-default-features clippy and does not swallow it."""
+    workflow = parse_workflow(text)
+    jobs = workflow["jobs"]
+    if not isinstance(jobs, dict) or "gate" not in jobs:
         raise AssertionError("ci.yml is missing the gate job")
-    gate = parts[1].split("\n  test-linux-build:\n", 1)[0]
-    marker = "name: Clippy astraweave-llm without default features"
-    if gate.count(marker) != 1:
+    gate = jobs["gate"]
+    if not isinstance(gate, dict):
+        raise AssertionError("gate job is not a mapping")
+    if "if" in gate:
+        raise AssertionError("gate job must not have an if; it would skip the clippy")
+    steps = gate.get("steps")
+    if not isinstance(steps, list):
+        raise AssertionError("gate job is missing steps")
+    matches = [
+        step
+        for step in steps
+        if isinstance(step, dict) and step.get("name") == LLM_NO_DEFAULT_CLIPPY_STEP
+    ]
+    if len(matches) != 1:
         raise AssertionError(
             "gate job must contain one astraweave-llm no-default-features clippy step"
         )
-    step = gate.split(marker, 1)[1].split("\n      - name:", 1)[0]
-    if step.count(LLM_NO_DEFAULT_CLIPPY) != 1:
-        raise AssertionError(f"clippy guard must run exactly: {LLM_NO_DEFAULT_CLIPPY}")
-    if "set -euo pipefail" not in step:
-        raise AssertionError("clippy guard must fail closed")
+    elsewhere = []
+    for job_name, job in jobs.items():
+        if job_name == "gate" or not isinstance(job, dict):
+            continue
+        for step in job.get("steps") or []:
+            if isinstance(step, dict) and step.get("name") == LLM_NO_DEFAULT_CLIPPY_STEP:
+                elsewhere.append(job_name)
+    if elsewhere:
+        raise AssertionError(
+            "clippy guard must stay in the gate job, found also in " + ", ".join(elsewhere)
+        )
+    step = matches[0]
+    if step.get("if") != LLM_NO_DEFAULT_CLIPPY_IF:
+        raise AssertionError(
+            "clippy guard if must be the docs-only exclusion, "
+            f"got {step.get('if')!r}"
+        )
+    if step.get("env") != LLM_NO_DEFAULT_CLIPPY_ENV:
+        raise AssertionError("clippy guard must read AW_CI_FULL and AW_CI_PACKAGES")
     if "continue-on-error" in step:
         raise AssertionError("clippy guard must not use continue-on-error")
-    if "|| true" in step or "||true" in step:
-        raise AssertionError("clippy guard must not ignore failures")
-    if '[ "$AW_CI_FULL" = "true" ]' not in step:
-        raise AssertionError("clippy guard must run on full CI")
-    if '[[ "$pkgs" == *",astraweave-llm,"* ]]' not in step:
-        raise AssertionError("clippy guard must run when astraweave-llm is affected")
-    if "needs.changes.outputs.docs_only != 'true'" not in step:
-        raise AssertionError("clippy guard must not run on docs-only pulls")
+    if step.get("run") != LLM_NO_DEFAULT_CLIPPY_RUN:
+        raise AssertionError(
+            "clippy guard run block was edited\n"
+            f"expected:\n{LLM_NO_DEFAULT_CLIPPY_RUN!r}\n"
+            f"got:\n{step.get('run')!r}"
+        )
+
+
+def _move_llm_clippy_step_out_of_gate(text: str) -> str:
+    """A new job inserted before test-linux-build takes the clippy step."""
+    header = "      - name: Clippy astraweave-llm without default features\n"
+    start = text.index(header)
+    end = text.index("\n      - name: sccache stats\n", start)
+    step = text[start:end]
+    if not step.endswith("\n"):
+        step += "\n"
+    removed = text[:start] + text[end + 1 :]
+    marker = "\n  test-linux-build:\n"
+    at = removed.index(marker)
+    moved = (
+        "  llm-clippy-moved:\n"
+        "    name: Clippy moved out of gate\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        + step
+    )
+    return removed[:at] + "\n" + moved + removed[at:]
 
 
 def jobs_missing_timeout(text: str) -> list[str]:
@@ -487,24 +811,68 @@ class WorkflowPolicyTest(unittest.TestCase):
         text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
         assert_llm_no_default_clippy_guard(text)
         self.assertIn("pull_request:", text)
-        dropped = text.replace(LLM_NO_DEFAULT_CLIPPY, "cargo check -p astraweave-llm", 1)
-        with self.assertRaises(AssertionError):
-            assert_llm_no_default_clippy_guard(dropped)
-        ignored = text.replace(
-            LLM_NO_DEFAULT_CLIPPY,
-            f"{LLM_NO_DEFAULT_CLIPPY} || true",
-            1,
+        cargo_line = f"            {LLM_NO_DEFAULT_CLIPPY}\n"
+        if_line = (
+            '          if [ "$AW_CI_FULL" = "true" ]'
+            ' || [[ "$pkgs" == *",astraweave-llm,"* ]]; then\n'
         )
-        with self.assertRaises(AssertionError):
-            assert_llm_no_default_clippy_guard(ignored)
-        softened = text.replace(
-            "      - name: Clippy astraweave-llm without default features\n",
-            "      - name: Clippy astraweave-llm without default features\n"
-            "        continue-on-error: true\n",
-            1,
-        )
-        with self.assertRaises(AssertionError):
-            assert_llm_no_default_clippy_guard(softened)
+        mutants = {
+            "cargo check": text.replace(LLM_NO_DEFAULT_CLIPPY, "cargo check -p astraweave-llm", 1),
+            "or true": text.replace(cargo_line, cargo_line.replace("\n", " || true\n"), 1),
+            "or colon": text.replace(cargo_line, cargo_line.replace("\n", " || :\n"), 1),
+            "or exit 0": text.replace(cargo_line, cargo_line.replace("\n", " || exit 0\n"), 1),
+            "or brace exit": text.replace(
+                cargo_line, cargo_line.replace("\n", " || { exit 0; }\n"), 1
+            ),
+            "continue-on-error": text.replace(
+                "      - name: Clippy astraweave-llm without default features\n",
+                "      - name: Clippy astraweave-llm without default features\n"
+                "        continue-on-error: true\n",
+                1,
+            ),
+            "and instead of or": text.replace(if_line, if_line.replace(" || ", " && ", 1), 1),
+            "false guards": text.replace(
+                if_line,
+                '          if false && [ "$AW_CI_FULL" = "true" ]'
+                ' || false && [[ "$pkgs" == *",astraweave-llm,"* ]]; then\n',
+                1,
+            ),
+            "if false around cargo": text.replace(
+                cargo_line,
+                "          if false; then\n" + cargo_line + "          fi\n",
+                1,
+            ),
+            "inverted branches": text.replace(
+                if_line + cargo_line + "          else\n"
+                '            echo "astraweave-llm is not in the affected set; skipping the no-default-features clippy"\n',
+                if_line
+                + '            echo "astraweave-llm is not in the affected set; skipping the no-default-features clippy"\n'
+                + "          else\n"
+                + cargo_line,
+                1,
+            ),
+            "set +e": text.replace(
+                '          set -euo pipefail\n          pkgs=",${AW_CI_PACKAGES},"\n',
+                "          set -euo pipefail\n"
+                "          set +e\n"
+                '          pkgs=",${AW_CI_PACKAGES},"\n',
+                1,
+            ),
+            "commented command": text.replace(cargo_line, "            # " + cargo_line.lstrip(), 1),
+            "step if false": text.replace(
+                "      - name: Clippy astraweave-llm without default features\n"
+                "        if: needs.changes.outputs.docs_only != 'true'\n",
+                "      - name: Clippy astraweave-llm without default features\n"
+                "        if: false && needs.changes.outputs.docs_only != 'true'\n",
+                1,
+            ),
+            "moved out of gate": _move_llm_clippy_step_out_of_gate(text),
+        }
+        for name, mutant in mutants.items():
+            with self.subTest(name):
+                self.assertNotEqual(mutant, text, name)
+                with self.assertRaises(AssertionError):
+                    assert_llm_no_default_clippy_guard(mutant)
 
     def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
         listed = []
