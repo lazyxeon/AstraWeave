@@ -929,8 +929,8 @@ pub mod gltf_loader {
 
     /// Read a glTF container without letting `st_size` choose the allocation.
     /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
-    /// with `Gltf::from_slice`, then `import_buffers` / `import_images`, instead
-    /// of `Gltf::open` and `gltf::import`.
+    /// with `gltf_external::load_jailed_gltf`, which reads buffers and images
+    /// through `read_jailed_file`, instead of `Gltf::open` and `gltf::import`.
     ///
     /// `metadata().is_file()` runs before `File::open`. Opening a FIFO blocks
     /// until another process connects, so the regular-file check has to happen

@@ -255,6 +255,17 @@ mod tests {
         assert!(err.to_string().contains("limit is 3"), "{err}");
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn post_read_check_catches_understated_procfs_size() {
+        let proc_cmdline = std::path::Path::new("/proc/self/cmdline");
+        let err = read_jailed_file(proc_cmdline, 8).expect_err("post-read cap");
+        assert!(
+            err.to_string().contains("exceeds 8 bytes"),
+            "{err}"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn directory_symlink_is_rejected() {
