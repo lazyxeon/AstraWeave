@@ -15,7 +15,7 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use serde::Deserialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 const TABLE_START: &str = "<!-- TRACE-TABLE:START -->";
@@ -407,6 +407,72 @@ struct MapRender {
     changed_links: Vec<(String, Option<String>, Option<String>)>, // (crate, old, new)
     changed_status: Vec<(String, String, String)>,                // (crate, old_status, new_status)
     runtime_edges: Vec<(String, String, bool)>,                   // (from, to, newly_added?)
+    /// Integrity problems in the rendered map. Non-empty => nothing may be written.
+    problems: Vec<String>,
+}
+
+/// Referential integrity of the map's `workspace-data`.
+///
+/// The viewer passes every edge to `cytoscape()`, which throws on an edge whose endpoint is
+/// not a node. The throw aborts the page script and the map renders zero nodes, so every
+/// edge endpoint must be a node and every node domain must be a declared domain.
+fn map_integrity(data: &serde_json::Value) -> Vec<String> {
+    let mut problems = Vec::new();
+    let nodes: &[serde_json::Value] = data
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let edges: &[serde_json::Value] = data
+        .get("edges")
+        .and_then(|e| e.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+
+    let mut ids: BTreeSet<&str> = BTreeSet::new();
+    for n in nodes {
+        match n.get("id").and_then(|v| v.as_str()) {
+            Some(id) => {
+                if !ids.insert(id) {
+                    problems.push(format!("map: duplicate node id '{id}'"));
+                }
+            }
+            None => problems.push("map: a node has no string `id`".to_string()),
+        }
+    }
+
+    match data.get("domains").and_then(|d| d.as_array()) {
+        Some(domains) => {
+            let declared: BTreeSet<&str> = domains
+                .iter()
+                .filter_map(|d| d.get("id").and_then(|v| v.as_str()))
+                .collect();
+            for n in nodes {
+                let id = n.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                match n.get("domain").and_then(|v| v.as_str()) {
+                    Some(d) if declared.contains(d) => {}
+                    Some(d) => problems.push(format!(
+                        "map: node '{id}' has domain '{d}', which is not in `domains`"
+                    )),
+                    None => problems.push(format!("map: node '{id}' has no `domain`")),
+                }
+            }
+        }
+        None => problems.push("map: workspace-data has no `domains` array".to_string()),
+    }
+
+    for (i, e) in edges.iter().enumerate() {
+        let s = e.get("source").and_then(|v| v.as_str()).unwrap_or("");
+        let t = e.get("target").and_then(|v| v.as_str()).unwrap_or("");
+        for (role, end) in [("source", s), ("target", t)] {
+            if !ids.contains(end) {
+                problems.push(format!(
+                    "map: edge #{i} {s} -> {t}: {role} '{end}' is not a node"
+                ));
+            }
+        }
+    }
+    problems
 }
 
 fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
@@ -430,7 +496,7 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
 
     // primary_crate -> (mapped status pair, statusEvidence-from-summary); + runtime edges
     let mut prim: BTreeMap<String, StatusEntry> = BTreeMap::new();
-    let mut rt_edges: Vec<(String, String)> = Vec::new();
+    let mut rt_edges: Vec<(String, String, String)> = Vec::new(); // (trace file, from, to)
     for t in traces {
         if let Some(fm) = &t.fm {
             // A trace drives its primary crate's status only when it OWNS that crate.
@@ -446,7 +512,7 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
                 );
             }
             for e in &fm.runtime_edges {
-                rt_edges.push((fm.primary_crate.clone(), e.to.clone()));
+                rt_edges.push((t.file(), fm.primary_crate.clone(), e.to.clone()));
             }
         }
     }
@@ -513,13 +579,38 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
     }
 
     // Runtime edges: upgrade the matching cargo edge (set `runtime: true`) or add a new one.
+    // An edge is only emitted when both endpoints are map nodes: the node set is curated,
+    // and "is a workspace crate" (what `validate` checks) does not imply "is on the map".
     let mut rt_report = Vec::new();
+    let mut problems = Vec::new();
+    let node_ids: BTreeSet<String> = data
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .map(|ns| {
+            ns.iter()
+                .filter_map(|n| n.get("id").and_then(|v| v.as_str()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
     {
         let edges = data
             .get_mut("edges")
             .and_then(|e| e.as_array_mut())
             .context("workspace-data has no `edges` array")?;
-        for (from, to) in &rt_edges {
+        for (file, from, to) in &rt_edges {
+            let unmapped: Vec<&str> = [from, to]
+                .into_iter()
+                .filter(|c| !node_ids.contains(c.as_str()))
+                .map(String::as_str)
+                .collect();
+            if !unmapped.is_empty() {
+                problems.push(format!(
+                    "{file}: runtime edge {from} -> {to} has no map node for {} \
+                     (add the node to workspace_map.html's curated node set)",
+                    unmapped.join(", ")
+                ));
+                continue;
+            }
             let mut found = false;
             for edge in edges.iter_mut() {
                 let s = edge.get("source").and_then(|v| v.as_str());
@@ -548,6 +639,8 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
         }
     }
 
+    problems.extend(map_integrity(&data));
+
     let new_json = escape_nonascii(&serde_json::to_string(&data)?);
     let html = format!(
         "{}{}{}",
@@ -560,6 +653,7 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
         changed_links,
         changed_status,
         runtime_edges: rt_report,
+        problems,
     })
 }
 
@@ -667,6 +761,16 @@ fn main() -> Result<()> {
 
     if cli.write || cli.check {
         let (targets, map_render) = build_targets(&root, &traces)?;
+        if !map_render.problems.is_empty() {
+            eprintln!(
+                "Map integrity failed ({} problem(s)):",
+                map_render.problems.len()
+            );
+            for p in &map_render.problems {
+                eprintln!("  - {p}");
+            }
+            bail!("workspace_map.html failed its integrity check; nothing written");
+        }
         let mut drift = false;
         for t in &targets {
             if t.current == t.rendered {
@@ -952,8 +1056,9 @@ mod tests {
              domain: physics-world\nlifecycle_status: active\nintegration_status: wired\nowns: []\n\
              doc_version: \"1\"\nlast_verified_commit: c\n",
         );
-        let html = "<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"astraweave-terrain\",\"status\":\"active\",\"statusCategory\":\"active\",\"statusEvidence\":null,\"trace\":null}],\"edges\":[{\"source\":\"astraweave-terrain\",\"target\":\"astraweave-physics\",\"kind\":\"workspace-dep\"}]}</script>";
+        let html = "<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"astraweave-terrain\",\"domain\":\"physics-world\",\"status\":\"active\",\"statusCategory\":\"active\",\"statusEvidence\":null,\"trace\":null},{\"id\":\"astraweave-physics\",\"domain\":\"physics-world\",\"trace\":null}],\"edges\":[{\"source\":\"astraweave-terrain\",\"target\":\"astraweave-physics\",\"kind\":\"workspace-dep\"}],\"domains\":[{\"id\":\"physics-world\"}]}</script>";
         let out = render_map(html, &[owner, slice]).unwrap();
+        assert!(out.problems.is_empty(), "got {:?}", out.problems);
         let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
         let d: serde_json::Value = serde_json::from_str(json).unwrap();
         assert_eq!(
@@ -965,5 +1070,68 @@ mod tests {
             d["edges"][0]["runtime"], true,
             "runtime edge must be marked on the cargo dep"
         );
+    }
+
+    /// Regression: combat.md / destruction.md / veil.md declared runtime edges from crates
+    /// with no map node; the tool emitted them anyway and Cytoscape threw on load, so the
+    /// published map rendered zero nodes while `--check` reported "In sync".
+    #[test]
+    fn runtime_edge_from_unmapped_crate_is_not_emitted() {
+        let combat = tdoc(
+            "combat",
+            "schema_version: 1\ntrace_id: combat\ntitle: T\ndescription: D\nprimary_crate: astraweave-combat\n\
+             domain: gameplay\nlifecycle_status: active\nintegration_status: partial\nowns: [astraweave-combat]\n\
+             doc_version: \"1\"\nlast_verified_commit: c\nruntime_edges:\n  - to: astraweave-ecs\n",
+        );
+        let html = "<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"astraweave-ecs\",\"domain\":\"core\",\"trace\":null}],\"edges\":[],\"domains\":[{\"id\":\"core\"}]}</script>";
+        let out = render_map(html, &[combat]).unwrap();
+        assert!(
+            out.problems
+                .iter()
+                .any(|p| p.contains("combat.md") && p.contains("no map node for astraweave-combat")),
+            "got {:?}",
+            out.problems
+        );
+        assert!(
+            !out.html.contains("astraweave-combat"),
+            "dangling edge must not be written into the map"
+        );
+    }
+
+    #[test]
+    fn map_integrity_flags_dangling_edges_and_unknown_domains() {
+        let data = serde_json::json!({
+            "nodes": [
+                {"id": "a", "domain": "core"},
+                {"id": "b", "domain": "nowhere"},
+                {"id": "a", "domain": "core"}
+            ],
+            "edges": [
+                {"source": "a", "target": "b"},
+                {"source": "ghost", "target": "a"}
+            ],
+            "domains": [{"id": "core"}]
+        });
+        let p = map_integrity(&data);
+        assert!(
+            p.iter().any(|m| m.contains("source 'ghost' is not a node")),
+            "{p:?}"
+        );
+        assert!(p.iter().any(|m| m.contains("domain 'nowhere'")), "{p:?}");
+        assert!(
+            p.iter().any(|m| m.contains("duplicate node id 'a'")),
+            "{p:?}"
+        );
+        assert_eq!(p.len(), 3, "the a -> b edge is valid: {p:?}");
+    }
+
+    #[test]
+    fn map_integrity_accepts_a_consistent_map() {
+        let data = serde_json::json!({
+            "nodes": [{"id": "a", "domain": "core"}, {"id": "b", "domain": "core"}],
+            "edges": [{"source": "a", "target": "b"}],
+            "domains": [{"id": "core"}]
+        });
+        assert!(map_integrity(&data).is_empty());
     }
 }
