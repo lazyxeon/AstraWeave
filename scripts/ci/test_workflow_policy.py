@@ -566,12 +566,20 @@ def assert_miri_hotpath_guard(text: str) -> None:
         raise AssertionError("Miri job must need the decide job")
     if hot.get("if") != MIRI_HOTPATH_IF:
         raise AssertionError(f"Miri job if must be {MIRI_HOTPATH_IF!r}, got {hot.get('if')!r}")
+    if "defaults" in workflow:
+        raise AssertionError("miri.yml must not set workflow defaults")
     for job_name, job in ((MIRI_DECIDE_JOB, decide), (MIRI_HOTPATH_JOB, hot)):
+        if "continue-on-error" in job:
+            raise AssertionError(f"{job_name} uses continue-on-error")
+        if "defaults" in job:
+            raise AssertionError(f"{job_name} must not set defaults")
         for step in _steps(job, job_name):
             if "if" in step:
                 raise AssertionError(f"{job_name} step {step.get('name')!r} must not have an if")
             if "continue-on-error" in step:
                 raise AssertionError(f"{job_name} step {step.get('name')!r} uses continue-on-error")
+            if "shell" in step:
+                raise AssertionError(f"{job_name} step {step.get('name')!r} must not set shell")
     decide_steps = [step for step in _steps(decide, MIRI_DECIDE_JOB) if step.get("id") == "hot"]
     if len(decide_steps) != 1 or decide_steps[0].get("run") != MIRI_DECIDE_RUN:
         raise AssertionError("decide script was edited")
@@ -1449,6 +1457,46 @@ class WorkflowPolicyTest(unittest.TestCase):
                 "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n",
                 "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n"
                 "        continue-on-error: true\n",
+                1,
+            ),
+            "job continue-on-error": text.replace(
+                "  miri-ecs-hotpath:\n"
+                "    name: Miri - ECS blob_vec/sparse_set/archetype/events\n",
+                "  miri-ecs-hotpath:\n"
+                "    name: Miri - ECS blob_vec/sparse_set/archetype/events\n"
+                "    continue-on-error: true\n",
+                1,
+            ),
+            "miri step shell": text.replace(
+                "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n",
+                "      - name: Run Miri on BlobVec, SparseSet, Archetype, and Events\n"
+                '        shell: bash -c "exit 0; {0}"\n',
+                1,
+            ),
+            "job defaults shell": text.replace(
+                "  miri-ecs-hotpath:\n"
+                "    name: Miri - ECS blob_vec/sparse_set/archetype/events\n",
+                "  miri-ecs-hotpath:\n"
+                "    name: Miri - ECS blob_vec/sparse_set/archetype/events\n"
+                "    defaults:\n"
+                "      run:\n"
+                '        shell: bash -c "exit 0; {0}"\n',
+                1,
+            ),
+            "decide step shell": text.replace(
+                "      - name: Decide whether the hot path changed\n"
+                "        id: hot\n",
+                "      - name: Decide whether the hot path changed\n"
+                "        id: hot\n"
+                '        shell: bash -c "exit 0; {0}"\n',
+                1,
+            ),
+            "workflow defaults": text.replace(
+                "jobs:\n",
+                "defaults:\n"
+                "  run:\n"
+                '    shell: bash -c "exit 0; {0}"\n'
+                "jobs:\n",
                 1,
             ),
             "run when false": text.replace(
