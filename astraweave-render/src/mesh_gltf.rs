@@ -17,13 +17,7 @@ impl Default for GltfOptions {
 
 #[cfg(feature = "gltf-assets")]
 fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
-    if uri.starts_with("data:") {
-        return Ok(());
-    }
-    let path_part = uri.split('?').next().unwrap_or(uri);
-    astraweave_security::path::safe_under(base, std::path::Path::new(path_part))
-        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-    Ok(())
+    astraweave_asset::gltf_external::jail_gltf_uri(base, uri).map(|_| ())
 }
 
 #[cfg(feature = "gltf-assets")]
@@ -48,8 +42,10 @@ fn reject_escaping_gltf_uris(path: &std::path::Path, bytes: &[u8]) -> Result<()>
     Ok(())
 }
 
-/// Parse `bytes` with `Gltf::from_slice`, then load buffers and images from
-/// `path`'s directory. `gltf::import_slice` refuses those relative URIs.
+/// Parse `bytes`, then load buffers and images from `path`'s directory.
+/// A file URI is jailed and read with `is_file()` before `File::open`, capped
+/// at `MAX_GLB_CONTAINER_BYTES`. `gltf::import_slice` refuses those relative
+/// URIs, and `import_buffers` would read them with an uncapped `read_to_end`.
 #[cfg(feature = "gltf-assets")]
 fn import_with_model_directory(
     path: &std::path::Path,
@@ -60,10 +56,11 @@ fn import_with_model_directory(
     Vec<gltf::image::Data>,
 )> {
     let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let gltf = gltf::Gltf::from_slice(bytes)?;
-    let buffers = gltf::import_buffers(&gltf.document, Some(base), gltf.blob)?;
-    let images = gltf::import_images(&gltf.document, Some(base), &buffers)?;
-    Ok((gltf.document, buffers, images))
+    astraweave_asset::gltf_external::load_jailed_gltf(
+        base,
+        bytes,
+        astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+    )
 }
 
 #[cfg(feature = "gltf-assets")]
@@ -297,6 +294,54 @@ mod jail_tests {
         );
         let msg = format!("{err:#}");
         assert!(msg.contains("not a regular file"), "{msg}");
+    }
+
+    const HOSTILE_URIS: &[&str] = &[
+        "file:///etc/passwd",
+        "file:/%2e%2e/x",
+        "%2e%2e/x",
+        "../x",
+        "/abs",
+        r"C:\x",
+    ];
+
+    #[test]
+    fn hostile_uris_are_rejected_and_a_relative_uri_loads() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        for uri in HOSTILE_URIS {
+            let path = dir.path().join("hostile.gltf");
+            let doc = serde_json::json!({
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": uri, "byteLength": 4}]
+            });
+            std::fs::write(&path, serde_json::to_vec(&doc).expect("json")).expect("write");
+            let err = load_gltf(
+                &path,
+                &GltfOptions {
+                    generate_tangents: false,
+                },
+            )
+            .expect_err(uri);
+            let msg = format!("{err:#}").to_lowercase();
+            assert!(
+                msg.contains("traversal") || msg.contains("rejected"),
+                "{uri}: {msg}"
+            );
+        }
+        let path = dir.path().join("ok.gltf");
+        std::fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"box.bin","byteLength":4}]}"#,
+        )
+        .expect("write");
+        load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect("relative uri");
     }
 }
 

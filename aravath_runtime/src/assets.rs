@@ -241,17 +241,13 @@ fn import_validated_model(
     // Parse the bytes just read. `gltf::import` would open the path again and
     // `Glb::from_reader` would allocate `declared - 12` from that second file.
     astraweave_asset::gltf_loader::reject_short_glb_header(&bytes)?;
-    // `import_slice` has no base directory and rejects a jailed sibling `.bin`
-    // or image. Parse the bytes already read, then resolve those URIs beside
-    // the model. `Glb::from_reader` stays off this path.
+    // `import_slice` has no base directory. `import_buffers` reads a file URI
+    // with gltf `read_to_end` (`st_size + 1`, no cap). `load_jailed_gltf`
+    // reads the sibling after the jail, with `is_file()` and `MAX_MODEL_BYTES`.
+    // `Glb::from_reader` stays off this path.
     let base = path.parent().context("model has no directory")?;
-    let gltf =
-        gltf::Gltf::from_slice(&bytes).with_context(|| format!("import {}", path.display()))?;
-    let buffers = gltf::import_buffers(&gltf.document, Some(base), gltf.blob)
-        .with_context(|| format!("import {}", path.display()))?;
-    let images = gltf::import_images(&gltf.document, Some(base), &buffers)
-        .with_context(|| format!("import {}", path.display()))?;
-    Ok((gltf.document, buffers, images))
+    astraweave_asset::gltf_external::load_jailed_gltf(base, &bytes, MAX_MODEL_BYTES)
+        .with_context(|| format!("import {}", path.display()))
 }
 
 pub fn validate_model_file(path: &Path) -> Result<()> {
@@ -271,9 +267,9 @@ fn validate_model_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
         check_relative_uri(&uri)?;
         let sibling = parent.join(&uri);
         regular_file(&sibling, MAX_MODEL_BYTES).with_context(|| format!("external uri {uri}"))?;
-        if !sibling.starts_with(parent) {
-            bail!("uri {uri} escapes the model directory");
-        }
+        // `symlink_metadata` on the final path does not see a symlink directory
+        // above it. The canonical path has to stay inside the model directory.
+        confine_existing(parent, &sibling).with_context(|| format!("external uri {uri}"))?;
     }
     Ok(())
 }
@@ -722,6 +718,28 @@ mod tests {
         );
         let msg = format!("{err:#}");
         assert!(msg.contains("not a regular file"), "{msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_symlink_uri_does_not_escape() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("loot.bin"), b"loot").unwrap();
+        symlink(outside.path(), dir.path().join("sub")).unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"sub/loot.bin","byteLength":4}]}"#,
+        )
+        .unwrap();
+        let err = import_validated_model(&path).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("escapes") || msg.contains("traversal") || msg.contains("rejected"),
+            "{msg}"
+        );
     }
 
     #[test]

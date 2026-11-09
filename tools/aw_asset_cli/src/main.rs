@@ -370,13 +370,7 @@ fn process_texture(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf
 }
 
 fn jail_gltf_uri(base: &Path, uri: &str) -> Result<()> {
-    if uri.starts_with("data:") {
-        return Ok(());
-    }
-    let path_part = uri.split('?').next().unwrap_or(uri);
-    astraweave_security::path::safe_under(base, Path::new(path_part))
-        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-    Ok(())
+    astraweave_asset::gltf_external::jail_gltf_uri(base, uri).map(|_| ())
 }
 
 fn read_jailed_gltf(path: &Path) -> Result<Vec<u8>> {
@@ -414,9 +408,11 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
     {
         let bytes = read_jailed_gltf(src)?;
         let base = src.parent().unwrap_or_else(|| Path::new("."));
-        let gltf = gltf::Gltf::from_slice(&bytes)?;
-        let buffers = gltf::import_buffers(&gltf.document, Some(base), gltf.blob)?;
-        let _images = gltf::import_images(&gltf.document, Some(base), &buffers)?;
+        let (_document, _buffers, _images) = astraweave_asset::gltf_external::load_jailed_gltf(
+            base,
+            &bytes,
+            astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+        )?;
         // Minimal example: just copy the glTF for now; swap to a meshbin writer later
         fs::copy(src, &out)?;
         if compress {
@@ -852,6 +848,53 @@ mod gltf_jail_tests {
         let err = process_model(&src, dir.to_str().unwrap(), false).expect_err("oversized header");
         let msg = err.to_string();
         assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    const HOSTILE_URIS: &[&str] = &[
+        "file:///etc/passwd",
+        "file:/%2e%2e/x",
+        "%2e%2e/x",
+        "../x",
+        "/abs",
+        r"C:\x",
+    ];
+
+    #[test]
+    fn cli_hostile_uris_are_rejected_and_a_relative_uri_cooks() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-hostile-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("tempdir");
+        fs::write(dir.join("box.bin"), b"box!").expect("bin");
+        for uri in HOSTILE_URIS {
+            let src = dir.join("hostile.gltf");
+            let doc = serde_json::json!({
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": uri, "byteLength": 4}]
+            });
+            fs::write(&src, serde_json::to_vec(&doc).expect("json")).expect("write");
+            let out = dir.join("out");
+            let _ = fs::remove_dir_all(&out);
+            let err = process_model(&src, out.to_str().unwrap(), false).expect_err(uri);
+            let msg = format!("{err:#}").to_lowercase();
+            assert!(
+                msg.contains("traversal") || msg.contains("rejected"),
+                "{uri}: {msg}"
+            );
+            assert!(
+                !out.join("hostile.meshbin").exists(),
+                "{uri} wrote a meshbin"
+            );
+        }
+        let src = dir.join("ok.gltf");
+        fs::write(
+            &src,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"box.bin","byteLength":4}]}"#,
+        )
+        .expect("write");
+        let out = dir.join("ok-out");
+        let copied = process_model(&src, out.to_str().unwrap(), false).expect("relative");
+        assert!(copied.is_file(), "{}", copied.display());
         let _ = fs::remove_dir_all(&dir);
     }
 }

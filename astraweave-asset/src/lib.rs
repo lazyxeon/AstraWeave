@@ -2158,6 +2158,9 @@ pub mod gltf_loader {
     }
 }
 
+#[cfg(feature = "gltf")]
+pub mod gltf_external;
+
 pub struct AssetManifest;
 
 impl AssetManifest {
