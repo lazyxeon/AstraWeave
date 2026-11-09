@@ -8,8 +8,8 @@
 # job only when that decision is run=true. run=false skips the job; the
 # summary prints skipped, not Pass. An empty diff and a missing HEAD^1
 # still run Miri. The Miri step fails unless the log has a line starting
-# with `test blob_vec::`, `test sparse_set::`, `test archetype::`, and
-# `test events::`.
+# with `test <module>::` for each of `blob_vec`, `sparse_set`, `archetype`,
+# and `events`.
 # The nightly channel is .github/rust-nightly-channel (#560).
 #
 # Miri detects:
