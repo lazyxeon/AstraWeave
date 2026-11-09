@@ -38,7 +38,7 @@ Decouples raw on-disk asset formats from runtime consumers (render, scene stream
 
 **Where it primarily lives:**
 - `astraweave-asset/src/lib.rs` — glTF loaders (`gltf_loader`). `read_glb` refuses a declared length below 12 bytes before `Glb::from_slice`. Also `AssetDatabase` + `AssetWatcher` hot-reload, `AssetCache`, deterministic GUIDs, optional `blend_import`/`blend_asset_integration`, `import_pipelines`.
-- `astraweave-asset/src/cell_loader.rs` (841 LoC) — World-Partition cell RON (de)serialization + per-asset byte loading.
+- `astraweave-asset/src/cell_loader.rs` (889 LoC) — World-Partition cell RON (de)serialization + per-asset byte loading.
 - `astraweave-asset/src/nanite_preprocess.rs` (941 LoC) — meshlet clustering + QEM LOD hierarchy (CPU preprocess).
 - `astraweave-asset-pipeline/src/{lib,texture,mesh,validator}.rs` — separate crate of offline transforms (BC7/ASTC, vertex-cache/overdraw optimization, CI validation).
 
@@ -351,7 +351,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ## 10. Testing & Validation
 
-- **Unit tests:** Extensive in-module `#[cfg(test)]` blocks: `lib.rs` (glTF/GUID/DB/watcher), `cell_loader.rs:315-841` (RON round-trip, magic validation, async load), `nanite_preprocess.rs:717-941` (AABB, meshlet gen, LOD hierarchy, QEM), pipeline `mesh.rs`/`texture.rs`/`validator.rs`.
+- **Unit tests:** Extensive in-module `#[cfg(test)]` blocks: `lib.rs` (glTF/GUID/DB/watcher), `cell_loader.rs:325-889` (RON round-trip, magic validation, async load), `nanite_preprocess.rs:717-941` (AABB, meshlet gen, LOD hierarchy, QEM), pipeline `mesh.rs`/`texture.rs`/`validator.rs`.
 - **Mutation testing:** `astraweave-asset/src/mutation_tests.rs` (~33 KB) — explicitly boundary/operator/constant mutation-killers. `astraweave-asset` is in the `sanitizers.yml` P1 array (per ARCHITECTURE_MAP.md:815).
 - **Fuzzing:** `astraweave-asset/fuzz/` member present (declares the crate as a dep).
 - **Benchmarks:** `astraweave-asset-pipeline` declares `benches/pipeline_adversarial` (Cargo.toml). (Render-side Nanite/residency benches live in `astraweave-render/benches/`, using their own types.)
