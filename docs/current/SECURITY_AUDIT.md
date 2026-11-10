@@ -230,7 +230,7 @@ Searched the LLM, quest, dialogue, memory, and coordination crates for `Command:
 
 ### What exists
 
-`astraweave-asset` forbids `unsafe_code` on non-Windows targets. On Windows the crate denies `unsafe_code`. `bounded_open::final_path` calls `GetFinalPathNameByHandleW` for the opened file and the resolved root, and `ordinal_eq_ignore_case` calls `CompareStringOrdinal` so those paths are compared per component. Default features include `gltf`.
+`astraweave-asset` forbids `unsafe_code` on non-Windows targets. On Windows the crate denies `unsafe_code`. `bounded_open::final_path` calls `GetFinalPathNameByHandleW` for the opened file and the resolved root. Those paths are compared as exact UTF-16 components. Default features include `gltf`.
 
 The JSON glTF loaders take an explicit base directory and read file URIs with `gltf_external::load_jailed_gltf`. A `data:` URI stays in memory. `jail_gltf_uri` rejects `:`, `%`, `\`, and NUL, then `safe_under` against that base. Buffer and image URI bytes share the caller's cap, and more than 64 URIs is an error. `decode_gltf_image` uses `decode_limited_image`. There is no extension allowlist.
 
@@ -254,7 +254,7 @@ Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around th
 
 ### Unsafe on this path
 
-On Windows, `GetFinalPathNameByHandleW` and `CompareStringOrdinal` are the `unsafe` calls in `astraweave-asset` (`bounded_open.rs:223-264` and `:422-449`). The opened file stays under the resolved root. `meshopt` is C++ and is why the asset test binary links `libstdc++`. That is a build dependency, not an `unsafe` block on the loader path.
+On Windows, `GetFinalPathNameByHandleW` is the `unsafe` call in `astraweave-asset` (`bounded_open.rs:245-290`). Final-path components compare as exact UTF-16 units. The opened file stays under the resolved root. `meshopt` is C++ and is why the asset test binary links `libstdc++`. That is a build dependency, not an `unsafe` block on the loader path.
 
 ---
 
