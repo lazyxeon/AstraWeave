@@ -8,14 +8,22 @@
 # "0.19.0". Seeding that directory skips the action's single GitHub Releases
 # fetch, which returns HTTP 504 often enough to fail the job (#721).
 #
-# Exhausted retries exit 0 and set available=false. The workflow fallback step
+# The archive sha256 values are pinned below. A mismatch exits 1 immediately:
+# no retry and no fallback. A failed download retries with backoff. Exhausted
+# download retries exit 0 and set available=false. The workflow fallback step
 # clears the compiler wrapper. This script does not export compiler settings.
+#
+# --release-base is for the policy test harness. Workflows call this script
+# with no arguments.
 set -euo pipefail
 
 VERSION=v0.19.0
 ATTEMPTS="${SCCACHE_FETCH_ATTEMPTS:-5}"
 DELAY="${SCCACHE_FETCH_DELAY_SECONDS:-2}"
-RELEASE_BASE="${SCCACHE_RELEASE_BASE:-https://github.com/mozilla/sccache/releases/download/${VERSION}}"
+release_base="https://github.com/mozilla/sccache/releases/download/${VERSION}"
+if [ "${1:-}" = "--release-base" ]; then
+  release_base="${2:?sccache prefetch: --release-base needs a URL}"
+fi
 
 write_output() {
   if [ -z "${GITHUB_OUTPUT:-}" ]; then
@@ -29,6 +37,36 @@ fail_closed() {
   echo "sccache prefetch failed: $*" >&2
   write_output "available=false"
   exit 0
+}
+
+# sha256 of the v0.19.0 release archives this script can install.
+pinned_sha256() {
+  case "$1" in
+    sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz)
+      printf '%s\n' 'aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd'
+      ;;
+    sccache-v0.19.0-aarch64-unknown-linux-musl.tar.gz)
+      printf '%s\n' '3e47fc4a71b1ddd1b4294a0de9d34498922fdf41e3cd0bda5df3954e3d6deb9d'
+      ;;
+    sccache-v0.19.0-armv7-unknown-linux-musleabi.tar.gz)
+      printf '%s\n' '2a478c2e5006af97b7cfe08b3b4cb02a3770b06aade91f8c03fc99b05edba041'
+      ;;
+    sccache-v0.19.0-x86_64-apple-darwin.tar.gz)
+      printf '%s\n' '2db7344bb96de350df79cd9f0124dd4e9baa47b3de2fac1e63e1346b66b20684'
+      ;;
+    sccache-v0.19.0-aarch64-apple-darwin.tar.gz)
+      printf '%s\n' 'a35a0b7d622618774bc1bb8102d72562dfb21e619f88b153b370d7f89bc286af'
+      ;;
+    sccache-v0.19.0-x86_64-pc-windows-msvc.tar.gz)
+      printf '%s\n' '130e4f8eb672e76590e9993c2ab890c4763b88238577bb11d8062158c7698353'
+      ;;
+    sccache-v0.19.0-aarch64-pc-windows-msvc.tar.gz)
+      printf '%s\n' 'a680e8e6058b033cd6ff56d56b2219ca13f1c1a45f50fb3b04f4ed80851f5c2b'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 case "$ATTEMPTS" in
@@ -80,8 +118,7 @@ case "$clean_version" in
 esac
 
 filename="sccache-${VERSION}-${asset_arch}-${asset_os}.tar.gz"
-url="${RELEASE_BASE}/${filename}"
-sum_url="${url}.sha256"
+url="${release_base}/${filename}"
 
 tool_cache="$RUNNER_TOOL_CACHE"
 if command -v cygpath >/dev/null 2>&1; then
@@ -95,33 +132,34 @@ sha256_file() {
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-prefetch_once() {
-  rm -f "$tmp/pkg.tar.gz" "$tmp/pkg.sha256"
-  curl -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.tar.gz" "$url" || return 1
-  curl -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.sha256" "$sum_url" || return 1
-  local got want
-  got="$(sha256_file "$tmp/pkg.tar.gz")"
-  want="$(tr -d '[:space:]' < "$tmp/pkg.sha256")"
-  if [ "${#want}" -ne 64 ] || [ "$got" != "$want" ]; then
-    echo "sccache checksum mismatch for ${filename}" >&2
-    return 1
-  fi
+download_archive() {
+  local attempt=1 delay="$DELAY"
+  while [ "$attempt" -le "$ATTEMPTS" ]; do
+    if curl -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.tar.gz" "$url"; then
+      return 0
+    fi
+    rm -f "$tmp/pkg.tar.gz"
+    if [ "$attempt" -eq "$ATTEMPTS" ]; then
+      return 1
+    fi
+    echo "sccache prefetch attempt ${attempt}/${ATTEMPTS} failed; retrying in ${delay}s" >&2
+    sleep "$delay"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
-attempt=1
-delay="$DELAY"
-while [ "$attempt" -le "$ATTEMPTS" ]; do
-  if prefetch_once; then
-    break
-  fi
-  if [ "$attempt" -eq "$ATTEMPTS" ]; then
-    fail_closed "release download failed after ${ATTEMPTS} attempts (${url})"
-  fi
-  echo "sccache prefetch attempt ${attempt}/${ATTEMPTS} failed; retrying in ${delay}s" >&2
-  sleep "$delay"
-  delay=$((delay * 2))
-  attempt=$((attempt + 1))
-done
+if ! download_archive; then
+  fail_closed "release download failed after ${ATTEMPTS} attempts (${url})"
+fi
+
+got="$(sha256_file "$tmp/pkg.tar.gz")"
+want="$(pinned_sha256 "$filename")" || want=""
+if [ "${#want}" -ne 64 ] || [ "$got" != "$want" ]; then
+  echo "sccache checksum mismatch for ${filename}" >&2
+  exit 1
+fi
 
 rm -rf "$tmp/extract"
 mkdir -p "$tmp/extract"

@@ -67,6 +67,10 @@ runs:
         echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
         echo "::warning::sccache unavailable, building without cache"
 
+    - name: Disable incremental compilation
+      shell: bash
+      run: echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
     - name: Install sccache
       if: steps.sccache_fetch.outputs.available == 'true'
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
@@ -79,14 +83,12 @@ runs:
       run: |
         echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
         echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-        echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
         # sccache 0.19 writes through the Actions cache. A pull request that
         # also writes hits the service rate limit (cache write errors) and
         # evicts the shared cache. Main pushes and schedules populate it.
-        # CARGO_INCREMENTAL=0 is already required; sccache still refuses bins,
-        # cdylibs, and proc-macros.
+        # sccache still refuses bins, cdylibs, and proc-macros.
         if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
           echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
         else
