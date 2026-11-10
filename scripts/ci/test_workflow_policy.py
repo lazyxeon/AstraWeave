@@ -553,7 +553,31 @@ SCCACHE_PREFETCH_RUN = "run: bash scripts/ci/fetch_sccache_release.sh"
 # calls downloadSCCache on the same release (#721).
 SCCACHE_PREFETCH_IF = "steps.sccache_fetch.outputs.available == 'true'"
 SCCACHE_FALLBACK_IF = "steps.sccache_fetch.outputs.available != 'true'"
-_WRAPPER_ENV_KEYS = frozenset({"RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER"})
+# Live `sccache --show-stats` conditions. Equality, not a substring.
+SCCACHE_STATS_IFS = frozenset(
+    {
+        "steps.sccache_fetch.outputs.available == 'true'",
+        "always() && steps.sccache_fetch.outputs.available == 'true'",
+        "always() && steps.rust_ci.outputs.sccache-available == 'true'",
+        "always() && needs.changes.outputs.docs_only != 'true' && steps.rust_ci.outputs.sccache-available == 'true'",
+    }
+)
+_WRAPPER_ENV_KEYS = frozenset(
+    {"RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"}
+)
+_WRAPPER_KEY_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])(?:"
+    + "|".join(sorted(_WRAPPER_ENV_KEYS, key=len, reverse=True))
+    + r")(?![A-Za-z0-9_])"
+)
+# The only run lines that may name a wrapper key. Anything else fails closed.
+_SANCTIONED_GATE_LINES = frozenset(
+    {
+        'echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"',
+        'echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV',
+    }
+)
+_SANCTIONED_FALLBACK_LINE = 'echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"'
 _WORKFLOW_GLOBS = ("*.yml", "*.yaml")
 _ACTION_FILE_GLOBS = ("action.yml", "action.yaml")
 CARGO_INCREMENTAL_ECHO = 'echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"'
@@ -812,6 +836,23 @@ def _is_wrapper_env_key(key: object) -> bool:
     return str(key).upper() in _WRAPPER_ENV_KEYS
 
 
+def _is_sanctioned_wrapper_line(line: str, if_value: str | None) -> bool:
+    if if_value == SCCACHE_PREFETCH_IF and line in _SANCTIONED_GATE_LINES:
+        return True
+    return if_value == SCCACHE_FALLBACK_IF and line == _SANCTIONED_FALLBACK_LINE
+
+
+def _env_is_non_mapping(owner: object, field: str = "env") -> bool:
+    return isinstance(owner, dict) and field in owner and not isinstance(owner.get(field), dict)
+
+
+def _if_reads_sccache_gate(if_value: str) -> bool:
+    return "sccache_fetch.outputs.available" in if_value or "sccache-available" in if_value
+
+
+_STEP_OUTPUT_ID_RE = re.compile(r"steps\.([A-Za-z_][A-Za-z0-9_-]*)\.outputs")
+
+
 def _github_env_assignments(run: str) -> list[tuple[str, str]]:
     found: list[tuple[str, str]] = []
     if not run:
@@ -868,6 +909,8 @@ def _env_mapping_wrapper_keys(env: object) -> list[str]:
 
 def _sccache_env_violations(path: str, doc: dict) -> list[str]:
     violations: list[str] = []
+    if _env_is_non_mapping(doc):
+        violations.append(f"{path}: workflow env must be a mapping")
     for key in _env_mapping_wrapper_keys(doc.get("env")):
         violations.append(f"{path}: workflow env must not set {key}")
     jobs = doc.get("jobs")
@@ -876,34 +919,56 @@ def _sccache_env_violations(path: str, doc: dict) -> list[str]:
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
+        if _env_is_non_mapping(job):
+            violations.append(f"{path} job {job_id}: job env must be a mapping")
         for key in _env_mapping_wrapper_keys(job.get("env")):
             violations.append(f"{path} job {job_id}: job env must not set {key}")
+        container = job.get("container")
+        if isinstance(container, dict):
+            if _env_is_non_mapping(container):
+                violations.append(f"{path} job {job_id}: container env must be a mapping")
+            for key in _env_mapping_wrapper_keys(container.get("env")):
+                violations.append(f"{path} job {job_id}: container env must not set {key}")
     return violations
 
 
 def _sccache_wrapper_violations(path: str, steps: list[dict]) -> list[str]:
     violations: list[str] = []
     for step in steps:
+        if _env_is_non_mapping(step):
+            violations.append(f"{path}: step env must be a mapping")
         assignments = _step_wrapper_assignments(step)
-        if not assignments:
-            continue
         if_value = _step_if(step)
-        allowed = if_value == SCCACHE_PREFETCH_IF or (
-            if_value == SCCACHE_FALLBACK_IF and _is_exact_fallback_clear(assignments)
-        )
-        if not allowed:
-            violations.append(
-                f"{path}: RUSTC_WRAPPER=sccache if must be exactly {SCCACHE_PREFETCH_IF!r}, "
-                f"found {if_value!r}"
+        if assignments:
+            allowed = if_value == SCCACHE_PREFETCH_IF or (
+                if_value == SCCACHE_FALLBACK_IF and _is_exact_fallback_clear(assignments)
             )
-        # `|| success()` is true after a prefetch that exits 0. The wrapper is
-        # then set with no sccache binary, and cargo exits 101.
-        if if_value is not None and "||" in if_value:
-            violations.append(f"{path}: sccache enable if must not use ||, found {if_value!r}")
-        if if_value is not None and "|| true" in if_value:
-            violations.append(f"{path}: sccache enable if must not ignore failure with || true")
-        if _step_continue_on_error(step):
-            violations.append(f"{path}: continue-on-error is set on the RUSTC_WRAPPER step")
+            if not allowed:
+                violations.append(
+                    f"{path}: RUSTC_WRAPPER=sccache if must be exactly {SCCACHE_PREFETCH_IF!r}, "
+                    f"found {if_value!r}"
+                )
+            if if_value == SCCACHE_PREFETCH_IF:
+                for key, value in assignments:
+                    if value.strip() != "sccache":
+                        violations.append(
+                            f"{path}: gated wrapper value must be sccache, found {key}={value!r}"
+                        )
+            # `|| success()` is true after a prefetch that exits 0. The wrapper is
+            # then set with no sccache binary, and cargo exits 101.
+            if if_value is not None and "||" in if_value:
+                violations.append(f"{path}: sccache enable if must not use ||, found {if_value!r}")
+            if if_value is not None and "|| true" in if_value:
+                violations.append(f"{path}: sccache enable if must not ignore failure with || true")
+            if _step_continue_on_error(step):
+                violations.append(f"{path}: continue-on-error is set on the RUSTC_WRAPPER step")
+        for raw_line in _step_run(step).splitlines():
+            line = raw_line.strip()
+            if not line or _WRAPPER_KEY_RE.search(line) is None:
+                continue
+            if _is_sanctioned_wrapper_line(line, if_value):
+                continue
+            violations.append(f"{path}: wrapper run line is not the gated form: {line}")
     return violations
 
 
@@ -984,10 +1049,31 @@ def _sccache_stats_violations(path: str, step: dict) -> list[str]:
     if_value = _step_if(step) or ""
     if "available == 'true'" not in if_value:
         violations.append(f"{path}: sccache --show-stats must run only when sccache is available")
+    if if_value not in SCCACHE_STATS_IFS:
+        violations.append(
+            f"{path}: sccache --show-stats if must be an exact availability check, found {if_value!r}"
+        )
     if "|| true" in if_value:
         violations.append(f"{path}: sccache --show-stats must not ignore failure")
     if _step_continue_on_error(step):
         violations.append(f"{path}: continue-on-error is set on sccache --show-stats")
+    return violations
+
+
+def _gated_prefetch_id_violations(path: str, steps: list[dict]) -> list[str]:
+    present = {str(step.get("id")) for step in steps if step.get("id")}
+    violations: list[str] = []
+    for step in steps:
+        if_value = _step_if(step) or ""
+        if not _if_reads_sccache_gate(if_value):
+            continue
+        refs = _STEP_OUTPUT_ID_RE.findall(if_value)
+        if not refs:
+            violations.append(f"{path}: gated if does not reference a step id")
+            continue
+        for ref in refs:
+            if ref not in present:
+                violations.append(f"{path}: gated if references missing step id {ref!r}")
     return violations
 
 
@@ -1068,6 +1154,7 @@ def sccache_install_violations(texts: dict[str, str]) -> list[str]:
             ]
             file_uses += len(action_indexes)
             violations.extend(_sccache_wrapper_violations(path, steps))
+            violations.extend(_gated_prefetch_id_violations(path, steps))
             if action_indexes:
                 if not any(_unconditional_cargo_incremental(step) for step in steps):
                     violations.append(
@@ -2189,6 +2276,190 @@ class WorkflowPolicyTest(unittest.TestCase):
             "          version: v0.19.0\n",
             "unexpected sccache-action use",
         )
+        flagged(
+            ".github/workflows/action.yml",
+            "name: not-a-composite\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: mozilla-actions/sccache-action@"
+            + SCCACHE_ACTION_COMMIT
+            + "\n"
+            "        with:\n"
+            "          version: v0.19.0\n",
+            "unexpected sccache-action use",
+        )
+        flagged(
+            ".github/workflows/uses-int.yml",
+            "name: uses-int\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: 1\n",
+            "uses must be a fixed action reference",
+        )
+
+        def run_job(script: str) -> str:
+            body = "".join(f"          {line}\n" for line in script.splitlines())
+            return (
+                "name: run-line\n"
+                "on: push\n"
+                "jobs:\n"
+                "  build:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - run: |\n" + body
+            )
+
+        for name, script in (
+            ("brace-env", 'echo "RUSTC_WRAPPER=sccache" >> "${GITHUB_ENV}"'),
+            ("printf-args", "printf '%s\\n' 'RUSTC_WRAPPER=sccache' >> \"$GITHUB_ENV\""),
+            ("echo-flag", 'echo -n "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"'),
+            ("trailing-comment", 'echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV" # cache'),
+            ("piped", 'echo "RUSTC_WRAPPER=sccache" | tee -a "$GITHUB_ENV"'),
+            ("chained", 'echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV" && true'),
+            (
+                "heredoc",
+                "cat >> \"$GITHUB_ENV\" <<'EOF'\nRUSTC_WRAPPER=sccache\nEOF",
+            ),
+            (
+                "pwsh-append",
+                'Add-Content -Path $env:GITHUB_ENV -Value "RUSTC_WRAPPER=sccache"',
+            ),
+            (
+                "workspace-key",
+                'echo "Rustc_Workspace_Wrapper=sccache" >> "${GITHUB_ENV}"',
+            ),
+        ):
+            flagged(
+                f".github/workflows/{name}.yml",
+                run_job(script),
+                "wrapper run line is not the gated form",
+            )
+        flagged(
+            ".github/workflows/workspace-env.yml",
+            "name: workspace-env\n"
+            "on: push\n"
+            "env:\n"
+            "  rustc_workspace_wrapper: sccache\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: cargo test\n",
+            "workflow env must not set rustc_workspace_wrapper",
+        )
+        flagged(
+            ".github/workflows/container-key.yml",
+            "name: container-key\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    container:\n"
+            "      image: ubuntu:22.04\n"
+            "      env:\n"
+            "        RUSTC_WRAPPER: sccache\n"
+            "    steps:\n"
+            "      - run: cargo test\n",
+            "container env must not set RUSTC_WRAPPER",
+        )
+        flagged(
+            ".github/workflows/workflow-env-expr.yml",
+            "name: workflow-env-expr\n"
+            "on: push\n"
+            "env: ${{ fromJSON(vars.ENV) }}\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "workflow env must be a mapping",
+        )
+        flagged(
+            ".github/workflows/job-env-expr.yml",
+            "name: job-env-expr\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    env: ${{ fromJSON(vars.ENV) }}\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "job env must be a mapping",
+        )
+        flagged(
+            ".github/workflows/step-env-expr.yml",
+            "name: step-env-expr\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - env: ${{ fromJSON(vars.ENV) }}\n"
+            "        run: echo ok\n",
+            "step env must be a mapping",
+        )
+        flagged(
+            ".github/workflows/container-env-expr.yml",
+            "name: container-env-expr\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    container:\n"
+            "      image: ubuntu:22.04\n"
+            "      env: ${{ fromJSON(vars.ENV) }}\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "container env must be a mapping",
+        )
+        flagged(
+            ".github/actions/expr-env/action.yml",
+            "name: expr-env\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - shell: bash\n"
+            "      env: ${{ fromJSON(inputs.env) }}\n"
+            "      run: echo ok\n",
+            "step env must be a mapping",
+        )
+        flagged(
+            ".github/workflows/missing-prefetch-id.yml",
+            "name: missing-id\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/actions/rust-ci-setup\n"
+            "      - name: stats\n"
+            "        if: always() && steps.rust_ci.outputs.sccache-available == 'true'\n"
+            "        run: sccache --show-stats\n",
+            "gated if references missing step id 'rust_ci'",
+        )
+        flagged(
+            ".github/workflows/arbitrary-wrapper.yml",
+            "name: arbitrary\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - id: sccache_fetch\n"
+            "        run: bash scripts/ci/fetch_sccache_release.sh\n"
+            "      - name: Enable\n"
+            "        if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "        env:\n"
+            "          RUSTC_WRAPPER: /tmp/missing\n"
+            "        run: cargo test\n",
+            "gated wrapper value must be sccache",
+        )
 
         renamed = _replace_policy_once(
             texts,
@@ -2246,6 +2517,56 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(
             any("continue-on-error is set" in item for item in expr_violations),
             expr_violations,
+        )
+
+        numeric_continue = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      uses: mozilla-actions/sccache-action@",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      continue-on-error: 1\n"
+            "      uses: mozilla-actions/sccache-action@",
+        )
+        numeric_violations = sccache_install_violations(numeric_continue)
+        self.assertTrue(
+            any("continue-on-error is set" in item for item in numeric_violations),
+            numeric_violations,
+        )
+
+        mapping_continue = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      uses: mozilla-actions/sccache-action@",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      continue-on-error:\n"
+            "        x: true\n"
+            "      uses: mozilla-actions/sccache-action@",
+        )
+        mapping_violations = sccache_install_violations(mapping_continue)
+        self.assertTrue(
+            any("continue-on-error is set" in item for item in mapping_violations),
+            mapping_violations,
+        )
+
+        widened_stats = _replace_policy_once(
+            texts,
+            ".github/workflows/ci.yml",
+            "        if: always() && needs.changes.outputs.docs_only != 'true' && steps.rust_ci.outputs.sccache-available == 'true'\n",
+            "        if: always() && needs.changes.outputs.docs_only != 'true' && steps.rust_ci.outputs.sccache-available == 'true' || success()\n",
+        )
+        widened_stats_violations = sccache_install_violations(widened_stats)
+        self.assertTrue(
+            any(
+                "sccache --show-stats if must be an exact availability check" in item
+                for item in widened_stats_violations
+            ),
+            widened_stats_violations,
         )
 
         workflow_probe = WORKFLOWS / "policy-probe.yaml"
