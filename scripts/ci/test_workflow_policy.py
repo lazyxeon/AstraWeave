@@ -674,6 +674,14 @@ KANI_TIMEOUT_MSG = "kani timeout step must write only the validated timeout"
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
 _COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
+_CHECKOUT_PERSIST_WORKFLOWS = _COVERAGE_WORKFLOW_NAMES | {"kani.yml"}
+_KANI_SHA_ACTIONS = frozenset({"actions/checkout", "actions/upload-artifact"})
+_APPROVED_XML_TARPAULIN_RUN = (
+    "cd tools/astraweave-assets\n"
+    "cargo tarpaulin --out Xml --output-dir coverage "
+    "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n"
+)
+KANI_ACTION_SHA_MSG = "kani checkout and upload-artifact must use a commit SHA"
 _JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
 _LLVM_TOOL_VALUE_RE = re.compile(r"cargo-llvm-cov@[0-9]+\.[0-9]+\.[0-9]+\Z")
 
@@ -1065,11 +1073,10 @@ def _producer_steps_unconditional(job: object) -> bool:
 
 
 def _producer_tarpaulin_order_ok(job: object, workflow: str) -> bool:
-    """The XML upload comes before any HTML or other tarpaulin step.
+    """The coverage script is the approved XML command and nothing else.
 
-    The only legal cargo tarpaulin run is the XML one, and it contains no
-    Html output. A later HTML command in that same script is another
-    tarpaulin step for this check. Other workflows have no tarpaulin producer.
+    A second command in that script fails, including `--out html`,
+    `--out HTML`, and `--out Lcov`. Other workflows have no tarpaulin producer.
     """
     if workflow != "coverage.yml":
         return True
@@ -1078,25 +1085,15 @@ def _producer_tarpaulin_order_ok(job: object, workflow: str) -> bool:
     steps = job.get("steps")
     if not isinstance(steps, list) or not steps:
         return False
-    upload_at = None
-    xml_at: list[int] = []
-    for index, step in enumerate(steps):
+    runs: list[str] = []
+    for step in steps:
         if not isinstance(step, dict):
             return False
-        if upload_at is None and _is_named_action(step, "actions/upload-artifact"):
-            upload_at = index
         run = _run_text(step)
         if "cargo tarpaulin" not in run:
             continue
-        if "Html" in run or "--out Xml" not in run:
-            return False
-        xml_at.append(index)
-    if upload_at is None or len(xml_at) != 1 or xml_at[0] > upload_at:
-        return False
-    return not any(
-        index > upload_at and "cargo tarpaulin" in _run_text(step)
-        for index, step in enumerate(steps)
-    )
+        runs.append(run)
+    return runs == [_APPROVED_XML_TARPAULIN_RUN]
 
 
 def _producer_end_ok(job: object, workflow: str, artifact_name: str) -> bool:
@@ -1140,8 +1137,9 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     coverage job's keys are name, permissions, runs-on, timeout-minutes,
     and steps. Its last step is the upload-artifact whose with.name is the
     pinned report. A job-level if:, a step if:, a later step, a different
-    artifact name, an HTML or other cargo tarpaulin run, or a step between
-    the editor cargo llvm-cov run and the lcov upload fails. The upload
+    artifact name, a generate-coverage script other than the approved
+    cargo tarpaulin --out Xml command, or a step between the editor
+    cargo llvm-cov run and the lcov upload fails. The upload
     job's steps are actions/download-artifact, with exactly name and path,
     plus the SHA-pinned Codecov action. That download step's keys are only
     name, uses, and with, and its name is the pinned report artifact. Its
@@ -1385,8 +1383,8 @@ def _plain_word_false(mapping: object, key: str) -> bool:
 
 
 def checkout_persist_credentials_violations(text: str, *, path: str = "") -> list[str]:
-    """coverage.yml and aw-editor-tests.yml checkouts set persist-credentials: false."""
-    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
+    """coverage.yml, aw-editor-tests.yml, and kani.yml checkouts set persist-credentials: false."""
+    if Path(path).name not in _CHECKOUT_PERSIST_WORKFLOWS:
         return []
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -1401,6 +1399,30 @@ def checkout_persist_credentials_violations(text: str, *, path: str = "") -> lis
         body = step.get("with")
         if _mapping_has_duplicate(body) or not _plain_word_false(body, "persist-credentials"):
             violations.append(f"{prefix}{_step_line(step)}: {CHECKOUT_PERSIST_MSG}")
+    return violations
+
+
+def kani_action_sha_violations(text: str, *, path: str = "") -> list[str]:
+    """kani.yml checkout and upload-artifact refs are 40-character SHAs.
+
+    editor-ci.yml stays on the major-tag rule. A local `./` action has no ref.
+    """
+    if Path(path).name != "kani.yml":
+        return []
+    prefix = f"{path}: " if path else ""
+    found, err = _parsed_uses(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    violations: list[str] = []
+    for line_no, uses in found:
+        if uses.startswith("./"):
+            continue
+        action = _action_name(uses)
+        if action not in _KANI_SHA_ACTIONS:
+            continue
+        ref = uses.rsplit("@", 1)[1] if "@" in uses else ""
+        if _SHA_REF_RE.fullmatch(ref) is None:
+            violations.append(f"{prefix}{line_no}: {action}@{ref} {KANI_ACTION_SHA_MSG}")
     return violations
 
 
@@ -2368,6 +2390,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(kani_dispatch_args_violations(text, path=rel))
             codecov.extend(kani_timeout_run_violations(text, path=rel))
             codecov.extend(checkout_persist_credentials_violations(text, path=rel))
+            codecov.extend(kani_action_sha_violations(text, path=rel))
             codecov.extend(llvm_cov_pin_violations(text, path=rel))
         self.assertEqual(violations, [])
         self.assertEqual(codecov, [])
@@ -3945,6 +3968,47 @@ jobs:
             " ".join(coverage_permission_violations(between, path="aw-editor-tests.yml")),
         )
 
+    def test_coverage_tarpaulin_script_is_the_approved_command(self) -> None:
+        """The generate script is the approved XML command and nothing else.
+
+        A check that only rejects the literal Html still accepts --out html,
+        --out HTML, --out Lcov, and a second non-tarpaulin command.
+        """
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertNotIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(text, path="coverage.yml")),
+        )
+        base = (
+            "          cargo tarpaulin --out Xml --output-dir coverage "
+            "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n"
+        )
+        self.assertEqual(text.count(base), 1)
+        extras = {
+            "html": "          cargo tarpaulin --out html --output-dir coverage-html\n",
+            "HTML": "          cargo tarpaulin --out HTML --output-dir coverage-html\n",
+            "Html": "          cargo tarpaulin --out Html --output-dir coverage-html\n",
+            "Lcov": "          cargo tarpaulin --out Lcov --output-dir coverage-lcov\n",
+            "lcov": "          cargo tarpaulin --out lcov --output-dir coverage-lcov\n",
+            "other": "          echo injected\n",
+        }
+        for name, extra in extras.items():
+            mutant = text.replace(base, base + extra, 1)
+            self.assertNotEqual(mutant, text, name)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, name)
+            run = next(
+                _run_text(step)
+                for step in doc["jobs"]["coverage"]["steps"]
+                if "cargo tarpaulin" in _run_text(step)
+            )
+            self.assertNotEqual(run, _APPROVED_XML_TARPAULIN_RUN, name)
+            self.assertIn(
+                COVERAGE_JOB_END_MSG,
+                " ".join(coverage_permission_violations(mutant, path="coverage.yml")),
+                name,
+            )
+
     def test_coverage_producer_job_keys_reject_needs(self) -> None:
         """The coverage job's keys exclude needs in both workflows.
 
@@ -4124,6 +4188,73 @@ jobs:
         )
         self.assertTrue(enabled_violations)
         self.assertIn(CHECKOUT_PERSIST_MSG, enabled_violations[0])
+
+    def test_kani_persist_credentials_removal_is_rejected(self) -> None:
+        """Removing persist-credentials from a kani.yml checkout fails the check.
+
+        editor-ci.yml stays outside this check.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        editor_ci = (WORKFLOWS / "editor-ci.yml").read_text(encoding="utf-8")
+        self.assertEqual(checkout_persist_credentials_violations(text, path="kani.yml"), [])
+        self.assertEqual(
+            checkout_persist_credentials_violations(editor_ci, path="editor-ci.yml"),
+            [],
+        )
+        anchor = (
+            "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n"
+            "        with:\n"
+            "          persist-credentials: false\n"
+        )
+        self.assertEqual(text.count(anchor), 4)
+        self.assertEqual(text.count("persist-credentials: false"), 4)
+        bare = (
+            "      - uses: actions/checkout@"
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n"
+        )
+        dropped = text.replace(anchor, bare, 1)
+        self.assertNotEqual(dropped, text)
+        self.assertEqual(dropped.count("persist-credentials: false"), 3)
+        violations = checkout_persist_credentials_violations(dropped, path="kani.yml")
+        self.assertTrue(violations)
+        self.assertIn(CHECKOUT_PERSIST_MSG, violations[0])
+
+    def test_kani_checkout_and_upload_are_sha_pinned(self) -> None:
+        """kani.yml checkout and upload-artifact are commit SHAs. editor-ci.yml is not."""
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        editor_ci = (WORKFLOWS / "editor-ci.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_action_sha_violations(text, path="kani.yml"), [])
+        self.assertEqual(kani_action_sha_violations(editor_ci, path="editor-ci.yml"), [])
+        self.assertEqual(
+            text.count("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7"),
+            4,
+        )
+        self.assertEqual(
+            text.count(
+                "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2"
+            ),
+            4,
+        )
+        checkout = text.replace(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+            "actions/checkout@v7",
+            1,
+        )
+        self.assertNotEqual(checkout, text)
+        checkout_violations = kani_action_sha_violations(checkout, path="kani.yml")
+        self.assertTrue(checkout_violations)
+        self.assertIn("actions/checkout@v7", checkout_violations[0])
+        self.assertIn(KANI_ACTION_SHA_MSG, checkout_violations[0])
+        upload = text.replace(
+            "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2",
+            "actions/upload-artifact@v7",
+            1,
+        )
+        self.assertNotEqual(upload, text)
+        upload_violations = kani_action_sha_violations(upload, path="kani.yml")
+        self.assertTrue(upload_violations)
+        self.assertIn("actions/upload-artifact@v7", upload_violations[0])
+        self.assertIn(KANI_ACTION_SHA_MSG, upload_violations[0])
 
     def test_codecov_files_path_is_pinned(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
