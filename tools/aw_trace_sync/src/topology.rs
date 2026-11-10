@@ -46,6 +46,12 @@ pub struct TopologyDiff {
     pub extra_nodes: Vec<String>,
     pub missing_edges: Vec<String>,
     pub extra_edges: Vec<String>,
+    /// `source -> target optional old -> new`
+    pub optional_changes: Vec<String>,
+    /// Membership or order changes in `examples_collapsed.exampleList`.
+    pub example_list: Vec<String>,
+    /// `id old_loc/old_band -> new_loc/new_band`
+    pub loc_changes: Vec<String>,
 }
 
 pub fn workspace_graph(root: &Path) -> Result<Graph> {
@@ -183,7 +189,8 @@ pub fn sync_topology(
 
         let mut next_nodes = Vec::new();
         for (name, pkg) in &non_example {
-            if let Some(existing) = by_id.remove(*name) {
+            if let Some(mut existing) = by_id.remove(*name) {
+                refresh_loc(&mut existing, root, pkg, &mut diff);
                 next_nodes.push(existing);
             } else {
                 diff.missing_nodes.push((*name).to_string());
@@ -194,6 +201,7 @@ pub fn sync_topology(
         if !examples.is_empty() {
             let names: Vec<String> = examples.iter().map(|p| p.name.clone()).collect();
             if let Some(mut existing) = by_id.remove("examples_collapsed") {
+                record_example_list(&existing, &names, &mut diff);
                 refresh_examples_node(&mut existing, &names);
                 next_nodes.push(existing);
             } else {
@@ -278,6 +286,14 @@ pub fn sync_topology(
             if kind != "declared-unused" && kind != "anomalous" {
                 obj.insert("kind".into(), Value::String("workspace-dep".into()));
             }
+            let had = obj.get("optional").and_then(|v| v.as_bool());
+            if had != Some(*optional) {
+                let old = had
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "absent".to_string());
+                diff.optional_changes
+                    .push(format!("{src} -> {tgt} optional {old} -> {optional}"));
+            }
             obj.insert("optional".into(), Value::Bool(*optional));
             obj.remove("runtime");
             obj.remove("runtimeNote");
@@ -355,7 +371,7 @@ pub fn sync_reconciliation(data: &mut Value, graph: &Graph) {
         .map(|a| a.len())
         .unwrap_or(0);
     let note0 = format!(
-        "cargo metadata reports {members} workspace members: {non_ex} non-example crates and {examples} examples. The map renders {nodes} nodes and {edges} edges. Nodes are the non-example crates plus the examples aggregate. Edges are the normal path dependencies among those nodes, plus a runtime edge when a trace asserts one that is not also a cargo dependency. Dev-dependencies are excluded. astraweave-camera was added in 8c551c6ea (2026-05-18). Commit 52b9e711c is not in this repository's history."
+        "cargo metadata reports {members} workspace members: {non_ex} non-example crates and {examples} examples. The map renders {nodes} nodes and {edges} edges. Nodes are the non-example crates plus the examples aggregate. Edges are the normal path dependencies among those nodes, plus a runtime edge when a trace asserts one that is not also a cargo dependency. Dev-dependencies and build-dependencies are excluded. astraweave-camera was added in 8c551c6ea (2026-05-18). Commit 52b9e711c is not in this repository's history."
     );
     let note1 = format!(
         "Examples count: {examples} (cargo metadata, manifest path under examples/). Collapsed to one node. exampleList is that set, sorted by package name."
@@ -485,10 +501,62 @@ fn new_node_evidence(name: &str, manifest: &str, owner: Option<&FrontMatter>) ->
     if manifest.starts_with("tools/") || manifest.contains("/tools/") {
         return format!("Untraced workspace tool `{name}`.");
     }
-    if name == "astraweave-localsim" {
-        return "Untraced. Deterministic local field for fluid volume, gas, and heat. Placed in Physics & World from that crate's docs and its deps on water and destruction.".into();
-    }
     format!("Untraced workspace crate `{name}`.")
+}
+
+fn refresh_loc(node: &mut Value, root: &Path, pkg: &Pkg, diff: &mut TopologyDiff) {
+    let loc = src_rs_lines(root, &pkg.manifest);
+    let band = loc_band(loc);
+    let old_loc = node.get("locApprox").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let old_band = node
+        .get("locBand")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if old_loc != loc || old_band != band {
+        diff.loc_changes.push(format!(
+            "{} loc {old_loc}/{old_band} -> {loc}/{band}",
+            pkg.name
+        ));
+    }
+    if let Some(obj) = node.as_object_mut() {
+        obj.insert("locApprox".into(), json_u(loc));
+        obj.insert("locBand".into(), Value::String(band.into()));
+    }
+}
+
+fn record_example_list(node: &Value, names: &[String], diff: &mut TopologyDiff) {
+    let old: Vec<String> = node
+        .get("exampleList")
+        .and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    if old == names {
+        return;
+    }
+    let old_set: BTreeSet<&str> = old.iter().map(String::as_str).collect();
+    let new_set: BTreeSet<&str> = names.iter().map(String::as_str).collect();
+    let mut removed: Vec<&str> = old_set.difference(&new_set).copied().collect();
+    let mut added: Vec<&str> = new_set.difference(&old_set).copied().collect();
+    removed.sort();
+    added.sort();
+    if removed.is_empty() && added.is_empty() {
+        diff.example_list
+            .push("exampleList order changed".to_string());
+        return;
+    }
+    if !removed.is_empty() {
+        diff.example_list
+            .push(format!("exampleList removed {}", removed.join(", ")));
+    }
+    if !added.is_empty() {
+        diff.example_list
+            .push(format!("exampleList added {}", added.join(", ")));
+    }
 }
 
 fn default_domain(manifest: &str, name: &str) -> &'static str {
@@ -716,8 +784,37 @@ pub fn anchor_problems(html: &str, traces: &[TraceDoc], linked: &BTreeSet<String
                 t.file()
             ));
         }
+        for id in duplicate_explicit_ids(&t.body) {
+            problems.push(format!("{}: duplicate explicit id '{id}'", t.file()));
+        }
     }
     problems
+}
+
+/// Explicit `id="..."` values that occur more than once. A second copy of a
+/// section anchor (for example on `## 11.5`) still matches the first, so the
+/// presence check above does not catch it.
+fn duplicate_explicit_ids(md: &str) -> Vec<String> {
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    let bytes = md.as_bytes();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        if bytes[i..].starts_with(b"id=\"") {
+            let start = i + 4;
+            if let Some(rel) = md[start..].find('"') {
+                let id = md[start..start + rel].to_string();
+                *counts.entry(id).or_insert(0) += 1;
+                i = start + rel;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    counts
+        .into_iter()
+        .filter(|(_, n)| *n > 1)
+        .map(|(id, _)| id)
+        .collect()
 }
 
 fn required_anchors(html: &str) -> Vec<String> {
@@ -847,7 +944,7 @@ pub fn members_sentence(graph: &Graph, nodes: usize, edges: usize) -> String {
     let examples = graph.packages.iter().filter(|p| p.is_example).count();
     let non_ex = members - examples;
     format!(
-        "Workspace members from <code>cargo metadata</code>: {members} ({non_ex} non-example crates, {examples} examples). The map renders {nodes} nodes and {edges} edges. Edges are normal path dependencies among those nodes, with example crates collapsed into one source, plus a runtime edge only when it is not also a cargo dependency. Dev-dependencies are excluded."
+        "Workspace members from <code>cargo metadata</code>: {members} ({non_ex} non-example crates, {examples} examples). The map renders {nodes} nodes and {edges} edges. Edges are normal path dependencies among those nodes, with example crates collapsed into one source, plus a runtime edge only when it is not also a cargo dependency. Dev-dependencies and build-dependencies are excluded."
     )
 }
 

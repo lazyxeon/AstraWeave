@@ -363,12 +363,16 @@ fn render_claude_md(current: &str, traces: &[TraceDoc]) -> Result<String> {
 // ---- generation: map trace links ---------------------------------------------
 
 /// Escape every non-ASCII char to \uXXXX (matching the existing blob's ensure_ascii style)
-/// so generated output is byte-stable and `--check` stays clean.
+/// and every `<` to `\u003c`. A string such as `</script>` must not be able to close the
+/// surrounding `<script id="workspace-data">` element. `--check` fails if that block
+/// still contains a raw `<`.
 fn escape_nonascii(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         let cp = c as u32;
-        if cp < 0x80 {
+        if c == '<' {
+            out.push_str("\\u003c");
+        } else if cp < 0x80 {
             out.push(c);
         } else if cp <= 0xFFFF {
             out.push_str(&format!("\\u{:04x}", cp));
@@ -422,13 +426,20 @@ struct MapRender {
     html: String,
     changed_links: Vec<(String, Option<String>, Option<String>)>, // (crate, old, new)
     changed_status: Vec<(String, String, String)>,                // (crate, old_status, new_status)
-    runtime_edges: Vec<(String, String)>,                         // (from, to)
     /// Integrity, anchor, and nodeless-owner problems. Non-empty => nothing may be written.
     problems: Vec<String>,
     missing_nodes: Vec<String>,
     extra_nodes: Vec<String>,
     missing_edges: Vec<String>,
     extra_edges: Vec<String>,
+    optional_changes: Vec<String>,
+    example_list: Vec<String>,
+    loc_changes: Vec<String>,
+    chrome_changes: Vec<String>,
+    /// Runtime flags or notes that differ from the input map. Unchanged edges are omitted.
+    runtime_changes: Vec<String>,
+    /// The committed workspace-data block contains a raw `<`. `--write` escapes it.
+    raw_script_lt: bool,
 }
 
 /// Referential integrity of the map's `workspace-data`.
@@ -519,9 +530,11 @@ fn render_map_inner(
         .context("workspace-data </script> not found")?
         + content_start;
     let json_str = &current[content_start..close];
+    let raw_script_lt = json_str.contains('<');
 
     let mut data: serde_json::Value =
         serde_json::from_str(json_str).context("parsing workspace-data JSON")?;
+    let runtime_before = runtime_snapshot(&data);
     let topo = sync_topology(&mut data, graph, root, traces)?;
     let owners = ownership_map(traces);
 
@@ -648,6 +661,11 @@ fn render_map_inner(
     }
 
     let new_json = escape_nonascii(&serde_json::to_string(&data)?);
+    if new_json.contains('<') {
+        problems.push(
+            "workspace-data contains a raw '<' (a string could close the script element)".into(),
+        );
+    }
     let mut html = format!(
         "{}{}{}",
         &current[..content_start],
@@ -678,21 +696,139 @@ fn render_map_inner(
             &members_sentence(graph, node_count, edge_count),
         )?;
     }
-    let rt_report: Vec<(String, String)> = rt_edges
-        .iter()
-        .map(|(_, from, to, _)| (from.clone(), to.clone()))
-        .collect();
+    let mut chrome_changes = Vec::new();
+    if chrome {
+        chrome_changes = chrome_region_changes(current, &html);
+    }
+    let runtime_changes = runtime_change_lines(&runtime_before, &runtime_snapshot(&data));
     Ok(MapRender {
         html,
         changed_links,
         changed_status,
-        runtime_edges: rt_report,
         problems,
         missing_nodes: topo.missing_nodes,
         extra_nodes: topo.extra_nodes,
         missing_edges: topo.missing_edges,
         extra_edges: topo.extra_edges,
+        optional_changes: topo.optional_changes,
+        example_list: topo.example_list,
+        loc_changes: topo.loc_changes,
+        chrome_changes,
+        runtime_changes,
+        raw_script_lt,
     })
+}
+
+fn runtime_snapshot(data: &serde_json::Value) -> BTreeMap<(String, String), (bool, String)> {
+    let mut out = BTreeMap::new();
+    let Some(edges) = data.get("edges").and_then(|e| e.as_array()) else {
+        return out;
+    };
+    for e in edges {
+        let s = e.get("source").and_then(|v| v.as_str()).unwrap_or("");
+        let t = e.get("target").and_then(|v| v.as_str()).unwrap_or("");
+        let runtime = e.get("runtime").and_then(|v| v.as_bool()).unwrap_or(false);
+        let note = e
+            .get("runtimeNote")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if runtime || !note.is_empty() {
+            out.insert((s.to_string(), t.to_string()), (runtime, note));
+        }
+    }
+    out
+}
+
+fn runtime_change_lines(
+    before: &BTreeMap<(String, String), (bool, String)>,
+    after: &BTreeMap<(String, String), (bool, String)>,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let keys: BTreeSet<_> = before.keys().chain(after.keys()).cloned().collect();
+    for key in keys {
+        let old = before.get(&key);
+        let new = after.get(&key);
+        if old == new {
+            continue;
+        }
+        let (src, tgt) = &key;
+        match (old, new) {
+            (None, Some((runtime, note))) => {
+                lines.push(format!("runtime {src} -> {tgt} set ({runtime}, {note})"))
+            }
+            (Some(_), None) => lines.push(format!("runtime {src} -> {tgt} cleared")),
+            (Some((or, on)), Some((nr, nn))) => lines.push(format!(
+                "runtime {src} -> {tgt} changed ({or}, {on}) -> ({nr}, {nn})"
+            )),
+            (None, None) => {}
+        }
+    }
+    lines
+}
+
+fn marked_inner<'a>(html: &'a str, start: &str, end: &str) -> Option<&'a str> {
+    let s = html.find(start)? + start.len();
+    let rel = html[s..].find(end)?;
+    Some(&html[s..s + rel])
+}
+
+fn chrome_region_changes(before: &str, after: &str) -> Vec<String> {
+    let regions = [
+        (COUNTER_START, COUNTER_END, "counter"),
+        (TRACE_COUNT_START, TRACE_COUNT_END, "trace count"),
+        (MEMBERS_START, MEMBERS_END, "members sentence"),
+        (FOOTER_START, FOOTER_END, "footer trace list"),
+    ];
+    let mut out = Vec::new();
+    for (start, end, label) in regions {
+        let old = marked_inner(before, start, end).unwrap_or("");
+        let new = marked_inner(after, start, end).unwrap_or("");
+        if old == new {
+            continue;
+        }
+        if label == "footer trace list" {
+            out.push(footer_drift(old, new));
+        } else {
+            let old_t = old.trim();
+            let new_t = new.trim();
+            out.push(format!("{label}: {old_t} -> {new_t}"));
+        }
+    }
+    out
+}
+
+fn footer_drift(old: &str, new: &str) -> String {
+    let old_ids = footer_ids(old);
+    let new_ids = footer_ids(new);
+    let removed: Vec<&str> = old_ids.difference(&new_ids).copied().collect();
+    let added: Vec<&str> = new_ids.difference(&old_ids).copied().collect();
+    if removed.is_empty() && added.is_empty() {
+        return "footer trace list changed".to_string();
+    }
+    let mut parts = Vec::new();
+    if !removed.is_empty() {
+        parts.push(format!("removed {}", removed.join(", ")));
+    }
+    if !added.is_empty() {
+        parts.push(format!("added {}", added.join(", ")));
+    }
+    format!("footer trace list: {}", parts.join("; "))
+}
+
+fn footer_ids(html: &str) -> BTreeSet<&str> {
+    let mut ids = BTreeSet::new();
+    let mut rest = html;
+    while let Some(i) = rest.find("href=\"./") {
+        rest = &rest[i + "href=\"./".len()..];
+        let Some(end) = rest.find('"') else { break };
+        let href = &rest[..end];
+        if let Some(name) = href.strip_suffix(".md") {
+            ids.insert(name);
+        }
+        rest = &rest[end..];
+    }
+    ids
 }
 
 // ---- targets / drift ---------------------------------------------------------
@@ -845,8 +981,8 @@ fn main() -> Result<()> {
                         if old.is_empty() { "?" } else { old }
                     );
                 }
-                for (from, to) in &map_render.runtime_edges {
-                    eprintln!("  runtime edge {from} -> {to}");
+                for line in &map_render.runtime_changes {
+                    eprintln!("  {line}");
                 }
                 for id in &map_render.missing_nodes {
                     eprintln!("  missing node {id}");
@@ -859,6 +995,21 @@ fn main() -> Result<()> {
                 }
                 for e in &map_render.extra_edges {
                     eprintln!("  extra edge {e}");
+                }
+                for line in &map_render.optional_changes {
+                    eprintln!("  {line}");
+                }
+                for line in &map_render.example_list {
+                    eprintln!("  {line}");
+                }
+                for line in &map_render.loc_changes {
+                    eprintln!("  {line}");
+                }
+                for line in &map_render.chrome_changes {
+                    eprintln!("  {line}");
+                }
+                if map_render.raw_script_lt {
+                    eprintln!("  workspace-data contains a raw '<'");
                 }
             }
             if cli.write {
@@ -995,6 +1146,8 @@ mod tests {
         assert_eq!(escape_nonascii("a§b"), "a\\u00a7b"); // U+00A7
         assert_eq!(escape_nonascii("x→y"), "x\\u2192y"); // U+2192
         assert_eq!(escape_nonascii("ascii"), "ascii");
+        assert_eq!(escape_nonascii("</script>"), "\\u003c/script>");
+        assert!(!escape_nonascii("a < b </script>").contains('<'));
         // astral plane -> surrogate pair (U+1F600)
         assert_eq!(escape_nonascii("\u{1F600}"), "\\ud83d\\ude00");
     }
@@ -1378,6 +1531,110 @@ mod tests {
             "{:?}",
             out.problems
         );
+    }
+
+    #[test]
+    fn a_duplicate_explicit_anchor_id_is_an_error() {
+        let y = "schema_version: 1\ntrace_id: water\ntitle: T\ndescription: D\nprimary_crate: astraweave-water\n\
+                 domain: physics-world\nlifecycle_status: active\nintegration_status: wired\nowns: [astraweave-water]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n";
+        let mut trace = tdoc("water", y);
+        trace.body = "\
+<a id=\"5-active-file-map\"></a>\n## 5. Active File Map\n\
+<a id=\"6-conflict-map\"></a>\n## 6. Conflict Map\n\
+<a id=\"7-decision-log\"></a>\n## 7. Decision Log\n\
+<a id=\"8-invariants\"></a>\n## 8. Invariants\n\
+<a id=\"8-invariants\"></a>\n## 8.5 Extra\n\
+<a id=\"11-open-questions\"></a>\n## 11. Open Questions\n"
+            .into();
+        let html = format!(
+            "<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\n\
+             <span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\n\
+             <!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\n\
+             <!-- TRACE-FOOTER:START -->x<!-- TRACE-FOOTER:END -->\n\
+             'examples_collapsed': 'stale',\n\
+             <a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+             <a href=\"#7-decision-log\"></a><a href=\"#8-invariants\"></a>\
+             <a href=\"#11-open-questions\"></a>\n{}",
+            bare(
+                r#"{"nodes":[{"id":"astraweave-water","domain":"physics-world","trace":null}],"edges":[],"domains":[{"id":"physics-world"}]}"#
+            )
+        );
+        let graph = graph_of(&[("astraweave-water", false)], &[]);
+        let out = render_map(&html, &[trace], &graph, Path::new(".")).unwrap();
+        assert!(
+            out.problems
+                .iter()
+                .any(|p| p.contains("water.md")
+                    && p.contains("duplicate explicit id '8-invariants'")),
+            "{:?}",
+            out.problems
+        );
+    }
+
+    #[test]
+    fn optional_drift_names_the_edge() {
+        let html = bare(
+            r#"{"nodes":[{"id":"a","domain":"core","trace":null},{"id":"b","domain":"core","trace":null}],"edges":[{"source":"a","target":"b","kind":"workspace-dep","optional":true}],"domains":[{"id":"core"}]}"#,
+        );
+        let graph = graph_of(&[("a", false), ("b", false)], &[("a", "b", false)]);
+        let out = render_map_inner(&html, &[], &graph, Path::new("."), false).unwrap();
+        assert!(
+            out.optional_changes
+                .iter()
+                .any(|l| l.contains("a -> b") && l.contains("optional true -> false")),
+            "{:?}",
+            out.optional_changes
+        );
+        assert!(out.runtime_changes.is_empty(), "{:?}", out.runtime_changes);
+    }
+
+    #[test]
+    fn a_closing_script_tag_in_a_string_field_stays_inside_the_json() {
+        let data = serde_json::json!({
+            "nodes": [{
+                "id": "a",
+                "domain": "core",
+                "trace": null,
+                "statusEvidence": "</script><script>alert(1)</script>"
+            }],
+            "edges": [],
+            "domains": [{"id": "core"}]
+        });
+        // The fixture itself must not contain a raw closing tag, or the
+        // `<script>` scanner would stop early. `\u003c` parses back to `<`.
+        let embedded = escape_nonascii(&serde_json::to_string(&data).unwrap());
+        assert!(!embedded.contains('<'));
+        let html = format!("<script id=\"workspace-data\">{embedded}</script>");
+        let graph = graph_of(&[("a", false)], &[]);
+        let out = render_map_inner(&html, &[], &graph, Path::new("."), false).unwrap();
+        assert!(
+            out.problems.iter().all(|p| !p.contains("raw '<'")),
+            "{:?}",
+            out.problems
+        );
+        let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
+        assert!(!json.contains('<'), "{json}");
+        assert!(json.contains("\\u003c/script>"));
+        let parsed: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            parsed["nodes"][0]["statusEvidence"],
+            "</script><script>alert(1)</script>"
+        );
+    }
+
+    #[test]
+    fn a_raw_lt_in_workspace_data_is_named_and_rewritten() {
+        let html = bare(
+            r#"{"nodes":[{"id":"a","domain":"core","trace":null,"openQuestions":["THRESH < 1.0"]}],"edges":[],"domains":[{"id":"core"}]}"#,
+        );
+        let graph = graph_of(&[("a", false)], &[]);
+        let out = render_map_inner(&html, &[], &graph, Path::new("."), false).unwrap();
+        assert!(out.raw_script_lt);
+        let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
+        assert!(!json.contains('<'));
+        assert!(json.contains("\\u003c"));
+        assert_ne!(out.html, html);
     }
 
     #[test]

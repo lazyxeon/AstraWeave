@@ -936,7 +936,6 @@ Per README:
 
 ---
 
-<a id="11-open-questions"></a>
 ## 11.5 Revision History
 
 | Version | Date | Change |
