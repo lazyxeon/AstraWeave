@@ -16,6 +16,7 @@ authoritative references:
 
 * **[Interactive workspace map](https://lazyxeon.github.io/AstraWeave/architecture/)** — Cytoscape.js view of the workspace graph.
   The member list is the root `Cargo.toml`. On this tree it has 140 unique paths.
+  The default drawing is dependency tiers: an edge `A → B` means A depends on B, crates with no workspace dependency (including `astraweave-math`) sit on the top row, and each row down is one step further along the longest depends-on path. `aw_editor` and the examples bundle land on the bottom rows. The map's How to use note states the ranker, the cycle break, and the two edges that point downward.
 * **[`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md)** — consolidated crate notes. Header counts there are a snapshot. The long body still contains older campaign notes. The [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page says which sentence wins when they disagree.
 * **[Subsystem traces](https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture)** — the generated table in `CLAUDE.md` lists 31 traces. The older "13 traces" figure is the original campaign.
 

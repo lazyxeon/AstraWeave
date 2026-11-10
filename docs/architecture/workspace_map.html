@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <!--
-  AstraWeave Workspace Architecture Map — v2.2 (2026-06-25)
+  AstraWeave Workspace Architecture Map — v2.3 (2026-11-10)
+  v2.3: default layout is deterministic dependency tiers (dagre longest-path,
+    rankdir BT, nodes and edges inserted in id order). Foundation row is on top.
+    Clicking a crate highlights dependencies and dependents out to 1, 2, or all
+    hops. The six viewer libraries are vendored under vendor/ with the same
+    sha384 integrity attributes they had on unpkg. See the How to use note.
   v2.2: aw_trace_sync v1.1 — node status (status/statusCategory/statusEvidence) now synced
     from the owning trace's front-matter for primary crates; asserted runtime-integration
     edges rendered with a teal `.runtime` highlight (first: astraweave-physics → astraweave-water).
@@ -36,26 +41,29 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AstraWeave Workspace Architecture Map</title>
+<link rel="icon" href="data:,">
 
-<!-- Cytoscape.js core + cose-base + fcose + dagre via unpkg (static files; SRI verified) -->
-<script src="https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js"
+<!-- Vendored copies of the same six files previously loaded from unpkg.
+     integrity is the sha384 already published on those CDN tags; see vendor/README.md.
+     Bytes are unchanged. No CDN request remains. -->
+<script src="vendor/cytoscape-3.30.0.min.js"
         integrity="sha384-kpMsYllYzyaWU69Piok08rPNktpnjqAoDMdB00fjqUkEk3lkuUbSuwJ+oXrjvN6B"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"
+        crossorigin="anonymous"></script>
+<script src="vendor/layout-base-2.0.1.js"
         integrity="sha384-5E2lB9AIGE6LRCnOOSTnZRlYZFZ01iMeN2fw97Z1r4Z/kXALxKw2AC+ZzQqoeDsG"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"
+        crossorigin="anonymous"></script>
+<script src="vendor/cose-base-2.2.0.js"
         integrity="sha384-RswRBkrMsPUYpJLbZ1CVA08zbNzAkykE2oGJTujBwfjWNdfxv2WVjLJNqv1LhAOp"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"
+        crossorigin="anonymous"></script>
+<script src="vendor/cytoscape-fcose-2.2.0.js"
         integrity="sha384-uk5Wbjq1+KqUdHO30w7N7GrEGdzBhaJeW9o/ANF6v9+yx3M/cBmoX51C000JNCUf"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"
+        crossorigin="anonymous"></script>
+<script src="vendor/dagre-0.8.5.min.js"
         integrity="sha384-2IH3T69EIKYC4c+RXZifZRvaH5SRUdacJW7j6HtE5rQbvLhKKdawxq6vpIzJ7j9M"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js"
+        crossorigin="anonymous"></script>
+<script src="vendor/cytoscape-dagre-2.5.0.js"
         integrity="sha384-u69h9ebXeSjlg6q/rb1zKTRAGu/h8deCl0409xpS/QJctMKnc4M9Fzkm01VOQdeF"
-        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        crossorigin="anonymous"></script>
 
 <style>
   :root {
@@ -767,7 +775,7 @@
     <div>
       <h1>AstraWeave Workspace Architecture Map</h1>
       <div class="header-meta">
-        <span>v2.2 — viz revision 2026-06-10 · data from ARCHITECTURE_MAP.md v0.7.2 (2026-06-10)</span>
+        <span>v2.3 — dependency tiers · data from ARCHITECTURE_MAP.md v0.7.2 (2026-06-10)</span>
         <span class="pill"><span id="node-count">—</span> nodes</span>
         <span class="pill"><span id="edge-count">—</span> edges</span>
         <span class="pill" id="integrity-pill" style="display:none;color:var(--danger);"></span>
@@ -781,15 +789,17 @@
   <div class="htu-body" id="htu-body" role="region" aria-label="How to use">
     <strong>First time here?</strong> Try <strong>Tour → First-time onboarding</strong> for a 10-minute guided walk-through (eight steps, narration + reconfigured graph at each step).
     <br><br>
-    <strong>Click any node</strong> for crate detail. The side panel uses progressive disclosure: surface info visible, deeper sections (deps, integration types, open questions, silent failures) behind <code>▸</code> expanders.
-    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — orange = direct, faded = transitive. Honest dependency-graph highlighting, not behavioral simulation.
-    <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. Use when the hairball is too dense.
+    <strong>Layout.</strong> The default is <strong>Dependency tiers</strong>. An edge <code>A → B</code> means A depends on B. A crate's tier is the longest depends-on path dagre's <code>longest-path</code> ranker assigns after its greedy cycle break. Nodes are inserted in id order and edges in <code>source</code>, <code>target</code>, id order, and dagre 0.8.5 does not use a random seed, so the same graph always gets the same positions. Tier 0 (no workspace dependency, including <code>astraweave-math</code>) is the <strong>top</strong> row. Each deeper tier is the next row down: <code>astraweave-ecs</code> sits under the crates it depends on, <code>astraweave-core</code> under ecs and behavior, and <code>aw_editor</code> plus the examples bundle on the bottom rows. 219 of 221 edges point upward, toward the dependency. The two that point downward are the cycle edges <code>astraweave-veil → astraweave-ai</code> and <code>astraweave-veil → aravath_runtime</code>. Consumers are drawn beneath the crates they use, so the foundation feeds downward. <strong>Domain clusters (fcose)</strong> stays in the Layout menu and is the force layout; Re-explode reshuffles only that one. Dependency hierarchy (dagre) and Dormancy stratification stay selectable too.
+    <br><br>
+    <strong>Click any node</strong> for crate detail. The click also highlights that crate, its dependencies (green border) and its dependents (orange border), and dims everything else. <strong>Hops</strong> is 1, 2, or all: follow depends-on edges that many steps, and used-by edges that many steps. Click the background or press <code>Esc</code> to clear the highlight. Tooltips, trace links, search, and the side panel keep working. The side panel uses progressive disclosure: surface info visible, deeper sections (deps, integration types, open questions, silent failures) behind <code>▸</code> expanders.
+    <strong>Blast radius</strong> (toggle, default on): selecting a node also highlights its dependents within 3 hops — orange = direct, faded = transitive. Honest dependency-graph highlighting, not behavioral simulation. Those dependents stay visible even when they sit outside the hop setting.
+    <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. The Hops menu does not change that toggle.
     <strong>Stories dropdown</strong> for narrative views (Dual-World Bridge, Editor↔Engine Boundary, Silent-Failure Map, Dormant Surface, AI Pipeline, Networking Coexistence, Aspirational Docs).
     <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain.
     <strong>Share ↗</strong> copies a URL that reproduces the exact current view (filters, selection, tour step, layout).
     <strong>Domain chips</strong> (v2.1): click any chip to add that domain to the include set. Nothing checked = no filter (show all). Any subset checked = show only those domains. All checked = same as none. Chips lock during a story or tour — use Reset to clear.
     <strong>Visual encoding</strong>: node size = LoC band; fill colour = domain (Wong colourblind-safe palette); dashed border = dormant; <code>⚠</code> = silent-failure locus; <code>📄</code> = traced. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
-    <strong>Keyboard</strong>: <code>Esc</code> to clear; <code>←</code> <code>→</code> to navigate tour steps.
+    <strong>Keyboard</strong>: <code>Esc</code> clears the click highlight and path-pick (it does not clear a search box while that box is focused); <code>←</code> <code>→</code> navigate tour steps.
     On mobile, tap <code>☰ Controls</code> for the toolbar; the side panel becomes a bottom sheet.
   </div>
 </header>
@@ -812,6 +822,7 @@
   <div class="tb-group">
     <span class="tb-label">Layout</span>
     <select id="layout-select" aria-label="Layout selector">
+      <option value="layered" selected>Dependency tiers</option>
       <option value="fcose">Domain clusters (fcose)</option>
       <option value="dagre">Dependency hierarchy (dagre)</option>
       <option value="dormancy">Dormancy stratification</option>
@@ -836,6 +847,13 @@
     </select>
   </div>
   <div class="tb-group">
+    <label class="tb-label" for="focus-depth">Hops</label>
+    <select id="focus-depth" aria-label="Focus depth"
+            title="On click, highlight this many hops of dependencies and of dependents">
+      <option value="1" selected>1</option>
+      <option value="2">2</option>
+      <option value="all">all</option>
+    </select>
     <button class="btn" id="focus-mode" aria-pressed="false"
             title="Hide all nodes outside 1-hop neighborhood of selected node">Focus: off</button>
     <button class="btn" id="blast-toggle" aria-pressed="true"
@@ -847,7 +865,7 @@
     <button class="btn" id="share-view" title="Copy a URL that reproduces this view">Share ↗</button>
   </div>
   <div class="tb-group" style="border-right:none;">
-    <span class="filter-counter" id="filter-counter" role="status" aria-live="polite">Showing 71 of 71</span>
+    <span class="filter-counter" id="filter-counter" role="status" aria-live="polite">Showing …</span>
   </div>
 </div>
 <button class="mobile-toolbar-toggle" id="mobile-toolbar-toggle"
@@ -888,7 +906,7 @@
       <ul>
         <li><a href="./ARCHITECTURE_MAP.md" target="_blank" rel="noopener">ARCHITECTURE_MAP.md v0.7.2 (2026-06-10)</a></li>
         <li>Authoritative workspace member list via <code>cargo metadata --no-deps</code> (130 members, matching the map's corrected §1 count — reconciled 2026-06-10)</li>
-        <li>Visualization v2.1 — 2026-05-15. v2.1 refinements: domain filter UX fix (empty/full set = no filter, partial = include-only) · edges colored as source-domain → target-domain linear gradients. v2.0 (2026-05-14): URL-hash state · blast-radius · guided tour · progressive-disclosure panel · focus mode · mobile layout.</li>
+        <li>Visualization v2.3 — 2026-11-10. Default layout is deterministic dependency tiers (dagre longest-path, tier 0 on the top row; see How to use). Click focus has a 1 / 2 / all hop control. The six viewer libraries are vendored in <code>vendor/</code> and keep their previous sha384 integrity hashes. v2.1 (2026-05-15): domain filter UX fix (empty/full set = no filter, partial = include-only) · edges colored as source-domain → target-domain linear gradients. v2.0 (2026-05-14): URL-hash state · blast-radius · guided tour · progressive-disclosure panel · focus mode · mobile layout.</li>
       </ul>
     </div>
     <div>
@@ -1467,29 +1485,36 @@ const LAYOUTS = {
   },
   dagre: {
     name: 'dagre',
-    rankDir: 'BT',  // leaves at bottom, roots at top — leaf crates have no deps
+    // BT draws dependency targets (the crates an edge points at) toward the top.
+    rankDir: 'BT',
     nodeSep: 24,
     rankSep: 80,
     edgeSep: 20,
     animate: true,
     animationDuration: 800,
-    // dagre cannot handle compound parents; we'll temporarily un-parent
+    // dagre cannot handle compound parents; runLayout detaches them first
   },
 };
 
-// Track whether compound parents are currently attached. Dagre + custom radial
-// layouts can't sensibly use cytoscape compounds, so we temporarily detach
-// children from their domain parent during those layouts and re-attach when
-// returning to fcose.
+// Compound domain boxes stay on for fcose. Layered, dagre, and dormancy detach
+// them. After detach, crate nodes are no longer `:child`, so every feature
+// that means "a crate" uses crateNodes() rather than that selector.
 let compoundsAttached = true;
 const childParentMap = new Map();
 NODES.forEach(n => childParentMap.set(n.id, `dom-${n.domain}`));
 
+function cmpStr(a, b) {
+  // Code-unit order. Independent of locale and of the order nodes were added.
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+function isDomainNode(n) { return n.data('isCompound') === true; }
+function crateNodes() { return cy.nodes().filter(n => !isDomainNode(n)); }
+
 function detachCompounds() {
   if (!compoundsAttached) return;
-  cy.nodes(':child').forEach(n => n.move({ parent: null }));
-  cy.nodes(':parent').style('display', 'none');
+  crateNodes().forEach(n => n.move({ parent: null }));
   compoundsAttached = false;
+  cy.nodes().filter(isDomainNode).addClass('hidden');
 }
 function attachCompounds() {
   if (compoundsAttached) return;
@@ -1497,44 +1522,169 @@ function attachCompounds() {
     const n = cy.getElementById(id);
     if (n.length) n.move({ parent: p });
   });
-  cy.nodes(':parent').style('display', 'element');
   compoundsAttached = true;
 }
 
 function runLayout(name) {
   cy.stop();
+  currentLayoutName = name;
   if (name === 'dormancy') {
     detachCompounds();
     runDormancyStratification();
-    return;
-  }
-  if (name === 'dagre') {
+  } else   if (name === 'dagre') {
     detachCompounds();
-    cy.layout(LAYOUTS.dagre).run();
+    cy.layout(Object.assign({}, LAYOUTS.dagre, {
+      eles: crateNodes().union(cy.edges()),
+    })).run();
+  } else if (name === 'layered') {
+    layoutLayered();
+  } else {
+    attachCompounds();
+    cy.layout(LAYOUTS[name] || LAYOUTS.fcose).run();
+  }
+  applyFilters();
+}
+
+// Tier rule (also in the How to use note):
+//   Edge A → B means A depends on B.
+//   dagre ranker `longest-path`, rankdir `BT`.
+//   Nodes are set in id order. Edges are set in (source, target, id) order.
+//   dagre 0.8.5 has no Math.random; the greedy cycle break then follows that
+//   insertion order, so positions do not depend on load order.
+//   Tier 0 is the top row (no workspace dependency). Deeper tiers are lower.
+//   219 of 221 edges point upward. The two downward edges are
+//   astraweave-veil → astraweave-ai and astraweave-veil → aravath_runtime.
+function layeredNodeBox(n) {
+  const s = n.data('size') || 28;
+  const label = String(n.data('label') || n.id());
+  return {
+    w: Math.max(s + 36, Math.min(140, Math.ceil(label.length * 6.2) + 12)),
+    h: Math.max(s, 32) + 10,
+  };
+}
+function layoutLayered() {
+  detachCompounds();
+  const crates = crateNodes().toArray().sort((a, b) => cmpStr(a.id(), b.id()));
+  if (typeof dagre === 'undefined' || !dagre.graphlib) {
+    layoutLayeredFallback(crates);
     return;
   }
-  attachCompounds();
-  cy.layout(LAYOUTS[name] || LAYOUTS.fcose).run();
+  const g = new dagre.graphlib.Graph({ multigraph: true, compound: false });
+  g.setGraph({
+    rankdir: 'BT',
+    nodesep: 12,
+    ranksep: 110,
+    edgesep: 6,
+    ranker: 'longest-path',
+    marginx: 16,
+    marginy: 16,
+  });
+  g.setDefaultEdgeLabel(() => ({}));
+  crates.forEach(n => {
+    const box = layeredNodeBox(n);
+    g.setNode(n.id(), { width: box.w, height: box.h });
+  });
+  const edges = cy.edges().toArray().filter(e => {
+    return g.hasNode(e.data('source')) && g.hasNode(e.data('target'));
+  }).sort((a, b) => cmpStr(
+    a.data('source') + '\0' + a.data('target') + '\0' + a.id(),
+    b.data('source') + '\0' + b.data('target') + '\0' + b.id()
+  ));
+  edges.forEach(e => {
+    g.setEdge(e.data('source'), e.data('target'), { minlen: 1, weight: 1 }, e.id());
+  });
+  try {
+    dagre.layout(g);
+  } catch (err) {
+    console.error('layered layout failed; using the tier fallback', err);
+    layoutLayeredFallback(crates);
+    return;
+  }
+  const positions = {};
+  crates.forEach(n => {
+    const p = g.node(n.id());
+    positions[n.id()] = { x: p.x, y: p.y };
+  });
+  applyPresetPositions(positions);
+}
+// Same tiers if dagre itself failed to load. X order inside a tier is id order.
+function layoutLayeredFallback(crates) {
+  const outgoingIds = new Map();
+  crates.forEach(n => outgoingIds.set(n.id(), []));
+  cy.edges().forEach(e => {
+    const s = e.data('source');
+    const t = e.data('target');
+    if (outgoingIds.has(s) && outgoingIds.has(t)) outgoingIds.get(s).push(t);
+  });
+  outgoingIds.forEach(list => list.sort(cmpStr));
+  const rank = new Map();
+  const stack = new Set();
+  function dfs(u) {
+    if (rank.has(u)) return rank.get(u);
+    if (stack.has(u)) return null;
+    stack.add(u);
+    let best = 0;
+    for (const v of outgoingIds.get(u) || []) {
+      const rv = dfs(v);
+      if (rv === null) continue;
+      best = Math.max(best, rv + 1);
+    }
+    stack.delete(u);
+    const value = (outgoingIds.get(u) || []).length ? best : 0;
+    rank.set(u, value);
+    return value;
+  }
+  crates.forEach(n => dfs(n.id()));
+  const rows = new Map();
+  crates.forEach(n => {
+    const r = rank.get(n.id()) || 0;
+    if (!rows.has(r)) rows.set(r, []);
+    rows.get(r).push(n);
+  });
+  const positions = {};
+  [...rows.keys()].sort((a, b) => a - b).forEach(r => {
+    const row = rows.get(r).sort((a, b) => cmpStr(a.id(), b.id()));
+    row.forEach((n, i) => {
+      const box = layeredNodeBox(n);
+      positions[n.id()] = { x: i * (box.w + 16), y: r * 90 };
+    });
+  });
+  applyPresetPositions(positions);
+}
+function applyPresetPositions(positions) {
+  cy.layout({
+    name: 'preset',
+    animate: false,
+    fit: true,
+    padding: 36,
+    eles: crateNodes(),
+    positions: (node) => positions[node.id()] || node.position(),
+  }).run();
 }
 
 function runDormancyStratification() {
   // Custom radial: active core in center, partial mid ring, dormant outer ring.
+  // Id order inside a ring, so the rings do not depend on element insertion order.
   const center = { x: 0, y: 0 };
   const bands = { active: 380, partial: 780, dormant: 1180 };
   const groups = { active: [], partial: [], dormant: [] };
-  cy.nodes(':child').forEach(n => {
+  crateNodes().toArray().sort((a, b) => cmpStr(a.id(), b.id())).forEach(n => {
     const s = n.data('status') || 'active';
     if (!groups[s]) groups.active.push(n); else groups[s].push(n);
   });
+  const positions = {};
   Object.entries(groups).forEach(([k, arr]) => {
     const r = bands[k];
     const N = arr.length || 1;
     arr.forEach((n, i) => {
       const theta = (i / N) * 2 * Math.PI - Math.PI / 2;
-      n.position({ x: center.x + r * Math.cos(theta), y: center.y + r * Math.sin(theta) });
+      positions[n.id()] = {
+        x: center.x + r * Math.cos(theta),
+        y: center.y + r * Math.sin(theta),
+      };
     });
   });
-  cy.fit(undefined, 40);
+  applyPresetPositions(positions);
 }
 
 document.getElementById('layout-select').addEventListener('change', (e) => {
@@ -1542,67 +1692,35 @@ document.getElementById('layout-select').addEventListener('change', (e) => {
 });
 
 // --------------------------------------------------------------------
-// Bulletproof initial layout
-//   1) Pick the best available layout: fcose → cose → circle (fallback chain).
-//   2) Wait for the cy container to have non-zero dimensions before laying
-//      out, otherwise fcose can produce a degenerate stacked result.
-//   3) Re-run cy.resize() + cy.fit() on every window resize so a toolbar
-//      that re-wraps doesn't leave nodes off-screen.
+// Initial layout
+//   Default is the deterministic layered drawing. A hash can still select
+//   fcose, dagre, or dormancy. Wait until the container has a size so the
+//   fit is not computed against a 0×0 flex box.
 // --------------------------------------------------------------------
-function pickInitialLayout() {
-  // Cytoscape's `cytoscape(opt)` returns the registered layout impl when called
-  // with a name, or undefined otherwise. We probe and fall through.
-  try {
-    if (typeof cytoscape === 'function' && cytoscape('layout', 'fcose')) {
-      return 'fcose';
-    }
-  } catch (_) {}
-  try {
-    if (typeof cytoscape === 'function' && cytoscape('layout', 'cose')) {
-      return 'cose';
-    }
-  } catch (_) {}
-  return 'circle';
-}
-
 function waitForContainerSize(el, cb, attempts = 30) {
-  // Defer until the container has a usable size. Most browsers report it on
-  // the next animation frame, but flex-wrap toolbars on first paint can
-  // still be sizing for a few frames.
   const r = el.getBoundingClientRect();
   if (r.width > 50 && r.height > 50) { cb(); return; }
   if (attempts <= 0) { cb(); return; }
   requestAnimationFrame(() => waitForContainerSize(el, cb, attempts - 1));
 }
 
-let currentLayoutName = 'fcose';
+let currentLayoutName = 'layered';
+let bootLayoutStarted = false;
 
 function runInitialLayout() {
-  const chosen = pickInitialLayout();
-  currentLayoutName = chosen;
-  // Reflect choice in the dropdown if it differs (e.g. fallback to cose)
+  if (bootLayoutStarted) return;
+  bootLayoutStarted = true;
   const sel = document.getElementById('layout-select');
-  if (chosen === 'fcose') sel.value = 'fcose';
-  if (chosen === 'cose' || chosen === 'circle') {
-    // Add ad-hoc option entry for transparency.
-    const opt = document.createElement('option');
-    opt.value = chosen;
-    opt.textContent = `Fallback (${chosen}) — fcose unavailable`;
-    sel.appendChild(opt);
-    sel.value = chosen;
-  }
+  const hash = decodeHash();
+  let chosen = 'layered';
+  if (hash.layout && [...sel.options].some(o => o.value === hash.layout)) chosen = hash.layout;
+  sel.value = chosen;
   cy.resize();
-  if (chosen === 'fcose') {
-    cy.layout(LAYOUTS.fcose).run();
-  } else if (chosen === 'cose') {
-    cy.layout({ name: 'cose', animate: true, animationDuration: 600,
-                idealEdgeLength: 110, nodeRepulsion: 8000, padding: 30 }).run();
-  } else {
-    cy.layout({ name: 'circle', animate: true, padding: 30, radius: 380 }).run();
-  }
+  runLayout(chosen);
 }
 
-waitForContainerSize(document.getElementById('cy'), runInitialLayout);
+// The initial layout is started at the bottom of this script, after the
+// filter controls it refreshes exist.
 
 // Window resize: refit so nodes don't fall off-screen when the toolbar
 // re-wraps or the user resizes the side panel.
@@ -1619,12 +1737,13 @@ window.addEventListener('resize', () => {
 // randomisation so the user can shake the graph out if it ended up packed.
 document.getElementById('re-explode').addEventListener('click', () => {
   const sel = document.getElementById('layout-select').value;
-  if (sel === 'dagre' || sel === 'dormancy') {
-    runLayout(sel);
-  } else if (LAYOUTS.fcose && currentLayoutName === 'fcose') {
+  if (sel === 'fcose') {
+    attachCompounds();
+    currentLayoutName = 'fcose';
     cy.layout({ ...LAYOUTS.fcose, randomize: true }).run();
+    applyFilters();
   } else {
-    runInitialLayout();
+    runLayout(sel);
   }
 });
 
@@ -2006,9 +2125,9 @@ function applyFilters() {
   // proper subset. Empty set or full set both mean "no filter applied."
   const domainFilterActive = isDomainFilterActive();
   let visibleCount = 0;
-  const totalCount = cy.nodes(':child').length;
+  const totalCount = crateNodes().length;
   const visiblePerDomain = {};
-  cy.nodes(':child').forEach(n => {
+  crateNodes().forEach(n => {
     const d = n.data();
     let visible = true;
     if (q && !d.label.toLowerCase().includes(q)) visible = false;
@@ -2030,9 +2149,11 @@ function applyFilters() {
     if (src.hasClass('hidden') || tgt.hasClass('hidden')) e.addClass('hidden');
     else e.removeClass('hidden');
   });
-  // Hide compound parents whose children are all hidden — otherwise the user
-  // sees empty colored bounding boxes which is confusing.
-  cy.nodes(':parent').forEach(p => {
+  // Domain boxes are real nodes. While a layout has detached them they must
+  // stay hidden, or they draw as stray dots. While attached, hide a box whose
+  // crates are all filtered out.
+  cy.nodes().filter(isDomainNode).forEach(p => {
+    if (!compoundsAttached) { p.addClass('hidden'); return; }
     const domId = p.data('domain');
     if (!visiblePerDomain[domId]) p.addClass('hidden');
     else p.removeClass('hidden');
@@ -2188,6 +2309,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     setPickMode(null);
     tooltip.classList.remove('visible');
+    const tag = (e.target && e.target.tagName) || '';
+    // Leave a text field alone. A focused menu still clears the graph highlight.
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    setSelectedNode(null);
   }
 });
 
@@ -2208,6 +2333,7 @@ const state = {
   selectedNodeId: null,
   blastEnabled: true,        // on by default once a node is selected
   focusModeActive: false,    // off by default
+  focusDepth: '1',           // click-focus hop radius: 1, 2, or all
   currentTour: null,         // { tourId, stepIndex }
 };
 
@@ -2238,6 +2364,35 @@ cy.style()
     .style({ 'opacity': 0.05, 'text-opacity': 0 })
   .selector('.tour-highlight')
     .style({ 'border-color': '#D55E00', 'border-width': 5 })
+  // Click focus. Later blast rules keep a 2-hop or 3-hop dependent visible
+  // when Hops is 1. The Focus toggle's rule stays last so it can still hide
+  // everything outside one hop.
+  .selector('.nb-dim')
+    .style({ 'opacity': 0.08, 'text-opacity': 0 })
+  .selector('.nb-self')
+    .style({ 'opacity': 1, 'text-opacity': 1, 'border-color': '#58a6ff',
+             'border-width': 5, 'z-index': 12 })
+  .selector('.nb-dep')
+    .style({ 'opacity': 1, 'text-opacity': 1, 'border-color': '#3fb950',
+             'border-width': 4 })
+  .selector('.nb-user')
+    .style({ 'opacity': 1, 'text-opacity': 1, 'border-color': '#f0883e',
+             'border-width': 4 })
+  .selector('edge.nb-edge')
+    .style({ 'opacity': 1, 'width': 2.6, 'z-index': 8 })
+  .selector('edge.nb-dim')
+    .style({ 'opacity': 0.05 })
+  .selector('.blast-direct')
+    .style({ 'border-color': '#f0883e', 'border-width': 5, 'opacity': 1.0,
+             'background-blacken': -0.15 })
+  .selector('.blast-h2')
+    .style({ 'border-color': '#f0883e', 'border-width': 3, 'opacity': 0.75 })
+  .selector('.blast-h3')
+    .style({ 'border-color': '#f0883e', 'border-width': 2, 'opacity': 0.55 })
+  .selector('edge.blast-edge')
+    .style({ 'opacity': 0.95, 'width': 3.6, 'z-index': 50 })
+  .selector('.focus-hidden')
+    .style({ 'opacity': 0.05, 'text-opacity': 0 })
   .update();
 
 // ----------------------------------------------------------------
@@ -2276,7 +2431,7 @@ function applyBlastHighlight() {
   const r = computeBlastRadius(state.selectedNodeId);
   // Fade the whole graph except: selected node, direct, hop2, hop3
   const keep = new Set([state.selectedNodeId, ...r.direct, ...r.hop2, ...r.hop3]);
-  cy.nodes(':child').forEach(n => {
+  crateNodes().forEach(n => {
     if (!keep.has(n.id())) n.addClass('blast-faded');
   });
   r.direct.forEach(id => cy.getElementById(id).addClass('blast-direct'));
@@ -2301,7 +2456,7 @@ function applyFocusMode() {
   const neighbors = new Set([state.selectedNodeId]);
   (outgoing.get(state.selectedNodeId) || []).forEach(e => neighbors.add(e.target));
   (incoming.get(state.selectedNodeId) || []).forEach(e => neighbors.add(e.source));
-  cy.nodes(':child').forEach(n => {
+  crateNodes().forEach(n => {
     if (!neighbors.has(n.id())) n.addClass('focus-hidden');
   });
   cy.edges().forEach(e => {
@@ -2312,7 +2467,57 @@ function applyFocusMode() {
 }
 
 function clearHighlights() {
-  cy.elements().removeClass('blast-direct blast-h2 blast-h3 blast-faded blast-edge focus-hidden');
+  cy.elements().removeClass('blast-direct blast-h2 blast-h3 blast-faded blast-edge focus-hidden nb-dim nb-self nb-dep nb-user nb-edge');
+}
+
+// Click focus. Dependencies are crates reached by following depends-on edges
+// (source → target) up to H hops. Dependents are crates reached by following
+// those edges backward. "all" walks until the directed cone is exhausted.
+function focusHopLimit() {
+  const el = document.getElementById('focus-depth');
+  const v = (el && el.value) || state.focusDepth || '1';
+  if (v === 'all') return NODES.length + 1;
+  return v === '2' ? 2 : 1;
+}
+function directionalHops(nodeId, maxHops, dir) {
+  const found = new Set();
+  const seen = new Set([nodeId]);
+  let frontier = [nodeId];
+  for (let hop = 1; hop <= maxHops && frontier.length; hop++) {
+    const next = [];
+    frontier.slice().sort(cmpStr).forEach(id => {
+      const edges = dir === 'out' ? (outgoing.get(id) || []) : (incoming.get(id) || []);
+      const nextIds = edges.map(e => dir === 'out' ? e.target : e.source).sort(cmpStr);
+      nextIds.forEach(nid => {
+        if (!nid || seen.has(nid)) return;
+        seen.add(nid);
+        found.add(nid);
+        next.push(nid);
+      });
+    });
+    frontier = next;
+  }
+  return found;
+}
+function applyNeighborhood() {
+  cy.elements().removeClass('nb-dim nb-self nb-dep nb-user nb-edge');
+  if (!state.selectedNodeId) return;
+  const hops = focusHopLimit();
+  const deps = directionalHops(state.selectedNodeId, hops, 'out');
+  const users = directionalHops(state.selectedNodeId, hops, 'in');
+  const keep = new Set([state.selectedNodeId, ...deps, ...users]);
+  crateNodes().forEach(n => {
+    const id = n.id();
+    if (id === state.selectedNodeId) n.addClass('nb-self');
+    else if (deps.has(id)) n.addClass('nb-dep');
+    else if (users.has(id)) n.addClass('nb-user');
+    else n.addClass('nb-dim');
+    if (deps.has(id) && users.has(id) && id !== state.selectedNodeId) n.addClass('nb-user');
+  });
+  cy.edges().forEach(e => {
+    if (keep.has(e.data('source')) && keep.has(e.data('target'))) e.addClass('nb-edge');
+    else e.addClass('nb-dim');
+  });
 }
 
 // ----------------------------------------------------------------
@@ -2339,6 +2544,7 @@ function setSelectedNode(id, opts = {}) {
   // Apply visual modes
   applyBlastHighlight();
   applyFocusMode();
+  applyNeighborhood();
   if (!skipHashUpdate) updateHash();
 }
 
@@ -2369,6 +2575,11 @@ function centerOnNode(id) {
 // Wire toolbar toggles
 document.getElementById('blast-toggle').addEventListener('click', toggleBlast);
 document.getElementById('focus-mode').addEventListener('click', toggleFocus);
+document.getElementById('focus-depth').addEventListener('change', () => {
+  state.focusDepth = document.getElementById('focus-depth').value;
+  applyNeighborhood();
+  updateHash();
+});
 
 // Override v1's cy.on('tap', 'node') to route through setSelectedNode.
 // We can't easily un-bind the v1 handler (it doesn't use a named function),
@@ -2404,7 +2615,9 @@ function encodeState() {
   }
   if (searchInput.value) parts.push('q=' + encodeURIComponent(searchInput.value));
   const lay = document.getElementById('layout-select').value;
-  if (lay && lay !== 'fcose') parts.push('layout=' + encodeURIComponent(lay));
+  if (lay && lay !== 'layered') parts.push('layout=' + encodeURIComponent(lay));
+  const hops = document.getElementById('focus-depth').value;
+  if (hops && hops !== '1') parts.push('hops=' + encodeURIComponent(hops));
   if (sidePanel.classList.contains('collapsed')) parts.push('panel=closed');
   if (state.focusModeActive) parts.push('focus=1');
   if (!state.blastEnabled) parts.push('blast=0');
@@ -2474,8 +2687,15 @@ function restoreFromHash() {
     const sel = document.getElementById('layout-select');
     if ([...sel.options].some(o => o.value === s.layout)) {
       sel.value = s.layout;
-      runLayout(s.layout);
+      // runInitialLayout already applied this choice. Running it again would
+      // reshuffle fcose. Re-explode is the control that does that on purpose.
+      if (currentLayoutName !== s.layout) runLayout(s.layout);
     }
+  }
+  if (s.hops === '1' || s.hops === '2' || s.hops === 'all') {
+    const hopSel = document.getElementById('focus-depth');
+    hopSel.value = s.hops;
+    state.focusDepth = s.hops;
   }
   // Apply filters now that domain/dormancy/q are set
   applyFilters();
@@ -2575,7 +2795,7 @@ const TOURS = [
         title: 'The eight domains',
         preset: 'free',
         customViz: (cy) => { /* free exploration, no filtering */ },
-        narration: `The workspace is organised into <strong>eight domain groupings</strong> visible as labelled compound boxes: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. Each is colour-coded with a Wong colourblind-safe palette. Node size encodes LoC band; dashed borders mark dormant crates; <code>⚠</code> overlays mark silent-failure loci; <code>📄</code> overlays mark traced subsystems. Spend a moment scanning the layout — the relative position of clusters and the density of inter-cluster edges already tells you a lot.`,
+        narration: `The default layout is <strong>dependency tiers</strong>. Crates with no workspace dependency, including <code>astraweave-math</code>, sit on the top row. Each row down depends on rows above it, and <code>aw_editor</code> and the examples bundle sit at the bottom. Arrowheads point at the dependency, so they run mostly upward. Switch Layout to <strong>Domain clusters (fcose)</strong> to see the eight domain compound boxes: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. Colour is the Wong colourblind-safe palette. Node size encodes LoC band; dashed borders mark dormant crates; <code>⚠</code> overlays mark silent-failure loci; <code>📄</code> overlays mark traced subsystems.`,
       },
       {
         title: 'The foundation — Core domain',
@@ -2640,7 +2860,7 @@ function filterToDomains(domainIds) {
   applyFilters();
   // Fit to visible
   setTimeout(() => {
-    const vis = cy.nodes(':child').filter(n => !n.hasClass('hidden'));
+    const vis = crateNodes().filter(n => !n.hasClass('hidden'));
     if (vis.length) cy.fit(vis, 80);
   }, 100);
 }
@@ -2679,8 +2899,10 @@ function renderTourStep() {
   document.getElementById('tour-prev').disabled = state.currentTour.stepIndex === 0;
   document.getElementById('tour-next').disabled =
     state.currentTour.stepIndex >= tour.steps.length - 1;
-  // Apply step's visualization
+  // Apply step's visualization. Steps that don't set a domain filter must
+  // clear one left behind by an earlier step, including after Prev.
   clearHighlights();
+  clearDomainFilter();
   if (step.preset) {
     storySelect.value = step.preset;
     applyStory(step.preset);
@@ -2689,6 +2911,7 @@ function renderTourStep() {
     applyStory('free');
   }
   if (step.customViz) step.customViz(cy);
+  applyFilters();
 }
 function tourNext() {
   if (!state.currentTour) return;
@@ -2707,10 +2930,18 @@ function tourPrev() {
     updateHash();
   }
 }
+function clearDomainFilter() {
+  enabledDomains.clear();
+  document.querySelectorAll('.domain-chip').forEach(chip => {
+    chip.classList.remove('on');
+    chip.setAttribute('aria-pressed', 'false');
+  });
+}
 function tourExit() {
   state.currentTour = null;
   document.getElementById('tour-overlay').classList.remove('active');
   tourSelect.value = '';
+  clearDomainFilter();
   storySelect.value = 'free';
   applyStory('free');
   setChipsEnabled(true);   // v2.1: restore filter-chip interactivity
@@ -2773,6 +3004,9 @@ v1ResetBtn.addEventListener('click', () => {
   state.selectedNodeId = null;
   state.focusModeActive = false;
   state.blastEnabled = true;
+  state.focusDepth = '1';
+  const hopSel = document.getElementById('focus-depth');
+  if (hopSel) hopSel.value = '1';
   // Reset toggle button labels
   const fb = document.getElementById('focus-mode');
   fb.textContent = 'Focus: off';
@@ -2796,13 +3030,16 @@ function restoreOnLoad() {
 // Wait for initial layout to settle before restoring (so cy.fit calls work)
 let restoreAttempts = 0;
 function tryRestore() {
-  if (restoreAttempts++ > 20) { restoreOnLoad(); return; }
-  if (cy.nodes(':child').length && currentLayoutName) {
-    restoreOnLoad();
-  } else {
+  // `:child` is empty once the default layout detaches domain boxes.
+  if (!bootLayoutStarted || !crateNodes().length) {
+    if (restoreAttempts++ > 40) { restoreOnLoad(); return; }
     setTimeout(tryRestore, 100);
+    return;
   }
+  restoreOnLoad();
 }
+applyFilters();
+waitForContainerSize(document.getElementById('cy'), runInitialLayout);
 setTimeout(tryRestore, 400);
 
 // Listen for browser back/forward navigation (hash changes)
