@@ -2,13 +2,17 @@
 //!
 //! A call, an assignment, a reference, or a markup form is a sink unless it is
 //! positively one of the allowlisted shapes below. That includes script bodies
-//! (any tag case, exact `type`, end tags with space before `>`), event-handler
-//! attributes, `javascript:` URLs, and `srcdoc`. A computed call is allowlisted
-//! only for a static allowlisted name. A computed assignment is allowlisted
-//! only for a static allowlisted name, or for a member or call key that
-//! contains no string. Unterminated input, a depth overrun, and a scan that
-//! cannot finish are sinks. `setAttribute` names and string timers are checked
-//! after escapes and `'a'+'b'` folding.
+//! (any tag case, the first `type`, end tags with space before `>`), event-handler
+//! attributes, script-scheme URLs, and `srcdoc`. A computed call or assignment
+//! is allowlisted only for a static allowlisted name. Optional computed access
+//! is a computed access. A member followed by a template is a call. Script
+//! sources must match the pinned URL and integrity pair. Remote-loading
+//! elements and a style import are outside the allowlist. Character references
+//! in markup are decoded, then tab, line feed, and carriage return are removed,
+//! before a scheme check. The same whitespace strip applies to a decoded script
+//! string. Unterminated input, an unclosed tag, a depth overrun, and a scan
+//! that cannot finish are sinks. `setAttribute` names and string timers are
+//! checked after escapes and `'a'+'b'` folding.
 
 use std::collections::BTreeSet;
 
@@ -145,7 +149,6 @@ const MEMBER_ASSIGN: &[&str] = &[
     "stepIndex",
     "text",
     "textAlign",
-    "textContent",
     "textTransform",
     "title",
     "top",
@@ -207,6 +210,7 @@ const BARE_CALL: &[&str] = &[
     "setChipsEnabled",
     "setPickMode",
     "setSelectedNode",
+    "setText",
     "setTimeout",
     "showToast",
     "sizeForBand",
@@ -350,10 +354,42 @@ const URL_ATTR: &[&str] = &[
     "src",
 ];
 
-const ELEMENT_TAG: &[&str] = &["button", "li", "option", "span"];
+const ELEMENT_TAG: &[&str] = &[
+    "a", "br", "button", "code", "details", "div", "em", "h2", "h3", "li", "option", "span",
+    "strong", "summary", "ul",
+];
+
+/// Pinned external scripts: exact URL and integrity. Any other `src` is a sink.
+const SCRIPT_SRC: &[(&str, &str)] = &[
+    (
+        "https://unpkg.com/cytoscape@3.30.0/dist/cytoscape.min.js",
+        "sha384-kpMsYllYzyaWU69Piok08rPNktpnjqAoDMdB00fjqUkEk3lkuUbSuwJ+oXrjvN6B",
+    ),
+    (
+        "https://unpkg.com/layout-base@2.0.1/layout-base.js",
+        "sha384-5E2lB9AIGE6LRCnOOSTnZRlYZFZ01iMeN2fw97Z1r4Z/kXALxKw2AC+ZzQqoeDsG",
+    ),
+    (
+        "https://unpkg.com/cose-base@2.2.0/cose-base.js",
+        "sha384-RswRBkrMsPUYpJLbZ1CVA08zbNzAkykE2oGJTujBwfjWNdfxv2WVjLJNqv1LhAOp",
+    ),
+    (
+        "https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js",
+        "sha384-uk5Wbjq1+KqUdHO30w7N7GrEGdzBhaJeW9o/ANF6v9+yx3M/cBmoX51C000JNCUf",
+    ),
+    (
+        "https://unpkg.com/dagre@0.8.5/dist/dagre.min.js",
+        "sha384-2IH3T69EIKYC4c+RXZifZRvaH5SRUdacJW7j6HtE5rQbvLhKKdawxq6vpIzJ7j9M",
+    ),
+    (
+        "https://unpkg.com/cytoscape-dagre@2.5.0/cytoscape-dagre.js",
+        "sha384-u69h9ebXeSjlg6q/rb1zKTRAGu/h8deCl0409xpS/QJctMKnc4M9Fzkm01VOQdeF",
+    ),
+];
 
 const MAX_TEMPLATE_DEPTH: u32 = 8;
 
+#[cfg(test)]
 pub fn html_parsing_sink(src: &str) -> Option<String> {
     html_parsing_problems(src).into_iter().next()
 }
@@ -384,7 +420,6 @@ fn scan_measured(src: &str) -> (BTreeSet<String>, u64) {
             break;
         }
         scan_js(chunk, &mut problems, &mut steps, limit);
-        legacy_names(chunk, &mut problems);
     }
     if steps > limit {
         problems.insert("scan failed closed".to_string());
@@ -467,6 +502,9 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
                 }
                 out.insert("scan failed closed".to_string());
             }
+            Tok::Ident(name) if name == "with" => {
+                out.insert("with".to_string());
+            }
             Tok::Ident(name) if name == "new" => {
                 if let Some(Tok::Ident(ctor)) = tokens.get(i + 1) {
                     if !keyword(ctor) && !allowed(NEW_OK, ctor) {
@@ -489,12 +527,18 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
                 note_tagged(name, out);
             }
             Tok::Ident(name) if matches!(tokens.get(i + 1), Some(Tok::LParen)) => {
-                let defined = i > 0 && matches!(&tokens[i - 1], Tok::Ident(p) if keyword(p));
+                let defined = i > 0
+                    && matches!(&tokens[i - 1], Tok::Ident(p) if matches!(p.as_str(), "function" | "class" | "new"));
                 if !defined && !keyword(name) {
                     note_bare_call(name, &tokens, i + 1, &stringish, out);
                 }
             }
-            Tok::Ident(name) if name == "eval" || name == "Function" => {
+            Tok::Ident(name)
+                if matches!(
+                    name.as_str(),
+                    "setTimeout" | "setInterval" | "eval" | "Function"
+                ) =>
+            {
                 out.insert(format!("bare {name}"));
             }
             Tok::Ident(name)
@@ -509,7 +553,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             }
             _ => {}
         }
-        i += 1;
+        i *= /* ~ changed by cargo-mutants ~ */ 1;
     }
 }
 
@@ -517,14 +561,28 @@ fn note_dot(tokens: &[Tok], dot: usize, stringish: &BTreeSet<String>, out: &mut 
     let Some(Tok::Ident(name)) = tokens.get(dot + 1) else {
         return;
     };
-    if dot > 0 && matches!(&tokens[dot - 1], Tok::Ident(recv) if recv == "Reflect") {
+    let receiver_is =
+        |recv: &str| dot > 0 && matches!(&tokens[dot - 1], Tok::Ident(got) if got == recv);
+    if receiver_is("Reflect") {
         out.insert("member call Reflect".to_string());
+        return;
+    }
+    if receiver_is("location") && matches!(name.as_str(), "replace" | "assign") {
+        out.insert(format!("member call {name}"));
+        return;
+    }
+    if receiver_is("head") && name == "append" {
+        out.insert("member call append".to_string());
         return;
     }
     if sink_member(name) {
         out.insert(format!("member {name}"));
     }
     let after = dot + 2;
+    if matches!(tokens.get(after), Some(Tok::Tpl(_) | Tok::Interp)) {
+        note_member_tagged(name, out);
+        return;
+    }
     if matches!(tokens.get(after), Some(Tok::LParen))
         || (matches!(tokens.get(after), Some(Tok::Opt))
             && matches!(tokens.get(after + 1), Some(Tok::LParen)))
@@ -538,9 +596,31 @@ fn note_dot(tokens: &[Tok], dot: usize, stringish: &BTreeSet<String>, out: &mut 
             out.insert(format!("member call {name}"));
             return;
         }
+        if receiver_is("location") && name == "href" {
+            out.insert("member call href".to_string());
+            return;
+        }
         note_member_call(name, tokens, paren, stringish, out);
-    } else if assign_follows(tokens, after) && !allowed(MEMBER_ASSIGN, name) {
-        out.insert(format!("member assign {name}"));
+    } else if assign_follows(tokens, after) {
+        if receiver_is("location") && name == "href" {
+            out.insert("member assign href".to_string());
+        } else if name == "textContent" {
+            if !inside_function(tokens, dot, "setText") {
+                out.insert("member assign textContent".to_string());
+            }
+        } else if !allowed(MEMBER_ASSIGN, name) {
+            out.insert(format!("member assign {name}"));
+        }
+    }
+}
+
+fn note_member_tagged(name: &str, out: &mut BTreeSet<String>) {
+    if sink_member(name) || name == "eval" || name == "Function" {
+        out.insert(format!("member {name}"));
+        return;
+    }
+    if !allowed(MEMBER_CALL, name) && !allowed(BARE_CALL, name) {
+        out.insert(format!("member call {name}"));
     }
 }
 
@@ -596,11 +676,14 @@ fn note_computed(
     if assign {
         match key {
             Key::Static(name) => {
-                if !allowed(MEMBER_ASSIGN, &name) {
+                if name == "textContent" {
+                    if !inside_function(tokens, open, "setText") {
+                        out.insert("member assign textContent".to_string());
+                    }
+                } else if !allowed(MEMBER_ASSIGN, &name) {
                     out.insert(format!("member assign {name}"));
                 }
             }
-            Key::Member | Key::Call => {}
             _ => {
                 out.insert("computed assign".to_string());
             }
@@ -643,6 +726,10 @@ fn note_bare_call(
         out.insert(format!("bare {name}"));
         return;
     }
+    if name == "el" {
+        note_el(tokens, paren, out);
+        return;
+    }
     if !allowed(BARE_CALL, name) {
         out.insert(format!("bare {name}"));
         return;
@@ -668,44 +755,74 @@ fn note_timer(
     stringish: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
 ) {
-    match tokens.get(paren + 1) {
-        Some(Tok::Str(_) | Tok::Tpl(_) | Tok::Interp) => {
-            out.insert("string timer".to_string());
-        }
-        Some(Tok::Ident(name)) if name == "function" => {}
-        Some(Tok::Ident(name)) => {
-            let next = tokens.get(paren + 2);
-            if matches!(next, Some(Tok::LParen | Tok::Tpl(_) | Tok::Interp))
-                || stringish.contains(name)
-            {
-                out.insert("string timer".to_string());
-            }
-        }
-        Some(Tok::LParen) => {
-            if !arrow_or_function(tokens, paren + 1) {
-                out.insert("string timer".to_string());
-            }
-        }
-        _ => {}
+    let arg = call_arg(tokens, paren, 0);
+    if timer_arg_allowed(&arg, stringish) {
+        return;
     }
+    out.insert("string timer".to_string());
 }
 
-fn arrow_or_function(tokens: &[Tok], open: usize) -> bool {
+fn timer_arg_allowed(arg: &[Tok], stringish: &BTreeSet<String>) -> bool {
+    if arg.is_empty() {
+        return false;
+    }
+    if matches!(arg.first(), Some(Tok::Ident(name)) if name == "function") {
+        return true;
+    }
+    if is_arrow(arg) {
+        return true;
+    }
+    if arg.len() == 1 {
+        if let Tok::Ident(name) = &arg[0] {
+            return !stringish.contains(name) && name != "eval" && name != "Function";
+        }
+    }
+    false
+}
+
+fn is_arrow(arg: &[Tok]) -> bool {
     let mut depth = 0i32;
-    for (j, tok) in tokens.iter().enumerate().skip(open) {
+    for tok in arg {
         match tok {
-            Tok::LParen => depth += 1,
-            Tok::RParen => {
-                depth -= 1;
-                if depth == 0 {
-                    return matches!(tokens.get(j + 1), Some(Tok::Arrow))
-                        || matches!(tokens.get(open + 1), Some(Tok::Ident(n)) if n == "function");
-                }
-            }
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => depth -= 1,
+            Tok::Arrow if depth == 0 => return true,
             _ => {}
         }
     }
     false
+}
+
+fn call_arg(tokens: &[Tok], paren: usize, want: i32) -> Vec<Tok> {
+    let mut depth = 0i32;
+    let mut arg = 0i32;
+    let mut started = false;
+    let mut parts = Vec::new();
+    for tok in tokens.iter().skip(paren) {
+        match tok {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => {
+                depth += 1;
+                if depth == 1 {
+                    started = true;
+                    continue;
+                }
+                if started && arg == want {
+                    parts.push(tok.clone());
+                }
+            }
+            Tok::RParen if depth == 1 => break,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                depth -= 1;
+                if started && arg == want {
+                    parts.push(tok.clone());
+                }
+            }
+            Tok::Comma if depth == 1 => arg += 1,
+            _ if started && arg == want => parts.push(tok.clone()),
+            _ => {}
+        }
+    }
+    parts
 }
 
 fn note_set_attribute(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) {
@@ -716,13 +833,159 @@ fn note_set_attribute(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) 
                 out.insert(format!("attribute {attr}"));
                 return;
             }
-            if allowed(URL_ATTR, &lower) && value_has_script_scheme(tokens, paren) {
+            if allowed(URL_ATTR, &lower) && !url_value_allowed(tokens, paren) {
                 out.insert(format!("attribute {attr}"));
             }
         }
         Arg::Other | Arg::Missing => {
             out.insert("computed attribute".to_string());
         }
+    }
+}
+
+fn url_value_allowed(tokens: &[Tok], paren: usize) -> bool {
+    if value_has_script_scheme(tokens, paren) {
+        return false;
+    }
+    let parts = call_arg(tokens, paren, 1);
+    if parts.is_empty() {
+        return false;
+    }
+    if let Some(Tok::Ident(name)) = parts.first() {
+        if safe_url_names(tokens).contains(name) {
+            return true;
+        }
+    }
+    if inside_function(tokens, paren, "el") {
+        return true;
+    }
+    let mut folded = String::new();
+    let mut expect = true;
+    for tok in &parts {
+        match (expect, tok) {
+            (true, Tok::Str(s) | Tok::Tpl(s)) => {
+                folded.push_str(s);
+                expect = false;
+            }
+            (false, Tok::Plus) => expect = true,
+            _ => return false,
+        }
+    }
+    !expect && safe_url_literal(&folded)
+}
+
+fn safe_url_names(tokens: &[Tok]) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    let mut i = 0;
+    while i + 3 < tokens.len() {
+        if matches!(&tokens[i], Tok::Ident(kw) if matches!(kw.as_str(), "const" | "let" | "var")) {
+            if let (Tok::Ident(name), Some(Tok::Assign), Some(Tok::Str(value) | Tok::Tpl(value))) =
+                (&tokens[i + 1], tokens.get(i + 2), tokens.get(i + 3))
+            {
+                if safe_url_literal(value) {
+                    names.insert(name.clone());
+                }
+            }
+        }
+        i += 1;
+    }
+    names
+}
+
+fn safe_url_literal(value: &str) -> bool {
+    if script_scheme(value) {
+        return false;
+    }
+    let flat = normalize_scheme(value);
+    flat.is_empty()
+        || flat.starts_with("https:")
+        || flat.starts_with("http:")
+        || flat.starts_with("mailto:")
+        || flat.starts_with("./")
+        || flat.starts_with('#')
+        || flat.starts_with('/')
+        || !flat.contains(':')
+}
+
+fn inside_function(tokens: &[Tok], at: usize, name: &str) -> bool {
+    let mut depth = 0i32;
+    let mut i = at;
+    while i > 0 {
+        i -= 1;
+        match &tokens[i] {
+            Tok::RBrace => depth += 1,
+            Tok::LBrace => {
+                if depth == 0 {
+                    if brace_is_function(tokens, i, name) {
+                        return true;
+                    }
+                } else {
+                    depth -= 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn brace_is_function(tokens: &[Tok], brace: usize, name: &str) -> bool {
+    if brace == 0 || !matches!(tokens.get(brace - 1), Some(Tok::RParen)) {
+        return false;
+    }
+    let mut i = brace - 1;
+    let mut depth = 0i32;
+    loop {
+        match &tokens[i] {
+            Tok::RParen => depth += 1,
+            Tok::LParen => {
+                depth -= 1;
+                if depth == 0 {
+                    return i >= 2
+                        && matches!(&tokens[i - 1], Tok::Ident(got) if got == name)
+                        && matches!(&tokens[i - 2], Tok::Ident(kw) if kw == "function");
+                }
+            }
+            _ => {}
+        }
+        if i == 0 {
+            return false;
+        }
+        i -= 1;
+    }
+}
+
+fn note_el(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) {
+    let tag = match tokens.get(paren + 1) {
+        Some(Tok::Str(tag) | Tok::Tpl(tag)) => tag.clone(),
+        _ => {
+            out.insert("element".to_string());
+            return;
+        }
+    };
+    if !allowed(ELEMENT_TAG, &tag) {
+        out.insert(format!("element {tag}"));
+    }
+    let executable = matches!(
+        tag.as_str(),
+        "script" | "iframe" | "object" | "embed" | "style" | "link" | "base"
+    );
+    let parts = call_arg(tokens, paren, 1);
+    let mut i = 0;
+    while i < parts.len() {
+        if let Tok::Ident(key) = &parts[i] {
+            if key == "href" || key == "src" || (executable && key == "text") {
+                let rest = &parts[i + 1..];
+                if rest.iter().any(|tok| match tok {
+                    Tok::Str(s) | Tok::Tpl(s) => script_scheme(s),
+                    _ => false,
+                }) || (executable && key == "text")
+                {
+                    out.insert(format!("attribute {key}"));
+                }
+            }
+        }
+        i += 1;
     }
 }
 
@@ -738,22 +1001,20 @@ fn note_create_element(
                 out.insert(format!("element {tag}"));
             }
         }
-        Some(Tok::Ident(name)) => {
-            let calls = matches!(
-                tokens.get(paren + 2),
-                Some(Tok::LParen | Tok::Tpl(_) | Tok::Interp)
-            );
-            if calls || stringish.contains(name) {
-                out.insert("element".to_string());
-            }
-        }
-        Some(Tok::RParen) | None => {
-            out.insert("element".to_string());
-        }
-        Some(_) => {
+        Some(Tok::Ident(name)) if is_el_param(tokens, name) && !stringish.contains(name) => {}
+        _ => {
             out.insert("element".to_string());
         }
     }
+}
+
+fn is_el_param(tokens: &[Tok], name: &str) -> bool {
+    tokens.windows(4).any(|win| {
+        matches!(&win[0], Tok::Ident(kw) if kw == "function")
+            && matches!(&win[1], Tok::Ident(fn_name) if fn_name == "el")
+            && matches!(win[2], Tok::LParen)
+            && matches!(&win[3], Tok::Ident(param) if param == name)
+    })
 }
 
 fn value_has_script_scheme(tokens: &[Tok], paren: usize) -> bool {
@@ -820,8 +1081,108 @@ fn scriptish(parts: &[&Tok]) -> bool {
 }
 
 fn script_scheme(value: &str) -> bool {
-    let lower = value.trim().to_ascii_lowercase();
-    lower.starts_with("javascript:") || lower.starts_with("vbscript:") || lower.starts_with("data:")
+    let flat = normalize_scheme(value);
+    flat.starts_with("javascript:") || flat.starts_with("vbscript:") || flat.starts_with("data:")
+}
+
+fn normalize_scheme(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch <= ' ' {
+            continue;
+        }
+        out.push(ch.to_ascii_lowercase());
+    }
+    out
+}
+
+fn decode_html_chars(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'&' {
+            if let Some((ch, next)) = html_char_ref(input, i) {
+                out.push(ch);
+                i = next;
+                continue;
+            }
+        }
+        let ch = input[i..].chars().next().unwrap_or('\u{FFFD}');
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
+    let rest = &input[at + 1..];
+    let bytes = rest.as_bytes();
+    if bytes.first() == Some(&b'#') {
+        let hex = bytes.get(1).copied() == Some(b'x') || bytes.get(1).copied() == Some(b'X');
+        let digits = if hex { &rest[2..] } else { &rest[1..] };
+        let mut len = 0;
+        for b in digits.bytes() {
+            let ok = if hex {
+                b.is_ascii_hexdigit()
+            } else {
+                b.is_ascii_digit()
+            };
+            if !ok {
+                break;
+            }
+            len += 1;
+            if len == 7 {
+                break;
+            }
+        }
+        if len == 0 {
+            return None;
+        }
+        let raw = &digits[..len];
+        let code = u32::from_str_radix(raw, if hex { 16 } else { 10 }).ok()?;
+        let ch = char::from_u32(code).unwrap_or('\u{FFFD}');
+        let mut next = at + 1 + if hex { 2 } else { 1 } + len;
+        if input.as_bytes().get(next) == Some(&b';') {
+            next += 1;
+        }
+        return Some((ch, next));
+    }
+    let mut len = 0;
+    for b in bytes {
+        if !b.is_ascii_alphanumeric() {
+            break;
+        }
+        len += 1;
+        if len == 32 {
+            break;
+        }
+    }
+    if len == 0 {
+        return None;
+    }
+    let name = &rest[..len];
+    let ch = match name {
+        "amp" => '&',
+        "lt" => '<',
+        "gt" => '>',
+        "quot" => '"',
+        "apos" => '\'',
+        "colon" | "Colon" => ':',
+        "Tab" | "NewLine" => {
+            if name == "Tab" {
+                '\t'
+            } else {
+                '\n'
+            }
+        }
+        _ => return None,
+    };
+    let mut next = at + 1 + len;
+    if input.as_bytes().get(next) == Some(&b';') {
+        next += 1;
+    }
+    Some((ch, next))
 }
 
 fn note_grouped_call(
@@ -1005,7 +1366,13 @@ fn prev_is_value(tokens: &[Tok], i: usize) -> bool {
     }
     match &tokens[i - 1] {
         Tok::Ident(name) if !keyword(name) => true,
-        Tok::RParen | Tok::RBrack | Tok::Str(_) | Tok::Tpl(_) | Tok::Num | Tok::Interp => true,
+        Tok::Opt
+        | Tok::RParen
+        | Tok::RBrack
+        | Tok::Str(_)
+        | Tok::Tpl(_)
+        | Tok::Num
+        | Tok::Interp => true,
         _ => false,
     }
 }
@@ -1111,7 +1478,9 @@ impl<'a> Lx<'a> {
             if c == b'/' && b.get(self.i + 1) == Some(&b'/') {
                 self.i += 2;
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    self.i = bump(self.src, self.i);
+                    if !self.advance() {
+                        return out;
+                    }
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -1120,7 +1489,9 @@ impl<'a> Lx<'a> {
             if c == b'/' && b.get(self.i + 1) == Some(&b'*') {
                 self.i += 2;
                 while self.i + 1 < b.len() && !(b[self.i] == b'*' && b[self.i + 1] == b'/') {
-                    self.i = bump(self.src, self.i);
+                    if !self.advance() {
+                        return out;
+                    }
                 }
                 self.i = (self.i + 2).min(b.len());
                 if self.i >= b.len() && !self.src[start..].contains("*/") {
@@ -1133,7 +1504,9 @@ impl<'a> Lx<'a> {
             }
             if self.src[self.i..].starts_with("<!--") {
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    self.i = bump(self.src, self.i);
+                    if !self.advance() {
+                        return out;
+                    }
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -1141,7 +1514,10 @@ impl<'a> Lx<'a> {
             }
             if c == b'/' && regex_here(out.last(), regex_ready) {
                 let next = skip_regex(self.src, self.i + 1);
-                if next == self.i + 1 || (next >= b.len() && !closed_regex(self.src, self.i + 1)) {
+                if next > b.len()
+                    || next == self.i + 1
+                    || (next >= b.len() && !closed_regex(self.src, self.i + 1))
+                {
                     self.failed = true;
                     out.push(Tok::Error);
                     self.i = b.len();
@@ -1212,7 +1588,9 @@ impl<'a> Lx<'a> {
             if n == 0 || self.i + n > b.len() {
                 self.failed = true;
                 out.push(Tok::Error);
-                self.i = bump(self.src, self.i);
+                if !self.advance() {
+                    return out;
+                }
                 return out;
             }
             match &tok {
@@ -1246,6 +1624,20 @@ impl<'a> Lx<'a> {
         out
     }
 
+    fn advance(&mut self) -> bool {
+        match forward(self.src, self.i) {
+            Some(next) => {
+                self.i = next;
+                true
+            }
+            None => {
+                self.failed = true;
+                self.i = self.src.len();
+                false
+            }
+        }
+    }
+
     fn charge(&mut self, start: usize) {
         let n = (self.i.saturating_sub(start) as u64).max(1);
         self.steps = self.steps.saturating_add(n);
@@ -1258,7 +1650,11 @@ impl<'a> Lx<'a> {
         let start_tick = self.i;
         if depth >= MAX_TEMPLATE_DEPTH {
             self.failed = true;
-            self.i = skip_template_linear(self.src, self.i);
+            let next = skip_template_linear(self.src, self.i);
+            self.i = next.min(self.src.len());
+            if next > self.src.len() {
+                self.failed = true;
+            }
             self.charge(start_tick);
             return (Tok::Error, Vec::new());
         }
@@ -1344,7 +1740,13 @@ fn regex_here(prev: Option<&Tok>, ready: bool) -> bool {
 fn closed_regex(src: &str, mut i: usize) -> bool {
     let b = src.as_bytes();
     let mut class = false;
+    let cap = src.len().saturating_mul(4).saturating_add(8);
+    let mut spins = 0usize;
     while i < b.len() {
+        spins += 1;
+        if spins > cap {
+            return false;
+        }
         if !src.is_char_boundary(i) {
             return false;
         }
@@ -1352,7 +1754,10 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
             b'\\' => {
                 i += 1;
                 if i < src.len() {
-                    i = bump(src, i);
+                    i = match forward(src, i) {
+                        Some(next) => next,
+                        None => return false,
+                    };
                 }
             }
             b'[' => {
@@ -1365,7 +1770,12 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
             }
             b'/' if !class => return true,
             b'\n' => return false,
-            _ => i = bump(src, i),
+            _ => {
+                i = match forward(src, i) {
+                    Some(next) => next,
+                    None => return false,
+                };
+            }
         }
     }
     false
@@ -1374,7 +1784,14 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
 fn skip_regex(src: &str, mut i: usize) -> usize {
     let b = src.as_bytes();
     let mut class = false;
+    let cap = src.len().saturating_mul(4).saturating_add(8);
+    let mut spins = 0usize;
+    let fail = src.len().saturating_add(1);
     while i < b.len() {
+        spins += 1;
+        if spins > cap {
+            return fail;
+        }
         if !src.is_char_boundary(i) {
             return i;
         }
@@ -1382,7 +1799,10 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
             b'\\' => {
                 i += 1;
                 if i < src.len() {
-                    i = bump(src, i);
+                    i = match forward(src, i) {
+                        Some(next) => next,
+                        None => return fail,
+                    };
                 }
             }
             b'[' => {
@@ -1401,7 +1821,12 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
                 return i;
             }
             b'\n' => return i,
-            _ => i = bump(src, i),
+            _ => {
+                i = match forward(src, i) {
+                    Some(next) => next,
+                    None => return fail,
+                };
+            }
         }
     }
     i
@@ -1419,6 +1844,9 @@ fn read_string(src: &str, start: usize) -> (String, usize, bool) {
         }
         if b[i] == b'\\' {
             let (ch, next) = decode_escape(src, i);
+            if next <= i {
+                return (value, i, false);
+            }
             value.push(ch);
             i = next;
             continue;
@@ -1620,12 +2048,28 @@ fn bump(src: &str, i: usize) -> usize {
     i + ch.len_utf8()
 }
 
+fn forward(src: &str, i: usize) -> Option<usize> {
+    let next = bump(src, i);
+    if next <= i {
+        None
+    } else {
+        Some(next)
+    }
+}
+
 fn skip_template_linear(src: &str, start: usize) -> usize {
     let b = src.as_bytes();
     let mut i = start + 1;
     let mut mode: Vec<u8> = vec![0];
     let mut braces: Vec<i32> = vec![0];
+    let cap = src.len().saturating_mul(4).saturating_add(8);
+    let mut spins = 0usize;
+    let fail = src.len().saturating_add(1);
     while i < b.len() && !mode.is_empty() {
+        spins += 1;
+        if spins > cap {
+            return fail;
+        }
         if !src.is_char_boundary(i) {
             i += 1;
             continue;
@@ -1634,7 +2078,10 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
         if b[i] == b'\\' && kind != 2 {
             i += 1;
             if i < src.len() {
-                i = bump(src, i);
+                i = match forward(src, i) {
+                    Some(next) => next,
+                    None => return fail,
+                };
             }
             continue;
         }
@@ -1654,11 +2101,18 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
                 i += 2;
                 continue;
             }
-            i = bump(src, i);
+            i = match forward(src, i) {
+                Some(next) => next,
+                None => return fail,
+            };
             continue;
         }
         if b[i] == b'\'' || b[i] == b'"' {
-            i = skip_quoted(src, i);
+            let next = skip_quoted(src, i);
+            if next <= i || next > src.len() {
+                return fail;
+            }
+            i = next;
             continue;
         }
         if b[i] == b'`' {
@@ -1681,7 +2135,10 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
             }
             continue;
         }
-        i = bump(src, i);
+        i = match forward(src, i) {
+            Some(next) => next,
+            None => return fail,
+        };
     }
     i
 }
@@ -1693,7 +2150,14 @@ fn skip_quoted(src: &str, start: usize) -> usize {
     }
     let quote = b[start];
     let mut i = start + 1;
+    let cap = src.len().saturating_mul(4).saturating_add(8);
+    let mut spins = 0usize;
+    let fail = src.len().saturating_add(1);
     while i < b.len() {
+        spins += 1;
+        if spins > cap {
+            return fail;
+        }
         if !src.is_char_boundary(i) {
             i += 1;
             continue;
@@ -1701,14 +2165,20 @@ fn skip_quoted(src: &str, start: usize) -> usize {
         if b[i] == b'\\' {
             i += 1;
             if i < src.len() {
-                i = bump(src, i);
+                i = match forward(src, i) {
+                    Some(next) => next,
+                    None => return fail,
+                };
             }
             continue;
         }
         if b[i] == quote {
             return i + 1;
         }
-        i = bump(src, i);
+        i = match forward(src, i) {
+            Some(next) => next,
+            None => return fail,
+        };
     }
     i
 }
@@ -1757,16 +2227,9 @@ fn attr_markup(src: &str) -> bool {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'<' {
-            if let TagTry::Tag(tag) = parse_tag(src, i) {
-                if tag
-                    .attrs
-                    .iter()
-                    .any(|(name, value)| markup_attr(name, value))
-                {
-                    return true;
-                }
-                i = tag.end;
-                continue;
+            match parse_tag(src, i) {
+                TagTry::Tag(_) | TagTry::Unclosed { .. } => return true,
+                TagTry::NotTag => {}
             }
         }
         i += 1;
@@ -1774,14 +2237,22 @@ fn attr_markup(src: &str) -> bool {
     false
 }
 
-fn markup_attr(name: &str, value: &str) -> bool {
-    if name.eq_ignore_ascii_case("srcdoc") {
+fn handler_value_is_code(value: &str) -> bool {
+    let decoded = decode_html_chars(value).trim().to_string();
+    if decoded.is_empty() {
         return true;
     }
-    if is_handler_attr(name) {
-        return true;
+    if decoded.starts_with("function") || decoded.contains("=>") {
+        return false;
     }
-    allowed(URL_ATTR, &name.to_ascii_lowercase()) && script_scheme(value)
+    true
+}
+
+fn remote_element(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "base" | "embed" | "iframe" | "object"
+    )
 }
 
 fn is_handler_attr(name: &str) -> bool {
@@ -1802,7 +2273,7 @@ struct Parsed {
 enum TagTry {
     Tag(Parsed),
     NotTag,
-    Unclosed,
+    Unclosed { at: usize },
 }
 
 fn parse_tag(src: &str, start: usize) -> TagTry {
@@ -1812,7 +2283,7 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
     }
     let mut i = start + 1;
     if i >= b.len() {
-        return TagTry::Unclosed;
+        return TagTry::Unclosed { at: i };
     }
     let closing = if b[i] == b'/' {
         i += 1;
@@ -1821,7 +2292,7 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
         false
     };
     if i >= b.len() {
-        return TagTry::Unclosed;
+        return TagTry::Unclosed { at: i };
     }
     if !b[i].is_ascii_alphabetic() {
         return TagTry::NotTag;
@@ -1835,7 +2306,7 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
     let mut attrs = Vec::new();
     loop {
         if i >= b.len() {
-            return TagTry::Unclosed;
+            return TagTry::Unclosed { at: i };
         }
         if b[i] == b'>' {
             return TagTry::Tag(Parsed {
@@ -1844,6 +2315,9 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
                 end: i + 1,
                 closing,
             });
+        }
+        if b[i] == b'<' {
+            return TagTry::Unclosed { at: i };
         }
         if b[i] == b'/' || b[i].is_ascii_whitespace() {
             i += 1;
@@ -1863,7 +2337,7 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
             i += 1;
         }
         if i >= b.len() {
-            return TagTry::Unclosed;
+            return TagTry::Unclosed { at: i };
         }
         if b[i] != b'=' {
             attrs.push((attr, String::new()));
@@ -1874,7 +2348,7 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
             i += 1;
         }
         if i >= b.len() {
-            return TagTry::Unclosed;
+            return TagTry::Unclosed { at: i };
         }
         let value = if b[i] == b'"' || b[i] == b'\'' {
             let quote = b[i];
@@ -1884,15 +2358,18 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
                 i += 1;
             }
             if i >= b.len() {
-                return TagTry::Unclosed;
+                return TagTry::Unclosed { at: i };
             }
             let value = src[vs..i].to_string();
             i += 1;
             value
         } else {
             let vs = i;
-            while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'>' {
+            while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'>' && b[i] != b'<' {
                 i += 1;
+            }
+            if i < b.len() && b[i] == b'<' {
+                return TagTry::Unclosed { at: i };
             }
             src[vs..i].to_string()
         };
@@ -1915,8 +2392,7 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
             continue;
         }
         if src[i..].starts_with("<!--") {
-            if let Some(rel) = src[i + 4..].find("-->") {
-                let next = i + 4 + rel + 3;
+            if let Some(next) = html_comment_end(src, i) {
                 *steps = steps.saturating_add((next - i) as u64);
                 i = next;
             } else {
@@ -1930,7 +2406,8 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                 i += 1;
                 *steps = steps.saturating_add(1);
             }
-            TagTry::Unclosed => {
+            TagTry::Unclosed { at } => {
+                *steps = steps.saturating_add((at.saturating_sub(i) as u64).max(1));
                 out.insert("scan failed closed".to_string());
                 if script_open_at(src, i) {
                     chunks.push(src[i..].to_string());
@@ -1943,12 +2420,18 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                     i = tag.end;
                     continue;
                 }
+                if remote_element(&tag.name) {
+                    out.insert(format!("element {}", tag.name));
+                }
+                note_script_src(&tag, out);
+                note_meta_refresh(&tag, out);
+                note_link_href(&tag, out);
                 for (name, value) in &tag.attrs {
                     note_markup_attr(name, value, out, &mut chunks);
                 }
                 if tag.name.eq_ignore_ascii_case("script") {
                     let skip = script_type_skips(&tag.attrs);
-                    if let Some(end_gt) = find_script_end(src, tag.end) {
+                    if let Some(end_gt) = find_end_tag(src, tag.end, "script") {
                         let body = body_before_end(src, tag.end, end_gt);
                         if !skip && !body.trim().is_empty() {
                             chunks.push(body.clone());
@@ -1960,6 +2443,18 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                         if !skip {
                             chunks.push(src[tag.end..].to_string());
                         }
+                        break;
+                    }
+                } else if tag.name.eq_ignore_ascii_case("style") {
+                    if let Some(end_gt) = find_end_tag(src, tag.end, "style") {
+                        let body = body_before_end(src, tag.end, end_gt);
+                        if body.to_ascii_lowercase().contains("@import") {
+                            out.insert("style import".to_string());
+                        }
+                        *steps = steps.saturating_add(body.len() as u64);
+                        i = end_gt + 1;
+                    } else {
+                        out.insert("scan failed closed".to_string());
                         break;
                     }
                 } else {
@@ -1976,21 +2471,95 @@ fn body_before_end(src: &str, body_at: usize, end_gt: usize) -> String {
     src[body_at..end_lt].to_string()
 }
 
-fn script_type_skips(attrs: &[(String, String)]) -> bool {
-    attrs.iter().any(|(name, value)| {
-        name.eq_ignore_ascii_case("type")
-            && (value.trim().eq_ignore_ascii_case("application/json")
-                || value.trim().eq_ignore_ascii_case("application/ld+json"))
-    })
+fn html_comment_end(src: &str, i: usize) -> Option<usize> {
+    let rest = src.get(i..)?;
+    if !rest.starts_with("<!--") {
+        return None;
+    }
+    let after = &rest[4..];
+    if after.starts_with('>') {
+        return Some(i + 5);
+    }
+    if after.starts_with("->") {
+        return Some(i + 6);
+    }
+    let dash = after.find("-->").map(|rel| i + 4 + rel + 3);
+    let bang = after.find("--!>").map(|rel| i + 4 + rel + 4);
+    match (dash, bang) {
+        (Some(dash), Some(bang)) => Some(dash.min(bang)),
+        (Some(end), None) | (None, Some(end)) => Some(end),
+        (None, None) => None,
+    }
 }
 
-fn find_script_end(src: &str, from: usize) -> Option<usize> {
+fn script_type_skips(attrs: &[(String, String)]) -> bool {
+    let Some((_, value)) = attrs
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("type"))
+    else {
+        return false;
+    };
+    let value = value.trim();
+    value.eq_ignore_ascii_case("application/json")
+        || value.eq_ignore_ascii_case("application/ld+json")
+}
+
+fn note_script_src(tag: &Parsed, out: &mut BTreeSet<String>) {
+    if !tag.name.eq_ignore_ascii_case("script") {
+        return;
+    }
+    let Some(src) = attr_value(&tag.attrs, "src") else {
+        return;
+    };
+    let integrity = attr_value(&tag.attrs, "integrity").unwrap_or("");
+    let pinned = SCRIPT_SRC
+        .iter()
+        .any(|(url, hash)| src == *url && integrity == *hash);
+    if !pinned {
+        out.insert("script src".to_string());
+    }
+}
+
+fn note_meta_refresh(tag: &Parsed, out: &mut BTreeSet<String>) {
+    if !tag.name.eq_ignore_ascii_case("meta") {
+        return;
+    }
+    let equiv = attr_value(&tag.attrs, "http-equiv").unwrap_or("");
+    if equiv.trim().eq_ignore_ascii_case("refresh") {
+        out.insert("meta refresh".to_string());
+    }
+}
+
+fn note_link_href(tag: &Parsed, out: &mut BTreeSet<String>) {
+    if !tag.name.eq_ignore_ascii_case("link") {
+        return;
+    }
+    let rel = attr_value(&tag.attrs, "rel")
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let href = attr_value(&tag.attrs, "href").unwrap_or("");
+    if rel
+        .split_whitespace()
+        .any(|part| part == "stylesheet" || part == "import")
+        || !href.is_empty()
+    {
+        out.insert("element link".to_string());
+    }
+}
+
+fn attr_value<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    attrs
+        .iter()
+        .find(|(attr, _)| attr.eq_ignore_ascii_case(name))
+        .map(|(_, value)| value.as_str())
+}
+
+fn find_end_tag(src: &str, from: usize, name: &str) -> Option<usize> {
     let b = src.as_bytes();
     let mut i = from;
-    while i + 8 < b.len() {
-        if b[i] == b'<' && b.get(i + 1) == Some(&b'/') && starts_with_name(&src[i + 2..], "script")
-        {
-            let mut j = i + 2 + "script".len();
+    while i + name.len() + 2 < b.len() {
+        if b[i] == b'<' && b.get(i + 1) == Some(&b'/') && starts_with_name(&src[i + 2..], name) {
+            let mut j = i + 2 + name.len();
             while j < b.len() && b[j].is_ascii_whitespace() {
                 j += 1;
             }
@@ -2004,56 +2573,29 @@ fn find_script_end(src: &str, from: usize) -> Option<usize> {
 }
 
 fn note_markup_attr(name: &str, value: &str, out: &mut BTreeSet<String>, chunks: &mut Vec<String>) {
+    let decoded = decode_html_chars(value);
     if name.eq_ignore_ascii_case("srcdoc") {
         out.insert("attribute srcdoc".to_string());
-        if !value.trim().is_empty() {
-            chunks.push(value.to_string());
+        if !decoded.trim().is_empty() {
+            chunks.push(decoded);
         }
         return;
     }
     if is_handler_attr(name) {
-        out.insert(format!("attribute {name}"));
-        if !value.trim().is_empty() {
-            chunks.push(value.to_string());
+        if handler_value_is_code(&decoded) {
+            out.insert(format!("attribute {name}"));
+        }
+        if !decoded.trim().is_empty() {
+            chunks.push(decoded);
         }
         return;
     }
-    let lower = name.to_ascii_lowercase();
-    if allowed(URL_ATTR, &lower) && script_scheme(value) {
+    if script_scheme(&decoded) {
         out.insert(format!("attribute {name}"));
     }
-    if name.eq_ignore_ascii_case("src") && script_scheme(value) {
-        out.insert("attribute src".to_string());
-    }
 }
 
-fn legacy_names(src: &str, out: &mut BTreeSet<String>) {
-    let folded = fold_string_concats(src);
-    for name in ["innerHTML", "outerHTML", "insertAdjacentHTML", "srcdoc"] {
-        if contains_ident(&folded, name) {
-            out.insert(format!("member {name}"));
-        }
-    }
-    if contains_ident(&folded, "createContextualFragment") {
-        out.insert("member call createContextualFragment".to_string());
-    }
-    if contains_ident(&folded, "DOMParser") && folded.contains("text/html") {
-        out.insert("member call parseFromString".to_string());
-    }
-    if string_timer_text(&folded) {
-        out.insert("string timer".to_string());
-    }
-    if contains_phrase(&folded, "document.write") || contains_phrase(&folded, "document.writeln") {
-        out.insert("member write".to_string());
-    }
-    if call_with_paren(&folded, "eval") {
-        out.insert("bare eval".to_string());
-    }
-    if call_with_paren(&folded, "Function") {
-        out.insert("bare Function".to_string());
-    }
-}
-
+#[cfg(test)]
 fn contains_ident(src: &str, name: &str) -> bool {
     let bytes = src.as_bytes();
     let mut i = 0;
@@ -2076,31 +2618,12 @@ fn contains_ident(src: &str, name: &str) -> bool {
     false
 }
 
-fn contains_phrase(src: &str, phrase: &str) -> bool {
-    let bytes = src.as_bytes();
-    let mut i = 0;
-    while i + phrase.len() <= bytes.len() {
-        if !src.is_char_boundary(i) {
-            i += 1;
-            continue;
-        }
-        if src[i..].starts_with(phrase) {
-            let prev_ok = i == 0 || !is_js_ident(bytes[i - 1]);
-            let after = i + phrase.len();
-            let next_ok = after >= bytes.len() || !is_js_ident(bytes[after]);
-            if prev_ok && next_ok {
-                return true;
-            }
-        }
-        i += 1;
-    }
-    false
-}
-
+#[cfg(test)]
 fn is_js_ident(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
 }
 
+#[cfg(test)]
 fn string_timer_text(src: &str) -> bool {
     for name in ["setTimeout", "setInterval"] {
         let bytes = src.as_bytes();
@@ -2122,6 +2645,7 @@ fn string_timer_text(src: &str) -> bool {
     false
 }
 
+#[cfg(test)]
 fn call_opens_with_string(src: &str) -> bool {
     let rest = src.trim_start();
     let Some(rest) = rest.strip_prefix('(') else {
@@ -2133,6 +2657,7 @@ fn call_opens_with_string(src: &str) -> bool {
     )
 }
 
+#[cfg(test)]
 fn call_with_paren(src: &str, name: &str) -> bool {
     let bytes = src.as_bytes();
     let mut i = 0;
@@ -2158,6 +2683,7 @@ fn call_with_paren(src: &str, name: &str) -> bool {
     false
 }
 
+#[cfg(test)]
 fn fold_string_concats(src: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
@@ -2188,6 +2714,7 @@ fn fold_string_concats(src: &str) -> String {
     out
 }
 
+#[cfg(test)]
 fn concat_literals(src: &str, start: usize) -> Option<(String, usize)> {
     let (mut piece, mut i) = read_literal(src, start)?;
     let mut joined = piece.clone();
@@ -2214,6 +2741,7 @@ fn concat_literals(src: &str, start: usize) -> Option<(String, usize)> {
     Some((joined, i))
 }
 
+#[cfg(test)]
 fn read_literal(src: &str, start: usize) -> Option<(String, usize)> {
     let bytes = src.as_bytes();
     let quote = bytes.get(start).copied()?;
@@ -2272,6 +2800,15 @@ fn d45_rejects(src: &str) -> bool {
 #[cfg(test)]
 mod class_tests {
     use super::*;
+
+    fn pinned_script(index: usize) -> String {
+        let (url, hash) = SCRIPT_SRC[index];
+        format!("<script src=\"{url}\" integrity=\"{hash}\" crossorigin=\"anonymous\"></script>")
+    }
+
+    fn cat(parts: &[&str]) -> String {
+        parts.concat()
+    }
 
     fn sink(sample: &str) {
         let (_problems, steps) = scan_measured(sample);
@@ -2345,7 +2882,8 @@ mod class_tests {
         sink("<script data-kind=\"application/json\">eval(1)</script>");
         clean("<script type=\"application/json\">eval(1)</script>");
         clean("<script type=\"application/ld+json\">{\"a\":1}</script>");
-        clean("<script src=\"https://unpkg.com/example.js\"></script>");
+        sink("<script src=\"https://example.invalid/x.js\"></script>");
+        clean(&pinned_script(0));
     }
 
     #[test]
@@ -2353,7 +2891,8 @@ mod class_tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../docs/architecture/workspace_map.html");
         let html = std::fs::read_to_string(&path).unwrap();
-        assert!(html_parsing_problems(&html).is_empty());
+        let problems = html_parsing_problems(&html);
+        assert!(problems.is_empty(), "{problems:?}");
         let end = html.rfind("</script>").expect("script");
         let mut injected = html.clone();
         injected.insert_str(end, "eval(1);");
@@ -2367,7 +2906,7 @@ mod class_tests {
         sink("<a href=\"javascript:eval(1)\">x</a>");
         sink("<a href='javascript:alert(1)'>x</a>");
         clean("var href = 'https://example.com'");
-        clean("if (a < b) node.textContent = a");
+        clean("if (a < b) node.title = a");
     }
 
     #[test]
@@ -2396,7 +2935,8 @@ mod class_tests {
 
     #[test]
     fn allowlisted_page_shapes_stay_clean() {
-        clean("node.textContent = String(props.text)");
+        clean("function setText(node, value) { node.textContent = value; }");
+        sink("x.textContent = s");
         clean("node.appendChild(document.createTextNode(String(kid)))");
         clean("function safeColor(value) { return ''; }");
         clean("setTimeout(() => {}, 10)");
@@ -2406,20 +2946,24 @@ mod class_tests {
         clean("document.createElement('span')");
         clean("document.createElement('option')");
         clean("document.createElement('button')");
-        clean("document.createElement(tag)");
-        clean("document.createElement(name)");
-        clean("a.setAttribute('href', String(attrs.href))");
-        clean("a.setAttribute('href', REPO_BLOB + m[1])");
-        clean("a.setAttribute('href', REPO_BLOB + '_meta/')");
-        clean("visiblePerDomain[d.domain] = (visiblePerDomain[d.domain] || 0) + 1");
-        clean("out[decodeURIComponent(k)] = v");
+        clean("function el(tag) { return document.createElement(tag); }");
+        clean("const REPO_BLOB = 'https://github.com/lazyxeon/AstraWeave/blob/main/'; a.setAttribute('href', REPO_BLOB + m[1])");
+        clean("const REPO_BLOB = 'https://github.com/lazyxeon/AstraWeave/blob/main/'; a.setAttribute('href', REPO_BLOB + '_meta/')");
+        clean("visiblePerDomain.set(d.domain, (visiblePerDomain.get(d.domain) || 0) + 1)");
+        clean("out.set('q', v)");
+        clean("node.title = text");
+        clean("a.setAttribute('target', x)");
+        clean("node.addEventListener('click', 'ready')");
+        clean("node.on('click', 'ready')");
+        clean("setTimeout(fn, 'delay')");
+        clean("var href = 'javascript&colon;ready'");
         clean("Object.prototype.hasOwnProperty.call(obj, key)");
         clean("(function(){ return 1 })()");
         clean("var evaluation = 1");
         clean("var srcdocs = 1");
         clean("orientation = 1");
         clean("const [k, v] = pair.split('=')");
-        clean("if (ok) /eval/; node.textContent = x");
+        clean("if (ok) /eval/; node.title = x");
     }
 
     #[test]
@@ -2526,5 +3070,137 @@ mod class_tests {
         assert!(!d45_rejects("evaluation(x)"));
         assert!(!d45_rejects("srcdocs(x)"));
         assert!(!d45_rejects("setTimeout(tryRestore, 100)"));
+    }
+
+    #[test]
+    fn member_template_is_a_sink() {
+        sink(&cat(&["globalThis.eval`", "alert", "(1)`"]));
+    }
+
+    #[test]
+    fn optional_computed_call_is_a_sink() {
+        sink(&cat(&["document?.['", "write", "'](x)"]));
+        sink(&cat(&["node?.['", "writeln", "'](s)"]));
+        sink(&cat(&["node?.['", "wr", "'+'ite", "'](s)"]));
+        sink(&cat(&[
+            "window?.['",
+            "document",
+            "']?.['",
+            "write",
+            "'](s)",
+        ]));
+    }
+
+    #[test]
+    fn helper_and_constructor_arguments_are_a_sink() {
+        sink(&cat(&["el('", "script", "',{text:'", "alert", "(1)'})"]));
+        sink("x.textContent = s");
+        sink("document.createElement(tag)");
+        sink("document.head.append(node)");
+        sink(&cat(&["el('a',{attrs:{href:'", "javascript:", "x'}})"]));
+        sink("node[a.b] = x");
+        sink("node[f()] = x");
+        sink("return open(x)");
+        sink("location.replace(x)");
+        sink("with (scope) { href = x }");
+    }
+
+    #[test]
+    fn timer_concatenation_is_a_sink() {
+        sink(&cat(&["setTimeout(x+'", "alert", "(1)')"]));
+        sink(&cat(&["setTimeout(x+'", "code", "')"]));
+        sink("setTimeout(['code'])");
+        sink("list.forEach(setTimeout)");
+    }
+
+    #[test]
+    fn scheme_whitespace_is_a_sink() {
+        sink(&cat(&[
+            "a.setAttribute('href','java\\t",
+            "script:",
+            "alert(1)')",
+        ]));
+        sink("a.setAttribute('href', 'java\\tscript:x')");
+        sink("a.setAttribute('href', 'java\\nscript:x')");
+        sink("a.setAttribute('href', 'java\\rscript:x')");
+        sink("a.setAttribute('href', '\\u0001javascript:x')");
+    }
+
+    #[test]
+    fn unpinned_script_source_is_a_sink() {
+        sink("<script src=\"https://example.invalid/a.js\"></script>");
+        let (url, _) = SCRIPT_SRC[0];
+        sink(&format!("<script src=\"{url}\"></script>"));
+        clean(&pinned_script(0));
+    }
+
+    #[test]
+    fn character_references_are_a_sink() {
+        sink(&cat(&["<a href=\"java", "script&colon;x\">z</a>"]));
+        sink(&cat(&["<a href=\"&#106;", "avascript:x\">z</a>"]));
+        sink(&cat(&["<a href=\"java&#9;", "script:x\">z</a>"]));
+        sink("<math><maction href=\"javascript:x\">z</maction></math>");
+        sink("<svg><script>eval(1)</script></svg>");
+    }
+
+    #[test]
+    fn remote_markup_is_a_sink() {
+        sink("<iframe src=\"https://example.invalid/x\"></iframe>");
+        sink("<object data=\"https://example.invalid/x\"></object>");
+        sink("<embed src=\"https://example.invalid/x\"></embed>");
+        sink("<base href=\"https://example.invalid/\">");
+        sink("<meta http-equiv=\"refresh\" content=\"0;url=https://example.invalid/\">");
+        sink("<link rel=\"stylesheet\" href=\"https://example.invalid/a.css\">");
+        sink("<style>@import url(\"https://example.invalid/a.css\");</style>");
+        sink("<script type=\"text/javascript\" type=\"application/json\">eval(1)</script>");
+        clean("<img onerror=\"function(){}\">");
+    }
+
+    #[test]
+    fn comment_closers_do_not_hide_a_later_sink() {
+        sink(&cat(&["<!-->", "<script>eval(1)</script>"]));
+        sink(&cat(&["<!--->", "<script>eval(1)</script>"]));
+        sink(&cat(&["<!-- --!>", "<script>eval(1)</script>"]));
+    }
+
+    #[test]
+    fn unclosed_tags_fail_closed_in_linear_time() {
+        let sample = "<a ".repeat(40_000);
+        let started = std::time::Instant::now();
+        let (problems, steps) = scan_measured(&sample);
+        assert!(
+            started.elapsed().as_millis() < 1000,
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(
+            problems.iter().any(|item| item.contains("failed closed")),
+            "{problems:?}"
+        );
+        assert!(steps <= (sample.len() as u64).saturating_mul(8).saturating_add(64));
+    }
+
+    #[test]
+    fn allowlist_guards_have_the_strict_result() {
+        assert!(allowed(&["a", "b"], "a"));
+        assert!(!allowed(&["a", "b"], "c"));
+        assert!(sink_member("innerHTML"));
+        assert!(!sink_member("textContent"));
+        assert!(handler_global("onclick"));
+        assert!(!handler_global("orientation"));
+        assert_eq!(bump("ab", 0), 1);
+        assert_eq!(bump("éx", 0), 'é'.len_utf8());
+        let quoted = "'a\\'b'";
+        assert_eq!(skip_quoted(quoted, 0), quoted.len());
+        let (ch, next) = decode_escape("\\tX", 0);
+        assert_eq!((ch, next), ('\t', 2));
+        let (ch, next) = decode_escape("\\u006a", 0);
+        assert_eq!(ch, 'j');
+        assert!(next > 2);
+        assert!(script_scheme("java\tscript:x"));
+        assert!(script_scheme("\u{0001}javascript:x"));
+        assert!(!script_scheme("https://example.com"));
+        assert!(!script_scheme("javascript&colon;x"));
+        assert_eq!(normalize_scheme("java\tscript:"), "javascript:");
     }
 }

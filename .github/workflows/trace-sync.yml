@@ -14,14 +14,22 @@ on:
       - 'docs/architecture/**'
       - '**/Cargo.toml'
       - '**/src/**/*.rs'
+      - '**/*.wgsl'
+      - '**/README.md'
+      - '**/tests/**'
+      - '**/benches/**'
       - 'CLAUDE.md'
       - 'tools/aw_trace_sync/**'
       - '.github/workflows/trace-sync.yml'
-  pull_request:
+    pull_request:
     paths:
       - 'docs/architecture/**'
       - '**/Cargo.toml'
       - '**/src/**/*.rs'
+      - '**/*.wgsl'
+      - '**/README.md'
+      - '**/tests/**'
+      - '**/benches/**'
       - 'CLAUDE.md'
       - 'tools/aw_trace_sync/**'
       - '.github/workflows/trace-sync.yml'
@@ -47,10 +55,10 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
 
       - name: Validate front-matter and report untraced subsystems
-        run: cargo run -p aw_trace_sync -- --validate-only --list-untraced
+        run: cargo run --locked -p aw_trace_sync -- --validate-only --list-untraced
 
       - name: Check registry/map are in sync with trace front-matter
-        run: cargo run -p aw_trace_sync -- --check
+        run: cargo run --locked -p aw_trace_sync -- --check
 
       - name: Test aw_trace_sync
-        run: cargo test -p aw_trace_sync
+        run: cargo test --locked -p aw_trace_sync

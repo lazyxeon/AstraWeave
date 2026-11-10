@@ -970,7 +970,7 @@ fn explicit_ids(md: &str) -> BTreeSet<String> {
 /// of those tags is real. An anchor inside `select` is not. `<!-->` and
 /// `<!--->` close a comment, and so does `--!>`. `<![CDATA[` hides until the
 /// next `>`. `<!` followed by an uppercase ASCII letter hides until the next
-/// `>`. `<?` does not hide the following anchor. Comment, CDATA, declaration,
+/// `>`. `<?` hides until the next `>`, the same closer as `<![CDATA[`. Comment, CDATA, declaration,
 /// and `select` state carry across HTML events. An id inside another
 /// attribute's quoted value is not an element, including on an end tag. The
 /// first `id` and the first `name` on a start tag are kept, and a valueless
@@ -1207,9 +1207,9 @@ fn classify_lt(s: &str) -> Lt {
     if "![CDATA[".starts_with(rest) {
         return Lt::NeedMore;
     }
-    // GitHub drops `<?` and leaves the following anchor in the text.
+    // GitHub ends `<?` at the first `>`, the same rule as `<![CDATA[`.
     if rest.starts_with('?') {
-        return Lt::Skip { consumed: 2 };
+        return Lt::Enter(Skip::Cdata, 2);
     }
     if declaration_at(rest) {
         return Lt::Enter(Skip::Decl, 2);
@@ -1656,7 +1656,7 @@ mod tests {
     }
 
     #[test]
-    fn cdata_hides_until_the_next_gt_and_pi_does_not() {
+    fn cdata_and_a_processing_instruction_hide_until_the_next_gt() {
         assert!(
             anchor_ids_in_chunks(&["<![CDATA[ <a id=\"8-invariants\"></a> ]]>"]).is_empty(),
             "CDATA revealed an anchor whose own > was the closer"
@@ -1671,9 +1671,9 @@ mod tests {
             ]),
             vec!["8-invariants".to_string()]
         );
-        assert_eq!(
-            anchor_ids_in_chunks(&["<? <a id=\"8-invariants\"></a> ?>"]),
-            vec!["8-invariants".to_string()]
+        assert!(
+            anchor_ids_in_chunks(&["<? <a id=\"8-invariants\"></a> ?>"]).is_empty(),
+            "a processing instruction hid nothing before its first >"
         );
         assert_eq!(
             anchor_ids_in_chunks(&["x <? q > <a id=\"8-invariants\"></a> ?>"]),

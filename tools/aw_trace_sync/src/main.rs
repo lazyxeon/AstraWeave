@@ -973,6 +973,16 @@ fn main() -> Result<()> {
     }
 
     if cli.write || cli.check {
+        let map_html = std::fs::read_to_string(root.join("docs/architecture/workspace_map.html"))
+            .context("reading workspace_map.html")?;
+        let sinks = js_sink::html_parsing_problems(&map_html);
+        if !sinks.is_empty() {
+            eprintln!("Map script scan failed ({} problem(s)):", sinks.len());
+            for problem in &sinks {
+                eprintln!("  - {problem}");
+            }
+            bail!("workspace_map.html has an HTML parsing sink");
+        }
         let (targets, map_render) = build_targets(&root, &traces, &graph)?;
         if !map_render.problems.is_empty() {
             eprintln!(
@@ -1067,7 +1077,6 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
 mod js_sink;
 
 #[cfg(test)]
@@ -2264,7 +2273,12 @@ mod tests {
             "<? <a id=\"8-invariants\"></a> ?>\n{}",
             headings_without_invariants()
         );
-        assert!(section_anchor_resolves(&pi), "{pi}");
+        assert!(!section_anchor_resolves(&pi), "{pi}");
+        let after_pi = format!(
+            "x <? q > <a id=\"8-invariants\"></a>\n{}",
+            headings_without_invariants()
+        );
+        assert!(section_anchor_resolves(&after_pi), "{after_pi}");
     }
 
     #[test]
@@ -2475,7 +2489,7 @@ mod tests {
             );
         }
         let safe = [
-            "node.textContent = String(props.text)",
+            "function setText(node, value) { node.textContent = String(value); }",
             "node.appendChild(document.createTextNode(String(kid)))",
             "function safeColor(value) { return ''; }",
             "setTimeout(() => {}, 10)",
@@ -3149,6 +3163,49 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
         let quote = readme.lines().nth(2).unwrap();
         assert!(doc.contains(quote), "fluids quote drifted from the README");
         assert!(quote.contains("examples/weaving_playground"));
+        assert!(doc.contains("`lib.rs` is 4,198 lines"));
+        assert!(doc.contains("7 WGSL files, 1,375 lines"));
+        assert!(doc.contains("`compute_lambda` (`fluid.wgsl:220`)"));
+        assert!(doc.contains("`compute_delta_pos` (`fluid.wgsl:308`)"));
+        assert!(doc.contains("24,509 lines in 19 files"));
+        assert!(doc.contains("`optimization.rs:144`"));
+        assert!(doc.contains("`optimization.rs:532`"));
+        let wgsl_total: usize = std::fs::read_dir(root.join("astraweave-fluids/shaders"))
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("wgsl"))
+            .map(|entry| {
+                std::fs::read_to_string(entry.path())
+                    .unwrap()
+                    .lines()
+                    .count()
+            })
+            .sum();
+        assert_eq!(wgsl_total, 1375);
+        assert_eq!(
+            std::fs::read_dir(root.join("astraweave-fluids/src"))
+                .unwrap()
+                .flatten()
+                .filter(|entry| entry.path().extension().and_then(|ext| ext.to_str()) == Some("rs"))
+                .count(),
+            19
+        );
+        for gone in [
+            "research.rs",
+            "pcisph_system.rs",
+            "unified_solver.rs",
+            "volume_grid.rs",
+            "gpu_volume.rs",
+            "building.rs",
+            "simd_ops.rs",
+            "terrain_integration.rs",
+        ] {
+            assert!(
+                !root.join("astraweave-fluids/src").join(gone).exists(),
+                "{gone} is still in src"
+            );
+        }
+        assert!(!root.join("astraweave-fluids/shaders/research").exists());
         let mut manifests = Vec::new();
         fluids_manifests(&root, &root, &mut manifests);
         manifests.sort();
