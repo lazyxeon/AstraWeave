@@ -51,3 +51,6 @@ jobs:
 
       - name: Check registry/map are in sync with trace front-matter
         run: cargo run -p aw_trace_sync -- --check
+
+      - name: Test aw_trace_sync
+        run: cargo test -p aw_trace_sync

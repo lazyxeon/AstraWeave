@@ -2884,6 +2884,9 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             toml_row.contains(&format!("{toml_tests} inline tests")),
             "{toml_row}"
         );
+        assert!(toml_row.contains(
+            "Production import of `LoadedDialogue` is `veilweaver_slice_runtime/src/game_loop.rs:17`"
+        ));
         let bench_row = section_five("| `astraweave-dialogue/benches/dialogue_bench.rs`");
         assert!(
             bench_row.contains(&format!("({} LoC)", grouped(bench_lines))),
@@ -2951,6 +2954,33 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             "missing recorded_line cite"
         );
         assert!(section.contains("game_loop.rs:17"));
+        assert!(section.contains("seven AstraWeave"));
+        assert!(section.contains("llm_dialogue.rs:21"));
+        assert!(section.contains("llm_dialogue.rs:558-561"));
+        assert!(!section.contains("llm_dialogue.rs:1897"));
+        assert!(!section.contains("astraweave_memory::Persona as BasePersona"));
+        let dep_block = cargo
+            .split("[dependencies]")
+            .nth(1)
+            .expect("dependencies")
+            .split("\n[")
+            .next()
+            .unwrap();
+        let prose = section
+            .split("**Dependencies")
+            .nth(1)
+            .expect("dependency prose")
+            .split("#### 13.4.5")
+            .next()
+            .unwrap();
+        for line in dep_block.lines() {
+            let line = line.split('#').next().unwrap().trim();
+            if line.is_empty() {
+                continue;
+            }
+            let name = line.split(['=', '.']).next().unwrap().trim();
+            assert!(prose.contains(name), "§13.4 omits {name}");
+        }
         for line in section.lines() {
             if line.contains("game_loop.rs:446") {
                 assert!(
@@ -3102,6 +3132,23 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
         assert!(!eight.contains("**Status:** Active"), "{eight}");
         assert!(doc.contains("`wgpu::ComputePipeline` (7 PBD pipelines)"));
         assert!(!doc.contains("8 PBD pipelines"));
+        assert!(note.contains("Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`"));
+        assert!(note.contains("`default = []`"));
+        assert!(note.contains("`tests/gpu_execution_tests.rs` (1,434 lines)"));
+        assert!(note.contains("`tests/mutation_resistant_comprehensive_tests.rs` (456 lines)"));
+        assert!(note.contains("`benches/fluids_adversarial.rs` is 1,676 lines"));
+        assert!(doc.contains("`particle_buffer` at `lib.rs:221`"));
+        assert!(doc.contains("`head_pointers` at `lib.rs:240`"));
+        assert!(doc.contains("`next_pointers` at `lib.rs:242`"));
+        assert!(doc.contains("`lib.rs:270` is `sdf_system`"));
+        assert!(doc.contains("`staging_state: [StagingState; 2]`"));
+        assert!(doc.contains("pub field at `lib.rs:270`"));
+        assert!(!doc.contains("staging_mapped: [bool; 2]"));
+        assert!(!doc.contains("lib.rs:270-272"));
+        let readme = std::fs::read_to_string(root.join("astraweave-fluids/README.md")).unwrap();
+        let quote = readme.lines().nth(2).unwrap();
+        assert!(doc.contains(quote), "fluids quote drifted from the README");
+        assert!(quote.contains("examples/weaving_playground"));
         let mut manifests = Vec::new();
         fluids_manifests(&root, &root, &mut manifests);
         manifests.sort();

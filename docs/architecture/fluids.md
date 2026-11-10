@@ -192,7 +192,7 @@ shape as the rest of the fluids crate (still no `astraweave-*` game-loop crate d
 Provides GPU-accelerated fluid simulation through multiple coexisting solvers (PBD, PCISPH, DFSPH, IISPH per `research.rs:42-68`), plus a voxel-based volumetric water grid for terrain/building interaction (`volume_grid.rs`), plus visual effects (caustics, god rays, foam, reflections, underwater fog, waterfall, anisotropic surface — all coordinated by `WaterEffectsManager` at `water_effects.rs:1-100`), plus terrain integration (river/lake/waterfall detection from heightmaps in `terrain_integration.rs`), plus building integration (water dispensers/drains/gates/wheels in `building.rs`), plus a comprehensive editor integration layer (`editor.rs`, 5,823 LoC).
 
 **Why it exists:**
-Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo; no production game-loop crate depends on it yet." Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (Jan 2026): the system is the engine's intended path to "research-grade fluid simulation" — multi-fluid types (water/oil/honey), multi-phase interactions, non-Newtonian flows, turbulent simulations.
+Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo and examples/weaving_playground; no production game-loop crate depends on it yet." Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (Jan 2026): the system is the engine's intended path to "research-grade fluid simulation" — multi-fluid types (water/oil/honey), multi-phase interactions, non-Newtonian flows, turbulent simulations.
 
 **Where it primarily lives:**
 - **Core SPH/PBD simulator:** `astraweave-fluids/src/lib.rs` (3,810 LoC) — `FluidSystem` GPU pipeline with PBD compute pass (clear_grid / build_grid / predict / lambda / delta_pos / integrate / mix_dye), `Particle`/`SimParams`/`SecondaryParticle` GPU types
@@ -203,17 +203,17 @@ Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid si
 - **Optimization:** `astraweave-fluids/src/{optimization,lod,profiling,simd_ops}.rs` — workgroup tuning, LOD, profiling, batch SIMD primitives
 - **Terrain hookup:** `astraweave-fluids/src/terrain_integration.rs` — `WaterBodyType` (River/Stream/Lake/Pond/Ocean/Waterfall/Aquifer), `analyze_terrain_for_water`, `DetectedWaterBody`
 - **Editor support:** `astraweave-fluids/src/editor.rs` (5,823 LoC) — `FluidEditorConfig`, presets, undo/redo, validation, batch operations, clipboard, animation easing, color-blind palettes
-- **SIMD primitives:** `astraweave-fluids/src/simd_ops.rs` (39,554 LoC) — Wendland C2/C4 + Cubic Spline SPH kernels, batch position/velocity/density operations, Morton-code spatial hashing
+- **SIMD primitives:** **Superseded by W.1 (verified at `604d35d1`).** `astraweave-fluids/src/simd_ops.rs` is gone. Before that deletion it was 39,554 lines of Wendland C2/C4 and Cubic Spline SPH kernels, batch position/velocity/density operations, and Morton-code spatial hashing.
 - **Renderer:** `astraweave-fluids/src/renderer.rs` — `FluidRenderer` with SSFR depth + smooth + shade + secondary-particle render pipelines
 - **WGSL shaders:** `astraweave-fluids/shaders/{anisotropic,fluid,sdf_gen,secondary,ssfr_depth,ssfr_shade,ssfr_smooth_v2}.wgsl` (7 files, 1,132 LoC total) + `astraweave-fluids/shaders/research/pcisph.wgsl` (~27.8 KB) — 8 shader files total
 
 **Status note (read first):**
 1. **The crate is dormant in production game-loop integration.** The manifests that depend on `astraweave-fluids` are `examples/fluids_demo` and `examples/weaving_playground`. No production game-loop crate depends on `astraweave-fluids`.
-2. **Five parallel solver/manager surfaces coexist** with overlapping responsibilities — see §6 Conflict Map. The original `FluidSystem` (lib.rs PBD pipeline) predates the `ResearchFluidSystem` + `PCISPHSystem` + `UnifiedSolver` triad, which were added per the `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` roadmap.
+2. **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` is the particle solver that remains. The 2026-05-12 text that follows is historical. **Five parallel solver/manager surfaces coexist** with overlapping responsibilities — see §6 Conflict Map. The original `FluidSystem` (lib.rs PBD pipeline) predates the `ResearchFluidSystem` + `PCISPHSystem` + `UnifiedSolver` triad, which were added per the `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` roadmap.
 3. **`#![forbid(unsafe_code)]` is NOT declared.** The crate does not enforce no-unsafe at the lib.rs level. Verified 2026-05-12: workspace grep for the keyword `unsafe` across `astraweave-fluids/src/*.rs` returned exactly 2 matches — both at `debug_viz.rs:479-480` (`unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}`). These are standard bytemuck unsafe-trait impls (no unsafe blocks). The crate contains zero `unsafe { ... }` blocks in the surveyed 84.5K LoC.
 4. **GPU-first design.** The core `FluidSystem` constructor (`lib.rs:412`) takes `&wgpu::Device` and creates compute pipelines from `shaders/fluid.wgsl`. Most subsystems hold `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup` resources directly.
-5. **Two Cargo features:** `default = ["serde"]` (Cargo.toml:7-8) enables Serde derives on config types; `parallel = ["dep:rayon"]` (`:9`) enables Rayon-parallel CPU helpers. **Neither is feature-gated extensively in the source** — verified `parallel` mainly gates `simd_ops::parallel` namespace per bench imports at `benches/fluids_adversarial.rs:1749, :1785`.
-6. **Single integration test file: `tests/mutation_resistant_comprehensive_tests.rs` (785 LoC).** Per CLAUDE.md mutation-testing campaign convention, this is the dedicated mutation-resistance test file. There are no other integration tests in `tests/`. Inline unit tests exist in source files.
+5. **Superseded by W.1 (verified at `604d35d1`).** `default = []`. `serde` is an unconditional dependency. `parallel = ["dep:rayon"]` is still declared and gates nothing after `simd_ops.rs` was removed. The 2026-05-12 text that follows is historical. **Two Cargo features:** `default = ["serde"]` (Cargo.toml:7-8) enables Serde derives on config types; `parallel = ["dep:rayon"]` (`:9`) enables Rayon-parallel CPU helpers. **Neither is feature-gated extensively in the source** — verified `parallel` mainly gates `simd_ops::parallel` namespace per bench imports at `benches/fluids_adversarial.rs:1749, :1785`.
+6. **Superseded by W.1 (verified at `604d35d1`).** Integration tests are `tests/gpu_execution_tests.rs` (1,434 lines) and `tests/mutation_resistant_comprehensive_tests.rs` (456 lines). `benches/fluids_adversarial.rs` is 1,676 lines. The 2026-05-12 text that follows is historical. **Single integration test file: `tests/mutation_resistant_comprehensive_tests.rs` (785 LoC).** Per CLAUDE.md mutation-testing campaign convention, this is the dedicated mutation-resistance test file. There are no other integration tests in `tests/`. Inline unit tests exist in source files.
 7. **The audit + roadmap doc (`docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md`)** rates the current state at "Overall Current Grade: B (Good for games, insufficient for research)" and documents the gap-to-target for each subsystem.
 
 ---
@@ -588,10 +588,10 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 ### Bidirectional / Coupled
 
 - **`FluidSystem` ↔ `wgpu::Device` resources**: Owns 30+ `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup`/`wgpu::BindGroupLayout` resources (`lib.rs:250-340`). The device is shared but the buffers are exclusively owned.
-- **`FluidSystem` ↔ `SdfSystem` (`lib.rs:301`)**: `FluidSystem` holds `pub sdf_system: crate::sdf::SdfSystem`. The SDF is used as boundary representation for compute pass — particles read SDF distance + normal during collision response.
+- **`FluidSystem` ↔ `SdfSystem` (`lib.rs:270`)**: `FluidSystem` holds `pub sdf_system: crate::sdf::SdfSystem`. The SDF is used as boundary representation for compute pass — particles read SDF distance + normal during collision response.
 - **`WaterEffectsManager` ↔ 7 visual subsystems**: Holds optional fields for `CausticsSystem`, `FoamSystem`, `GodRaysSystem`, `WaterReflectionSystem`, `UnderwaterParticleSystem`, `WaterfallSystem`, `UnderwaterState`. Per-frame `update` cascades to each.
 - **`WaterVolumeGrid` ↔ `WaterBuildingManager`**: `WaterBuildingManager` operates on `&mut WaterVolumeGrid` (per `building.rs:9` — `use crate::volume_grid::{CellFlags, WaterVolumeGrid}`). Dispensers add water cells; drains remove; gates modify CellFlags.
-- **`FluidSystem` ↔ density_error staging buffer pipeline**: Producer-consumer pattern via `density_error_buffer` → `density_error_staging_buffers[2]` ping-pong + `staging_mapped: [bool; 2]` flags (`lib.rs:306-308`). Caller polls for async readback of convergence metrics.
+- **`FluidSystem` ↔ density_error staging buffer pipeline**: Producer-consumer pattern via `density_error_buffer` → `density_error_staging_buffers` and `staging_state: [StagingState; 2]` (`lib.rs:293`). The two-frame lag is the defined behavior (`lib.rs:1237-1247`). Caller polls for async readback of convergence metrics.
 - **`OptimizationController` ↔ `FluidSystem.iterations`**: `AdaptiveIterations` (in `OptimizationController`) reads density_error feedback and adjusts the iteration count consumed by `FluidSystem`'s PBD loop on the next frame.
 
 ---
@@ -692,7 +692,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 ### Known cognitive traps
 
 - **Trap**: Assuming `astraweave-fluids` is wired into the engine because the crate exists and is feature-rich. (The README now correctly self-describes as "research-stage" with "no production game-loop crate depends on it yet"; the prior over-claim was corrected.)
-  **What's actually true**: Verified 2026-05-12 workspace grep: only `examples/fluids_demo` consumes the crate. No production game-loop crate depends on it. The audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` documents the current state as "Overall Current Grade: B (Good for games, insufficient for research)" and lists explicit gaps.
+  **What's actually true**: Verified at `604d35d1`: `examples/fluids_demo` and `examples/weaving_playground` consume the crate. No production game-loop crate depends on it. The 2026-05-12 note named only `examples/fluids_demo`. The audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` documents the then-current state as "Overall Current Grade: B (Good for games, insufficient for research)" and lists explicit gaps.
 - **Trap**: Choosing `astraweave_fluids::SolverType` and getting `Pbd / Pcisph / Dfsph / Iisph` (lowercase).
   **What's actually true**: That's the `unified_solver::SolverType` re-export at `lib.rs:187`. The `research::SolverType` has UPPERCASE acronyms (`PBD / PCISPH / DFSPH / IISPH`). To use the research version, fully-qualify: `astraweave_fluids::research::SolverType::PCISPH`.
 - **Trap**: Treating `FluidSystem`, `UnifiedSolver`, `ResearchFluidSystem`, and `PCISPHSystem` as substitutable.
@@ -732,7 +732,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 - **Date:** [Reasoning not recovered]
 - **Status:** Historical. F.1 left 7 compute pipelines and removed the ping-pong particle buffer. The grid-linked-list broadphase remains.
 - **Context:** PBD requires per-iteration neighbor search. GPU-friendly options include grid-cell linked lists (head + next pointers) or sorted spatial hash.
-- **Decision:** Use head-pointer / next-pointer linked list per cell (`head_pointers + next_pointers` buffers per `lib.rs:270-272`) populated by `clear_grid` + `build_grid` compute passes at the start of every step.
+- **Decision:** Use head-pointer / next-pointer linked list per cell (`head_pointers` at `lib.rs:240`, `next_pointers` at `lib.rs:242`; `lib.rs:270` is `sdf_system`) populated by `clear_grid` + `build_grid` compute passes at the start of every step.
 - **Alternatives considered:** Sorted spatial hash (Morton code), bitonic sort — `MortonCode` type exists in `optimization.rs` and `position_to_morton` in `simd_ops.rs`, suggesting Morton-coding was prototyped, possibly for the research-grade path.
 - **Consequences:** PBD path uses linked-list; research path may use Morton. Both code paths exist in the crate.
 
@@ -869,12 +869,12 @@ Per README:
 
 | Resource | Owner | Lifetime | Access pattern |
 |---|---|---|---|
-| `wgpu::Buffer` (particle_buffers, head_pointers, next_pointers, params_buffer, etc.) | `FluidSystem` | `FluidSystem` lifetime | Mutated by compute passes; read by render passes |
+| `wgpu::Buffer` (`particle_buffer` at `lib.rs:221`, `head_pointers` at `lib.rs:240`, `next_pointers` at `lib.rs:242`, params_buffer, etc.) | `FluidSystem` | `FluidSystem` lifetime | Mutated by compute passes; read by render passes |
 | `wgpu::ComputePipeline` (7 PBD pipelines) | `FluidSystem` | `FluidSystem` lifetime | Read-only after construction |
 | `wgpu::BindGroup` + `wgpu::BindGroupLayout` (4 + cache) | `FluidSystem` | `FluidSystem` lifetime | Bound per compute pass |
-| `density_error_staging_buffers: [wgpu::Buffer; 2]` | `FluidSystem` | `FluidSystem` lifetime | Ping-pong async readback for CPU-side convergence monitoring |
-| `staging_mapped: [bool; 2]` | `FluidSystem` | `FluidSystem` lifetime | Tracks mapped state of staging buffers |
-| `SdfSystem` | `FluidSystem` (pub field at `lib.rs:301`) | `FluidSystem` lifetime | Bound to compute passes as boundary representation |
+| `density_error_staging_buffers: [wgpu::Buffer; 2]` | `FluidSystem` | `FluidSystem` lifetime | Two-frame-lag readback. `step` records a copy, requests the map on a later call, and harvests it after that (`lib.rs:1237-1247`) |
+| `staging_state: [StagingState; 2]` | `FluidSystem` (`lib.rs:293`) | `FluidSystem` lifetime | Idle, copy recorded, or map requested. This is the two-frame-lag state machine, not a particle ping-pong |
+| `SdfSystem` | `FluidSystem` (pub field at `lib.rs:270`) | `FluidSystem` lifetime | Bound to compute passes as boundary representation |
 | `objects_buffer: wgpu::Buffer` | `FluidSystem` | `FluidSystem` lifetime | `DynamicObject[]` for moving collider geometry |
 | `default_sampler: wgpu::Sampler` | `FluidSystem` | `FluidSystem` lifetime | Texture sampling |
 | `WaterVolumeGrid` cells | `WaterVolumeGrid` | Caller-managed | Voxel state |
