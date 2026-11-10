@@ -665,8 +665,11 @@ def _sccache_wrapper_violations(path: str, steps: list[str]) -> list[str]:
         if "RUSTC_WRAPPER=sccache" not in step:
             continue
         if_value = _yaml_if_value(step)
-        if if_value is None or SCCACHE_PREFETCH_IF not in if_value:
-            violations.append(f"{path}: RUSTC_WRAPPER=sccache is set without a successful prefetch")
+        if if_value != SCCACHE_PREFETCH_IF:
+            violations.append(
+                f"{path}: RUSTC_WRAPPER=sccache if must be exactly {SCCACHE_PREFETCH_IF!r}, "
+                f"found {if_value!r}"
+            )
         # `|| success()` is true after a prefetch that exits 0. The wrapper is
         # then set with no sccache binary, and cargo exits 101.
         if if_value is not None and "||" in if_value:
@@ -1569,8 +1572,32 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         enable_if_violations = sccache_install_violations(enable_if)
         self.assertTrue(
-            any("sccache enable if must not ignore failure with || true" in item for item in enable_if_violations),
+            any("RUSTC_WRAPPER=sccache if must be exactly" in item for item in enable_if_violations),
             enable_if_violations,
+        )
+
+        enable_negated = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Enable sccache\n      if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "    - name: Enable sccache\n      if: !(steps.sccache_fetch.outputs.available == 'true')\n",
+        )
+        enable_negated_violations = sccache_install_violations(enable_negated)
+        self.assertTrue(
+            any("RUSTC_WRAPPER=sccache if must be exactly" in item for item in enable_negated_violations),
+            enable_negated_violations,
+        )
+
+        configure_not_equal = _replace_policy_once(
+            texts,
+            ".github/workflows/toolchain-management.yml",
+            "      - name: Configure sccache\n        if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "      - name: Configure sccache\n        if: steps.sccache_fetch.outputs.available != 'true'\n",
+        )
+        configure_not_equal_violations = sccache_install_violations(configure_not_equal)
+        self.assertTrue(
+            any("RUSTC_WRAPPER=sccache if must be exactly" in item for item in configure_not_equal_violations),
+            configure_not_equal_violations,
         )
 
         enable_success = _replace_policy_once(
