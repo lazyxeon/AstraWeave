@@ -130,7 +130,7 @@ jobs:
         cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
 
     - name: Upload coverage report
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: aw-editor-lcov
         path: lcov.info
@@ -140,14 +140,13 @@ jobs:
     name: Codecov upload
     needs: coverage
     permissions:
-      actions: read
       contents: read
       id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
     - name: Download coverage report
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         name: aw-editor-lcov
         path: .

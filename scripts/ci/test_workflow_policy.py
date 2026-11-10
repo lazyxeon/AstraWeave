@@ -171,6 +171,7 @@ class _MarkedDict(dict):
         super().__init__()
         self.yaml_line = line
         self.key_lines: dict[object, int] = {}
+        self.scalar_style: dict[object, tuple[str | None, str]] = {}
 
 
 class _MarkedList(list):
@@ -189,6 +190,8 @@ def _construct_marked_map(loader: yaml.SafeLoader, node: yaml.Node) -> _MarkedDi
         value = loader.construct_object(value_node, deep=True)
         mapping[key] = value
         mapping.key_lines[key] = key_node.start_mark.line + 1
+        if isinstance(value_node, yaml.ScalarNode):
+            mapping.scalar_style[key] = (value_node.style, value_node.value)
     return mapping
 
 
@@ -299,10 +302,40 @@ def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     return [f"{prefix}{item}" for item in policy]
 
 
-def _is_yaml_true(value: object) -> bool:
-    if value is True:
-        return True
-    return isinstance(value, str) and value == "true"
+_PLAIN_TRUE = frozenset({"true", "True", "TRUE"})
+
+
+def _ci_item(mapping: object, key: str) -> tuple[object, object]:
+    """Case-insensitive lookup. Action input names are not case-sensitive."""
+    if not isinstance(mapping, dict):
+        return None, None
+    folded = key.casefold()
+    for candidate, value in mapping.items():
+        if isinstance(candidate, str) and candidate.casefold() == folded:
+            return candidate, value
+    return None, None
+
+
+def _runner_bool_true(mapping: object, key: str) -> bool:
+    """True only for a value the Actions runner passes to an action as `true`.
+
+    Plain `true` / `True` / `TRUE` are YAML 1.2 core booleans. The quoted
+    string `true` is already that literal. PyYAML 1.1 also treats `yes`,
+    `on`, and `y` as booleans; the runner does not, and the Codecov action
+    compares the string to `true`.
+    """
+    actual, value = _ci_item(mapping, key)
+    if actual is None:
+        return False
+    found = getattr(mapping, "scalar_style", {}).get(actual)
+    if found is None:
+        return isinstance(value, str) and value == "true"
+    style, raw = found
+    if style in {"'", '"'}:
+        return raw == "true"
+    if style is None:
+        return raw in _PLAIN_TRUE
+    return False
 
 
 def _exact_version(value: object) -> bool:
@@ -313,11 +346,15 @@ def _mapping(value: object) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _has_ci_key(node: object, key: str) -> bool:
+    actual, _value = _ci_item(node, key)
+    return actual is not None
+
+
 def _key_outside_with(step: dict, key: str) -> bool:
-    if key in step:
+    if _has_ci_key(step, key):
         return True
-    env = step.get("env")
-    return isinstance(env, dict) and key in env
+    return _has_ci_key(step.get("env"), key)
 
 
 def _iter_steps(doc: object):
@@ -343,9 +380,15 @@ def _iter_steps(doc: object):
                 yield "", {}, step
 
 
-def _is_codecov_step(step: dict) -> bool:
+def _is_named_action(step: dict, action: str) -> bool:
     uses = step.get("uses")
-    return isinstance(uses, str) and uses.startswith("codecov/codecov-action@")
+    if not isinstance(uses, str):
+        return False
+    return _action_name(uses).casefold() == action.casefold()
+
+
+def _is_codecov_step(step: dict) -> bool:
+    return _is_named_action(step, "codecov/codecov-action")
 
 
 def _codecov_steps(text: str) -> tuple[list[dict] | None, str | None]:
@@ -361,10 +404,15 @@ def _step_line(step: dict) -> int:
     return int(getattr(step, "yaml_line", 1))
 
 
+_TOKEN_KEY_NAMES = frozenset({"token", "codecov_token"})
+_SECRETS_CONTEXT_RE = re.compile(r"(?i)(?<![A-Za-z0-9_])secrets(?![A-Za-z0-9_])")
+_EXPRESSION_RE = re.compile(r"\$\{\{(.*?)\}\}", re.DOTALL)
+
+
 def _has_token_key(node: object) -> bool:
     if isinstance(node, dict):
         for key, value in node.items():
-            if key in {"token", "CODECOV_TOKEN"}:
+            if isinstance(key, str) and key.casefold() in _TOKEN_KEY_NAMES:
                 return True
             if _has_token_key(value):
                 return True
@@ -373,12 +421,17 @@ def _has_token_key(node: object) -> bool:
     return False
 
 
+def _expression_has_secrets(text: str) -> bool:
+    return any(_SECRETS_CONTEXT_RE.search(expr) for expr in _EXPRESSION_RE.findall(text))
+
+
 def _has_secrets_ref(node: object) -> bool:
+    """A `secrets` context inside `${{ }}`, in any spelling or index form."""
     if isinstance(node, str):
-        return "secrets." in node
+        return _expression_has_secrets(node)
     if isinstance(node, dict):
         for key, value in node.items():
-            if isinstance(key, str) and "secrets." in key:
+            if isinstance(key, str) and _expression_has_secrets(key):
                 return True
             if _has_secrets_ref(value):
                 return True
@@ -387,19 +440,41 @@ def _has_secrets_ref(node: object) -> bool:
     return False
 
 
+def _with_key_names(step: dict) -> set[str] | None:
+    if "with" not in step or step.get("with") is None:
+        return set()
+    body = step.get("with")
+    if not isinstance(body, dict):
+        return None
+    names: set[str] = set()
+    for key in body:
+        if not isinstance(key, str):
+            return None
+        names.add(key.casefold())
+    if len(names) != len(body):
+        return None
+    return names
+
+
 def _is_upload_only(job: dict) -> bool:
+    """Download plus the SHA-pinned Codecov action, and no other job key."""
+    if set(job) != _UPLOAD_JOB_KEYS:
+        return False
     steps = job.get("steps")
     if not isinstance(steps, list) or not steps:
         return False
     saw_codecov = False
     for step in steps:
-        if not isinstance(step, dict) or "run" in step:
+        if not isinstance(step, dict) or "run" in step or "uses" not in step:
             return False
         uses = step.get("uses")
         if not isinstance(uses, str):
             return False
-        name = _action_name(uses)
-        if name in _UPLOAD_STEP_ACTIONS:
+        name = _action_name(uses).casefold()
+        if name == "actions/download-artifact":
+            keys = _with_key_names(step)
+            if keys is None or not keys <= _DOWNLOAD_WITH_KEYS:
+                return False
             continue
         if name != "codecov/codecov-action":
             return False
@@ -408,6 +483,17 @@ def _is_upload_only(job: dict) -> bool:
             return False
         saw_codecov = True
     return saw_codecov
+
+
+def _exact_upload_permissions(perms: object) -> bool:
+    if not isinstance(perms, dict) or len(perms) != len(_UPLOAD_PERMISSIONS):
+        return False
+    normalized: dict[str, object] = {}
+    for key, value in perms.items():
+        if not isinstance(key, str):
+            return False
+        normalized[key] = value
+    return normalized == _UPLOAD_PERMISSIONS
 
 
 def _permission_value_violations(
@@ -443,16 +529,47 @@ CODECOV_OIDC_MSG = "codecov step must set use_oidc: true"
 CODECOV_CONTINUE_MSG = "codecov job or step must not set continue-on-error"
 COVERAGE_WRITE_MSG = "coverage workflow must not grant write permissions"
 COVERAGE_ID_TOKEN_JOB_MSG = "id-token: write is only allowed on a job that runs codecov"
-CODECOV_ID_TOKEN_MSG = "codecov job must set id-token: write"
 CODECOV_UPLOAD_JOB_MSG = "codecov action must run only in an upload job"
 CODECOV_TOKEN_MSG = "codecov step must not set a token input or a secrets reference"
+CODECOV_WITH_MSG = (
+    "codecov step with: keys must be files, disable_search, flags, name, "
+    "version, fail_ci_if_error, and use_oidc"
+)
+CODECOV_PERMS_MSG = (
+    "codecov upload job permissions must be contents: read and id-token: write"
+)
+DOWNLOAD_WITH_MSG = "download-artifact with: allows only name and path"
+UPLOAD_JOB_KEYS_MSG = (
+    "codecov upload job keys must be name, needs, permissions, runs-on, "
+    "timeout-minutes, and steps"
+)
+CODECOV_EVENT_MSG = (
+    "codecov workflow on: must be push, schedule, and workflow_dispatch"
+)
 TOP_PERMISSIONS_MSG = "workflow must set top-level permissions to {}"
 JOB_CONTENTS_READ_MSG = "job must set permissions to contents: read"
 DOCKER_DIGEST_MSG = "docker action must be pinned with @sha256"
 _SHA_REF_RE = re.compile(r"[0-9a-f]{40}")
 _DOCKER_PIN_RE = re.compile(r"^docker://\S+@sha256:[0-9a-f]{64}$")
 _EXACT_VERSION_RE = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
-_UPLOAD_STEP_ACTIONS = frozenset({"actions/checkout", "actions/download-artifact"})
+_EXACT_XYZ_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
+_UPLOAD_JOB_KEYS = frozenset(
+    {"name", "needs", "permissions", "runs-on", "timeout-minutes", "steps"}
+)
+_DOWNLOAD_WITH_KEYS = frozenset({"name", "path"})
+_UPLOAD_PERMISSIONS = {"contents": "read", "id-token": "write"}
+_CODECOV_WITH_KEYS = frozenset(
+    {
+        "files",
+        "disable_search",
+        "flags",
+        "name",
+        "version",
+        "fail_ci_if_error",
+        "use_oidc",
+    }
+)
+_CODECOV_EVENTS = frozenset({"push", "schedule", "workflow_dispatch"})
 _LEAST_PRIVILEGE_WORKFLOWS = frozenset({"kani.yml", "editor-ci.yml"})
 _MISSING = object()
 KANI_VERSION_MSG = "kani step must set kani-version to an exact X.Y.Z"
@@ -460,63 +577,13 @@ LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and 
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
 _COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
 _JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
-_CONTINUE_ON_ERROR_RE = re.compile(r"^\s*continue-on-error\s*:")
-_STEP_DASH_RE = re.compile(r"^(\s*)-\s+\S")
-_KANI_VERSION_RE = re.compile(
-    r"(?m)^\s*kani-version:\s*['\"]?[0-9]+\.[0-9]+\.[0-9]+['\"]?\s*(?:#.*)?$"
-)
-_LLVM_CARGO_VERSION_RE = re.compile(r"--version\s+[0-9]+\.[0-9]+\.[0-9]+\b")
-_LLVM_TOOL_RE = re.compile(
-    r"(?m)^\s*tool:\s*cargo-llvm-cov@[0-9]+\.[0-9]+\.[0-9]+\s*(?:#.*)?$"
-)
+_LLVM_TOOL_VALUE_RE = re.compile(r"cargo-llvm-cov@[0-9]+\.[0-9]+\.[0-9]+\Z")
 
 
 def third_party_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     prefix = f"{path}: " if path else ""
     _policy, third = _pin_buckets(text)
     return [f"{prefix}{item}" for item in third]
-
-
-_STEPS_HEADER_RE = re.compile(r"^(\s*)steps:\s*(?:#.*)?$")
-
-
-def _step_blocks(text: str) -> list[tuple[int, str]]:
-    """Steps under a `steps:` key. Schedule and matrix lists are not steps."""
-    lines = text.splitlines()
-    blocks: list[tuple[int, str]] = []
-    index = 0
-    while index < len(lines):
-        header = _STEPS_HEADER_RE.match(lines[index])
-        if not header:
-            index += 1
-            continue
-        steps_indent = len(header.group(1))
-        index += 1
-        region_end = index
-        while region_end < len(lines):
-            line = lines[region_end]
-            if not line.strip() or line.lstrip().startswith("#"):
-                region_end += 1
-                continue
-            indent = len(line) - len(line.lstrip(" "))
-            if indent < steps_indent:
-                break
-            if indent == steps_indent and _STEP_DASH_RE.match(line) is None:
-                break
-            region_end += 1
-        dash_lines = [
-            (cursor, len(matched.group(1)))
-            for cursor in range(index, region_end)
-            if (matched := _STEP_DASH_RE.match(lines[cursor]))
-        ]
-        if dash_lines:
-            step_indent = min(indent for _, indent in dash_lines)
-            directs = [cursor for cursor, indent in dash_lines if indent == step_indent]
-            for position, start in enumerate(directs):
-                end = directs[position + 1] if position + 1 < len(directs) else region_end
-                blocks.append((start + 1, "\n".join(lines[start:end])))
-        index = region_end
-    return blocks
 
 
 def _explicit_file_value(value: object) -> bool:
@@ -536,11 +603,12 @@ def codecov_fail_ci_violations(text: str, *, path: str = "") -> list[str]:
     for step in steps or []:
         line_no = _step_line(step)
         body = _mapping(step.get("with"))
-        if _key_outside_with(step, "fail_ci_if_error") or not _is_yaml_true(
-            body.get("fail_ci_if_error")
+        if _key_outside_with(step, "fail_ci_if_error") or not _runner_bool_true(
+            body, "fail_ci_if_error"
         ):
             violations.append(f"{prefix}{line_no}: {CODECOV_FAIL_CI_MSG}")
-        if _key_outside_with(step, "version") or not _exact_version(body.get("version")):
+        _version_key, version = _ci_item(body, "version")
+        if _key_outside_with(step, "version") or not _exact_version(version):
             violations.append(f"{prefix}{line_no}: {CODECOV_VERSION_MSG}")
     return violations
 
@@ -603,25 +671,48 @@ def _codecov_continue_scope(text: str) -> set[str] | None:
     return scope
 
 
-def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[str]:
-    """A Codecov job, and a job that job needs, must not set continue-on-error.
+def _continue_true_line(node: dict) -> int | None:
+    actual, _value = _ci_item(node, "continue-on-error")
+    if actual is None or not _runner_bool_true(node, "continue-on-error"):
+        return None
+    return int(getattr(node, "key_lines", {}).get(actual, getattr(node, "yaml_line", 1)))
 
-    The job key and every step in those jobs are in scope. Other jobs are not.
+
+def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[str]:
+    """A Codecov job, and a job that job needs, must not continue on error.
+
+    The parsed job key and every parsed step in those jobs are in scope,
+    including a quoted key and a flow mapping. The value must be one the
+    runner treats as true. Other jobs are not in scope.
     """
-    violations: list[str] = []
     prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if not isinstance(doc, dict):
+        return []
     scope = _codecov_continue_scope(text)
-    for job_line, job_id, block in _job_blocks(text):
-        if scope is None:
-            in_scope = "codecov/codecov-action@" in block
-        else:
-            in_scope = job_id in scope
-        if not in_scope:
+    if not scope:
+        return []
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        return []
+    violations: list[str] = []
+    for job_id, job in jobs.items():
+        if str(job_id) not in scope or not isinstance(job, dict):
             continue
-        for offset, line in enumerate(block.splitlines()):
-            if _CONTINUE_ON_ERROR_RE.match(line) is None:
+        job_line = _continue_true_line(job)
+        if job_line is not None:
+            violations.append(f"{prefix}{job_line}: {CODECOV_CONTINUE_MSG}")
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            continue
+        for step in steps:
+            if not isinstance(step, dict):
                 continue
-            violations.append(f"{prefix}{job_line + offset}: {CODECOV_CONTINUE_MSG}")
+            step_line = _continue_true_line(step)
+            if step_line is not None:
+                violations.append(f"{prefix}{step_line}: {CODECOV_CONTINUE_MSG}")
     return violations
 
 
@@ -635,11 +726,12 @@ def codecov_explicit_file_violations(text: str, *, path: str = "") -> list[str]:
     for step in steps or []:
         line_no = _step_line(step)
         body = _mapping(step.get("with"))
-        if _key_outside_with(step, "disable_search") or not _is_yaml_true(
-            body.get("disable_search")
+        if _key_outside_with(step, "disable_search") or not _runner_bool_true(
+            body, "disable_search"
         ):
             violations.append(f"{prefix}{line_no}: {CODECOV_SEARCH_MSG}")
-        if _key_outside_with(step, "files") or not _explicit_file_value(body.get("files")):
+        _files_key, files = _ci_item(body, "files")
+        if _key_outside_with(step, "files") or not _explicit_file_value(files):
             violations.append(f"{prefix}{line_no}: {CODECOV_FILES_MSG}")
     return violations
 
@@ -654,26 +746,75 @@ def codecov_oidc_violations(text: str, *, path: str = "") -> list[str]:
     for step in steps or []:
         line_no = _step_line(step)
         body = _mapping(step.get("with"))
-        if _key_outside_with(step, "use_oidc") or not _is_yaml_true(body.get("use_oidc")):
+        if _key_outside_with(step, "use_oidc") or not _runner_bool_true(body, "use_oidc"):
             violations.append(f"{prefix}{line_no}: {CODECOV_OIDC_MSG}")
     return violations
 
 
-def codecov_token_violations(text: str, *, path: str = "") -> list[str]:
-    """Reject a token key, a CODECOV_TOKEN key, and any secrets. reference.
-
-    The secret name is not special-cased. The key may sit under with:, env:,
-    or on the step itself.
-    """
+def codecov_with_key_violations(text: str, *, path: str = "") -> list[str]:
+    """Allow only the with: keys the two Codecov steps use today."""
     prefix = f"{path}: " if path else ""
     steps, err = _codecov_steps(text)
     if err:
         return [f"{prefix}1: {err}"]
     violations: list[str] = []
     for step in steps or []:
+        if "with" not in step or step.get("with") is None:
+            continue
+        keys = _with_key_names(step)
+        if keys is None or not keys <= _CODECOV_WITH_KEYS:
+            violations.append(f"{prefix}{_step_line(step)}: {CODECOV_WITH_MSG}")
+    return violations
+
+
+def codecov_token_violations(text: str, *, path: str = "") -> list[str]:
+    """Reject token keys and any secrets context that can reach the step.
+
+    Input names are compared case-insensitively. A `secrets` context inside
+    `${{ }}` fails in the step, in that job's env, and in the workflow env.
+    `secrets['NAME']` and `SECRETS.NAME` are the same context. The secret
+    name is not special-cased.
+    """
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if not isinstance(doc, dict):
+        return []
+    violations: list[str] = []
+    saw = False
+    seen_jobs: set[str] = set()
+    for job_id, job, step in _iter_steps(doc):
+        if not _is_codecov_step(step):
+            continue
+        saw = True
         if _has_token_key(step) or _has_secrets_ref(step):
             violations.append(f"{prefix}{_step_line(step)}: {CODECOV_TOKEN_MSG}")
+        if job_id in seen_jobs or not isinstance(job, dict):
+            continue
+        seen_jobs.add(job_id)
+        env = job.get("env")
+        if _has_token_key(env) or _has_secrets_ref(env):
+            line = int(getattr(job, "key_lines", {}).get("env", _step_line(step)))
+            violations.append(f"{prefix}{line}: {CODECOV_TOKEN_MSG}")
+    if saw and (_has_token_key(doc.get("env")) or _has_secrets_ref(doc.get("env"))):
+        line = int(getattr(doc, "key_lines", {}).get("env", 1))
+        violations.append(f"{prefix}{line}: {CODECOV_TOKEN_MSG}")
     return violations
+
+
+def _download_with_violations(job: dict) -> list[int]:
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return []
+    lines: list[int] = []
+    for step in steps:
+        if not isinstance(step, dict) or not _is_named_action(step, "actions/download-artifact"):
+            continue
+        keys = _with_key_names(step)
+        if keys is None or not keys <= _DOWNLOAD_WITH_KEYS:
+            lines.append(_step_line(step))
+    return lines
 
 
 def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
@@ -681,10 +822,11 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
 
     Top-level permissions must be {}. A missing key fails. write-all, and any
     permission value write, fail, including a flow mapping or a quoted key.
-    id-token: write is allowed only on an upload-only job: every step is
-    actions/checkout or actions/download-artifact, plus the SHA-pinned
-    codecov action, and that job must set id-token: write. Other permission
-    values are not this check.
+    The upload job's keys are exactly name, needs, permissions, runs-on,
+    timeout-minutes, and steps. Its steps are actions/download-artifact, with
+    only name and path, plus the SHA-pinned Codecov action. Its permissions
+    are exactly contents: read and id-token: write. This check does not apply
+    to other workflow file names.
     """
     if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
         return []
@@ -731,9 +873,12 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
                 allow_id_token=upload_only,
             )
             violations.extend(f"{prefix}{line}: {message}" for line, message in found)
-        has_id_write = isinstance(job_perms, dict) and job_perms.get("id-token") == "write"
-        if upload_only and not has_id_write:
-            violations.append(f"{prefix}{job_line}: {CODECOV_ID_TOKEN_MSG}")
+        if has_codecov and set(job) != _UPLOAD_JOB_KEYS:
+            violations.append(f"{prefix}{job_line}: {UPLOAD_JOB_KEYS_MSG}")
+        for step_line in _download_with_violations(job) if has_codecov else []:
+            violations.append(f"{prefix}{step_line}: {DOWNLOAD_WITH_MSG}")
+        if upload_only and not _exact_upload_permissions(job_perms):
+            violations.append(f"{prefix}{perm_line}: {CODECOV_PERMS_MSG}")
         if has_codecov and not upload_only:
             violations.append(f"{prefix}{job_line}: {CODECOV_UPLOAD_JOB_MSG}")
     return violations
@@ -774,31 +919,80 @@ def least_privilege_permission_violations(text: str, *, path: str = "") -> list[
 
 
 def kani_version_violations(text: str, *, path: str = "") -> list[str]:
-    violations: list[str] = []
+    """Read kani-version from the step's with: mapping only."""
     prefix = f"{path}: " if path else ""
-    for line_no, block in _step_blocks(text):
-        if "model-checking/kani-github-action@" not in block:
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if doc is None:
+        return []
+    violations: list[str] = []
+    for _job_id, _job, step in _iter_steps(doc):
+        if not _is_named_action(step, "model-checking/kani-github-action"):
             continue
-        if _KANI_VERSION_RE.search(block) is None:
+        line_no = _step_line(step)
+        _key, version = _ci_item(_mapping(step.get("with")), "kani-version")
+        if _key_outside_with(step, "kani-version") or not (
+            isinstance(version, str) and _EXACT_XYZ_RE.fullmatch(version)
+        ):
             violations.append(f"{prefix}{line_no}: {KANI_VERSION_MSG}")
     return violations
 
 
+def _shell_commands(script: str) -> list[str]:
+    joined = script.replace("\\\r\n", " ").replace("\\\n", " ")
+    return [
+        part.strip()
+        for part in re.split(r"(?:&&|\|\||;|\n)", joined)
+        if part.strip()
+    ]
+
+
+def _llvm_install_unpinned(script: str) -> bool:
+    for command in _shell_commands(script):
+        tokens = command.split()
+        if len(tokens) < 3 or tokens[0] != "cargo" or tokens[1] != "install":
+            continue
+        if "cargo-llvm-cov" not in tokens[2:]:
+            continue
+        if "--locked" not in tokens or "--version" not in tokens:
+            return True
+        index = tokens.index("--version")
+        if index + 1 >= len(tokens) or _EXACT_XYZ_RE.fullmatch(tokens[index + 1]) is None:
+            return True
+    return False
+
+
 def llvm_cov_pin_violations(text: str, *, path: str = "") -> list[str]:
-    violations: list[str] = []
+    """Every cargo install of cargo-llvm-cov in a run script must be pinned.
+
+    `tool` for taiki-e/install-action is read only from that step's with:.
+    """
     prefix = f"{path}: " if path else ""
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        if "cargo install" not in line or "cargo-llvm-cov" not in line:
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if doc is None:
+        return []
+    violations: list[str] = []
+    for _job_id, _job, step in _iter_steps(doc):
+        run = step.get("run")
+        if isinstance(run, str) and _llvm_install_unpinned(run):
+            line_no = int(getattr(step, "key_lines", {}).get("run", _step_line(step)))
+            violations.append(f"{prefix}{line_no}: {LLVM_COV_CARGO_MSG}")
+        if not _is_named_action(step, "taiki-e/install-action"):
             continue
-        if "--locked" in line and _LLVM_CARGO_VERSION_RE.search(line):
+        step_name = step.get("name")
+        _key, tool = _ci_item(_mapping(step.get("with")), "tool")
+        tool_names_package = isinstance(tool, str) and (
+            tool == "cargo-llvm-cov" or tool.startswith("cargo-llvm-cov@")
+        )
+        name_names_package = isinstance(step_name, str) and "cargo-llvm-cov" in step_name
+        if not tool_names_package and not name_names_package:
             continue
-        violations.append(f"{prefix}{line_no}: {LLVM_COV_CARGO_MSG}")
-    for line_no, block in _step_blocks(text):
-        if "taiki-e/install-action@" not in block or "cargo-llvm-cov" not in block:
-            continue
-        if _LLVM_TOOL_RE.search(block):
-            continue
-        violations.append(f"{prefix}{line_no}: {LLVM_COV_ACTION_MSG}")
+        pinned = isinstance(tool, str) and _LLVM_TOOL_VALUE_RE.fullmatch(tool) is not None
+        if not pinned or _key_outside_with(step, "tool"):
+            violations.append(f"{prefix}{_step_line(step)}: {LLVM_COV_ACTION_MSG}")
     return violations
 
 
@@ -886,19 +1080,70 @@ def nightly_failure_watched_workflows(text: str) -> list[str]:
     return watched
 
 
+def _on_value(doc: dict) -> object:
+    for key, value in doc.items():
+        if key is True or (isinstance(key, str) and key.casefold() == "on"):
+            return value
+    return _MISSING
+
+
+def workflow_event_names(text: str) -> tuple[set[str] | None, str | None]:
+    """Event names from `on:`, including string, list, and mapping forms.
+
+    PyYAML 1.1 loads a bare `on` key as `True`. A quoted `"on"` stays a string.
+    """
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return None, err
+    if not isinstance(doc, dict):
+        return set(), None
+    node = _on_value(doc)
+    if node is _MISSING or node is None:
+        return set(), None
+    if isinstance(node, str):
+        return {node}, None
+    if isinstance(node, list):
+        names: set[str] = set()
+        for item in node:
+            if not isinstance(item, str):
+                return None, "workflow on: list must be event names"
+            names.add(item)
+        return names, None
+    if isinstance(node, dict):
+        names = set()
+        for key in node:
+            if not isinstance(key, str):
+                return None, "workflow on: key must be an event name"
+            names.add(key)
+        return names, None
+    return None, "workflow on: must be a string, list, or mapping"
+
+
 def has_pull_request(text: str) -> bool:
-    # Quoted "on" (scorecard) and bare on: both count.
-    in_on = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped in {"on:", '"on":'}:
-            in_on = True
-            continue
-        if in_on and line and not line.startswith(" ") and not line.startswith("#"):
-            in_on = False
-        if in_on and stripped.startswith("pull_request:"):
-            return True
-    return False
+    names, err = workflow_event_names(text)
+    if err or names is None:
+        return False
+    return "pull_request" in names
+
+
+def codecov_trigger_violations(text: str, *, path: str = "") -> list[str]:
+    """coverage.yml and aw-editor-tests.yml run only on trusted events."""
+    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
+        return []
+    prefix = f"{path}: " if path else ""
+    names, err = workflow_event_names(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if names == _CODECOV_EVENTS:
+        return []
+    doc, _load_err = load_workflow_yaml(text)
+    line = 1
+    if isinstance(doc, dict):
+        for key in doc:
+            if key is True or (isinstance(key, str) and key.casefold() == "on"):
+                line = int(getattr(doc, "key_lines", {}).get(key, 1))
+                break
+    return [f"{prefix}{line}: {CODECOV_EVENT_MSG}"]
 
 
 def jobs_missing_timeout(text: str) -> list[str]:
@@ -1317,6 +1562,8 @@ class WorkflowPolicyTest(unittest.TestCase):
         for name in nightly_only:
             text = (WORKFLOWS / name).read_text(encoding="utf-8")
             self.assertFalse(has_pull_request(text), name)
+            if name in _COVERAGE_WORKFLOW_NAMES:
+                self.assertEqual(codecov_trigger_violations(text, path=name), [])
 
     def test_ci_gate_is_required_before_heavy_jobs(self) -> None:
         text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
@@ -1647,7 +1894,9 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(codecov_continue_on_error_violations(text, path=rel))
             codecov.extend(codecov_explicit_file_violations(text, path=rel))
             codecov.extend(codecov_oidc_violations(text, path=rel))
+            codecov.extend(codecov_with_key_violations(text, path=rel))
             codecov.extend(codecov_token_violations(text, path=rel))
+            codecov.extend(codecov_trigger_violations(text, path=rel))
             codecov.extend(coverage_permission_violations(text, path=rel))
             codecov.extend(least_privilege_permission_violations(text, path=rel))
             codecov.extend(kani_version_violations(text, path=rel))
@@ -1985,14 +2234,11 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(coverage_permission_violations(quoted, path="coverage.yml"))
         dropped = text.replace("      id-token: write\n", "", 1)
         self.assertNotEqual(dropped, text)
-        job_line = next(
-            number
-            for number, line in enumerate(dropped.splitlines(), start=1)
-            if line.strip() == "codecov:"
-        )
+        head, tail = dropped.split("name: Codecov upload", 1)
+        perm_line = head.count("\n") + tail.split("permissions:", 1)[0].count("\n") + 1
         self.assertEqual(
             coverage_permission_violations(dropped, path="coverage.yml"),
-            [f"coverage.yml: {job_line}: {CODECOV_ID_TOKEN_MSG}"],
+            [f"coverage.yml: {perm_line}: {CODECOV_PERMS_MSG}"],
         )
         other_job = editor.replace(
             "    permissions:\n      contents: read\n    runs-on: ${{ matrix.os }}\n",
@@ -2273,6 +2519,14 @@ class WorkflowPolicyTest(unittest.TestCase):
         latest_violations = kani_version_violations(latest, path="kani.yml")
         self.assertEqual(len(latest_violations), 1)
         self.assertIn(KANI_VERSION_MSG, latest_violations[0])
+        moved = text.replace("          kani-version: 0.68.0\n", "", 1)
+        moved = moved.replace(
+            "        uses: model-checking/kani-github-action@",
+            "        env:\n          kani-version: 0.68.0\n        uses: model-checking/kani-github-action@",
+            1,
+        )
+        self.assertNotEqual(moved, text)
+        self.assertIn(KANI_VERSION_MSG, kani_version_violations(moved, path="kani.yml")[0])
         stable = third_party_action_pin_violations(
             "uses: dtolnay/rust-toolchain@stable\n",
             path="kani.yml",
@@ -2332,6 +2586,225 @@ class WorkflowPolicyTest(unittest.TestCase):
             LLVM_COV_ACTION_MSG,
             llvm_cov_pin_violations(floating, path="editor-ci.yml")[0],
         )
+        continued = editor.replace(
+            "      run: cargo install cargo-llvm-cov --version 0.9.1 --locked\n",
+            "      run: cargo install \\\n        cargo-llvm-cov\n",
+            1,
+        )
+        self.assertNotEqual(continued, editor)
+        self.assertIn(
+            LLVM_COV_CARGO_MSG,
+            llvm_cov_pin_violations(continued, path="aw-editor-tests.yml")[0],
+        )
+        chained = editor.replace(
+            "cargo install cargo-llvm-cov --version 0.9.1 --locked",
+            "cargo install cargo-llvm-cov --version 0.9.1 --locked && cargo install cargo-llvm-cov",
+            1,
+        )
+        self.assertIn(
+            LLVM_COV_CARGO_MSG,
+            llvm_cov_pin_violations(chained, path="aw-editor-tests.yml")[0],
+        )
+        decoy = editor_ci.replace(
+            "        with:\n          tool: cargo-llvm-cov@0.9.1\n",
+            "        env:\n          tool: cargo-llvm-cov@0.9.1\n        with:\n          tool: cargo-llvm-cov\n",
+            1,
+        )
+        self.assertNotEqual(decoy, editor_ci)
+        self.assertIn(
+            LLVM_COV_ACTION_MSG,
+            llvm_cov_pin_violations(decoy, path="editor-ci.yml")[0],
+        )
+
+    def test_codecov_input_shape_mutants_are_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_with_key_violations(text, path="coverage.yml"), [])
+        self.assertEqual(codecov_token_violations(text, path="coverage.yml"), [])
+        self.assertEqual(codecov_trigger_violations(text, path="coverage.yml"), [])
+        self.assertNotIn("actions: read", text)
+        self.assertNotIn("actions: read", editor)
+        for name, body in (
+            ("coverage.yml", text),
+            ("aw-editor-tests.yml", editor),
+        ):
+            self.assertIn(
+                "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2",
+                body,
+                name,
+            )
+            self.assertIn(
+                "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2",
+                body,
+                name,
+            )
+        yes = text.replace("fail_ci_if_error: true", "fail_ci_if_error: yes", 1)
+        self.assertIn(CODECOV_FAIL_CI_MSG, codecov_fail_ci_violations(yes, path="coverage.yml")[0])
+        turned_on = text.replace("use_oidc: true", "use_oidc: on", 1)
+        self.assertIn(CODECOV_OIDC_MSG, codecov_oidc_violations(turned_on, path="coverage.yml")[0])
+        quoted_true = text.replace("fail_ci_if_error: true", 'fail_ci_if_error: "true"', 1)
+        self.assertEqual(codecov_fail_ci_violations(quoted_true, path="coverage.yml"), [])
+        plain_true = text.replace("disable_search: true", "disable_search: True", 1)
+        self.assertEqual(codecov_explicit_file_violations(plain_true, path="coverage.yml"), [])
+        cased = text.replace(
+            "codecov/codecov-action@",
+            "Codecov/Codecov-Action@",
+            1,
+        )
+        self.assertEqual(codecov_oidc_violations(cased, path="coverage.yml"), [])
+        self.assertEqual(codecov_with_key_violations(cased, path="coverage.yml"), [])
+        token_case = text.replace(
+            "          use_oidc: true\n",
+            "          use_oidc: true\n          Token: ${{ secrets['UPLOAD'] }}\n",
+            1,
+        )
+        self.assertIn(CODECOV_TOKEN_MSG, codecov_token_violations(token_case, path="coverage.yml")[0])
+        self.assertIn(CODECOV_WITH_MSG, codecov_with_key_violations(token_case, path="coverage.yml")[0])
+        for extra in ("skip_validation: true", "binary: ./codecov", "url: https://example.invalid"):
+            mutant = text.replace(
+                "          use_oidc: true\n",
+                f"          use_oidc: true\n          {extra}\n",
+                1,
+            )
+            self.assertIn(
+                CODECOV_WITH_MSG,
+                codecov_with_key_violations(mutant, path="coverage.yml")[0],
+                extra,
+            )
+        job_env = text.replace(
+            "    timeout-minutes: 10\n",
+            "    timeout-minutes: 10\n    env:\n      CODECOV_TOKEN: ${{ SECRETS.CODECOV_TOKEN }}\n",
+            1,
+        )
+        self.assertIn(CODECOV_TOKEN_MSG, codecov_token_violations(job_env, path="coverage.yml")[0])
+        workflow_env = text.replace(
+            "permissions: {}\n",
+            "permissions: {}\n\nenv:\n  token: literal\n",
+            1,
+        )
+        self.assertIn(
+            CODECOV_TOKEN_MSG,
+            codecov_token_violations(workflow_env, path="coverage.yml")[0],
+        )
+        quoted_continue = text.replace(
+            "    timeout-minutes: 45\n",
+            '    timeout-minutes: 45\n    "continue-on-error": true\n',
+            1,
+        )
+        self.assertIn(
+            CODECOV_CONTINUE_MSG,
+            codecov_continue_on_error_violations(quoted_continue, path="coverage.yml")[0],
+        )
+        flow_step = """
+name: codecov
+on: [push, schedule, workflow_dispatch]
+permissions: {}
+jobs:
+  gen:
+    name: gen
+    permissions: {contents: read}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo x
+  codecov:
+    name: up
+    needs: gen
+    permissions: {contents: read, id-token: write}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - {name: up, uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5, continue-on-error: true, with: {files: a.xml, disable_search: true, fail_ci_if_error: true, use_oidc: true, version: v11.3.2, flags: f, name: n}}
+"""
+        self.assertIn(
+            CODECOV_CONTINUE_MSG,
+            codecov_continue_on_error_violations(flow_step, path="coverage.yml")[0],
+        )
+        flow_job = flow_step.replace(
+            "  gen:\n    name: gen\n    permissions: {contents: read}\n    runs-on: ubuntu-latest\n    timeout-minutes: 5\n    steps:\n      - run: echo x\n",
+            "  gen: {name: gen, permissions: {contents: read}, runs-on: ubuntu-latest, timeout-minutes: 5, continue-on-error: true, steps: [{run: echo x}]}\n",
+            1,
+        )
+        self.assertNotEqual(flow_job, flow_step)
+        self.assertIn(
+            CODECOV_CONTINUE_MSG,
+            codecov_continue_on_error_violations(flow_job, path="coverage.yml")[0],
+        )
+        for key in ("github-token", "run-id", "repository"):
+            download = text.replace(
+                "          path: tools/astraweave-assets/coverage\n",
+                f"          path: tools/astraweave-assets/coverage\n          {key}: cross\n",
+                1,
+            )
+            self.assertIn(
+                DOWNLOAD_WITH_MSG,
+                " ".join(coverage_permission_violations(download, path="coverage.yml")),
+                key,
+            )
+        for key, inserted in (
+            ("container", "    container: alpine\n"),
+            ("services", "    services: {db: {image: redis}}\n"),
+        ):
+            widened = text.replace("    timeout-minutes: 10\n", f"    timeout-minutes: 10\n{inserted}", 1)
+            messages = " ".join(coverage_permission_violations(widened, path="coverage.yml"))
+            self.assertIn(UPLOAD_JOB_KEYS_MSG, messages, key)
+            self.assertIn(CODECOV_UPLOAD_JOB_MSG, messages, key)
+        reusable = text.replace(
+            "  codecov:\n    name: Codecov upload\n",
+            "  codecov:\n    name: Codecov upload\n    uses: ./.github/workflows/other.yml\n",
+            1,
+        )
+        self.assertIn(
+            UPLOAD_JOB_KEYS_MSG,
+            " ".join(coverage_permission_violations(reusable, path="coverage.yml")),
+        )
+        checkout = text.replace(
+            "      - name: Download coverage XML\n",
+            "      - name: Checkout\n        uses: actions/checkout@v7\n      - name: Download coverage XML\n",
+            1,
+        )
+        self.assertIn(
+            CODECOV_UPLOAD_JOB_MSG,
+            " ".join(coverage_permission_violations(checkout, path="coverage.yml")),
+        )
+        extra_read = text.replace(
+            "      id-token: write\n",
+            "      id-token: write\n      checks: read\n",
+            1,
+        )
+        self.assertIn(
+            CODECOV_PERMS_MSG,
+            " ".join(coverage_permission_violations(extra_read, path="coverage.yml")),
+        )
+        self.assertTrue(has_pull_request("on: [push, pull_request]\n"))
+        self.assertTrue(has_pull_request("on: pull_request\n"))
+        self.assertTrue(has_pull_request('"on":\n  pull_request:\n'))
+        self.assertFalse(has_pull_request("on: [push, schedule, workflow_dispatch]\n"))
+        self.assertEqual(
+            codecov_trigger_violations(
+                "name: n\non: [push, schedule, workflow_dispatch]\n",
+                path="coverage.yml",
+            ),
+            [],
+        )
+
+        def swap_on(block: str) -> str:
+            start = text.index("\non:\n")
+            end = text.index("\nconcurrency:", start)
+            return text[:start] + "\n" + block.rstrip("\n") + text[end:]
+
+        for block in (
+            "on: [push, pull_request]\n",
+            "on:\n  pull_request_target:\n",
+            "on:\n  workflow_run:\n    workflows: [CI]\n    types: [completed]\n",
+            "on:\n  issue_comment:\n    types: [created]\n",
+        ):
+            mutant = swap_on(block)
+            self.assertNotEqual(mutant, text)
+            self.assertTrue(
+                codecov_trigger_violations(mutant, path="coverage.yml"),
+                block,
+            )
 
     def test_policy_actions_matches_expected_set(self) -> None:
         self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
