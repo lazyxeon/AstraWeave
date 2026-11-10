@@ -103,10 +103,14 @@ def action_ref_violation(action: str, ref: str) -> str | None:
     return f"{action}@{ref} {NON_SHA_TAG_MSG}"
 
 
-# A matching quote around a uses value is valid YAML. Strip it before the
-# major-tag and SHA checks so the ref group cannot keep the quote.
+# A matching quote, or a one-level >, >-, |, or |- block scalar, is valid
+# YAML for a uses value. Flatten those forms before the major-tag and SHA
+# checks so the ref group cannot keep the quote or the block marker.
 _QUOTED_USES_RE = re.compile(
     r"^(?P<lead>\s*(?:-\s+)?)uses:\s*(?P<q>['\"])(?P<value>.*?)(?P=q)(?P<tail>\s*(?:#.*)?)?$"
+)
+_BLOCK_USES_RE = re.compile(
+    r"^(?P<lead>\s*(?:-\s+)?)uses:\s*(?P<style>[>|])(?P<chomp>[+-]?)[0-9]*\s*(?:#.*)?$"
 )
 
 
@@ -118,6 +122,42 @@ def _normalize_uses_quotes(line: str) -> str:
     return f"{match.group('lead')}uses: {match.group('value')}{tail}"
 
 
+def _uses_scan_lines(text: str) -> list[str]:
+    """One scan line per source line. Block-scalar continuations become blank."""
+    raw = text.splitlines()
+    out = list(raw)
+    index = 0
+    while index < len(raw):
+        match = _BLOCK_USES_RE.match(raw[index])
+        if match is None:
+            out[index] = _normalize_uses_quotes(raw[index])
+            index += 1
+            continue
+        base = len(raw[index]) - len(raw[index].lstrip(" "))
+        cursor = index + 1
+        parts: list[str] = []
+        while cursor < len(raw):
+            line = raw[cursor]
+            if not line.strip():
+                peek = cursor + 1
+                while peek < len(raw) and not raw[peek].strip():
+                    peek += 1
+                if peek < len(raw) and (len(raw[peek]) - len(raw[peek].lstrip(" "))) > base:
+                    cursor = peek
+                    continue
+                break
+            if (len(line) - len(line.lstrip(" "))) <= base:
+                break
+            parts.append(line.strip())
+            cursor += 1
+        joiner = " " if match.group("style") == ">" else "\n"
+        out[index] = f"{match.group('lead')}uses: {joiner.join(parts).strip()}"
+        for blank in range(index + 1, cursor):
+            out[blank] = ""
+        index = cursor
+    return out
+
+
 def _unquote_scalar(value: str) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
@@ -127,8 +167,8 @@ def _unquote_scalar(value: str) -> str:
 def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        match = ACTION_USES_RE.search(_normalize_uses_quotes(line))
+    for line_no, line in enumerate(_uses_scan_lines(text), start=1):
+        match = ACTION_USES_RE.search(line)
         if not match:
             continue
         violation = action_ref_violation(match.group("action"), match.group("ref"))
@@ -148,9 +188,11 @@ CODECOV_FAIL_CI_MSG = "codecov step must set fail_ci_if_error: true"
 CODECOV_VERSION_MSG = "codecov step must set version to an exact vX.Y.Z"
 CODECOV_SEARCH_MSG = "codecov step must set disable_search: true"
 CODECOV_FILES_MSG = "codecov step must set files to an explicit path"
-CODECOV_TOKEN_MSG = "codecov step must set env CODECOV_TOKEN from secrets.CODECOV_TOKEN"
+CODECOV_OIDC_MSG = "codecov step must set use_oidc: true"
 CODECOV_CONTINUE_MSG = "codecov job or step must not set continue-on-error"
 COVERAGE_WRITE_MSG = "coverage workflow must not grant write permissions"
+COVERAGE_ID_TOKEN_JOB_MSG = "id-token: write is only allowed on a job that runs codecov"
+CODECOV_ID_TOKEN_MSG = "codecov job must set id-token: write"
 KANI_VERSION_MSG = "kani step must set kani-version to an exact X.Y.Z"
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
@@ -166,8 +208,8 @@ _DISABLE_SEARCH_TRUE_RE = re.compile(
     r"(?m)^\s*disable_search:\s*['\"]?true['\"]?\s*(?:#.*)?$"
 )
 _EXPLICIT_FILES_RE = re.compile(r"(?m)^\s*files:\s*(?P<value>\S+)\s*(?:#.*)?$")
-_CODECOV_TOKEN_RE = re.compile(
-    r"(?m)^\s*CODECOV_TOKEN:\s*\$\{\{\s*secrets\.CODECOV_TOKEN\s*\}\}\s*(?:#.*)?$"
+_USE_OIDC_TRUE_RE = re.compile(
+    r"(?m)^\s*use_oidc:\s*['\"]?true['\"]?\s*(?:#.*)?$"
 )
 _KANI_VERSION_RE = re.compile(
     r"(?m)^\s*kani-version:\s*['\"]?[0-9]+\.[0-9]+\.[0-9]+['\"]?\s*(?:#.*)?$"
@@ -186,8 +228,8 @@ _PERM_ENTRY_RE = re.compile(
 def third_party_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
-    for line_no, line in enumerate(text.splitlines(), start=1):
-        match = _REMOTE_ACTION_RE.search(_normalize_uses_quotes(line))
+    for line_no, line in enumerate(_uses_scan_lines(text), start=1):
+        match = _REMOTE_ACTION_RE.search(line)
         if not match:
             continue
         action = match.group("action")
@@ -320,32 +362,48 @@ def codecov_explicit_file_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
-def codecov_token_violations(text: str, *, path: str = "") -> list[str]:
+def _mapping_body(block: str, key: str) -> str:
+    lines = block.splitlines()
+    header_re = re.compile(rf"^(\s*){re.escape(key)}:\s*(?:#.*)?$")
+    for index, line in enumerate(lines):
+        header = header_re.match(line)
+        if header is None:
+            continue
+        indent = len(header.group(1))
+        body: list[str] = []
+        for later in lines[index + 1 :]:
+            if not later.strip() or later.lstrip().startswith("#"):
+                body.append(later)
+                continue
+            if len(later) - len(later.lstrip(" ")) <= indent:
+                break
+            body.append(later)
+        return "\n".join(body)
+    return ""
+
+
+def codecov_oidc_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
     for line_no, block in _step_blocks(text):
         if "codecov/codecov-action@" not in block:
             continue
-        if _CODECOV_TOKEN_RE.search(block) is None:
-            violations.append(f"{prefix}{line_no}: {CODECOV_TOKEN_MSG}")
+        if _USE_OIDC_TRUE_RE.search(_mapping_body(block, "with")) is None:
+            violations.append(f"{prefix}{line_no}: {CODECOV_OIDC_MSG}")
     return violations
 
 
-def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
-    """write-all, or any permission value write, on the two coverage workflows."""
-    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
-        return []
-    violations: list[str] = []
-    prefix = f"{path}: " if path else ""
+def _permission_sites(text: str) -> list[tuple[int, str, str]]:
+    sites: list[tuple[int, str, str]] = []
     lines = text.splitlines()
     index = 0
     while index < len(lines):
         scalar = _PERM_SCALAR_RE.match(lines[index])
-        if scalar and _unquote_scalar(scalar.group("value")) in {"write", "write-all"}:
-            violations.append(f"{prefix}{index + 1}: {COVERAGE_WRITE_MSG}")
+        header = _PERM_HEADER_RE.match(lines[index])
+        if scalar and header is None:
+            sites.append((index + 1, "permissions", _unquote_scalar(scalar.group("value"))))
             index += 1
             continue
-        header = _PERM_HEADER_RE.match(lines[index])
         if header is None:
             index += 1
             continue
@@ -359,9 +417,49 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
             if len(line) - len(line.lstrip(" ")) <= indent:
                 break
             entry = _PERM_ENTRY_RE.match(line)
-            if entry and _unquote_scalar(entry.group("value")) in {"write", "write-all"}:
-                violations.append(f"{prefix}{index + 1}: {COVERAGE_WRITE_MSG}")
+            if entry:
+                sites.append(
+                    (index + 1, entry.group("key"), _unquote_scalar(entry.group("value")))
+                )
             index += 1
+    return sites
+
+
+def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
+    """On the two coverage workflows, id-token: write is only for a Codecov job.
+
+    write-all and every other write value are rejected. A Codecov job must
+    set id-token: write.
+    """
+    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
+        return []
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    jobs = _job_blocks(text)
+    granted: set[str] = set()
+
+    def owner(line_no: int) -> tuple[str, str] | None:
+        for start, job_id, block in jobs:
+            if start <= line_no <= start + block.count("\n"):
+                return job_id, block
+        return None
+
+    for line_no, key, value in _permission_sites(text):
+        found = owner(line_no)
+        block = "" if found is None else found[1]
+        runs_codecov = "codecov/codecov-action@" in block
+        if value == "write-all" or (value == "write" and key != "id-token"):
+            violations.append(f"{prefix}{line_no}: {COVERAGE_WRITE_MSG}")
+            continue
+        if key == "id-token" and value == "write":
+            if runs_codecov and found is not None:
+                granted.add(found[0])
+            else:
+                violations.append(f"{prefix}{line_no}: {COVERAGE_ID_TOKEN_JOB_MSG}")
+    for start, job_id, block in jobs:
+        if "codecov/codecov-action@" not in block or job_id in granted:
+            continue
+        violations.append(f"{prefix}{start}: {CODECOV_ID_TOKEN_MSG}")
     return violations
 
 
@@ -1238,7 +1336,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(codecov_fail_ci_violations(text, path=rel))
             codecov.extend(codecov_continue_on_error_violations(text, path=rel))
             codecov.extend(codecov_explicit_file_violations(text, path=rel))
-            codecov.extend(codecov_token_violations(text, path=rel))
+            codecov.extend(codecov_oidc_violations(text, path=rel))
             codecov.extend(coverage_permission_violations(text, path=rel))
             codecov.extend(kani_version_violations(text, path=rel))
             codecov.extend(llvm_cov_pin_violations(text, path=rel))
@@ -1392,6 +1490,57 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn(BELOW_FLOOR_MSG, below[0])
         self.assertNotIn('"', below[0])
 
+    def test_block_scalar_uses_mutant_is_rejected(self) -> None:
+        folded = "uses: >-\n  codecov/codecov-action@v7\n"
+        violations = third_party_action_pin_violations(folded, path="coverage.yml")
+        self.assertEqual(
+            violations,
+            [f"coverage.yml: 1: codecov/codecov-action@v7 {THIRD_PARTY_SHA_MSG}"],
+        )
+        plain = third_party_action_pin_violations(
+            "uses: >\n  codecov/codecov-action@v7\n",
+            path="coverage.yml",
+        )
+        self.assertIn("codecov/codecov-action@v7", plain[0])
+        literal = third_party_action_pin_violations(
+            "uses: |\n  codecov/codecov-action@v7\n",
+            path="coverage.yml",
+        )
+        self.assertIn("codecov/codecov-action@v7", literal[0])
+        strip = third_party_action_pin_violations(
+            "uses: |-\n  codecov/codecov-action@v7\n",
+            path="coverage.yml",
+        )
+        self.assertIn("codecov/codecov-action@v7", strip[0])
+        quoted_master = third_party_action_pin_violations(
+            'uses: "dtolnay/rust-toolchain@master"\n',
+            path="kani.yml",
+        )
+        self.assertIn("dtolnay/rust-toolchain@master", quoted_master[0])
+        self.assertNotIn('"', quoted_master[0])
+        pinned = (
+            "uses: >-\n"
+            "  codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5\n"
+        )
+        self.assertEqual(third_party_action_pin_violations(pinned, path="coverage.yml"), [])
+        floor = workflow_action_pin_violations(
+            "      - uses: >-\n          actions/checkout@v6\n",
+            path="coverage.yml",
+        )
+        self.assertEqual(len(floor), 1)
+        self.assertIn("coverage.yml: 1:", floor[0])
+        self.assertIn(BELOW_FLOOR_MSG, floor[0])
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        mutant = text.replace(
+            "        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1",
+            "        uses: >-\n          codecov/codecov-action@v7",
+            1,
+        )
+        self.assertNotEqual(mutant, text)
+        file_violations = third_party_action_pin_violations(mutant, path="coverage.yml")
+        self.assertEqual(len(file_violations), 1)
+        self.assertIn("codecov/codecov-action@v7", file_violations[0])
+
     def test_codecov_version_removal_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         self.assertEqual(codecov_fail_ci_violations(text, path="coverage.yml"), [])
@@ -1442,12 +1591,14 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov_explicit_file_violations(searched, path="coverage.yml")[0],
         )
 
-    def test_codecov_token_removal_mutant_is_rejected(self) -> None:
+    def test_codecov_oidc_mutants_are_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
-        self.assertEqual(codecov_token_violations(text, path="coverage.yml"), [])
-        self.assertEqual(codecov_token_violations(editor, path="aw-editor-tests.yml"), [])
-        removed = text.replace("          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}\n", "", 1)
+        self.assertNotIn("CODECOV_TOKEN", text)
+        self.assertNotIn("CODECOV_TOKEN", editor)
+        self.assertEqual(codecov_oidc_violations(text, path="coverage.yml"), [])
+        self.assertEqual(codecov_oidc_violations(editor, path="aw-editor-tests.yml"), [])
+        removed = text.replace("          use_oidc: true\n", "", 1)
         self.assertNotEqual(removed, text)
         upload_line = next(
             number
@@ -1455,16 +1606,21 @@ class WorkflowPolicyTest(unittest.TestCase):
             if "Upload coverage to Codecov" in line
         )
         self.assertEqual(
-            codecov_token_violations(removed, path="coverage.yml"),
-            [f"coverage.yml: {upload_line}: {CODECOV_TOKEN_MSG}"],
+            codecov_oidc_violations(removed, path="coverage.yml"),
+            [f"coverage.yml: {upload_line}: {CODECOV_OIDC_MSG}"],
         )
-        editor_removed = editor.replace(
-            "        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}\n",
-            "",
+        disabled = text.replace("use_oidc: true", "use_oidc: false", 1)
+        self.assertIn(CODECOV_OIDC_MSG, codecov_oidc_violations(disabled, path="coverage.yml")[0])
+        env_only = text.replace(
+            "          use_oidc: true\n",
+            "        env:\n          use_oidc: true\n",
             1,
         )
+        self.assertNotEqual(env_only, text)
+        self.assertTrue(codecov_oidc_violations(env_only, path="coverage.yml"))
+        editor_removed = editor.replace("        use_oidc: true\n", "", 1)
         self.assertNotEqual(editor_removed, editor)
-        self.assertTrue(codecov_token_violations(editor_removed, path="aw-editor-tests.yml"))
+        self.assertTrue(codecov_oidc_violations(editor_removed, path="aw-editor-tests.yml"))
 
     def test_coverage_write_permission_mutants_are_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -1513,6 +1669,37 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         quoted = text.replace("contents: read", 'contents: "write"', 1)
         self.assertTrue(coverage_permission_violations(quoted, path="coverage.yml"))
+        dropped = text.replace("      id-token: write\n", "", 1)
+        self.assertNotEqual(dropped, text)
+        job_line = next(
+            number
+            for number, line in enumerate(dropped.splitlines(), start=1)
+            if line.strip() == "coverage:"
+        )
+        self.assertEqual(
+            coverage_permission_violations(dropped, path="coverage.yml"),
+            [f"coverage.yml: {job_line}: {CODECOV_ID_TOKEN_MSG}"],
+        )
+        other_job = editor.replace(
+            "    permissions:\n      contents: read\n    runs-on: ${{ matrix.os }}\n",
+            "    permissions:\n      contents: read\n      id-token: write\n    runs-on: ${{ matrix.os }}\n",
+            1,
+        )
+        self.assertNotEqual(other_job, editor)
+        other_line = next(
+            number
+            for number, line in enumerate(other_job.splitlines(), start=1)
+            if line.strip() == "id-token: write"
+        )
+        self.assertEqual(
+            coverage_permission_violations(other_job, path="aw-editor-tests.yml"),
+            [f"aw-editor-tests.yml: {other_line}: {COVERAGE_ID_TOKEN_JOB_MSG}"],
+        )
+        top = text.replace("permissions: {}", "permissions:\n  id-token: write", 1)
+        self.assertIn(
+            COVERAGE_ID_TOKEN_JOB_MSG,
+            coverage_permission_violations(top, path="coverage.yml")[0],
+        )
 
     def test_kani_version_and_stable_ref_mutants_are_rejected(self) -> None:
         text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
@@ -1539,11 +1726,10 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("dtolnay/rust-toolchain@stable", quoted[0])
         self.assertNotIn('"', quoted[0])
         for path in github_action_surfaces():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                normalized = _normalize_uses_quotes(line)
-                if "@" not in normalized or not re.match(r"^\s*(?:-\s+)?uses:\s*\S", normalized):
+            for line in _uses_scan_lines(path.read_text(encoding="utf-8")):
+                if "@" not in line or not re.match(r"^\s*(?:-\s+)?uses:\s*\S", line):
                     continue
-                ref = normalized.split("@", 1)[1].split("#", 1)[0].strip()
+                ref = line.split("@", 1)[1].split("#", 1)[0].strip()
                 self.assertNotEqual(ref, "stable", path)
 
     def test_llvm_cov_pin_mutants_are_rejected(self) -> None:

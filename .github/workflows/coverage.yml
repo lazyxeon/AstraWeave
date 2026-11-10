@@ -18,6 +18,7 @@ jobs:
     name: Generate Code Coverage
     permissions:
       contents: read
+      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -45,8 +46,7 @@ jobs:
           name: astraweave-assets-coverage
           version: v11.3.2
           fail_ci_if_error: true
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
       
       - name: Generate HTML report
         if: always()
