@@ -103,11 +103,32 @@ def action_ref_violation(action: str, ref: str) -> str | None:
     return f"{action}@{ref} {NON_SHA_TAG_MSG}"
 
 
+# A matching quote around a uses value is valid YAML. Strip it before the
+# major-tag and SHA checks so the ref group cannot keep the quote.
+_QUOTED_USES_RE = re.compile(
+    r"^(?P<lead>\s*(?:-\s+)?)uses:\s*(?P<q>['\"])(?P<value>.*?)(?P=q)(?P<tail>\s*(?:#.*)?)?$"
+)
+
+
+def _normalize_uses_quotes(line: str) -> str:
+    match = _QUOTED_USES_RE.match(line)
+    if match is None:
+        return line
+    tail = match.group("tail") or ""
+    return f"{match.group('lead')}uses: {match.group('value')}{tail}"
+
+
+def _unquote_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
 def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
     for line_no, line in enumerate(text.splitlines(), start=1):
-        match = ACTION_USES_RE.search(line)
+        match = ACTION_USES_RE.search(_normalize_uses_quotes(line))
         if not match:
             continue
         violation = action_ref_violation(match.group("action"), match.group("ref"))
@@ -124,18 +145,49 @@ _REMOTE_ACTION_RE = re.compile(
 _SHA40_RE = re.compile(r"[0-9a-f]{40}")
 THIRD_PARTY_SHA_MSG = "third-party action must be a 40-char commit SHA"
 CODECOV_FAIL_CI_MSG = "codecov step must set fail_ci_if_error: true"
+CODECOV_VERSION_MSG = "codecov step must set version to an exact vX.Y.Z"
+CODECOV_SEARCH_MSG = "codecov step must set disable_search: true"
+CODECOV_FILES_MSG = "codecov step must set files to an explicit path"
+CODECOV_TOKEN_MSG = "codecov step must set env CODECOV_TOKEN from secrets.CODECOV_TOKEN"
 CODECOV_CONTINUE_MSG = "codecov job or step must not set continue-on-error"
+COVERAGE_WRITE_MSG = "coverage workflow must not grant write permissions"
+KANI_VERSION_MSG = "kani step must set kani-version to an exact X.Y.Z"
+LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
+LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
+_COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
 _JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
 _CONTINUE_ON_ERROR_RE = re.compile(r"^\s*continue-on-error\s*:")
 _STEP_DASH_RE = re.compile(r"^(\s*)-\s+\S")
 _FAIL_CI_VALUE_RE = re.compile(r"(?m)^\s*fail_ci_if_error:\s*(\S+)")
+_CODECOV_VERSION_RE = re.compile(
+    r"(?m)^\s*version:\s*['\"]?v[0-9]+\.[0-9]+\.[0-9]+['\"]?\s*(?:#.*)?$"
+)
+_DISABLE_SEARCH_TRUE_RE = re.compile(
+    r"(?m)^\s*disable_search:\s*['\"]?true['\"]?\s*(?:#.*)?$"
+)
+_EXPLICIT_FILES_RE = re.compile(r"(?m)^\s*files:\s*(?P<value>\S+)\s*(?:#.*)?$")
+_CODECOV_TOKEN_RE = re.compile(
+    r"(?m)^\s*CODECOV_TOKEN:\s*\$\{\{\s*secrets\.CODECOV_TOKEN\s*\}\}\s*(?:#.*)?$"
+)
+_KANI_VERSION_RE = re.compile(
+    r"(?m)^\s*kani-version:\s*['\"]?[0-9]+\.[0-9]+\.[0-9]+['\"]?\s*(?:#.*)?$"
+)
+_LLVM_CARGO_VERSION_RE = re.compile(r"--version\s+[0-9]+\.[0-9]+\.[0-9]+\b")
+_LLVM_TOOL_RE = re.compile(
+    r"(?m)^\s*tool:\s*cargo-llvm-cov@[0-9]+\.[0-9]+\.[0-9]+\s*(?:#.*)?$"
+)
+_PERM_HEADER_RE = re.compile(r"^(\s*)permissions:\s*(?:#.*)?$")
+_PERM_SCALAR_RE = re.compile(r"^(\s*)permissions:\s*(?P<value>\S+)\s*(?:#.*)?$")
+_PERM_ENTRY_RE = re.compile(
+    r"^\s*(?P<key>[A-Za-z0-9_-]+):\s*(?P<value>\S+)\s*(?:#.*)?$"
+)
 
 
 def third_party_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
     for line_no, line in enumerate(text.splitlines(), start=1):
-        match = _REMOTE_ACTION_RE.search(line)
+        match = _REMOTE_ACTION_RE.search(_normalize_uses_quotes(line))
         if not match:
             continue
         action = match.group("action")
@@ -197,9 +249,10 @@ def codecov_fail_ci_violations(text: str, *, path: str = "") -> list[str]:
         if "codecov/codecov-action@" not in block:
             continue
         values = _FAIL_CI_VALUE_RE.findall(block)
-        if values == ["true"]:
-            continue
-        violations.append(f"{prefix}{line_no}: {CODECOV_FAIL_CI_MSG}")
+        if values != ["true"]:
+            violations.append(f"{prefix}{line_no}: {CODECOV_FAIL_CI_MSG}")
+        if _CODECOV_VERSION_RE.search(block) is None:
+            violations.append(f"{prefix}{line_no}: {CODECOV_VERSION_MSG}")
     return violations
 
 
@@ -230,30 +283,114 @@ def _job_blocks(text: str) -> list[tuple[int, str, str]]:
 
 
 def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[str]:
-    """A job that runs Codecov, and the step that runs it, must not continue on error.
+    """A job that runs Codecov must not continue on error, on any step or the job.
 
-    Other steps in that job are not this check. Other jobs are not this check.
+    Other jobs are not this check.
     """
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
     for job_line, _job_id, block in _job_blocks(text):
         if "codecov/codecov-action@" not in block:
             continue
-        step_spans: list[tuple[int, int, str]] = []
-        for rel_line, step in _step_blocks(block):
-            start = job_line + rel_line - 1
-            stop = start + len(step.splitlines()) - 1
-            step_spans.append((start, stop, step))
         for offset, line in enumerate(block.splitlines()):
             if _CONTINUE_ON_ERROR_RE.match(line) is None:
                 continue
-            abs_line = job_line + offset
-            owner = next(
-                (step for start, stop, step in step_spans if start <= abs_line <= stop),
-                None,
-            )
-            if owner is None or "codecov/codecov-action@" in owner:
-                violations.append(f"{prefix}{abs_line}: {CODECOV_CONTINUE_MSG}")
+            violations.append(f"{prefix}{job_line + offset}: {CODECOV_CONTINUE_MSG}")
+    return violations
+
+
+def _explicit_files(block: str) -> bool:
+    match = _EXPLICIT_FILES_RE.search(block)
+    if match is None:
+        return False
+    value = _unquote_scalar(match.group("value"))
+    return value not in {"", "|", ">", "~", "null"}
+
+
+def codecov_explicit_file_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, block in _step_blocks(text):
+        if "codecov/codecov-action@" not in block:
+            continue
+        if _DISABLE_SEARCH_TRUE_RE.search(block) is None:
+            violations.append(f"{prefix}{line_no}: {CODECOV_SEARCH_MSG}")
+        if not _explicit_files(block):
+            violations.append(f"{prefix}{line_no}: {CODECOV_FILES_MSG}")
+    return violations
+
+
+def codecov_token_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, block in _step_blocks(text):
+        if "codecov/codecov-action@" not in block:
+            continue
+        if _CODECOV_TOKEN_RE.search(block) is None:
+            violations.append(f"{prefix}{line_no}: {CODECOV_TOKEN_MSG}")
+    return violations
+
+
+def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
+    """write-all, or any permission value write, on the two coverage workflows."""
+    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
+        return []
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        scalar = _PERM_SCALAR_RE.match(lines[index])
+        if scalar and _unquote_scalar(scalar.group("value")) in {"write", "write-all"}:
+            violations.append(f"{prefix}{index + 1}: {COVERAGE_WRITE_MSG}")
+            index += 1
+            continue
+        header = _PERM_HEADER_RE.match(lines[index])
+        if header is None:
+            index += 1
+            continue
+        indent = len(header.group(1))
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if not line.strip() or line.lstrip().startswith("#"):
+                index += 1
+                continue
+            if len(line) - len(line.lstrip(" ")) <= indent:
+                break
+            entry = _PERM_ENTRY_RE.match(line)
+            if entry and _unquote_scalar(entry.group("value")) in {"write", "write-all"}:
+                violations.append(f"{prefix}{index + 1}: {COVERAGE_WRITE_MSG}")
+            index += 1
+    return violations
+
+
+def kani_version_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, block in _step_blocks(text):
+        if "model-checking/kani-github-action@" not in block:
+            continue
+        if _KANI_VERSION_RE.search(block) is None:
+            violations.append(f"{prefix}{line_no}: {KANI_VERSION_MSG}")
+    return violations
+
+
+def llvm_cov_pin_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        if "cargo install" not in line or "cargo-llvm-cov" not in line:
+            continue
+        if "--locked" in line and _LLVM_CARGO_VERSION_RE.search(line):
+            continue
+        violations.append(f"{prefix}{line_no}: {LLVM_COV_CARGO_MSG}")
+    for line_no, block in _step_blocks(text):
+        if "taiki-e/install-action@" not in block or "cargo-llvm-cov" not in block:
+            continue
+        if _LLVM_TOOL_RE.search(block):
+            continue
+        violations.append(f"{prefix}{line_no}: {LLVM_COV_ACTION_MSG}")
     return violations
 
 
@@ -1100,6 +1237,11 @@ class WorkflowPolicyTest(unittest.TestCase):
             violations.extend(third_party_action_pin_violations(text, path=rel))
             codecov.extend(codecov_fail_ci_violations(text, path=rel))
             codecov.extend(codecov_continue_on_error_violations(text, path=rel))
+            codecov.extend(codecov_explicit_file_violations(text, path=rel))
+            codecov.extend(codecov_token_violations(text, path=rel))
+            codecov.extend(coverage_permission_violations(text, path=rel))
+            codecov.extend(kani_version_violations(text, path=rel))
+            codecov.extend(llvm_cov_pin_violations(text, path=rel))
         self.assertEqual(violations, [])
         self.assertEqual(codecov, [])
         ignored = "uses: actions/checkout@v7\nuses: ./.github/actions/rust-ci-setup\n"
@@ -1151,7 +1293,9 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertEqual(codecov_continue_on_error_violations(text, path="coverage.yml"), [])
         self.assertNotIn("continue-on-error", text)
         editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
-        self.assertIn("continue-on-error: true", editor)
+        editor_jobs = {job_id: block for _, job_id, block in _job_blocks(editor)}
+        self.assertNotIn("continue-on-error", editor_jobs["coverage"])
+        self.assertIn("continue-on-error: true", editor_jobs["test"])
         self.assertEqual(
             codecov_continue_on_error_violations(editor, path="aw-editor-tests.yml"),
             [],
@@ -1187,6 +1331,259 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertEqual(
             step_violations,
             [f"coverage.yml: {step_line}: {CODECOV_CONTINUE_MSG}"],
+        )
+        sibling = text.replace(
+            "      - name: Install cargo-tarpaulin\n        run:",
+            "      - name: Install cargo-tarpaulin\n        continue-on-error: true\n        run:",
+            1,
+        )
+        self.assertNotEqual(sibling, text)
+        sibling_line = next(
+            number
+            for number, line in enumerate(sibling.splitlines(), start=1)
+            if line.strip() == "continue-on-error: true"
+        )
+        sibling_violations = codecov_continue_on_error_violations(sibling, path="coverage.yml")
+        self.assertEqual(
+            sibling_violations,
+            [f"coverage.yml: {sibling_line}: {CODECOV_CONTINUE_MSG}"],
+        )
+        editor_mutant = editor.replace(
+            "    - name: Generate Coverage Report\n      run: |\n",
+            "    - name: Generate Coverage Report\n      continue-on-error: true\n      run: |\n",
+            1,
+        )
+        self.assertNotEqual(editor_mutant, editor)
+        editor_line = editor_mutant.split("      continue-on-error: true\n      run: |")[0].count("\n") + 1
+        self.assertEqual(
+            codecov_continue_on_error_violations(editor_mutant, path="aw-editor-tests.yml"),
+            [f"aw-editor-tests.yml: {editor_line}: {CODECOV_CONTINUE_MSG}"],
+        )
+
+    def test_quoted_uses_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        quoted_sha = (
+            'uses: "codecov/codecov-action@'
+            '303a32d7a59b442fa8d48b6a1cc6825c09c847a5" # v7.1.1\n'
+        )
+        self.assertEqual(third_party_action_pin_violations(quoted_sha, path="coverage.yml"), [])
+        single = "uses: 'codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5'\n"
+        self.assertEqual(third_party_action_pin_violations(single, path="coverage.yml"), [])
+        mutant = text.replace(
+            "uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1",
+            'uses: "codecov/codecov-action@v7"',
+            1,
+        )
+        self.assertNotEqual(mutant, text)
+        violations = third_party_action_pin_violations(mutant, path="coverage.yml")
+        self.assertTrue(violations)
+        self.assertIn("codecov/codecov-action@v7", violations[0])
+        self.assertNotIn('"', violations[0].split("uses", 1)[-1])
+        self.assertEqual(
+            workflow_action_pin_violations('uses: "actions/checkout@v7"\n', path="coverage.yml"),
+            [],
+        )
+        below = workflow_action_pin_violations(
+            '      - uses: "actions/checkout@v6" # floating\n',
+            path="coverage.yml",
+        )
+        self.assertEqual(len(below), 1)
+        self.assertIn("actions/checkout@v6", below[0])
+        self.assertIn(BELOW_FLOOR_MSG, below[0])
+        self.assertNotIn('"', below[0])
+
+    def test_codecov_version_removal_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_fail_ci_violations(text, path="coverage.yml"), [])
+        quoted = text.replace("version: v11.3.2", 'version: "v11.3.2"', 1)
+        self.assertEqual(codecov_fail_ci_violations(quoted, path="coverage.yml"), [])
+        removed = text.replace("          version: v11.3.2\n", "", 1)
+        self.assertNotEqual(removed, text)
+        upload_line = next(
+            number
+            for number, line in enumerate(removed.splitlines(), start=1)
+            if "Upload coverage to Codecov" in line
+        )
+        self.assertEqual(
+            codecov_fail_ci_violations(removed, path="coverage.yml"),
+            [f"coverage.yml: {upload_line}: {CODECOV_VERSION_MSG}"],
+        )
+        latest = text.replace("version: v11.3.2", "version: latest", 1)
+        self.assertIn(CODECOV_VERSION_MSG, codecov_fail_ci_violations(latest, path="coverage.yml")[0])
+
+    def test_codecov_file_search_mutants_are_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_explicit_file_violations(text, path="coverage.yml"), [])
+        self.assertEqual(codecov_explicit_file_violations(editor, path="aw-editor-tests.yml"), [])
+        upload_line = next(
+            number
+            for number, line in enumerate(text.splitlines(), start=1)
+            if "Upload coverage to Codecov" in line
+        )
+        no_search = text.replace("          disable_search: true\n", "", 1)
+        self.assertNotEqual(no_search, text)
+        self.assertEqual(
+            codecov_explicit_file_violations(no_search, path="coverage.yml"),
+            [f"coverage.yml: {upload_line}: {CODECOV_SEARCH_MSG}"],
+        )
+        no_files = text.replace(
+            "          files: ./tools/astraweave-assets/coverage/cobertura.xml\n",
+            "",
+            1,
+        )
+        self.assertEqual(
+            codecov_explicit_file_violations(no_files, path="coverage.yml"),
+            [f"coverage.yml: {upload_line}: {CODECOV_FILES_MSG}"],
+        )
+        searched = text.replace("disable_search: true", "disable_search: false", 1)
+        self.assertIn(
+            CODECOV_SEARCH_MSG,
+            codecov_explicit_file_violations(searched, path="coverage.yml")[0],
+        )
+
+    def test_codecov_token_removal_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_token_violations(text, path="coverage.yml"), [])
+        self.assertEqual(codecov_token_violations(editor, path="aw-editor-tests.yml"), [])
+        removed = text.replace("          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}\n", "", 1)
+        self.assertNotEqual(removed, text)
+        upload_line = next(
+            number
+            for number, line in enumerate(removed.splitlines(), start=1)
+            if "Upload coverage to Codecov" in line
+        )
+        self.assertEqual(
+            codecov_token_violations(removed, path="coverage.yml"),
+            [f"coverage.yml: {upload_line}: {CODECOV_TOKEN_MSG}"],
+        )
+        editor_removed = editor.replace(
+            "        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}\n",
+            "",
+            1,
+        )
+        self.assertNotEqual(editor_removed, editor)
+        self.assertTrue(codecov_token_violations(editor_removed, path="aw-editor-tests.yml"))
+
+    def test_coverage_write_permission_mutants_are_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(coverage_permission_violations(text, path="coverage.yml"), [])
+        self.assertEqual(coverage_permission_violations(editor, path="aw-editor-tests.yml"), [])
+        self.assertEqual(
+            coverage_permission_violations("permissions: write-all\n", path="scorecard.yml"),
+            [],
+        )
+        write_all = text.replace("permissions: {}", "permissions: write-all", 1)
+        self.assertNotEqual(write_all, text)
+        write_all_line = next(
+            number
+            for number, line in enumerate(write_all.splitlines(), start=1)
+            if line.strip() == "permissions: write-all"
+        )
+        self.assertEqual(
+            coverage_permission_violations(write_all, path="coverage.yml"),
+            [f"coverage.yml: {write_all_line}: {COVERAGE_WRITE_MSG}"],
+        )
+        contents = text.replace("contents: read", "contents: write", 1)
+        contents_line = next(
+            number
+            for number, line in enumerate(contents.splitlines(), start=1)
+            if line.strip() == "contents: write"
+        )
+        self.assertEqual(
+            coverage_permission_violations(contents, path="coverage.yml"),
+            [f"coverage.yml: {contents_line}: {COVERAGE_WRITE_MSG}"],
+        )
+        actions = editor.replace(
+            "      contents: read\n",
+            "      contents: read\n      actions: write\n",
+            1,
+        )
+        self.assertNotEqual(actions, editor)
+        actions_line = next(
+            number
+            for number, line in enumerate(actions.splitlines(), start=1)
+            if line.strip() == "actions: write"
+        )
+        self.assertEqual(
+            coverage_permission_violations(actions, path="aw-editor-tests.yml"),
+            [f"aw-editor-tests.yml: {actions_line}: {COVERAGE_WRITE_MSG}"],
+        )
+        quoted = text.replace("contents: read", 'contents: "write"', 1)
+        self.assertTrue(coverage_permission_violations(quoted, path="coverage.yml"))
+
+    def test_kani_version_and_stable_ref_mutants_are_rejected(self) -> None:
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_version_violations(text, path="kani.yml"), [])
+        removed = text.replace("          kani-version: 0.68.0\n", "", 1)
+        self.assertNotEqual(removed, text)
+        self.assertTrue(kani_version_violations(removed, path="kani.yml"))
+        self.assertIn(KANI_VERSION_MSG, kani_version_violations(removed, path="kani.yml")[0])
+        latest = text.replace("kani-version: 0.68.0", "kani-version: latest", 1)
+        latest_violations = kani_version_violations(latest, path="kani.yml")
+        self.assertEqual(len(latest_violations), 1)
+        self.assertIn(KANI_VERSION_MSG, latest_violations[0])
+        stable = third_party_action_pin_violations(
+            "uses: dtolnay/rust-toolchain@stable\n",
+            path="kani.yml",
+        )
+        self.assertTrue(stable)
+        self.assertIn("dtolnay/rust-toolchain@stable", stable[0])
+        quoted = third_party_action_pin_violations(
+            'uses: "dtolnay/rust-toolchain@stable"\n',
+            path="kani.yml",
+        )
+        self.assertTrue(quoted)
+        self.assertIn("dtolnay/rust-toolchain@stable", quoted[0])
+        self.assertNotIn('"', quoted[0])
+        for path in github_action_surfaces():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                normalized = _normalize_uses_quotes(line)
+                if "@" not in normalized or not re.match(r"^\s*(?:-\s+)?uses:\s*\S", normalized):
+                    continue
+                ref = normalized.split("@", 1)[1].split("#", 1)[0].strip()
+                self.assertNotEqual(ref, "stable", path)
+
+    def test_llvm_cov_pin_mutants_are_rejected(self) -> None:
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        editor_ci = (WORKFLOWS / "editor-ci.yml").read_text(encoding="utf-8")
+        self.assertEqual(llvm_cov_pin_violations(editor, path="aw-editor-tests.yml"), [])
+        self.assertEqual(llvm_cov_pin_violations(editor_ci, path="editor-ci.yml"), [])
+        unpinned = editor.replace(
+            "cargo install cargo-llvm-cov --version 0.9.1 --locked",
+            "cargo install cargo-llvm-cov",
+            1,
+        )
+        self.assertNotEqual(unpinned, editor)
+        cargo_line = next(
+            number
+            for number, line in enumerate(unpinned.splitlines(), start=1)
+            if "cargo install cargo-llvm-cov" in line
+        )
+        self.assertEqual(
+            llvm_cov_pin_violations(unpinned, path="aw-editor-tests.yml"),
+            [f"aw-editor-tests.yml: {cargo_line}: {LLVM_COV_CARGO_MSG}"],
+        )
+        unlocked = editor.replace(" --locked", "", 1)
+        self.assertTrue(llvm_cov_pin_violations(unlocked, path="aw-editor-tests.yml"))
+        no_tool = re.sub(
+            r"\n\s*with:\n\s*tool: cargo-llvm-cov@0\.9\.1\n",
+            "\n",
+            editor_ci,
+            count=1,
+        )
+        self.assertNotEqual(no_tool, editor_ci)
+        self.assertTrue(llvm_cov_pin_violations(no_tool, path="editor-ci.yml"))
+        self.assertIn(
+            LLVM_COV_ACTION_MSG,
+            llvm_cov_pin_violations(no_tool, path="editor-ci.yml")[0],
+        )
+        floating = editor_ci.replace("tool: cargo-llvm-cov@0.9.1", "tool: cargo-llvm-cov", 1)
+        self.assertIn(
+            LLVM_COV_ACTION_MSG,
+            llvm_cov_pin_violations(floating, path="editor-ci.yml")[0],
         )
 
     def test_policy_actions_matches_expected_set(self) -> None:

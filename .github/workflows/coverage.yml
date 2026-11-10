@@ -40,6 +40,7 @@ jobs:
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./tools/astraweave-assets/coverage/cobertura.xml
+          disable_search: true
           flags: astraweave-assets
           name: astraweave-assets-coverage
           version: v11.3.2

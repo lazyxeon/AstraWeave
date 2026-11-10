@@ -123,18 +123,18 @@ jobs:
         sudo apt-get install -y pkg-config libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libudev-dev libasound2-dev
         
     - name: Install cargo-llvm-cov
-      run: cargo install cargo-llvm-cov
+      run: cargo install cargo-llvm-cov --version 0.9.1 --locked
       
     - name: Generate Coverage Report
       run: |
         cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
-      continue-on-error: true
       
     - name: Upload Coverage to Codecov
       uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
       if: success()
       with:
         files: ./lcov.info
+        disable_search: true
         flags: aw_editor
         name: aw-editor-coverage
         version: v11.3.2

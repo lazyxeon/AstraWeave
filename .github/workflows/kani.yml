@@ -42,6 +42,7 @@ jobs:
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
+          kani-version: 0.68.0
           working-directory: .
           args: --package astraweave-ecs -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
@@ -63,6 +64,7 @@ jobs:
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
+          kani-version: 0.68.0
           working-directory: .
           args: --package astraweave-math -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
@@ -84,6 +86,7 @@ jobs:
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
+          kani-version: 0.68.0
           working-directory: .
           args: --package astraweave-sdk -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
@@ -105,6 +108,7 @@ jobs:
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
+          kani-version: 0.68.0
           working-directory: .
           args: --package astraweave-core -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
       
