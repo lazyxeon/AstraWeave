@@ -2,7 +2,7 @@
 
 > **Generated**: 2026-05-07 | **Last reconciled**: 2026-11-09 | **Version**: 0.8.16 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
-> **0.8.16 update (2026-11-09)**: Camera creation cite is `8c551c6ea` (not `52b9e711c`). `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1` (line 60 on 2026-05-13). Editor `pending_actions`: 31 panel files, 7 drained, 24 never drained. Dialogue LLM is 2,231 of 4,420 lines under `src/`.
+> **0.8.16 update (2026-11-09)**: Camera creation cite is `8c551c6ea` (not `52b9e711c`). `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1` (line 60 on 2026-05-13). Editor `pending_actions`: 31 panel files, 7 drained, 24 never drained. The editor index is 237 `.rs` files and 238,389 lines outside `target/` (152 files and 181,148 under `src/`); `EditorApp` has 133 fields; `EditorApp::update` is `main.rs:9728-9729`; `tab_viewer/mod.rs` is 8,397 lines; HWND is `hwnd_cache` at `main.rs:527`. Dialogue LLM is 2,231 of 4,420 lines under `src/`.
 > **0.8.15 update (2026-10-29)**: `miri.yml` weekly jobs are ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), and ai (60m). Pull requests that touch `blob_vec.rs`, `sparse_set.rs`, or `archetype.rs` run `miri-ecs-hotpath` (45m). The nightly channel is `.github/rust-nightly-channel` (#560).
 > **0.8.14 update (2026-10-17)**: Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. `zip` 1.1.4 is not in the lockfile. No audit ignore for RUSTSEC-2026-0367, 0368, or 0369. #324 is closed. The fix is #353. Nineteen replay cases stay.
 > **0.8.13 update (2026-10-16)**: Rebased onto `22741c42`. #332 requires nineteen replay cases: `greybox_checkpoint`, `quest_ticks`, and `persist_replay` join the sixteen. The golden stays `b6a9d5a2c5da28a6`.
@@ -42,7 +42,7 @@
 | Audio | [`audio.md`](audio.md) | Active rodio facade; **5 buses** (not 4 per stale lib.rs docstring); not an ECS Resource (rodio chain is `!Send`); 10+ editor panel knobs are no-op forward-design |
 | Animation System | [`animation.md`](animation.md) | Phase 2 Task 5 complete; **four parallel type families** (`render::Skeleton`/`asset::Skeleton`/`scene::CSkeleton`/`editor::GltfSkeleton`) — no shared types, no `From` impls; `MAX_JOINTS = 256` hard-coded in two places; CubicSpline falls back to Linear/Slerp |
 | AI Pipeline (8 subsystem traces) | [`ai_pipeline.md`](ai_pipeline.md) | Active foundation — engine's first-class citizen. 12,700+ agents @ 60 FPS validated. **Two GOAP implementations**, **runtime LLM default still phi3:medium despite Qwen3 doc-comments**, hardening surface (~15K LoC) shelf-stocked but not in line, Memory/Coordination/RAG subsystems dormant |
-| aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign. 216 `.rs` files / 224,584+ LoC; god-struct `EditorApp` (123 fields); §7.7 wrapped-component trap surfaced at 4 layers; Multi-Tool Sub-phases 3 (incl. Real-Fix.A–E) and 4 COMPLETE, Sub-phase 5 in flight (5.A/5.B landed 2026-06-06; 5.C closeout + Mediator Removal + SP6 pending) |
+| aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign. At `604d35d1`: 237 `.rs` files and 238,389 lines outside `target/` (152 files and 181,148 lines under `src/`); god-struct `EditorApp` (133 fields); §7.7 wrapped-component trap surfaced at 4 layers; Multi-Tool Sub-phases 3 (incl. Real-Fix.A–E) and 4 COMPLETE, Sub-phase 5 in flight (5.A/5.B landed 2026-06-06; 5.C closeout + Mediator Removal + SP6 pending) |
 
 Traces added after the June index (file map is the trace; do not treat a missing row here as "unbuilt"): `asset.md`, `camera.md`, `causality.md`, `cinematics.md`, `combat.md`, `destruction.md`, `gameplay.md`, `nav.md`, `pcg.md`, `quests.md`, `scene.md`, `scripting.md`, `security.md`, `terrain.md`, `ui.md`, `water.md`, `weaving.md`. The generated table in `CLAUDE.md` is the membership list. `aw_trace_sync --check` owns that table.
 
@@ -698,7 +698,7 @@ ECS World (Vec3 positions)
 
 ```
 User input (mouse, keyboard, gamepad via winit → eframe)
-  → EditorApp::update(ctx, frame) [main.rs:9119-9120]
+  → EditorApp::update(ctx, frame) [main.rs:9728-9729]
   → tick_audio_subsystem + tick_animation_subsystem + tick_movement_scripts (play mode only)
   → process_pending_hotkeys + process_file_watcher_events + auto-save check
   → MenuBar / StatusBar / Dialogs
@@ -710,7 +710,7 @@ User input (mouse, keyboard, gamepad via winit → eframe)
   → Panel updates (asset browser, terrain, profiler, etc.)
 ```
 
-`UndoStack` is bounded (default 100 commands). 9 entity-creation operations were flagged in Behavioral Correctness Audit as bypassing the undo stack — Wave-3 mutation remediation closed several. 18 `pending_actions` queues exist on panels but only 7 `take_*_actions` drain functions are defined — most user button presses queue events that no code ever reads.
+`UndoStack` is bounded (default 100 commands). 9 entity-creation operations were flagged in Behavioral Correctness Audit as bypassing the undo stack — Wave-3 mutation remediation closed several. 31 panel files queue `pending_actions`; production drains 7, and 24 are never drained. The crate defines 37 `take_*actions` functions. Most user button presses on the undrained panels queue events that no code ever reads.
 
 ---
 
@@ -754,7 +754,7 @@ User input (mouse, keyboard, gamepad via winit → eframe)
 | `tools/aw_editor/src/viewport/shaders/shadow.wgsl` | Editor's own shadow map WGSL shader |
 | `tools/aw_editor/src/viewport/shaders/brdf_lut.wgsl` | BRDF integration LUT compute shader |
 | `tools/aw_editor/src/viewport/shaders/mipmap_blit.wgsl` | GPU mipmap generation shader |
-| `tools/aw_editor/src/tab_viewer.rs` | Tab viewer logic (moved/unified into `tab_viewer/mod.rs` 8,185-line module) |
+| `tools/aw_editor/src/tab_viewer.rs` | Tab viewer logic (moved/unified into `tab_viewer/mod.rs`, 8,397 lines at `604d35d1`) |
 
 ### 9.2 Frame Rendering Sequence
 
@@ -803,7 +803,7 @@ Frame Start
 | `astraweave-fluids` | `debug_viz.rs:479-480` — 2× `unsafe impl bytemuck::{Pod,Zeroable}` for `DebugVertex` | No `unsafe {…}` blocks. No `forbid(unsafe_code)`. |
 | `astraweave-physics`, `astraweave-input`, `astraweave-net`, `astraweave-audio`, `astraweave-llm`, `astraweave-behavior`, `astraweave-memory`, `astraweave-director`, `astraweave-coordination`, `astraweave-npc`, `astraweave-dialogue`, `astraweave-persistence-ecs`, `aw-save`, `astraweave-net-ecs`, `aw-net-proto`, `astraweave-scene` | _(none)_ — `#![forbid(unsafe_code)]` declared at crate root | Unsafe lives in deps (Rapier3D, wgpu, rodio, tokio-rustls, etc.) |
 | `astraweave-render` | `#![deny(unsafe_code)]` at `lib.rs:1` — crate is **unsafe-free** | Any wgpu unsafe lives inside wgpu |
-| `aw_editor` | NOT `#![forbid(unsafe_code)]` — raw-window-handle, wgpu raw resources, Windows-specific HWND access at `main.rs:417` | Cannot forbid unsafe |
+| `aw_editor` | NOT `#![forbid(unsafe_code)]` — raw-window-handle, wgpu raw resources, Windows-specific HWND access (`hwnd_cache` at `main.rs:527`, `#[cfg(target_os = "windows")]` at `:526`) | Cannot forbid unsafe |
 
 ---
 
@@ -970,7 +970,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ## Revision History
 
 ### v0.8.16 (2026-11-09)
-Camera creation cite is `8c551c6ea`. `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1`. Editor `pending_actions` is 31 panel files, 7 drained, 24 never drained. Dialogue LLM is 2,231 of 4,420 lines under `src/`.
+Camera creation cite is `8c551c6ea`. `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1`. Editor `pending_actions` is 31 panel files, 7 drained, 24 never drained. The editor index is 237 `.rs` files and 238,389 lines outside `target/` (152 files and 181,148 under `src/`); `EditorApp` has 133 fields; `EditorApp::update` is `main.rs:9728-9729`; `tab_viewer/mod.rs` is 8,397 lines; HWND is `hwnd_cache` at `main.rs:527`. Dialogue LLM is 2,231 of 4,420 lines under `src/`.
 
 ### v0.8.15 (2026-10-29)
 `miri.yml` lists ecs `--lib`, ecs `--tests`, sdk `--lib --tests`, core, physics (non-blocking until #558), and ai. `miri-ecs-hotpath` runs on pull requests that touch BlobVec, SparseSet, or Archetype. Nightly is `.github/rust-nightly-channel` (#560).

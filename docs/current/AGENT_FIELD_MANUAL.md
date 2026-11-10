@@ -384,8 +384,8 @@ When a doc-comment describes desired behavior, treat it as a hypothesis to verif
 5. **API verification first**: Read actual struct definitions AND `rg 'struct <Name>'` workspace-wide for parallel definitions before generating code (dual TerrainVertex / shadow-layout / FastPreview pipelines each cost multi-day cleanups)
 6. **Case sensitivity matters**: snake_case vs PascalCase mismatch caused 100% false positives
 7. **Silent failures cost weeks**: `let _ =` and `.ok()` on `Result` hide the bugs that produce the longest debugging sessions (12 CRITICAL editor findings traced here)
-8. **Wired beats tested**: A subsystem with passing tests and zero production callers is dormant code, not a feature. The workspace currently carries ~200K LoC across this taxonomy:
-   - **In-design-but-tested** — passes tests, zero workspace callers (Memory pipeline ~11K, Coordination crate ~5.3K, Advanced GOAP ~16.7K, LLM Production Hardening ~15K, RAG stack ~12.3K, Fluids ~84K, Dialogue LLM layer ~2.9K, NPC isolated subsystem)
+8. **Wired beats tested**: A subsystem with passing tests and zero production callers is dormant code, not a feature. The current inventory is `docs/architecture/ARCHITECTURE_MAP.md` §5. At `604d35d1` the dialogue LLM layer is 2,231 lines (`llm_dialogue.rs`, about half of 4,420 under `src/`) and `astraweave-fluids` is 24,509 lines under `src/`.
+   - **In-design-but-tested** — passes tests, zero workspace callers. The §5.1 rows name Memory, Coordination, Advanced GOAP, LLM Production Hardening, the RAG stack, Fluids, the Dialogue LLM layer, and the NPC subsystem.
    - **Dormant scaffolding** — module exists, body is TODO comments (`safe_llm_invoke`, `compute_poses_stub`)
    - **Orphan source** — file on disk, not declared as a module (`astraweave-net-ecs/src/lib_temp.rs`, `archive/temp_files/temp/temp_lib.rs`, `astraweave-ai/src/rag/`, `astraweave-ai/src/persona/`)
    - **Declared-but-unused Cargo deps** — listed in Cargo.toml, zero `use` statements (`astraweave-author` + `astraweave-observability` in aw_editor; `astraweave-llm` + `astraweave-embeddings` + `astraweave-rag` in astraweave-memory)

@@ -924,7 +924,7 @@ Per README:
 
 - **Runtime production wiring of fluids — when and via which solver?** **Superseded by W.1 (verified at `604d35d1`).** The crate is 24,509 lines under `src/`. `examples/fluids_demo` and `examples/weaving_playground` depend on it. No `astraweave-*` game-loop crate does. The 2026-05-12 text that follows described the pre-W.1 crate: workspace grep for `use astraweave_fluids` outside the fluids crate itself returned only `examples/fluids_demo/src/main.rs:18-21`. NO production game-loop crate (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The crate was then 84.5K LoC of working code (1 integration test passing, 1 benchmark, 1 demo) with zero engine integration. Per the audit doc `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md`, the system is in active development toward research-grade simulation. Three directional options: (a) wire the existing PBD `FluidSystem` (the demo's current choice) into the runtime engine — smallest integration step; (b) wait for the research-grade solvers to mature (PCISPH/DFSPH/IISPH per the roadmap) and wire the `UnifiedSolver` umbrella; (c) prune the parallel solvers and keep only the demo-validated PBD path. Same dormancy shape as the LLM Production Hardening and RAG subsystems traced in `docs/architecture/ai_pipeline.md` §13.7 + §13.8.
 - **Five parallel solver/manager surfaces — consolidation roadmap?** **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` and `WaterEffectsManager` remain. The 2026-05-12 list that follows is historical. [Decisional.] Factual: `FluidSystem` (lib.rs PBD), `UnifiedSolver` (unified_solver.rs coordinator), `ResearchFluidSystem` (research.rs research-grade umbrella), `PCISPHSystem` (pcisph_system.rs standalone PCISPH), `WaterEffectsManager` (water_effects.rs visual coordinator) coexist with overlapping responsibilities. The crate was then 84.5K LoC. Whether to consolidate into a single `Fluid` facade, keep all five as separately-published modules, or migrate consumers to `UnifiedSolver` exclusively is undecided.
-- **`SolverType` naming collision between `unified_solver.rs` (lowercase) and `research.rs` (UPPERCASE) — rename or coexist?** **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`. `lib.rs:187` is the `half_extents` field of `DynamicObject`, not a `SolverType` re-export. The 2026-05-12 collision that follows is historical. [Decisional / factual.] Two enums of the same name with different variant casing conventions. The crate root then re-exported the lowercase version (the old cite was `lib.rs:187`). Whether to rename the research version (e.g. `ResearchSolverType`) or accept the namespacing requirement is undecided.
+- **`SolverType` naming collision between `unified_solver.rs` (lowercase) and `research.rs` (UPPERCASE) — rename or coexist?** **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`. `lib.rs:186` is `pub half_extents: [f32; 4]` on `DynamicObject` (line 187 closes the struct), not a `SolverType` re-export. The 2026-05-12 collision that follows is historical. [Decisional / factual.] Two enums of the same name with different variant casing conventions. The crate root then re-exported the lowercase version (the old cite was `lib.rs:187`). Whether to rename the research version (e.g. `ResearchSolverType`) or accept the namespacing requirement is undecided.
 - **`ViscositySolverType` (unified) vs `ViscositySolver` (research) — pick a single name?** [Decisional.] Factual: two parallel types with same conceptual purpose but different names. Standardize on one or keep both.
 - **Four parallel quality enums (`QualityPreset`, `WaterQualityPreset`, `QualityTier`, `ResearchQualityTier`) — unify or document parallel intent?** [Decisional.] Each scopes to a different subsystem. Whether to share a single base enum + per-subsystem extension trait, keep four parallel enums, or accept the redundancy is undecided.
 <!-- Question "ssfr_smooth_v2.wgsl suffix — vestige of v1 deletion?" closed via deep investigation 2026-05-12. Resolution: v1 (`ssfr_smooth.wgsl`) DID exist and was deleted in commit `4af95b47c` ("Implement rain splash particle system, shader permutation system, snow footprint stamping, and vegetation interaction system"). The commit's "shader permutation system" likely refactored ssfr_smooth as v2. Resolution captured in §5 file map row for `ssfr_smooth_v2.wgsl` and §7 Decision Log (new entry for SSFR shader refactor). -->
@@ -977,7 +977,7 @@ Per README:
 **Verification process:**
 - Spot-check §2.1 PBD pipeline against `shaders/fluid.wgsl` kernel names + `lib.rs::FluidSystem::new` pipeline construction
 - Verify §5 file map line counts against `wc -l astraweave-fluids/src/*.rs astraweave-fluids/shaders/*.wgsl`
-- Verify §6 naming-collision claims against `grep -n "pub enum SolverType" astraweave-fluids/src/{unified_solver,research}.rs`
+- Verify the §6 naming-collision claim against the tree at `604d35d1`: `unified_solver.rs` and `research.rs` are gone, no `enum SolverType` remains under `src/`, and `lib.rs:186` is `half_extents` on `DynamicObject`.
 - Verify §11 first Open Question with `grep -rn "use astraweave_fluids" --include="*.rs"` workspace-wide
 - Run `cargo test -p astraweave-fluids --tests` for integration test surface
 - Run `cargo bench -p astraweave-fluids` for bench surface
@@ -991,42 +991,42 @@ Per README:
 
 0. **(2026-06-24) Scope split — check which trace you need.** The visible water *surface* (Gerstner heightfield, weave-response part/freeze/raise deformation, LOD, `WaterQuery` truth facade) is now traced in [`docs/architecture/water.md`](./water.md), NOT here. This `fluids.md` trace covers only the deprecated PBD solver remnant + the **F.4 GPU-particle accent garnish** (`SecondaryParticle` / `secondary.wgsl` / `FluidRenderer::render_accents` / `set_secondary_particles`). The accent producer (`WaterAccentProducer`) is binary glue in `examples/weaving_playground`, not in this crate; `astraweave-render` and `astraweave-fluids` have no Cargo edge.
 1. **The crate has no production game-loop consumer.** Only the two examples consume it: `fluids_demo` (PBD solver) and `weaving_playground` (F.4.2 accents). No `astraweave-*` engine crate depends on `astraweave-fluids`.
-2. **Five parallel solver/manager surfaces coexist.** `FluidSystem` (lib.rs PBD), `UnifiedSolver`, `ResearchFluidSystem`, `PCISPHSystem`, `WaterEffectsManager`. The demo uses `FluidSystem`. The others are research-grade additions per the roadmap.
-3. **`SolverType` naming collision:** `unified_solver::SolverType` has `Pbd/Pcisph/Dfsph/Iisph` (lowercase). `research::SolverType` has `PBD/PCISPH/DFSPH/IISPH` (UPPERCASE). The crate root re-exports the lowercase version.
-4. **Quality enums proliferate:** `QualityPreset`, `WaterQualityPreset`, `QualityTier`, `ResearchQualityTier` — each scopes to a different subsystem. They are NOT interchangeable.
+2. **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` (`lib.rs`) and `WaterEffectsManager` (`water_effects.rs`) remain. The 2026-05-12 list of five coexisting solver surfaces is historical.
+3. **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`, and the crate root does not re-export one. `lib.rs:186` is `pub half_extents: [f32; 4]` on `DynamicObject`. The 2026-05-12 casing collision is historical.
+4. **Quality enums.** At `604d35d1`, `QualityPreset` (`editor.rs`), `WaterQualityPreset` (`water_effects.rs`), and `QualityTier` (`optimization.rs`) remain and are not interchangeable. `ResearchQualityTier` is gone with the research solver.
 5. **GPU-first architecture.** `FluidSystem::new` takes `&wgpu::Device`. Compute pipelines are constructed once; per-frame work is a single compute pass over 8 kernels.
-6. **Two paradigms coexist:** particle simulation (PBD/PCISPH/etc.) for splashes/jets/hero fluids; voxel grid (`WaterVolumeGrid`) for building flooding / terrain interaction.
+6. **Superseded by W.1 (verified at `604d35d1`).** `volume_grid.rs` and `building.rs` are gone, and `WaterVolumeGrid` is not in this crate. The kept particle path is `FluidSystem`. The 2026-05-12 voxel-grid paragraph is historical.
 7. **`#![forbid(unsafe_code)]` is NOT declared at lib.rs:1.** Sibling engine crates do declare it. Verified 2026-05-12: only 2 unsafe occurrences crate-wide — bytemuck Pod/Zeroable impls at `debug_viz.rs:479-480`. No `unsafe { ... }` blocks.
-8. **`simd_ops.rs` is the largest file at 39,554 LoC.** It is batch-operation surface designed for LLVM auto-vectorization via glam — NOT manual SIMD intrinsics. Per inline doc-comment, manual unrolling and manual FMA are explicitly avoided.
+8. **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is gone. Before that deletion it was 39,554 lines of iterator-style batch ops, not manual SIMD intrinsics.
 9. **`editor.rs` is the second-largest file at 5,823 LoC.** Comprehensive editor integration with undo/redo, validation, batch operations, color-blind palettes. Verified 2026-05-12: NOT consumed by `tools/aw_editor` — forward-design only.
-10. **WGSL shaders live in `astraweave-fluids/shaders/`** (7 files). `shaders/fluid.wgsl` (481 LoC) is the central compute shader with 8 kernels.
+10. **WGSL shaders live in `astraweave-fluids/shaders/`** (7 files at `604d35d1`). `shaders/fluid.wgsl` is 649 lines and is the central compute shader.
 11. **`WaterEffectsManager` is the visual-effects coordinator** behind `WaterQualityPreset`. The 7 visual subsystems (caustics/foam/god rays/reflections/underwater/underwater_particles/waterfall) are independently constructable but typically used via this coordinator.
-12. **Two Cargo features only:** `default = ["serde"]`, `parallel = ["dep:rayon"]`. Neither is required for the GPU compute paths.
+12. **Cargo features at `604d35d1`:** `default = []`. `serde` is an unconditional dependency. `parallel = ["dep:rayon"]` is still declared and gates nothing after W.1 removed `simd_ops.rs`.
 
 **Files you'll most likely touch:**
 
 - `astraweave-fluids/src/lib.rs` — `FluidSystem` (PBD GPU pipeline), `Particle`/`SimParams`/`SecondaryParticle` GPU types
 - `astraweave-fluids/src/water_effects.rs` — `WaterEffectsManager` visual coordinator
-- `astraweave-fluids/src/volume_grid.rs` + `building.rs` — voxel water + building integration
+- `astraweave-fluids/src/volume_grid.rs` and `building.rs` — **gone in W.1**. Do not treat them as files to edit.
 - `astraweave-fluids/shaders/fluid.wgsl` — 8-kernel PBD compute shader
 - `astraweave-fluids/src/renderer.rs` — SSFR rendering pipeline
 - `examples/fluids_demo/src/main.rs` and `examples/weaving_playground` — the two consumers; `fluids_demo` is the canonical PBD usage pattern
 
 **Files you should NOT touch without strong reason:**
 
-- `astraweave-fluids/src/simd_ops.rs` (39,554 LoC) — the SIMD primitives layer; per inline doc-comment, the design choice is "iterators not intrinsics" and the file optimizes for LLVM auto-vectorization, not manual SIMD
-- `astraweave-fluids/src/research.rs` + `pcisph_system.rs` + `unified_solver.rs` — research-grade solver inventory; coordinated by the roadmap doc and dormant in production
+- `astraweave-fluids/src/simd_ops.rs` — **gone in W.1** (it was 39,554 lines). Do not restore it as a current edit target.
+- `astraweave-fluids/src/research.rs`, `pcisph_system.rs`, and `unified_solver.rs` — **gone in W.1**. Do not treat the 2026-05-12 research inventory as files that still exist.
 - `astraweave-fluids/src/editor.rs` (5,823 LoC) — comprehensive editor surface with extensive re-exports; modifications cascade through `lib.rs:100-153` re-exports
 - `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` — audit doc; this trace is anchored to it
 
 **Common mistakes when changing this system:**
 
 - **Assuming `astraweave-fluids` is wired into the engine.** It is not. The crate is consumed by `examples/fluids_demo` and `examples/weaving_playground`, and by no `astraweave-*` game-loop crate.
-- **Choosing `SolverType::PBD` (UPPERCASE) and expecting it to work from a `unified_solver` consumer.** The unified solver's enum is lowercase (`Pbd`). The UPPERCASE version is from `research::SolverType`. Fully-qualify imports.
-- **Treating `FluidSystem` and `UnifiedSolver` as interchangeable.** They have different GPU types (`Particle` vs `ResearchParticle`) and different compute pipelines. Switching is a migration, not a swap.
-- **Modifying `simd_ops.rs` to add manual SIMD intrinsics.** Per the file's inline doc-comment (lines 19-25), the design choice is explicitly to AVOID manual intrinsics and FMA in favor of LLVM auto-vectorization.
-- **Adding a new variant to `#[non_exhaustive]` enums without checking dispatch sites.** Many enums (`MaterialType`, `SolverType`, `WaterEffectsError`, etc.) feed into match expressions in the `editor.rs` validation surface. Per CLAUDE.md Integration Completeness #2, audit all sites.
-- **Calling `WaterDrain` and expecting particle behavior.** `WaterDrain` is voxel-side (aliased `VolumetricDrain` at re-export). Particle-side drains use `FluidDrain`.
+- **Choosing a `SolverType` variant or a `unified_solver` consumer.** **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`, and `unified_solver.rs` is gone. `lib.rs:186` is `half_extents` on `DynamicObject`.
+- **Treating `FluidSystem` and `UnifiedSolver` as interchangeable.** **Superseded by W.1.** `UnifiedSolver` is gone. `FluidSystem` remains.
+- **Modifying `simd_ops.rs`.** **Superseded by W.1.** That file is gone.
+- **Adding a new variant to a `#[non_exhaustive]` enum without checking dispatch sites.** `WaterEffectsError` remains in `water_effects.rs`. There is no `enum SolverType` and no `enum MaterialType` under `src/`. Audit the live match sites.
+- **Calling `WaterDrain` and expecting particle behavior.** **Superseded by W.1.** `WaterDrain` and `VolumetricDrain` are gone. `FluidDrain` remains in `emitter.rs` and is re-exported from `lib.rs`.
 - **Updating `shaders/ssfr_smooth_v2.wgsl` thinking v1 exists somewhere as a fallback.** Only v2 exists in the directory.
 
 ---
