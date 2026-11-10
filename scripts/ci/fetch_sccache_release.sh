@@ -9,9 +9,9 @@
 # fetch, which returns HTTP 504 often enough to fail the job (#721).
 #
 # The archive sha256 values are pinned below. A mismatch exits 1 immediately:
-# no retry and no fallback. A failed download retries with backoff. Exhausted
-# download retries exit 0 and set available=false. The workflow fallback step
-# clears the compiler wrapper. This script does not export compiler settings.
+# no retry and no fallback. Any other failure exits 0 and sets available=false.
+# A failed download retries with backoff. The workflow fallback step clears the
+# compiler wrapper. This script does not export compiler settings.
 #
 # --release-base is for the policy test harness. Workflows call this script
 # with no arguments.
@@ -38,6 +38,19 @@ fail_closed() {
   write_output "available=false"
   exit 0
 }
+
+# A checksum mismatch is the only path that exits non-zero. Command failures
+# under set -e land here and fall back instead of failing the job. A failure
+# inside a command substitution must keep failing so the parent shell, not the
+# subshell, runs the fallback.
+on_unexpected_error() {
+  if [ "${BASH_SUBSHELL:-0}" -ne 0 ]; then
+    exit 1
+  fi
+  trap - ERR
+  fail_closed "unexpected error"
+}
+trap on_unexpected_error ERR
 
 # sha256 of the v0.19.0 release archives this script can install.
 pinned_sha256() {
@@ -75,6 +88,9 @@ esac
 case "$DELAY" in
   ''|*[!0-9]*) fail_closed "SCCACHE_FETCH_DELAY_SECONDS must be a non-negative integer" ;;
 esac
+# Base 10. A leading zero would otherwise abort $((delay * 2)).
+ATTEMPTS=$((10#$ATTEMPTS))
+DELAY=$((10#$DELAY))
 if [ "$ATTEMPTS" -lt 1 ]; then
   fail_closed "SCCACHE_FETCH_ATTEMPTS must be at least 1"
 fi
@@ -86,8 +102,8 @@ if [ -z "${RUNNER_TOOL_CACHE:-}" ]; then
   fail_closed "RUNNER_TOOL_CACHE is unset"
 fi
 
-node_arch="$(node -p 'process.arch')"
-node_platform="$(node -p 'process.platform')"
+node_arch="$(node -p 'process.arch')" || fail_closed "could not read the runner arch"
+node_platform="$(node -p 'process.platform')" || fail_closed "could not read the runner platform"
 
 case "$node_arch" in
   x64) asset_arch=x86_64 ;;
@@ -119,6 +135,9 @@ esac
 
 filename="sccache-${VERSION}-${asset_arch}-${asset_os}.tar.gz"
 url="${release_base}/${filename}"
+if ! pinned_sha256 "$filename" >/dev/null; then
+  fail_closed "no pinned checksum for ${filename}"
+fi
 
 tool_cache="$RUNNER_TOOL_CACHE"
 if command -v cygpath >/dev/null 2>&1; then
@@ -129,7 +148,7 @@ sha256_file() {
   node -e 'const fs=require("fs"),crypto=require("crypto");const h=crypto.createHash("sha256");h.update(fs.readFileSync(process.argv[1]));process.stdout.write(h.digest("hex"));' "$1"
 }
 
-tmp="$(mktemp -d)"
+tmp="$(mktemp -d)" || fail_closed "could not create a temp directory"
 trap 'rm -rf "$tmp"' EXIT
 
 download_archive() {
@@ -155,15 +174,15 @@ if ! download_archive; then
 fi
 
 got="$(sha256_file "$tmp/pkg.tar.gz")"
-want="$(pinned_sha256 "$filename")" || want=""
+want="$(pinned_sha256 "$filename")"
 if [ "${#want}" -ne 64 ] || [ "$got" != "$want" ]; then
   echo "sccache checksum mismatch for ${filename}" >&2
   exit 1
 fi
 
 rm -rf "$tmp/extract"
-mkdir -p "$tmp/extract"
-tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract"
+mkdir -p "$tmp/extract" || fail_closed "could not create the extract directory"
+tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
 
 inner=""
 for candidate in "$tmp/extract"/*; do
@@ -181,9 +200,14 @@ fi
 
 dest="${tool_cache}/sccache/${clean_version}/${node_arch}"
 rm -rf "$dest" "${dest}.complete"
-mkdir -p "$dest"
-cp -R "${inner}/." "${dest}/"
-printf '' > "${dest}.complete"
+if ! {
+  mkdir -p "$dest" \
+    && cp -R "${inner}/." "${dest}/" \
+    && printf '' > "${dest}.complete"
+}; then
+  rm -rf "$dest" "${dest}.complete"
+  fail_closed "could not install sccache into the tool cache"
+fi
 
 if [ ! -f "$dest/sccache" ] && [ ! -f "$dest/sccache.exe" ]; then
   fail_closed "tool cache is missing the sccache binary"

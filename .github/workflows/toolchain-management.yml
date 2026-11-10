@@ -132,9 +132,17 @@ jobs:
       - name: Configure sccache
         if: steps.sccache_fetch.outputs.available == 'true'
         shell: bash
+        env:
+          AW_GITHUB_REF: ${{ github.ref }}
+          AW_GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          if [ "$AW_GITHUB_REF" = "refs/heads/main" ] && [ "$AW_GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
+          else
+            echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
+          fi
 
       - name: Validate toolchain configuration
         run: |
@@ -323,9 +331,18 @@ jobs:
 
       - name: Configure sccache
         if: steps.sccache_fetch.outputs.available == 'true'
+        shell: bash
+        env:
+          AW_GITHUB_REF: ${{ github.ref }}
+          AW_GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
-          echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
-          echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          if [ "$AW_GITHUB_REF" = "refs/heads/main" ] && [ "$AW_GITHUB_EVENT_NAME" != "pull_request" ]; then
+            echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
+          else
+            echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"
+          fi
 
       - name: Set up performance cache
         uses: Swatinem/rust-cache@v2

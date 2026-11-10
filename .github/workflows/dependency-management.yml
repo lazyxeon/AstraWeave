@@ -193,7 +193,7 @@ jobs:
 
       - name: Configure sccache
         if: steps.sccache_fetch.outputs.available == 'true'
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - name: Show sccache stats (before)
         if: steps.sccache_fetch.outputs.available == 'true'
