@@ -552,6 +552,10 @@ SCCACHE_PREFETCH_RUN = "run: bash scripts/ci/fetch_sccache_release.sh"
 # the install `if` (`|| true`, `|| success()`) runs sccache-action, which then
 # calls downloadSCCache on the same release (#721).
 SCCACHE_PREFETCH_IF = "steps.sccache_fetch.outputs.available == 'true'"
+SCCACHE_FALLBACK_IF = "steps.sccache_fetch.outputs.available != 'true'"
+_WRAPPER_ENV_KEYS = frozenset({"RUSTC_WRAPPER", "CARGO_BUILD_RUSTC_WRAPPER"})
+_WORKFLOW_GLOBS = ("*.yml", "*.yaml")
+_ACTION_FILE_GLOBS = ("action.yml", "action.yaml")
 CARGO_INCREMENTAL_ECHO = 'echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"'
 # sha256 of the v0.19.0 archives fetch_sccache_release.sh can install.
 PINNED_SCCACHE_SHA256 = {
@@ -584,11 +588,11 @@ _ENV_ASSIGN_RE = re.compile(
 
 def sccache_policy_texts() -> dict[str, str]:
     texts: dict[str, str] = {}
-    for pattern in ("*.yml", "*.yaml"):
+    for pattern in _WORKFLOW_GLOBS:
         for path in sorted(WORKFLOWS.glob(pattern)):
             texts[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
     actions = ROOT / ".github" / "actions"
-    for pattern in ("action.yml", "action.yaml"):
+    for pattern in _ACTION_FILE_GLOBS:
         for path in sorted(actions.rglob(pattern)):
             texts[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
     return texts
@@ -667,8 +671,7 @@ def _last_prefetch_index_before(steps: list[dict], end: int) -> int:
 def _last_fallback_index_before(steps: list[dict], end: int) -> int:
     found = -1
     for index, step in enumerate(steps[:end]):
-        if_value = _step_if(step)
-        if if_value == "steps.sccache_fetch.outputs.available != 'true'":
+        if _step_looks_like_fallback(step):
             found = index
     return found
 
@@ -704,8 +707,14 @@ def _step_run(step: dict | str) -> str:
 
 
 def _step_continue_on_error(step: dict) -> bool:
+    if "continue-on-error" not in step:
+        return False
     value = step.get("continue-on-error")
-    return value is True or value == "true"
+    if value is False:
+        return False
+    if isinstance(value, str) and value.strip().lower() == "false":
+        return False
+    return True
 
 
 def _sccache_action_ref(uses: str) -> str | None:
@@ -758,9 +767,24 @@ def _load_workflow_yaml(text: str) -> dict | None:
     return doc if isinstance(doc, dict) else None
 
 
+def _is_composite_action(path: str) -> bool:
+    """A composite is `.github/actions/**/action.yml` or `action.yaml`.
+
+    Everything under `.github/workflows/` is a workflow, including a file
+    whose name ends in `action.yml`.
+    """
+    normalized = path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    parts = [part for part in normalized.split("/") if part]
+    if len(parts) < 3 or parts[0] != ".github" or parts[1] != "actions":
+        return False
+    return parts[-1] in ("action.yml", "action.yaml")
+
+
 def _iter_sccache_step_lists(doc: dict, path: str) -> list[list[dict]]:
     lists: list[list[dict]] = []
-    if path.endswith(("action.yml", "action.yaml")):
+    if _is_composite_action(path):
         runs = doc.get("runs")
         if isinstance(runs, dict):
             steps = runs.get("steps")
@@ -779,37 +803,95 @@ def _iter_sccache_step_lists(doc: dict, path: str) -> list[list[dict]]:
     return lists
 
 
-def _step_enables_sccache_wrapper(step: dict) -> bool:
+_GITHUB_ENV_ASSIGN_RE = re.compile(
+    r"""^\s*(?:echo|printf)\s+(?:"([^"]*)"|'([^']*)'|(\S+))\s*>>\s*["']?\$GITHUB_ENV["']?\s*$"""
+)
+
+
+def _is_wrapper_env_key(key: object) -> bool:
+    return str(key).upper() in _WRAPPER_ENV_KEYS
+
+
+def _github_env_assignments(run: str) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    if not run:
+        return found
+    for line in run.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = _GITHUB_ENV_ASSIGN_RE.match(line)
+        if match is None:
+            continue
+        body = next(group for group in match.groups() if group is not None)
+        if "=" not in body:
+            continue
+        key, value = body.split("=", 1)
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            found.append((key, value))
+    return found
+
+
+def _step_wrapper_assignments(step: dict) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
     env = step.get("env")
-    if isinstance(env, dict) and str(env.get("RUSTC_WRAPPER", "")).strip() == "sccache":
+    if isinstance(env, dict):
+        for key, value in env.items():
+            if _is_wrapper_env_key(key):
+                found.append((str(key), "" if value is None else str(value)))
+    for key, value in _github_env_assignments(_step_run(step)):
+        if _is_wrapper_env_key(key):
+            found.append((key, value))
+    return found
+
+
+def _step_looks_like_fallback(step: dict) -> bool:
+    run = _step_run(step)
+    if SCCACHE_UNAVAILABLE_WARNING in run:
         return True
-    return "RUSTC_WRAPPER=sccache" in _step_run(step)
+    return any(
+        key == "RUSTC_WRAPPER" and value == "" for key, value in _github_env_assignments(run)
+    )
+
+
+def _is_exact_fallback_clear(assignments: list[tuple[str, str]]) -> bool:
+    if not assignments:
+        return False
+    return all(key == "RUSTC_WRAPPER" and value == "" for key, value in assignments)
+
+
+def _env_mapping_wrapper_keys(env: object) -> list[str]:
+    if not isinstance(env, dict):
+        return []
+    return [str(key) for key in env if _is_wrapper_env_key(key)]
 
 
 def _sccache_env_violations(path: str, doc: dict) -> list[str]:
     violations: list[str] = []
-    env = doc.get("env")
-    if isinstance(env, dict) and str(env.get("RUSTC_WRAPPER", "")).strip() == "sccache":
-        violations.append(f"{path}: workflow env must not set RUSTC_WRAPPER=sccache")
+    for key in _env_mapping_wrapper_keys(doc.get("env")):
+        violations.append(f"{path}: workflow env must not set {key}")
     jobs = doc.get("jobs")
     if not isinstance(jobs, dict):
         return violations
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
-        job_env = job.get("env")
-        if isinstance(job_env, dict) and str(job_env.get("RUSTC_WRAPPER", "")).strip() == "sccache":
-            violations.append(f"{path} job {job_id}: job env must not set RUSTC_WRAPPER=sccache")
+        for key in _env_mapping_wrapper_keys(job.get("env")):
+            violations.append(f"{path} job {job_id}: job env must not set {key}")
     return violations
 
 
 def _sccache_wrapper_violations(path: str, steps: list[dict]) -> list[str]:
     violations: list[str] = []
     for step in steps:
-        if not _step_enables_sccache_wrapper(step):
+        assignments = _step_wrapper_assignments(step)
+        if not assignments:
             continue
         if_value = _step_if(step)
-        if if_value != SCCACHE_PREFETCH_IF:
+        allowed = if_value == SCCACHE_PREFETCH_IF or (
+            if_value == SCCACHE_FALLBACK_IF and _is_exact_fallback_clear(assignments)
+        )
+        if not allowed:
             violations.append(
                 f"{path}: RUSTC_WRAPPER=sccache if must be exactly {SCCACHE_PREFETCH_IF!r}, "
                 f"found {if_value!r}"
@@ -822,6 +904,25 @@ def _sccache_wrapper_violations(path: str, steps: list[dict]) -> list[str]:
             violations.append(f"{path}: sccache enable if must not ignore failure with || true")
         if _step_continue_on_error(step):
             violations.append(f"{path}: continue-on-error is set on the RUSTC_WRAPPER step")
+    return violations
+
+
+def _uses_is_fixed(uses: object) -> bool:
+    if not isinstance(uses, str):
+        return False
+    text = uses.strip()
+    return bool(text) and "${{" not in text
+
+
+def _fixed_uses_violations(path: str, steps: list[dict]) -> list[str]:
+    violations: list[str] = []
+    for step in steps:
+        if "uses" not in step:
+            continue
+        uses = step.get("uses")
+        if _uses_is_fixed(uses):
+            continue
+        violations.append(f"{path}: uses must be a fixed action reference, found {uses!r}")
     return violations
 
 
@@ -939,7 +1040,7 @@ def _sccache_action_step_violations(path: str, steps: list[dict], index: int) ->
         env_lines = [line for line in run.splitlines() if "GITHUB_ENV" in line]
         if writes != ["RUSTC_WRAPPER="] or len(env_lines) != 1:
             violations.append(f"{prefix}: fallback must only touch RUSTC_WRAPPER, wrote {writes or env_lines}")
-        if _step_if(fallback) != "steps.sccache_fetch.outputs.available != 'true'":
+        if _step_if(fallback) != SCCACHE_FALLBACK_IF:
             violations.append(f"{prefix}: fallback if must be the failed prefetch")
         if _step_continue_on_error(fallback):
             violations.append(f"{prefix}: continue-on-error is set on the fallback")
@@ -961,12 +1062,13 @@ def sccache_install_violations(texts: dict[str, str]) -> list[str]:
         step_lists = _iter_sccache_step_lists(doc, path)
         file_uses = 0
         for steps in step_lists:
+            violations.extend(_fixed_uses_violations(path, steps))
             action_indexes = [
                 index for index, step in enumerate(steps) if _is_sccache_action_step(step)
             ]
             file_uses += len(action_indexes)
+            violations.extend(_sccache_wrapper_violations(path, steps))
             if action_indexes:
-                violations.extend(_sccache_wrapper_violations(path, steps))
                 if not any(_unconditional_cargo_incremental(step) for step in steps):
                     violations.append(
                         f"{path}: CARGO_INCREMENTAL=0 must be set by a step with no if:"
@@ -978,7 +1080,7 @@ def sccache_install_violations(texts: dict[str, str]) -> list[str]:
                     violations.extend(_sccache_stats_violations(path, step))
         if file_uses:
             uses_per_file[path] = file_uses
-            violations.extend(_sccache_env_violations(path, doc))
+        violations.extend(_sccache_env_violations(path, doc))
     for path, count in EXPECTED_SCCACHE_ACTION_USES.items():
         found = uses_per_file.get(path, 0)
         if found != count:
@@ -1921,6 +2023,272 @@ class WorkflowPolicyTest(unittest.TestCase):
             any("RUSTC_WRAPPER=sccache if must be exactly" in item for item in env_wrapper_violations),
             env_wrapper_violations,
         )
+
+    def test_sccache_policy_checker_mutants(self) -> None:
+        texts = sccache_policy_texts()
+
+        def flagged(path: str, text: str, needle: str) -> None:
+            found = sccache_install_violations({path: text})
+            self.assertTrue(any(needle in item for item in found), found)
+
+        flagged(
+            ".github/workflows/caller.yml",
+            "name: caller\n"
+            "on: push\n"
+            "env:\n"
+            "  RUSTC_WRAPPER: sccache\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/actions/rust-ci-setup\n",
+            "workflow env must not set RUSTC_WRAPPER",
+        )
+        flagged(
+            ".github/workflows/called.yml",
+            "name: called\n"
+            "on:\n"
+            "  workflow_call:\n"
+            "env:\n"
+            "  RUSTC_WRAPPER: ${{ inputs.wrapper }}\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: cargo test\n",
+            "workflow env must not set RUSTC_WRAPPER",
+        )
+        flagged(
+            ".github/workflows/second-key.yml",
+            "name: second\n"
+            "on: push\n"
+            "env:\n"
+            "  cargo_build_rustc_wrapper: /usr/bin/sccache\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: cargo test\n",
+            "workflow env must not set cargo_build_rustc_wrapper",
+        )
+        flagged(
+            ".github/workflows/sibling.yml",
+            "name: sibling\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/actions/rust-ci-setup\n"
+            "  report:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    env:\n"
+            "      RUSTC_WRAPPER: sccache\n"
+            "    steps:\n"
+            "      - run: echo report\n",
+            "job report: job env must not set RUSTC_WRAPPER",
+        )
+        flagged(
+            ".github/workflows/step-env.yml",
+            "name: step-env\n"
+            "on: push\n"
+            "jobs:\n"
+            "  bench:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/actions/rust-ci-setup\n"
+            "      - name: Build\n"
+            "        env:\n"
+            "          RUSTC_WRAPPER: sccache\n"
+            "        run: cargo bench\n",
+            "RUSTC_WRAPPER=sccache if must be exactly",
+        )
+        flagged(
+            ".github/workflows/step-key.yml",
+            "name: step-key\n"
+            "on: push\n"
+            "jobs:\n"
+            "  bench:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: Build\n"
+            "        env:\n"
+            "          rustc_wrapper: /opt/cache\n"
+            "        run: cargo bench\n",
+            "RUSTC_WRAPPER=sccache if must be exactly",
+        )
+        flagged(
+            ".github/workflows/env-write.yml",
+            "name: env-write\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: |\n"
+            '          echo "rustc_wrapper=${{ env.WRAP }}" >> "$GITHUB_ENV"\n',
+            "RUSTC_WRAPPER=sccache if must be exactly",
+        )
+        flagged(
+            ".github/workflows/release-action.yml",
+            "name: release\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: Wrap\n"
+            "        run: |\n"
+            '          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"\n',
+            "RUSTC_WRAPPER=sccache if must be exactly",
+        )
+        flagged(
+            ".github/actions/custom/action.yaml",
+            "name: custom\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - shell: bash\n"
+            "      run: |\n"
+            '        echo "CARGO_BUILD_RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"\n',
+            "RUSTC_WRAPPER=sccache if must be exactly",
+        )
+        flagged(
+            ".github/workflows/expr-uses.yml",
+            "name: expr-uses\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ${{ matrix.action }}\n",
+            "uses must be a fixed action reference",
+        )
+        flagged(
+            ".github/workflows/broken.yml",
+            "jobs: [\n",
+            "workflow YAML did not parse",
+        )
+        flagged(
+            ".github/workflows/list.yml",
+            "[]\n",
+            "workflow YAML did not parse",
+        )
+        flagged(
+            ".github/workflows/not-listed.yml",
+            "name: extra\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: mozilla-actions/sccache-action@"
+            + SCCACHE_ACTION_COMMIT
+            + "\n"
+            "        with:\n"
+            "          version: v0.19.0\n",
+            "unexpected sccache-action use",
+        )
+
+        renamed = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "      id: sccache_fetch\n",
+            "      id: other_fetch\n",
+        )
+        renamed_violations = sccache_install_violations(renamed)
+        self.assertTrue(
+            any("missing id sccache_fetch" in item for item in renamed_violations),
+            renamed_violations,
+        )
+
+        widened = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "      if: steps.sccache_fetch.outputs.available != 'true'\n",
+            "      if: steps.sccache_fetch.outputs.available != 'true' || false\n",
+        )
+        widened_violations = sccache_install_violations(widened)
+        self.assertTrue(
+            any("fallback if must be the failed prefetch" in item for item in widened_violations),
+            widened_violations,
+        )
+
+        quoted_continue = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      uses: mozilla-actions/sccache-action@",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            '      continue-on-error: "true"\n'
+            "      uses: mozilla-actions/sccache-action@",
+        )
+        quoted_violations = sccache_install_violations(quoted_continue)
+        self.assertTrue(
+            any("continue-on-error is set" in item for item in quoted_violations),
+            quoted_violations,
+        )
+
+        expr_continue = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      uses: mozilla-actions/sccache-action@",
+            "    - name: Install sccache\n"
+            "      if: steps.sccache_fetch.outputs.available == 'true'\n"
+            "      continue-on-error: ${{ true }}\n"
+            "      uses: mozilla-actions/sccache-action@",
+        )
+        expr_violations = sccache_install_violations(expr_continue)
+        self.assertTrue(
+            any("continue-on-error is set" in item for item in expr_violations),
+            expr_violations,
+        )
+
+        workflow_probe = WORKFLOWS / "policy-probe.yaml"
+        action_probe = ROOT / ".github" / "actions" / "policy-probe"
+        workflow_probe.write_text(
+            "name: probe\n"
+            "on: push\n"
+            "env:\n"
+            "  RUSTC_WRAPPER: probe\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            encoding="utf-8",
+        )
+        action_probe.mkdir(parents=True)
+        (action_probe / "action.yaml").write_text(
+            "name: probe\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - shell: bash\n"
+            "      run: |\n"
+            '        echo "RUSTC_WRAPPER=probe" >> "$GITHUB_ENV"\n',
+            encoding="utf-8",
+        )
+        try:
+            loaded = sccache_policy_texts()
+            self.assertIn(".github/workflows/policy-probe.yaml", loaded)
+            self.assertIn(".github/actions/policy-probe/action.yaml", loaded)
+            probe_violations = sccache_install_violations(loaded)
+            self.assertTrue(
+                any(".github/workflows/policy-probe.yaml" in item for item in probe_violations),
+                probe_violations,
+            )
+            self.assertTrue(
+                any(".github/actions/policy-probe/action.yaml" in item for item in probe_violations),
+                probe_violations,
+            )
+        finally:
+            workflow_probe.unlink(missing_ok=True)
+            shutil.rmtree(action_probe, ignore_errors=True)
 
     def test_sccache_prefetch_retries_checksum_and_leaves_rustc_wrapper_alone(self) -> None:
         script = ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"
