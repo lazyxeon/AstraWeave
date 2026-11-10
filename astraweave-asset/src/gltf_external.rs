@@ -37,7 +37,8 @@ pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
 /// The model file uses `read_path`, which resolves the caller-supplied path once.
 ///
 /// The read stops at `max_bytes`. The allocation follows the bytes read.
-pub fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
     crate::bounded_open::read_unresolved(path, max_bytes, "")
 }
 
@@ -123,6 +124,10 @@ impl ExternalBudget {
         Self { cap, spent: 0 }
     }
 
+    /// Bytes still under `cap`.
+    ///
+    /// A read limit that reports the full cap after earlier reads is still
+    /// refused by [`Self::charge`], which rejects a total past `cap`.
     fn remaining(&self) -> u64 {
         self.cap.saturating_sub(self.spent)
     }
@@ -428,11 +433,62 @@ mod tests {
     #[test]
     fn read_stops_at_the_cap_before_the_payload() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let path = dir.path().join("big.bin");
+        let base = std::fs::canonicalize(dir.path()).expect("canonical");
+        let path = base.join("big.bin");
         let file = std::fs::File::create(&path).expect("create");
         file.set_len(9).expect("len");
         let err = read_jailed_file(&path, 8).expect_err("cap");
         assert!(err.to_string().contains("limit is 8"), "{err}");
+    }
+
+    #[test]
+    fn image_file_read_stops_at_its_own_cap() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cap: u64 = 64 * 1024 * 1024;
+        let file = std::fs::File::create(dir.path().join("big.png")).expect("create");
+        file.set_len(cap + 1).expect("len");
+        drop(file);
+        let gltf = br#"{
+            "asset": {"version": "2.0"},
+            "images": [{"uri": "big.png"}]
+        }"#;
+        let err = load_jailed_gltf(
+            dir.path(),
+            gltf,
+            crate::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+        )
+        .expect_err("image cap");
+        let msg = err.to_string();
+        assert!(msg.contains(&format!("limit is {cap}")), "{msg}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn load_under_an_execute_only_ancestor() {
+        use std::os::unix::fs::PermissionsExt;
+        struct Restore(std::path::PathBuf);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ancestor = dir.path().join("ancestor");
+        let model = ancestor.join("model");
+        std::fs::create_dir_all(&model).expect("model");
+        std::fs::write(model.join("mesh.bin"), b"mesh").expect("bin");
+        let gltf = model.join("scene.gltf");
+        std::fs::write(
+            &gltf,
+            br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"mesh.bin","byteLength":4}]}"#,
+        )
+        .expect("gltf");
+        let _restore = Restore(ancestor.clone());
+        std::fs::set_permissions(&ancestor, std::fs::Permissions::from_mode(0o311)).expect("mode");
+        let (bytes, root) =
+            crate::gltf_loader::read_gltf_container_with_root(&gltf).expect("container");
+        let (_doc, buffers, _) = load_jailed_gltf_with_root(&root, &bytes, 1024).expect("load");
+        assert_eq!(&buffers[0].0[..4], b"mesh");
     }
 
     #[test]

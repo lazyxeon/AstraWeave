@@ -1534,42 +1534,61 @@ pub mod gltf_loader {
         pub channels: Vec<AnimationChannel>,
     }
 
+    fn container_is_glb(bytes: &[u8]) -> bool {
+        bytes.len() >= 12 && &bytes[0..4] == b"glTF"
+    }
+
+    /// Buffers and images for one already-open directory and one shared budget.
+    ///
+    /// A GLB BIN chunk is taken from `bytes`. A JSON document reads each
+    /// external URI through `root` and charges `budget` once.
+    fn loaded_parts(
+        root: &crate::gltf_external::ModelRoot,
+        budget: &mut crate::gltf_external::ExternalBudget,
+        bytes: &[u8],
+    ) -> Result<(gltf::Document, Vec<Vec<u8>>, Vec<gltf::image::Data>)> {
+        if container_is_glb(bytes) {
+            let (doc, buffers) = glb_parts(bytes)?;
+            Ok((doc, buffers, Vec::new()))
+        } else {
+            load_json_parts(root, bytes, budget)
+        }
+    }
+
+    fn glb_parts(bytes: &[u8]) -> Result<(gltf::Document, Vec<Vec<u8>>)> {
+        let glb = read_glb(bytes)?;
+        let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
+        let parsed = read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?;
+        let bin = glb.bin.context("GLB missing BIN chunk")?;
+        let mut buffers = Vec::new();
+        for b in parsed.document.buffers() {
+            match b.source() {
+                gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
+                gltf::buffer::Source::Uri(_) => {
+                    bail!("External buffer URIs not supported in GLB path")
+                }
+            }
+        }
+        Ok((parsed.document, buffers))
+    }
+
     /// Load skeleton from glTF/GLB with inverse bind matrices and hierarchy
     pub fn load_skeleton(base: &std::path::Path, bytes: &[u8]) -> Result<Skeleton> {
-        let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            // GLB path
-            let glb = read_glb(bytes)?;
-            let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?
-        } else {
-            // JSON path
-            read_gltf(bytes, "Parse .gltf JSON")?
-        };
+        if container_is_glb(bytes) {
+            let (doc, buffers) = glb_parts(bytes)?;
+            return skeleton_from_loaded(&doc, &buffers);
+        }
+        let (root, mut budget) = open_model_budget(base)?;
+        let (doc, buffers, _) = loaded_parts(&root, &mut budget, bytes)?;
+        skeleton_from_loaded(&doc, &buffers)
+    }
 
+    fn skeleton_from_loaded(doc: &gltf::Document, buffers: &[Vec<u8>]) -> Result<Skeleton> {
         // Find first skin
         let skin = doc
             .skins()
             .next()
             .ok_or_else(|| anyhow!("No skins found in glTF"))?;
-
-        // Gather buffer data
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let bin = glb.bin.context("GLB missing BIN chunk")?;
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
-                    gltf::buffer::Source::Uri(_) => {
-                        bail!("External buffer URIs not supported in GLB path")
-                    }
-                }
-            }
-        } else {
-            let (root, mut budget) = open_model_budget(base)?;
-            let (_document, loaded, _images) = load_json_parts(&root, bytes, &mut budget)?;
-            buffers = loaded;
-        }
 
         // Build joint hierarchy
         let joint_nodes: Vec<gltf::Node> = skin.joints().collect();
@@ -1686,33 +1705,19 @@ pub mod gltf_loader {
         bytes: &[u8],
         _skeleton: &Skeleton,
     ) -> Result<Vec<AnimationClip>> {
-        let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?
-        } else {
-            read_gltf(bytes, "Parse .gltf JSON")?
-        };
-
-        // Gather buffer data
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let bin = glb.bin.context("GLB missing BIN chunk")?;
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
-                    gltf::buffer::Source::Uri(_) => {
-                        bail!("External buffer URIs not supported in GLB path")
-                    }
-                }
-            }
-        } else {
-            let (root, mut budget) = open_model_budget(base)?;
-            let (_document, loaded, _images) = load_json_parts(&root, bytes, &mut budget)?;
-            buffers = loaded;
+        if container_is_glb(bytes) {
+            let (doc, buffers) = glb_parts(bytes)?;
+            return animations_from_loaded(&doc, &buffers);
         }
+        let (root, mut budget) = open_model_budget(base)?;
+        let (doc, buffers, _) = loaded_parts(&root, &mut budget, bytes)?;
+        animations_from_loaded(&doc, &buffers)
+    }
 
+    fn animations_from_loaded(
+        doc: &gltf::Document,
+        buffers: &[Vec<u8>],
+    ) -> Result<Vec<AnimationClip>> {
         // Build node-to-joint mapping for this skeleton
         let mut node_to_joint: std::collections::HashMap<usize, usize> =
             std::collections::HashMap::new();
@@ -1876,45 +1881,25 @@ pub mod gltf_loader {
         Vec<AnimationClip>,
         Option<MaterialData>,
     )> {
-        // Load skeleton first
-        let skeleton = load_skeleton(base, bytes)?;
-
-        // Load animations
-        let animations = load_animations(base, bytes, &skeleton)?;
-
-        // Load mesh data (positions, normals, tangents, joints, weights, indices, material)
-        let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            // GLB path
-            let glb = read_glb(bytes)?;
-            let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?
-        } else {
-            // JSON path
-            read_gltf(bytes, "Parse .gltf JSON")?
-        };
-
-        // Gather buffer data (support GLB BIN or .gltf data: URIs).
-        // One load opens the model directory once, and that handle is used for
-        // the container read, every sibling URI, and every image URI.
         let (root, mut budget) = open_model_budget(base)?;
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        let mut loaded_images = Vec::new();
-        if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let bin = glb.bin.context("GLB missing BIN chunk")?;
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
-                    gltf::buffer::Source::Uri(_) => {
-                        bail!("External buffer URIs not supported in GLB path")
-                    }
-                }
-            }
-        } else {
-            let (_document, loaded, images) = load_json_parts(&root, bytes, &mut budget)?;
-            buffers = loaded;
-            loaded_images = images;
-        }
+        load_skinned_mesh_with_budget(&root, &mut budget, bytes)
+    }
+
+    fn load_skinned_mesh_with_budget(
+        root: &crate::gltf_external::ModelRoot,
+        budget: &mut crate::gltf_external::ExternalBudget,
+        bytes: &[u8],
+    ) -> Result<(
+        SkinnedMeshData,
+        Skeleton,
+        Vec<AnimationClip>,
+        Option<MaterialData>,
+    )> {
+        // One directory handle and one byte budget for the skeleton, the
+        // clips, and the mesh. The caller supplies the container bytes.
+        let (doc, buffers, loaded_images) = loaded_parts(root, budget, bytes)?;
+        let skeleton = skeleton_from_loaded(&doc, &buffers)?;
+        let animations = animations_from_loaded(&doc, &buffers)?;
 
         // Find first node with mesh and skin
         let mut skinned_node: Option<gltf::Node> = None;
@@ -2030,11 +2015,11 @@ pub mod gltf_loader {
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
             let img = image_from_loaded(
-                &root,
+                root,
                 tex.texture().source(),
                 &buffers_data,
                 &loaded_images,
-                &mut budget,
+                budget,
             )
             .unwrap_or_else(|_| ImageData {
                 width: 1,
@@ -2045,22 +2030,22 @@ pub mod gltf_loader {
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
             if let Ok(img) = image_from_loaded(
-                &root,
+                root,
                 tex.texture().source(),
                 &buffers_data,
                 &loaded_images,
-                &mut budget,
+                budget,
             ) {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
             if let Ok(img) = image_from_loaded(
-                &root,
+                root,
                 n.texture().source(),
                 &buffers_data,
                 &loaded_images,
-                &mut budget,
+                budget,
             ) {
                 mat.normal_texture = Some(img);
             }
@@ -2096,9 +2081,8 @@ pub mod gltf_loader {
             read_gltf(bytes, "Parse .gltf JSON")?
         };
 
-        // Gather buffer data (support GLB BIN or .gltf data: URIs).
-        // One load opens the model directory once, and that handle is used for
-        // the container read, every sibling URI, and every image URI.
+        // The directory opened for this call is used for every URI in the call.
+        // The caller supplies the container bytes.
         let (root, mut budget) = open_model_budget(base)?;
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         let mut loaded_images = Vec::new();
@@ -2427,6 +2411,262 @@ pub mod gltf_loader {
             let len = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();
             assert!((len - 1.0).abs() < 1e-5);
             assert!((q[0] - 0.5).abs() < 1e-5);
+        }
+    }
+
+    #[cfg(test)]
+    mod shared_root_tests {
+        use super::*;
+
+        fn skinned_bin(position: [f32; 3]) -> Vec<u8> {
+            let mut bin = Vec::new();
+            for value in position {
+                bin.extend(value.to_le_bytes());
+            }
+            bin.extend([0f32, 0.0, 0.0].iter().flat_map(|v| v.to_le_bytes()));
+            bin.extend([1f32, 0.0, 0.0].iter().flat_map(|v| v.to_le_bytes()));
+            for _ in 0..3 {
+                bin.extend([0f32, 0.0, 1.0].iter().flat_map(|v| v.to_le_bytes()));
+            }
+            for index in [0u16, 1, 2] {
+                bin.extend(index.to_le_bytes());
+            }
+            while bin.len() < 80 {
+                bin.push(0);
+            }
+            for _ in 0..3 {
+                bin.extend([0u8, 0, 0, 0]);
+            }
+            for _ in 0..3 {
+                bin.extend([1f32, 0.0, 0.0, 0.0].iter().flat_map(|v| v.to_le_bytes()));
+            }
+            bin
+        }
+
+        fn skinned_json(len: usize, position: [f32; 3]) -> Vec<u8> {
+            let max_x = position[0].max(1.0);
+            let max_y = position[1];
+            let max_z = position[2];
+            format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{"uri": "mesh.bin", "byteLength": {len}}}],
+                    "bufferViews": [
+                        {{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 36, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 72, "byteLength": 6}},
+                        {{"buffer": 0, "byteOffset": 80, "byteLength": 12}},
+                        {{"buffer": 0, "byteOffset": 92, "byteLength": 48}}
+                    ],
+                    "accessors": [
+                        {{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [{max_x}, {max_y}, {max_z}]}},
+                        {{"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                        {{"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}},
+                        {{"bufferView": 3, "componentType": 5121, "count": 3, "type": "VEC4"}},
+                        {{"bufferView": 4, "componentType": 5126, "count": 3, "type": "VEC4"}}
+                    ],
+                    "meshes": [{{"primitives": [{{
+                        "attributes": {{"POSITION": 0, "NORMAL": 1, "JOINTS_0": 3, "WEIGHTS_0": 4}},
+                        "indices": 2
+                    }}]}}],
+                    "nodes": [{{"name": "root"}}, {{"mesh": 0, "skin": 0}}],
+                    "skins": [{{"joints": [0]}}]
+                }}"#
+            )
+            .into_bytes()
+        }
+
+        fn write_model(dir: &std::path::Path, position: [f32; 3]) -> Vec<u8> {
+            let bin = skinned_bin(position);
+            std::fs::write(dir.join("mesh.bin"), &bin).expect("bin");
+            let json = skinned_json(bin.len(), position);
+            std::fs::write(dir.join("scene.gltf"), &json).expect("gltf");
+            json
+        }
+
+        #[test]
+        fn skinned_load_opens_the_directory_once() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            std::fs::create_dir(&model).expect("model");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            crate::bounded_open::reset_root_opens();
+            let (mesh, skeleton, _clips, _mat) =
+                load_skinned_mesh_complete(&model, &json).expect("skinned");
+            assert_eq!(crate::bounded_open::root_open_count(), 1);
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+            assert_eq!(skeleton.joints.len(), 1);
+        }
+
+        #[test]
+        fn skinned_load_charges_the_external_buffer_once() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            std::fs::create_dir(&model).expect("model");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            let len = std::fs::metadata(model.join("mesh.bin"))
+                .expect("meta")
+                .len();
+            let root = crate::gltf_external::ModelRoot::open(&model).expect("open");
+            let mut budget = crate::gltf_external::ExternalBudget::new(len * 2 - 1);
+            let (mesh, _, _, _) =
+                load_skinned_mesh_with_budget(&root, &mut budget, &json).expect("one charge");
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+            let root = crate::gltf_external::ModelRoot::open(&model).expect("open");
+            let mut tight = crate::gltf_external::ExternalBudget::new(len - 1);
+            let err = load_skinned_mesh_with_budget(&root, &mut tight, &json).expect_err("under");
+            assert!(err.to_string().contains("limit is"), "{err}");
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn skinned_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            write_model(&swapped, [9.0, 9.0, 9.0]);
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                std::fs::rename(&model_hook, &hold).expect("hold");
+                std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+            }));
+            let (mesh, _, _, _) = load_skinned_mesh_complete(&model, &json).expect("skinned");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+        }
+
+        #[test]
+        fn image_view_without_its_buffer_is_an_error() {
+            let json = br#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"byteLength": 4}],
+                "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+                "images": [{"bufferView": 0, "mimeType": "image/png"}]
+            }"#;
+            let parsed = Gltf::from_slice(json).expect("gltf");
+            let image = parsed.document.images().next().expect("image");
+            let dir = tempfile::tempdir().expect("tempdir");
+            let root = crate::gltf_external::ModelRoot::open(dir.path()).expect("open");
+            let mut budget = crate::gltf_external::ExternalBudget::new(64);
+            let err = decode_image_from_gltf(&root, image.source(), Some(&[]), &mut budget)
+                .expect_err("missing buffer");
+            assert!(err.to_string().contains("has no buffer"), "{err}");
+        }
+
+        fn glb_with_bin(json: &str, bin: &[u8]) -> Vec<u8> {
+            let mut json_bytes = json.as_bytes().to_vec();
+            while json_bytes.len() % 4 != 0 {
+                json_bytes.push(b' ');
+            }
+            let mut bin_bytes = bin.to_vec();
+            while bin_bytes.len() % 4 != 0 {
+                bin_bytes.push(0);
+            }
+            let total = (12 + 8 + json_bytes.len() + 8 + bin_bytes.len()) as u32;
+            let mut out = Vec::new();
+            out.extend_from_slice(b"glTF");
+            out.extend_from_slice(&2u32.to_le_bytes());
+            out.extend_from_slice(&total.to_le_bytes());
+            out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"JSON");
+            out.extend_from_slice(&json_bytes);
+            out.extend_from_slice(&(bin_bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"BIN\0");
+            out.extend_from_slice(&bin_bytes);
+            out
+        }
+
+        fn triangle_bin() -> Vec<u8> {
+            let mut bin = Vec::new();
+            for position in [[0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+                for value in position {
+                    bin.extend(value.to_le_bytes());
+                }
+            }
+            for _ in 0..3 {
+                for value in [0f32, 0.0, 1.0] {
+                    bin.extend(value.to_le_bytes());
+                }
+            }
+            for index in [0u16, 1, 2] {
+                bin.extend(index.to_le_bytes());
+            }
+            bin
+        }
+
+        fn triangle_glb() -> Vec<u8> {
+            let bin = triangle_bin();
+            let json = format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{"byteLength": {}}}],
+                    "bufferViews": [
+                        {{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 36, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 72, "byteLength": 6}}
+                    ],
+                    "accessors": [
+                        {{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]}},
+                        {{"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                        {{"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}}
+                    ],
+                    "images": [{{"uri": "a.png"}}, {{"uri": "b.png"}}],
+                    "textures": [{{"source": 0}}, {{"source": 1}}],
+                    "materials": [{{
+                        "pbrMetallicRoughness": {{"baseColorTexture": {{"index": 0}}}},
+                        "normalTexture": {{"index": 1}}
+                    }}],
+                    "meshes": [{{"primitives": [{{
+                        "attributes": {{"POSITION": 0, "NORMAL": 1}},
+                        "indices": 2,
+                        "material": 0
+                    }}]}}]
+                }}"#,
+                bin.len()
+            );
+            glb_with_bin(&json, &bin)
+        }
+
+        fn write_png(path: &std::path::Path, pixel: [u8; 4]) {
+            let image = image::RgbaImage::from_pixel(1, 1, image::Rgba(pixel));
+            image.save(path).expect("png");
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn glb_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            write_png(&model.join("a.png"), [10, 20, 30, 255]);
+            write_png(&model.join("b.png"), [1, 2, 3, 255]);
+            write_png(&swapped.join("a.png"), [90, 90, 90, 255]);
+            write_png(&swapped.join("b.png"), [90, 90, 90, 255]);
+            let glb = triangle_glb();
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                std::fs::rename(&model_hook, &hold).expect("hold");
+                std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+            }));
+            let (_mesh, mat) = load_from_glb(&model, &glb).expect("glb");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            let base = mat.base_color_texture.expect("base");
+            assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
         }
     }
 }

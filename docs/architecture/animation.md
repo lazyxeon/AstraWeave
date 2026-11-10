@@ -28,7 +28,7 @@ last_verified_commit: 32afac52f
 
 ---
 
-> **Revision note (1.1).** `gltf_loader::load_skeleton` and `load_animations` take a base directory: `load_skeleton(base, bytes)` and `load_animations(base, bytes, skeleton)`. Cite updates: asset-side types and loaders at `lib.rs:1453-…` (was `lib.rs:854-…`), `SkinnedVertexLite` at `lib.rs:1453`, `Joint` at `lib.rs:1471-1476`, `Transform` at `lib.rs:1480-1484`, `Skeleton` at `lib.rs:1498-1501`, `ChannelData` at `lib.rs:1504-1510`, `AnimationChannel` at `lib.rs:1514-1519`, `AnimationClip` at `lib.rs:1531-1535`, and the CubicSpline comment at `lib.rs:1526`. `load_animations` translates `gltf::animation::Interpolation` at `lib.rs:1764-1768` and `gltf::animation::Property` at `lib.rs:1770-1846`.
+> **Revision note (1.1).** `gltf_loader::load_skeleton` and `load_animations` take a base directory: `load_skeleton(base, bytes)` and `load_animations(base, bytes, skeleton)`. Cite updates: asset-side types and loaders at `lib.rs:1453-…` (was `lib.rs:854-…`), `SkinnedVertexLite` at `lib.rs:1453`, `Joint` at `lib.rs:1471-1476`, `Transform` at `lib.rs:1480-1484`, `Skeleton` at `lib.rs:1498-1501`, `ChannelData` at `lib.rs:1504-1510`, `AnimationChannel` at `lib.rs:1514-1519`, `AnimationClip` at `lib.rs:1531-1535`, and the CubicSpline comment at `lib.rs:1526`. `load_animations` translates `gltf::animation::Interpolation` at `lib.rs:1770-1773` and `gltf::animation::Property` at `lib.rs:1776-1851`.
 
 ## 1. Executive Summary
 
@@ -60,8 +60,8 @@ The core pipeline is Phase-2-Task-5 complete (per `docs/archive/phase_reports/PH
 [A: glTF asset file (.gltf / .glb)]
     │
     │ gltf_loader::load_skeleton(base, bytes) / load_animations(base, bytes, skeleton)
-    │   file: astraweave-asset/src/lib.rs:1538-… (load_skeleton),
-    │         astraweave-asset/src/lib.rs:1684-… (load_animations)
+    │   file: astraweave-asset/src/lib.rs:1576-… (load_skeleton),
+    │         astraweave-asset/src/lib.rs:1703-… (load_animations)
     │   role: parse glTF skin + animation, emit asset-side
     │         Skeleton / AnimationClip with [f32;3]/[f32;4]/[[f32;4];4] field storage
     ▼
@@ -173,7 +173,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
-| `gltf` crate (v?) | `Gltf::from_slice`, `gltf::binary::Glb::from_slice`, `gltf::animation::{Property, Interpolation}` | Skin / animation data parsed from glTF | Consumed by `astraweave_asset::load_skeleton` and `load_animations`. `gltf::animation::Interpolation` is translated at `astraweave-asset/src/lib.rs:1764-1768` and `gltf::animation::Property` at `lib.rs:1770-1846` (`Translation`/`Rotation`/`Scale` → asset-side `ChannelData`) |
+| `gltf` crate (v?) | `Gltf::from_slice`, `gltf::binary::Glb::from_slice`, `gltf::animation::{Property, Interpolation}` | Skin / animation data parsed from glTF | Consumed by `astraweave_asset::load_skeleton` and `load_animations`. `gltf::animation::Interpolation` is translated at `astraweave-asset/src/lib.rs:1770-1773` and `gltf::animation::Property` at `lib.rs:1776-1851` (`Translation`/`Rotation`/`Scale` → asset-side `ChannelData`) |
 | `glam` 0.x | `Vec3`, `Quat`, `Mat4`, `Mat3` | Math primitives | Used throughout render-side animation and skinning paths |
 | `bytemuck` | `Pod`, `Zeroable` derives | Trait impls for GPU-uploadable structs | `JointMatrixGPU`, `JointPalette`, `SkinnedVertex` |
 | `wgpu` 25 | `Device`, `Queue`, `BindGroupLayout`, `Buffer`, `BindGroup` | GPU resources | Owned by `JointPaletteManager`; pool buffer at `skinning_gpu.rs:74-81` |
@@ -229,7 +229,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-asset/src/lib.rs:1453-…` | Asset-side `Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `SkinnedMeshData`, `SkinnedVertexLite` plus `load_skeleton` and `load_animations` functions | Active | Phase 2 Task 5 Phase A. `load_animations` translates `gltf::animation::Interpolation` at `lib.rs:1764-1768` and `gltf::animation::Property` at `lib.rs:1770-1846` |
+| `astraweave-asset/src/lib.rs:1453-…` | Asset-side `Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `SkinnedMeshData`, `SkinnedVertexLite` plus `load_skeleton` and `load_animations` functions | Active | Phase 2 Task 5 Phase A. `load_animations` translates `gltf::animation::Interpolation` at `lib.rs:1770-1773` and `gltf::animation::Property` at `lib.rs:1776-1851` |
 
 ### `astraweave-scene` — ECS integration
 

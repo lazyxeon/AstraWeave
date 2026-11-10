@@ -395,6 +395,24 @@ fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
     read_jailed_gltf(path).map(|_| ())
 }
 
+#[cfg(test)]
+thread_local! {
+    static AFTER_MODEL_READ: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+fn after_model_read() {
+    #[cfg(test)]
+    if let Some(hook) = AFTER_MODEL_READ.with(|cell| cell.borrow_mut().take()) {
+        hook();
+    }
+}
+
+#[cfg(test)]
+fn on_after_model_read(hook: Box<dyn FnOnce()>) {
+    AFTER_MODEL_READ.with(|cell| *cell.borrow_mut() = Some(hook));
+}
+
 fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> {
     fs::create_dir_all(out_root)?;
     let stem = src.file_stem().unwrap().to_string_lossy();
@@ -416,8 +434,9 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
                 &bytes,
                 astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
             )?;
-        // Minimal example: just copy the glTF for now; swap to a meshbin writer later
-        fs::copy(src, &out)?;
+        // Write the container bytes already read. Do not open `src` again.
+        after_model_read();
+        fs::write(&out, &bytes)?;
         if compress {
             compress_file(&out, &processed)?;
             fs::remove_file(&out)?;
@@ -898,6 +917,37 @@ mod gltf_jail_tests {
         let out = dir.join("ok-out");
         let copied = process_model(&src, out.to_str().unwrap(), false).expect("relative");
         assert!(copied.is_file(), "{}", copied.display());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cook_writes_the_bytes_already_read() {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                AFTER_MODEL_READ.with(|cell| *cell.borrow_mut() = None);
+            }
+        }
+        let _clear = Clear;
+        let dir = std::env::temp_dir().join(format!("aw-gltf-bytes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("tempdir");
+        fs::write(dir.join("mesh.bin"), b"mesh").expect("bin");
+        let src = dir.join("scene.gltf");
+        let original =
+            br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"mesh.bin","byteLength":4}]}"#;
+        fs::write(&src, original).expect("gltf");
+        let src_hook = src.clone();
+        on_after_model_read(Box::new(move || {
+            fs::write(
+                &src_hook,
+                br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"mesh.bin","byteLength":4}],"extras":{"replaced":true}}"#,
+            )
+            .expect("replace");
+        }));
+        let out = dir.join("out");
+        let written = process_model(&src, out.to_str().unwrap(), false).expect("cook");
+        assert_eq!(fs::read(&written).expect("read"), original);
         let _ = fs::remove_dir_all(&dir);
     }
 }

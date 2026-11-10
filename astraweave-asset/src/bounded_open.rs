@@ -359,10 +359,25 @@ fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
 }
 
 #[cfg(unix)]
+fn directory_flags() -> rustix::fs::OFlags {
+    use rustix::fs::OFlags;
+    // Linux opens each directory component with O_PATH so a load still works
+    // when an ancestor is not readable. Other Unix keeps a read-only directory
+    // open, which is the portable equivalent.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
+    }
+}
+
+#[cfg(unix)]
 impl OpenedRoot {
     fn open_resolved(absolute: &Path) -> std::io::Result<Self> {
-        use rustix::fs::OFlags;
-        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        let flags = directory_flags();
         let root = Self {
             dir: open_canonical(absolute, flags)?,
         };
@@ -375,7 +390,7 @@ impl OpenedRoot {
 fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     use rustix::fs::{openat, Mode, OFlags};
 
-    let directory = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let directory = directory_flags();
     let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let names = relative_names(relative)?;
     let mut dir = root.dir.try_clone()?;
@@ -452,6 +467,9 @@ fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
 
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_SHARE_WRITE: u32 = 0x0000_0002;
+    // Share delete so a name can be replaced while this handle is held.
+    // The file-id compare then refuses a cloud file replaced between the two opens.
+    const FILE_SHARE_DELETE: u32 = 0x0000_0004;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 
@@ -461,7 +479,7 @@ fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
     }
     std::fs::OpenOptions::new()
         .read(true)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
         .custom_flags(flags)
         .open(path)
 }
@@ -585,6 +603,8 @@ fn open_leaf_file(path: &Path) -> std::io::Result<File> {
         hook();
     }
     let second = open_path(path, false)?;
+    // The second open must be the same file. A cloud placeholder replaced
+    // between the two opens is refused.
     if windows_file_id(&first)? != windows_file_id(&second)? {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
@@ -801,8 +821,10 @@ fn os_units(os: &std::ffi::OsStr) -> Vec<u16> {
     }
     #[cfg(not(windows))]
     {
-        // Production compares Windows final paths. A non-Unicode test path
-        // fails closed instead of substituting U+FFFD.
+        // This arm is compiled only off Windows. Production final-path
+        // compares use `OsStrExt::encode_wide` on Windows. A non-Unicode
+        // test path fails closed (an empty unit list) instead of substituting
+        // U+FFFD. A lossy conversion here would not change the Windows compare.
         match os.to_str() {
             Some(text) => text.encode_utf16().collect(),
             None => Vec::new(),
@@ -853,6 +875,9 @@ fn windows_final_components(path: &[u16]) -> Option<Vec<Vec<u16>>> {
             let after = &body[4..];
             let (server, after) = take_component(after)?;
             let (share, after) = take_component(after)?;
+            // `take_component` already returns None for an empty component, so
+            // an empty server or share does not reach this check. It stays so
+            // a later change to `take_component` cannot accept that name.
             if server.is_empty() || share.is_empty() {
                 return None;
             }
@@ -872,6 +897,8 @@ fn windows_final_components(path: &[u16]) -> Option<Vec<Vec<u16>>> {
         let after = &path[2..];
         let (server, after) = take_component(after)?;
         let (share, after) = take_component(after)?;
+        // Same as the extended-UNC check: `take_component` already refuses an
+        // empty component, and this check stays as the second refusal.
         if server.is_empty() || share.is_empty() {
             return None;
         }
@@ -1001,6 +1028,22 @@ mod tests {
 
     fn read_path_bytes(path: &Path, max_bytes: u64, noun: &str) -> Result<Vec<u8>> {
         read_path(path, max_bytes, noun).map(|(bytes, _root)| bytes)
+    }
+
+    #[test]
+    fn absolute_component_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("secret"), b"nope").expect("write");
+        let err = read_under(
+            dir.path(),
+            Path::new("/secret"),
+            64,
+            "",
+            Path::new("/secret"),
+        )
+        .expect_err("root");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unsupported path component"), "{msg}");
     }
 
     #[test]
