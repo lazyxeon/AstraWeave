@@ -22,6 +22,7 @@ import tarfile
 import tempfile
 import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -571,11 +572,17 @@ _WRAPPER_ENV_KEYS = frozenset(
         "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
     }
 )
-# `cargo --config` spellings of the same two wrapper settings.
+# Dotted `cargo --config` keys, plus the bare keys used in a Cargo config file.
 _WRAPPER_CONFIG_KEYS = frozenset(
     {
         "build.rustc-wrapper",
         "build.rustc-workspace-wrapper",
+    }
+)
+_WRAPPER_BARE_KEYS = frozenset(
+    {
+        "rustc-wrapper",
+        "rustc-workspace-wrapper",
     }
 )
 _WRAPPER_KEY_RE = re.compile(
@@ -583,7 +590,7 @@ _WRAPPER_KEY_RE = re.compile(
     + "|".join(
         re.escape(key)
         for key in sorted(
-            set(_WRAPPER_ENV_KEYS) | set(_WRAPPER_CONFIG_KEYS),
+            set(_WRAPPER_ENV_KEYS) | set(_WRAPPER_CONFIG_KEYS) | set(_WRAPPER_BARE_KEYS),
             key=len,
             reverse=True,
         )
@@ -630,6 +637,25 @@ _ENV_ASSIGN_RE = re.compile(
 )
 
 
+def _is_cargo_config(path: str) -> bool:
+    parts = [part for part in path.replace("\\", "/").split("/") if part]
+    return len(parts) >= 2 and parts[-2] == ".cargo" and parts[-1] in ("config", "config.toml")
+
+
+def _iter_cargo_configs() -> list[Path]:
+    found: list[Path] = []
+    skip = {".git", "target"}
+    for name in ("config.toml", "config"):
+        for path in ROOT.rglob(name):
+            if not path.is_file() or path.parent.name != ".cargo":
+                continue
+            relative = path.relative_to(ROOT)
+            if any(part in skip for part in relative.parts):
+                continue
+            found.append(path)
+    return sorted(found)
+
+
 def sccache_policy_texts() -> dict[str, str]:
     texts: dict[str, str] = {}
     for pattern in _WORKFLOW_GLOBS:
@@ -639,6 +665,8 @@ def sccache_policy_texts() -> dict[str, str]:
     for pattern in _ACTION_FILE_GLOBS:
         for path in sorted(actions.rglob(pattern)):
             texts[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
+    for path in _iter_cargo_configs():
+        texts[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
     return texts
 
 
@@ -811,12 +839,16 @@ def _load_workflow_yaml(text: str) -> dict | None:
     return doc if isinstance(doc, dict) else None
 
 
-def _is_composite_action(path: str) -> bool:
-    """A composite is `.github/actions/**/action.yml` or `action.yaml`.
+def _is_composite_action(path: str, doc: dict | None = None) -> bool:
+    """A composite is a `runs.using: composite` document, or `.github/actions/**/action.y*ml`.
 
     Everything under `.github/workflows/` is a workflow, including a file
-    whose name ends in `action.yml`.
+    whose name ends in `action.yml`, unless the document itself is composite.
     """
+    if isinstance(doc, dict):
+        runs = doc.get("runs")
+        if isinstance(runs, dict) and str(runs.get("using", "")).lower() == "composite":
+            return True
     normalized = path.replace("\\", "/")
     while normalized.startswith("./"):
         normalized = normalized[2:]
@@ -826,14 +858,14 @@ def _is_composite_action(path: str) -> bool:
     return parts[-1] in ("action.yml", "action.yaml")
 
 
-def _iter_sccache_step_lists(doc: dict, path: str) -> list[list[dict]]:
-    lists: list[list[dict]] = []
-    if _is_composite_action(path):
+def _iter_sccache_step_lists(doc: dict, path: str) -> list[tuple[list[dict], dict | None]]:
+    lists: list[tuple[list[dict], dict | None]] = []
+    if _is_composite_action(path, doc):
         runs = doc.get("runs")
         if isinstance(runs, dict):
             steps = runs.get("steps")
             if isinstance(steps, list):
-                lists.append([step for step in steps if isinstance(step, dict)])
+                lists.append(([step for step in steps if isinstance(step, dict)], None))
         return lists
     jobs = doc.get("jobs")
     if not isinstance(jobs, dict):
@@ -843,7 +875,7 @@ def _iter_sccache_step_lists(doc: dict, path: str) -> list[list[dict]]:
             continue
         steps = job.get("steps")
         if isinstance(steps, list):
-            lists.append([step for step in steps if isinstance(step, dict)])
+            lists.append(([step for step in steps if isinstance(step, dict)], job))
     return lists
 
 
@@ -856,7 +888,8 @@ def _is_wrapper_env_key(key: object) -> bool:
     text = str(key)
     if text.upper() in _WRAPPER_ENV_KEYS:
         return True
-    return text.lower() in _WRAPPER_CONFIG_KEYS
+    lowered = text.lower()
+    return lowered in _WRAPPER_CONFIG_KEYS or lowered in _WRAPPER_BARE_KEYS
 
 
 def _is_sanctioned_wrapper_line(line: str, if_value: str | None) -> bool:
@@ -895,20 +928,68 @@ def _step_output_refs(if_value: str) -> list[str]:
     return refs
 
 
-def _string_values(value: object) -> list[str]:
+class _CyclicStructure(Exception):
+    """A YAML anchor points at a value that contains itself."""
+
+
+def _string_values(value: object, seen: set[int] | None = None) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, dict):
+        if seen is None:
+            seen = set()
+        marker = id(value)
+        if marker in seen:
+            raise _CyclicStructure()
+        seen.add(marker)
         found: list[str] = []
         for item in value.values():
-            found.extend(_string_values(item))
+            found.extend(_string_values(item, seen))
         return found
     if isinstance(value, list):
+        if seen is None:
+            seen = set()
+        marker = id(value)
+        if marker in seen:
+            raise _CyclicStructure()
+        seen.add(marker)
         found = []
         for item in value:
-            found.extend(_string_values(item))
+            found.extend(_string_values(item, seen))
         return found
     return []
+
+
+_ADJACENT_LITERAL_RE = re.compile(r"""(?P<q>["'])(?P<body>(?:\\.|(?!(?P=q)).)*)(?P=q)""")
+
+
+def _joined_adjacent_literals(text: str) -> str:
+    """Join quoted fragments that sit next to each other or are added together."""
+    matches = list(_ADJACENT_LITERAL_RE.finditer(text))
+    if len(matches) < 2:
+        return text
+    groups: list[list[re.Match[str]]] = [[matches[0]]]
+    for previous, nxt in zip(matches, matches[1:]):
+        gap = text[previous.end() : nxt.start()]
+        if re.fullmatch(r"\s*\+\s*|\s*", gap):
+            groups[-1].append(nxt)
+        else:
+            groups.append([nxt])
+    rebuilt: list[str] = []
+    last = 0
+    for group in groups:
+        rebuilt.append(text[last : group[0].start()])
+        rebuilt.append("".join(match.group("body") for match in group))
+        last = group[-1].end()
+    rebuilt.append(text[last:])
+    return "".join(rebuilt)
+
+
+def _names_wrapper_key(text: str) -> bool:
+    if _WRAPPER_KEY_RE.search(text):
+        return True
+    joined = _joined_adjacent_literals(text)
+    return joined != text and _WRAPPER_KEY_RE.search(joined) is not None
 
 
 def _join_continuations(run: str) -> str:
@@ -930,11 +1011,68 @@ def _join_continuations(run: str) -> str:
     return "\n".join(joined)
 
 
+_SHELL_KEYWORDS = frozenset(
+    {
+        "if",
+        "then",
+        "else",
+        "elif",
+        "fi",
+        "do",
+        "done",
+        "case",
+        "esac",
+        "for",
+        "while",
+        "until",
+        "in",
+        "function",
+        "select",
+        "time",
+        "coproc",
+        "{",
+        "}",
+        "!",
+    }
+)
+_COMMAND_RUNNERS = frozenset({"env", "command", "exec", "sudo", "xargs"})
+_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+
+
+def _token_is_sccache(token: str) -> bool:
+    text = token.strip("'\"")
+    if text in {"sccache", "sccache.exe"}:
+        return True
+    normalized = text.replace("\\", "/").rstrip("/")
+    return normalized.endswith("/sccache") or normalized.endswith("/sccache.exe")
+
+
 def _invokes_sccache_command(run: str) -> bool:
+    """True when a command segment invokes sccache.
+
+    A path to the command, an assignment prefix, a command runner, and a shell
+    keyword before the command all count. The only run that then passes is the
+    exact stats command.
+    """
     joined = _join_continuations(run)
     for part in re.split(r"&&|\|\||[;&|\n()]", joined):
         tokens = part.split()
-        if tokens and tokens[0] == "sccache":
+        index = 0
+        while index < len(tokens):
+            token = tokens[index].strip("'\"")
+            if _ASSIGNMENT_RE.fullmatch(token):
+                index += 1
+                continue
+            if token in _SHELL_KEYWORDS:
+                index += 1
+                continue
+            if token in _COMMAND_RUNNERS:
+                index += 1
+                while index < len(tokens) and tokens[index].startswith("-"):
+                    index += 1
+                continue
+            break
+        if index < len(tokens) and _token_is_sccache(tokens[index]):
             return True
     return False
 
@@ -1015,18 +1153,49 @@ def _sccache_env_violations(path: str, doc: dict) -> list[str]:
                 violations.append(f"{path} job {job_id}: container env must be a mapping")
             for key in _env_mapping_wrapper_keys(container.get("env")):
                 violations.append(f"{path} job {job_id}: container env must not set {key}")
+            try:
+                expressed = any("${{" in text for text in _string_values(container))
+            except _CyclicStructure:
+                violations.append(f"{path} job {job_id}: cyclic anchor")
+                expressed = False
+            if expressed:
+                violations.append(f"{path} job {job_id}: container expression is not checked")
         elif isinstance(container, str) and "${{" in container:
             violations.append(f"{path} job {job_id}: container expression is not checked")
     return violations
 
 
-def _sccache_wrapper_violations(path: str, steps: list[dict]) -> list[str]:
+def _defaults_shell(owner: object) -> str | None:
+    if not isinstance(owner, dict):
+        return None
+    defaults = owner.get("defaults")
+    if not isinstance(defaults, dict):
+        return None
+    run = defaults.get("run")
+    if not isinstance(run, dict):
+        return None
+    shell = run.get("shell")
+    if not isinstance(shell, str) or not shell.strip():
+        return None
+    return shell.strip()
+
+
+def _resolved_shell(step: dict, job: dict | None, doc: dict | None) -> str | None:
+    shell = step.get("shell")
+    if isinstance(shell, str) and shell.strip():
+        return shell.strip()
+    return _defaults_shell(job) or _defaults_shell(doc)
+
+
+def _sccache_wrapper_violations(
+    path: str, steps: list[dict], job: dict | None = None, doc: dict | None = None
+) -> list[str]:
     violations: list[str] = []
     for step in steps:
         if _env_is_non_mapping(step):
             violations.append(f"{path}: step env must be a mapping")
         for text in _string_values(step.get("with")):
-            if _WRAPPER_KEY_RE.search(text):
+            if _names_wrapper_key(text):
                 violations.append(f"{path}: with: names a wrapper key")
                 break
         assignments = _step_wrapper_assignments(step)
@@ -1054,11 +1223,13 @@ def _sccache_wrapper_violations(path: str, steps: list[dict]) -> list[str]:
                 violations.append(f"{path}: sccache enable if must not ignore failure with || true")
             if _step_continue_on_error(step):
                 violations.append(f"{path}: continue-on-error is set on the RUSTC_WRAPPER step")
-        for raw_line in _step_run(step).splitlines():
+        for raw_line in _join_continuations(_step_run(step)).splitlines():
             line = raw_line.strip()
-            if not line or _WRAPPER_KEY_RE.search(line) is None:
+            if not line or not _names_wrapper_key(line):
                 continue
             if _is_sanctioned_wrapper_line(line, if_value):
+                if _resolved_shell(step, job, doc) != "bash":
+                    violations.append(f"{path}: sanctioned wrapper line must run under bash")
                 continue
             violations.append(f"{path}: wrapper run line is not the gated form: {line}")
     return violations
@@ -1089,8 +1260,13 @@ def _unconditional_cargo_incremental(step: str | dict) -> bool:
             return False
         if _step_continue_on_error(step):
             return False
-        run = _step_run(step)
-        return CARGO_INCREMENTAL_ECHO in run
+        for line in _step_run(step).splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped == CARGO_INCREMENTAL_ECHO:
+                return True
+        return False
     if re.search(r"(?m)^\s*if\s*:", step):
         return False
     if _has_continue_on_error(step):
@@ -1121,6 +1297,13 @@ def sccache_checksum_source_violations(script: str) -> list[str]:
         if stripped.startswith("#") or "checksum mismatch for" not in line:
             continue
         found = True
+        for earlier in lines[:index]:
+            earlier_text = earlier.strip()
+            if not earlier_text or earlier_text.startswith("#"):
+                continue
+            if "available=true" in earlier_text:
+                violations.append("prefetch reports success before the checksum")
+                break
         nxt = ""
         for later in lines[index + 1 : index + 4]:
             if later.strip():
@@ -1246,41 +1429,270 @@ def _sccache_action_step_violations(path: str, steps: list[dict], index: int) ->
     return violations
 
 
-def sccache_install_violations(texts: dict[str, str]) -> list[str]:
+def _cargo_config_violations(path: str, text: str) -> list[str]:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _names_wrapper_key(stripped):
+            return [f"{path}: cargo config sets a wrapper key"]
+    return []
+
+
+def _resolve_local_action(target: str) -> Path | None:
+    relative = target.strip()
+    while relative.startswith("./"):
+        relative = relative[2:]
+    candidate = (ROOT / relative).resolve()
+    try:
+        candidate.relative_to(ROOT.resolve())
+    except ValueError:
+        return None
+    if candidate.is_file() and candidate.suffix in {".yml", ".yaml"}:
+        return candidate
+    if candidate.is_dir():
+        for name in ("action.yml", "action.yaml"):
+            action = candidate / name
+            if action.is_file():
+                return action
+    return None
+
+
+def _iter_uses(node: object, seen: set[int] | None = None):
+    if seen is None:
+        seen = set()
+    if isinstance(node, (dict, list)):
+        marker = id(node)
+        if marker in seen:
+            raise _CyclicStructure()
+        seen.add(marker)
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if key == "uses":
+                yield value
+            yield from _iter_uses(value, seen)
+    elif isinstance(node, list):
+        for item in node:
+            yield from _iter_uses(item, seen)
+
+
+def _expand_local_actions(texts: dict[str, str]) -> tuple[dict[str, str], list[str]]:
+    """Load every local `uses: ./…` target. An unreadable target is a violation."""
+    expanded = dict(texts)
     violations: list[str] = []
+    pending = [(path, text) for path, text in texts.items() if not _is_cargo_config(path)]
+    seen = set(expanded)
+    while pending:
+        path, text = pending.pop()
+        doc = _load_workflow_yaml(text)
+        if not isinstance(doc, dict):
+            continue
+        try:
+            uses_values = list(_iter_uses(doc))
+        except _CyclicStructure:
+            violations.append(f"{path}: cyclic anchor")
+            continue
+        for uses in uses_values:
+            if not isinstance(uses, str):
+                continue
+            target = uses.strip()
+            if "#" in target:
+                target = target.split("#", 1)[0].strip()
+            if not target.startswith("./"):
+                continue
+            target = target.split("@", 1)[0]
+            resolved = _resolve_local_action(target)
+            if resolved is None:
+                violations.append(f"{path}: local action could not be read: {target}")
+                continue
+            rel = resolved.relative_to(ROOT).as_posix()
+            if rel in seen:
+                continue
+            seen.add(rel)
+            body = resolved.read_text(encoding="utf-8")
+            expanded[rel] = body
+            pending.append((rel, body))
+    return expanded, violations
+
+
+def _other_field_wrapper_violations(
+    path: str, node: object, seen: set[int] | None = None
+) -> list[str]:
+    """Flag a wrapper key in any string that is not a run body or an env key."""
+    if seen is None:
+        seen = set()
+    violations: list[str] = []
+    if isinstance(node, dict):
+        marker = id(node)
+        if marker in seen:
+            raise _CyclicStructure()
+        seen.add(marker)
+        for key, value in node.items():
+            key_text = str(key)
+            if key_text == "env" and isinstance(value, dict):
+                for env_value in value.values():
+                    violations.extend(_other_field_wrapper_violations(path, env_value, seen))
+                continue
+            if key_text == "run" and isinstance(value, str):
+                continue
+            if _names_wrapper_key(key_text):
+                violations.append(f"{path}: wrapper key outside a sanctioned line")
+            violations.extend(_other_field_wrapper_violations(path, value, seen))
+        return violations
+    if isinstance(node, list):
+        marker = id(node)
+        if marker in seen:
+            raise _CyclicStructure()
+        seen.add(marker)
+        for item in node:
+            violations.extend(_other_field_wrapper_violations(path, item, seen))
+        return violations
+    if isinstance(node, str) and _names_wrapper_key(node):
+        violations.append(f"{path}: wrapper key outside a sanctioned line")
+    return violations
+
+
+_PREFETCH_FIELDS = frozenset({"name", "id", "shell", "run"})
+_PATH_ENV_KEYS = frozenset({"PATH", "GITHUB_PATH"})
+_PATH_ASSIGN_RE = re.compile(r"(?:^|&&|\|\||[;&|])\s*(?:export\s+)?PATH\s*=")
+
+
+def _is_prefetch_step(step: dict) -> bool:
+    if step.get("id") == "sccache_fetch":
+        return True
+    return _step_run(step).strip() == _PINNED_PREFETCH_RUN
+
+
+def _defaults_working_directory(owner: object) -> bool:
+    if not isinstance(owner, dict):
+        return False
+    defaults = owner.get("defaults")
+    if not isinstance(defaults, dict):
+        return False
+    run = defaults.get("run")
+    return isinstance(run, dict) and "working-directory" in run
+
+
+def _mapping_changes_path(env: object) -> bool:
+    if not isinstance(env, dict):
+        return False
+    return any(str(key).upper() in _PATH_ENV_KEYS for key in env)
+
+
+def _step_changes_path(step: dict) -> bool:
+    if _mapping_changes_path(step.get("env")):
+        return True
+    run = _step_run(step)
+    if "GITHUB_PATH" in run:
+        return True
+    return _PATH_ASSIGN_RE.search(run) is not None
+
+
+def _step_rewrites_prefetch_script(step: dict) -> bool:
+    run = _step_run(step)
+    if "fetch_sccache_release.sh" not in run:
+        return False
+    return run.strip() != _PINNED_PREFETCH_RUN
+
+
+def _prefetch_step_shape_violations(path: str, step: dict) -> list[str]:
+    violations: list[str] = []
+    extra = sorted(str(key) for key in step if key not in _PREFETCH_FIELDS)
+    if extra:
+        violations.append(f"{path}: prefetch step has unexpected fields {extra}")
+    if step.get("shell") != "bash":
+        violations.append(f"{path}: prefetch shell must be bash")
+    if _step_run(step).strip() != _PINNED_PREFETCH_RUN:
+        violations.append(f"{path}: sccache_fetch must be an earlier pinned prefetch")
+    if _step_continue_on_error(step):
+        violations.append(f"{path}: continue-on-error is set on the prefetch")
+    return violations
+
+
+def _prefetch_pin_violations(
+    path: str, steps: list[dict], job: dict | None, doc: dict | None
+) -> list[str]:
+    violations: list[str] = []
+    context_flagged = False
+    for index, step in enumerate(steps):
+        if not _is_prefetch_step(step):
+            continue
+        violations.extend(_prefetch_step_shape_violations(path, step))
+        if context_flagged:
+            continue
+        context_flagged = True
+        if _defaults_working_directory(job) or _defaults_working_directory(doc):
+            violations.append(f"{path}: prefetch working directory is not the default")
+        owners = [owner for owner in (job, doc) if isinstance(owner, dict)]
+        if any(_mapping_changes_path(owner.get("env")) for owner in owners):
+            violations.append(f"{path}: prefetch PATH is changed")
+        for earlier in steps[:index]:
+            if "working-directory" in earlier:
+                violations.append(f"{path}: prefetch working directory is not the default")
+            if _step_changes_path(earlier):
+                violations.append(f"{path}: prefetch PATH is changed")
+            if _step_rewrites_prefetch_script(earlier):
+                violations.append(f"{path}: prefetch script is rewritten by an earlier step")
+    return violations
+
+
+def _unconditional_continue_on_error(value: object) -> bool:
+    if value is True:
+        return True
+    return isinstance(value, str) and value.strip().lower() == "true"
+
+
+def sccache_install_violations(texts: dict[str, str]) -> list[str]:
+    expanded, violations = _expand_local_actions(texts)
     uses_per_file: dict[str, int] = {}
-    for path, text in texts.items():
+    for path, text in expanded.items():
+        if _is_cargo_config(path):
+            violations.extend(_cargo_config_violations(path, text))
+            continue
         if SCCACHE_ACTION_TAG_OBJECT in text:
             violations.append(f"{path}: sccache-action is pinned to the v0.0.11 tag object")
         if "SCCACHE_RELEASE_BASE" in text or "--release-base" in text:
             violations.append(f"{path}: release URL override is test-only")
-        doc = _load_workflow_yaml(text)
-        if doc is None:
-            violations.append(f"{path}: workflow YAML did not parse")
-            continue
-        step_lists = _iter_sccache_step_lists(doc, path)
-        file_uses = 0
-        for steps in step_lists:
-            violations.extend(_fixed_uses_violations(path, steps))
-            action_indexes = [
-                index for index, step in enumerate(steps) if _is_sccache_action_step(step)
-            ]
-            file_uses += len(action_indexes)
-            violations.extend(_sccache_wrapper_violations(path, steps))
-            violations.extend(_gated_prefetch_id_violations(path, steps))
-            if action_indexes:
-                if not any(_unconditional_cargo_incremental(step) for step in steps):
-                    violations.append(
-                        f"{path}: CARGO_INCREMENTAL=0 must be set by a step with no if:"
-                    )
-            for index in action_indexes:
-                violations.extend(_sccache_action_step_violations(path, steps, index))
-            for step in steps:
-                if _invokes_sccache_command(_step_run(step)):
-                    violations.extend(_sccache_stats_violations(path, step))
-        if file_uses:
-            uses_per_file[path] = file_uses
-        violations.extend(_sccache_env_violations(path, doc))
+        try:
+            doc = _load_workflow_yaml(text)
+            if doc is None:
+                violations.append(f"{path}: workflow YAML did not parse")
+                continue
+            violations.extend(_other_field_wrapper_violations(path, doc))
+            step_lists = _iter_sccache_step_lists(doc, path)
+            file_uses = 0
+            for steps, job in step_lists:
+                violations.extend(_fixed_uses_violations(path, steps))
+                action_indexes = [
+                    index for index, step in enumerate(steps) if _is_sccache_action_step(step)
+                ]
+                file_uses += len(action_indexes)
+                violations.extend(_sccache_wrapper_violations(path, steps, job, doc))
+                violations.extend(_gated_prefetch_id_violations(path, steps))
+                violations.extend(_prefetch_pin_violations(path, steps, job, doc))
+                if job is not None and _unconditional_continue_on_error(job.get("continue-on-error")):
+                    if any(
+                        _invokes_sccache_command(_step_run(step)) or _is_sccache_action_step(step)
+                        for step in steps
+                    ):
+                        violations.append(
+                            f"{path}: continue-on-error is set on a job that runs sccache"
+                        )
+                if action_indexes:
+                    if not any(_unconditional_cargo_incremental(step) for step in steps):
+                        violations.append(
+                            f"{path}: CARGO_INCREMENTAL=0 must be set by a step with no if:"
+                        )
+                for index in action_indexes:
+                    violations.extend(_sccache_action_step_violations(path, steps, index))
+                for step in steps:
+                    if _invokes_sccache_command(_step_run(step)):
+                        violations.extend(_sccache_stats_violations(path, step))
+            if file_uses:
+                uses_per_file[path] = file_uses
+            violations.extend(_sccache_env_violations(path, doc))
+        except _CyclicStructure:
+            violations.append(f"{path}: cyclic anchor")
     for path, count in EXPECTED_SCCACHE_ACTION_USES.items():
         found = uses_per_file.get(path, 0)
         if found != count:
@@ -2442,10 +2854,12 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
 
         remote = script.replace(
-            'want="$(pinned_sha256 "$filename")" || want=""',
+            'want="$(pinned_sha256 "$filename")"\n',
             'curl -fsSL -o "$tmp/published" "${url}.sha256"\n'
-            'want="$(cut -d" " -f1 < "$tmp/published")"',
+            'want="$(cut -d" " -f1 < "$tmp/published")"\n',
+            1,
         )
+        self.assertNotEqual(remote, script)
         remote_violations = sccache_checksum_source_violations(remote)
         self.assertNotEqual(remote_violations, [])
         self.assertTrue(
@@ -2894,6 +3308,7 @@ class WorkflowPolicyTest(unittest.TestCase):
 
         prefetch = (
             "      - id: sccache_fetch\n"
+            "        shell: bash\n"
             "        run: bash scripts/ci/fetch_sccache_release.sh\n"
         )
         for key in (
@@ -3477,8 +3892,6 @@ class WorkflowPolicyTest(unittest.TestCase):
                     env["GITHUB_OUTPUT"] = str(work / "output")
                     env["GITHUB_ENV"] = str(work / "env")
                     env["RUNNER_TOOL_CACHE"] = str(work / "tool-cache")
-                    # Workflows cannot set this. The script must ignore it.
-                    env["SCCACHE_RELEASE_BASE"] = "http://127.0.0.1:1/ignored"
                     env["SCCACHE_FETCH_ATTEMPTS"] = "2"
                     env["SCCACHE_FETCH_DELAY_SECONDS"] = "0"
                     (work / "env").write_text("", encoding="utf-8")
@@ -4406,6 +4819,519 @@ exec {real_node} "$@"
                     written,
                     name,
                 )
+
+
+    def test_sccache_policy_gap_mutants(self) -> None:
+        texts = sccache_policy_texts()
+        self.assertIn(".cargo/config.toml", texts)
+        self.assertIn("examples/fluids_demo/.cargo/config.toml", texts)
+
+        def flagged(path: str, text: str, needle: str) -> None:
+            found = sccache_install_violations({path: text})
+            self.assertTrue(any(needle in item for item in found), found)
+
+        def quiet(path: str, text: str) -> None:
+            found = [
+                item
+                for item in sccache_install_violations({path: text})
+                if item.startswith(path) or item.startswith("tools/")
+            ]
+            self.assertEqual(found, [], found)
+
+        fetch = (
+            "      - name: Fetch\n"
+            "        id: sccache_fetch\n"
+            "        shell: bash\n"
+            "        run: bash scripts/ci/fetch_sccache_release.sh\n"
+        )
+
+        def job(body: str, job_header: str = "") -> str:
+            return (
+                "name: gap\n"
+                "on: push\n"
+                "jobs:\n"
+                "  build:\n"
+                f"{job_header}"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                + body
+            )
+
+        for spelling in (
+            'build.rustc-wrapper = "sccache"',
+            'build.rustc-workspace-wrapper = "sccache"',
+            '[build]\nrustc-wrapper = "sccache"',
+            '[build]\nrustc-workspace-wrapper = "sccache"',
+            'build = { rustc-wrapper = "sccache" }',
+            '"rustc-wrapper" = "sccache"',
+        ):
+            flagged(
+                ".cargo/config.toml",
+                spelling + "\n",
+                "cargo config sets a wrapper key",
+            )
+            flagged(
+                ".github/workflows/toml-write.yml",
+                job("      - run: |\n" + "".join(f"          {line}\n" for line in spelling.splitlines())),
+                "wrapper run line is not the gated form",
+            )
+
+        flagged(
+            ".github/workflows/local-missing.yml",
+            job("      - uses: ./tools/missing_policy_probe\n"),
+            "local action could not be read",
+        )
+        probe = ROOT / "tools" / "policy_probe_local"
+        probe.mkdir(parents=True)
+        (probe / "action.yml").write_text(
+            "name: probe\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - shell: bash\n"
+            "      run: echo RUSTC_WRAPPER=probe\n",
+            encoding="utf-8",
+        )
+        try:
+            flagged(
+                ".github/workflows/local-uses.yml",
+                job("      - uses: ./tools/policy_probe_local\n"),
+                "wrapper run line is not the gated form",
+            )
+        finally:
+            shutil.rmtree(probe)
+
+        flagged(
+            ".github/workflows/with-built.yml",
+            job(
+                "      - uses: actions/github-script@v7\n"
+                "        with:\n"
+                "          script: \"core.exportVariable('RUSTC_' + 'WRAPPER', 'x')\"\n"
+            ),
+            "with: names a wrapper key",
+        )
+
+        for label, run in (
+            ("path", "/usr/bin/sccache --show-stats"),
+            ("assign", "FOO=1 sccache --show-stats"),
+            ("env", "env sccache --show-stats"),
+            ("command", "command sccache --show-stats"),
+            ("exec", "exec sccache --show-stats"),
+            ("sudo", "sudo sccache --show-stats"),
+            ("xargs", "xargs sccache --show-stats"),
+            ("keyword", "then sccache --show-stats"),
+        ):
+            flagged(
+                f".github/workflows/invoke-{label}.yml",
+                job(
+                    fetch
+                    + "      - if: steps.sccache_fetch.outputs.available == 'true'\n"
+                    + f"        run: {run}\n"
+                ),
+                "sccache stats run must be exactly",
+            )
+
+        quiet(
+            ".github/workflows/joined-stats.yml",
+            job(
+                fetch
+                + "      - if: steps.sccache_fetch.outputs.available == 'true'\n"
+                + '        run: "sccache \\\n--show-stats"\n'
+            ),
+        )
+        for label, run in (
+            ("and", "echo ok && sccache --show-stats"),
+            ("or", "echo ok || sccache --show-stats"),
+            ("semi", "echo ok; sccache --show-stats"),
+            ("pipe", "echo ok | sccache --show-stats"),
+        ):
+            flagged(
+                f".github/workflows/sep-{label}.yml",
+                job(
+                    fetch
+                    + "      - if: always() && steps.sccache_fetch.outputs.available == 'true'\n"
+                    + f"        run: {run}\n"
+                ),
+                "sccache stats run must be exactly",
+            )
+
+        flagged(
+            ".github/workflows/prefetch-extra.yml",
+            job(
+                "      - id: sccache_fetch\n"
+                "        shell: bash\n"
+                "        run: bash scripts/ci/fetch_sccache_release.sh --extra\n"
+                "      - if: steps.sccache_fetch.outputs.available == 'true'\n"
+                "        run: echo ok\n"
+            ),
+            "sccache_fetch must be an earlier pinned prefetch",
+        )
+        for field, extra in (
+            ("env", "        env:\n          FOO: bar\n"),
+            ("working-directory", "        working-directory: decoy\n"),
+            ("if", "        if: success()\n"),
+            ("with", "        with:\n          script: echo ok\n"),
+        ):
+            flagged(
+                f".github/workflows/prefetch-{field}.yml",
+                job(
+                    "      - id: sccache_fetch\n"
+                    "        shell: bash\n"
+                    + extra
+                    + "        run: bash scripts/ci/fetch_sccache_release.sh\n"
+                ),
+                "prefetch step has unexpected fields",
+            )
+        flagged(
+            ".github/workflows/prefetch-continue.yml",
+            job(
+                "      - id: sccache_fetch\n"
+                "        shell: bash\n"
+                "        continue-on-error: true\n"
+                "        run: bash scripts/ci/fetch_sccache_release.sh\n"
+            ),
+            "continue-on-error is set on the prefetch",
+        )
+        flagged(
+            ".github/workflows/prefetch-pwsh.yml",
+            job(
+                "      - id: sccache_fetch\n"
+                "        shell: pwsh\n"
+                "        run: bash scripts/ci/fetch_sccache_release.sh\n"
+            ),
+            "prefetch shell must be bash",
+        )
+        flagged(
+            ".github/workflows/prefetch-shell-template.yml",
+            job(
+                "      - id: sccache_fetch\n"
+                "        shell: bash -c 'echo available=true >> \"$GITHUB_OUTPUT\"; exit 0' {0}\n"
+                "        run: bash scripts/ci/fetch_sccache_release.sh\n"
+            ),
+            "prefetch shell must be bash",
+        )
+        flagged(
+            ".github/workflows/prefetch-defaults-dir.yml",
+            (
+                "name: gap\n"
+                "on: push\n"
+                "jobs:\n"
+                "  build:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    defaults:\n"
+                "      run:\n"
+                "        working-directory: decoy\n"
+                "    steps:\n"
+                + fetch
+            ),
+            "prefetch working directory is not the default",
+        )
+        flagged(
+            ".github/workflows/prefetch-rewrite.yml",
+            job(
+                "      - run: echo replaced > scripts/ci/fetch_sccache_release.sh\n"
+                + fetch
+            ),
+            "prefetch script is rewritten by an earlier step",
+        )
+        flagged(
+            ".github/workflows/prefetch-path.yml",
+            job(
+                "      - run: echo /tmp/decoy >> \"$GITHUB_PATH\"\n"
+                + fetch
+            ),
+            "prefetch PATH is changed",
+        )
+
+        flagged(
+            ".github/workflows/rust-ci-case.yml",
+            job(
+                "      - id: Rust_CI\n"
+                "        uses: actions/checkout@v7\n"
+                "      - if: steps.Rust_CI.outputs.sccache-available == 'true'\n"
+                "        run: echo ok\n"
+            ),
+            "rust_ci must be an earlier rust-ci-setup step",
+        )
+        flagged(
+            ".github/workflows/rust-ci-prefix.yml",
+            job(
+                "      - id: rust_ci\n"
+                "        uses: ./.github/actions/rust-ci-setup-extra\n"
+                "      - if: steps.rust_ci.outputs.sccache-available == 'true'\n"
+                "        run: echo ok\n"
+            ),
+            "rust_ci must be an earlier rust-ci-setup step",
+        )
+        flagged(
+            ".github/workflows/other-id.yml",
+            job(
+                "      - if: steps.other_step.outputs.sccache-available == 'true'\n"
+                "        run: echo ok\n"
+            ),
+            "gated if references missing step id 'other_step'",
+        )
+        flagged(
+            ".github/workflows/wrapper-continue.yml",
+            job(
+                fetch
+                + "      - if: steps.sccache_fetch.outputs.available == 'true'\n"
+                + "        shell: bash\n"
+                + "        continue-on-error: true\n"
+                + "        run: echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n"
+            ),
+            "continue-on-error is set on the RUSTC_WRAPPER step",
+        )
+        flagged(
+            ".github/workflows/stats-continue.yml",
+            job(
+                fetch
+                + "      - if: steps.sccache_fetch.outputs.available == 'true'\n"
+                + "        continue-on-error: true\n"
+                + "        run: sccache --show-stats\n"
+            ),
+            "continue-on-error is set on sccache --show-stats",
+        )
+        flagged(
+            ".github/workflows/job-continue.yml",
+            job(
+                fetch
+                + "      - if: steps.sccache_fetch.outputs.available == 'true'\n"
+                + "        run: sccache --show-stats\n",
+                job_header="    continue-on-error: true\n",
+            ),
+            "continue-on-error is set on a job that runs sccache",
+        )
+
+        for label, snippet in (
+            ("step-name", "      - name: RUSTC_WRAPPER\n        run: echo ok\n"),
+            ("step-id", "      - id: RUSTC_WRAPPER\n        run: echo ok\n"),
+            ("step-shell", "      - shell: RUSTC_WRAPPER\n        run: echo ok\n"),
+            ("step-dir", "      - working-directory: RUSTC_WRAPPER\n        run: echo ok\n"),
+            ("step-uses", "      - uses: RUSTC_WRAPPER\n"),
+            ("step-if", "      - if: contains(RUSTC_WRAPPER, 'x')\n        run: echo ok\n"),
+            ("step-timeout", "      - timeout-minutes: RUSTC_WRAPPER\n        run: echo ok\n"),
+            (
+                "step-env-value",
+                "      - env:\n          FOO: RUSTC_WRAPPER\n        run: echo ok\n",
+            ),
+            (
+                "job-name",
+                None,
+            ),
+        ):
+            if snippet is None:
+                continue
+            flagged(
+                f".github/workflows/field-{label}.yml",
+                job(snippet),
+                "wrapper key outside a sanctioned line",
+            )
+        flagged(
+            ".github/workflows/field-job-name.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    name: RUSTC_WRAPPER\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/field-runs-on.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: RUSTC_WRAPPER\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/field-job-if.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    if: RUSTC_WRAPPER == 'x'\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/field-environment.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    environment: RUSTC_WRAPPER\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/field-defaults.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    defaults:\n"
+            "      run:\n"
+            "        shell: RUSTC_WRAPPER\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/field-service.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    services:\n"
+            "      db:\n"
+            "        image: RUSTC_WRAPPER\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/field-workflow-name.yml",
+            "name: RUSTC_WRAPPER\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "wrapper key outside a sanctioned line",
+        )
+        flagged(
+            ".github/workflows/container-image-expr.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    container:\n"
+            "      image: ${{ inputs.image }}\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "container expression is not checked",
+        )
+        flagged(
+            ".github/workflows/container-options-expr.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    container:\n"
+            "      image: ubuntu:22.04\n"
+            "      options: ${{ inputs.options }}\n"
+            "    steps:\n"
+            "      - run: echo ok\n",
+            "container expression is not checked",
+        )
+        cycle = sccache_install_violations(
+            {
+                ".github/workflows/cycle.yml": (
+                    "name: cycle\n"
+                    "on: push\n"
+                    "jobs:\n"
+                    "  build:\n"
+                    "    runs-on: ubuntu-latest\n"
+                    "    steps:\n"
+                    "      - uses: actions/checkout@v7\n"
+                    "        with: &cycle\n"
+                    "          script: *cycle\n"
+                )
+            }
+        )
+        self.assertTrue(any("cyclic anchor" in item for item in cycle), cycle)
+
+        flagged(
+            ".github/workflows/release-flag.yml",
+            job("      - run: bash scripts/ci/fetch_sccache_release.sh --release-base http://example.invalid\n"),
+            "release URL override is test-only",
+        )
+
+        commented = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            'echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"',
+            '# echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"',
+        )
+        commented_found = sccache_install_violations(commented)
+        self.assertTrue(
+            any("CARGO_INCREMENTAL=0 must be set" in item for item in commented_found),
+            commented_found,
+        )
+
+        script = (ROOT / "scripts" / "ci" / "fetch_sccache_release.sh").read_text(encoding="utf-8")
+        early = script.replace(
+            "set -euo pipefail\n",
+            'set -euo pipefail\nwrite_output "available=true"\nexit 0\n',
+            1,
+        )
+        early_found = sccache_checksum_source_violations(early)
+        self.assertTrue(
+            any("before the checksum" in item for item in early_found),
+            early_found,
+        )
+
+        dropped_shell = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "      shell: bash\n      env:\n        AW_GITHUB_REF:",
+            "      env:\n        AW_GITHUB_REF:",
+        )
+        shell_found = sccache_install_violations(dropped_shell)
+        self.assertTrue(
+            any("must run under bash" in item for item in shell_found),
+            shell_found,
+        )
+
+    def test_prefetch_ignores_release_base_environment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            record = work / "urls"
+            _write_exe(
+                work / "bin",
+                "curl",
+                "#!/bin/sh\n"
+                "last=\n"
+                "for arg in \"$@\"; do last=$arg; done\n"
+                f"printf '%s\\n' \"$last\" >> '{record}'\n"
+                "exit 1\n",
+            )
+            env = os.environ.copy()
+            env["PATH"] = f"{work / 'bin'}{os.pathsep}{env.get('PATH', '')}"
+            env["GITHUB_OUTPUT"] = str(work / "output")
+            env["GITHUB_ENV"] = str(work / "env")
+            env["RUNNER_TOOL_CACHE"] = str(work / "tool-cache")
+            env["SCCACHE_FETCH_ATTEMPTS"] = "1"
+            env["SCCACHE_FETCH_DELAY_SECONDS"] = "0"
+            env["SCCACHE_RELEASE_BASE"] = "http://127.0.0.1:9/from-env"
+            (work / "env").write_text("", encoding="utf-8")
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts" / "ci" / "fetch_sccache_release.sh")],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            seen = record.read_text(encoding="utf-8") if record.is_file() else ""
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("127.0.0.1:9", seen)
+            self.assertIn("github.com/mozilla/sccache/releases/download/v0.19.0/", seen)
 
 
 if __name__ == "__main__":

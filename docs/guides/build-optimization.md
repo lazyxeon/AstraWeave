@@ -32,11 +32,10 @@ The optimized build workflow (`rust-cache-optimized.yml`) implements advanced ca
 
 ### 2. sccache Integration for Compilation Acceleration
 
-**Implementation**: Mozilla's sccache for distributed compilation caching
+**Implementation**: Mozilla's sccache for distributed compilation caching. The shared `rust-ci-setup` action writes the compiler wrapper on the gated step after the pinned install succeeds. A workflow-level env map is not the setup.
 
 ```yaml
 env:
-  RUSTC_WRAPPER: sccache
   SCCACHE_CACHE_SIZE: "10G"
   SCCACHE_IDLE_TIMEOUT: 0
 ```
