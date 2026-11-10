@@ -655,6 +655,8 @@ def _sccache_wrapper_violations(path: str, steps: list[str]) -> list[str]:
             continue
         if "steps.sccache_fetch.outputs.available == 'true'" not in step:
             violations.append(f"{path}: RUSTC_WRAPPER=sccache is set without a successful prefetch")
+        if any("|| true" in line for line in step.splitlines()):
+            violations.append(f"{path}: sccache enable if must not ignore failure with || true")
         if _has_continue_on_error(step):
             violations.append(f"{path}: continue-on-error is set on the RUSTC_WRAPPER step")
     return violations
@@ -1538,6 +1540,18 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(
             any("|| true" in item for item in ignored_violations),
             ignored_violations,
+        )
+
+        enable_if = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Enable sccache\n      if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "    - name: Enable sccache\n      if: steps.sccache_fetch.outputs.available == 'true' || true\n",
+        )
+        enable_if_violations = sccache_install_violations(enable_if)
+        self.assertTrue(
+            any("sccache enable if must not ignore failure with || true" in item for item in enable_if_violations),
+            enable_if_violations,
         )
 
         overridden = _replace_policy_once(
