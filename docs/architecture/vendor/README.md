@@ -1,17 +1,26 @@
 # Vendored architecture-map libraries
 
 `docs/architecture/workspace_map.html` loads these six files from this directory.
-They are the same bytes the page used to load from unpkg. Each script tag keeps
-the sha384 `integrity` it already had, so a browser still refuses a file that
-does not match. The hashes below were checked against those existing attributes
-and against the bytes in this directory.
+They are the same bytes the page used to load from unpkg. On `http:` and
+`https:` the loader sets the sha384 `integrity` each file already had, so a
+browser still refuses a file that does not match. A `file://` open omits that
+attribute. The hashes below were checked against those attributes and against
+the bytes in this directory.
 
 These were already the page's runtime dependencies. Vendoring removes the
 dependency on unpkg being reachable when someone opens the map. Versions are
-unchanged. `docs.yml` copies the `.js` files to `docs/book/architecture/vendor/`
-next to the published `index.html`.
+unchanged. `docs.yml` copies the `.js` files and `licenses/` to
+`docs/book/architecture/vendor/` next to the published `index.html`.
 
-There is no seventh library. The page has six script tags.
+There is no seventh library. A small loader inserts these six script tags, then
+`map-viewer.js`. On `http:` and `https:` each library tag keeps its sha384
+`integrity` and `crossorigin`. A direct `file://` open skips that integrity
+check, because a file origin cannot satisfy Subresource Integrity. GitHub Pages
+and any http server enforce it.
+
+`cytoscape.version` reports `3.29.1` even though this file is byte-identical to
+unpkg `cytoscape@3.30.0`. Upstream's 3.30.0 build ships that stale version
+string.
 
 | File | Version | Source URL | sha384 (SRI, existing attribute) | sha256 |
 |---|---|---|---|---|
@@ -25,8 +34,12 @@ There is no seventh library. The page has six script tags.
 Load order is the order in the table. `cytoscape-fcose` needs `layout-base` and
 `cose-base`. `cytoscape-dagre` needs `cytoscape` and `dagre`.
 
-Upstream `LICENSE` files are in `licenses/`. All six are MIT. `cytoscape` and
-`dagre` also carry the MIT notice inside the file itself.
+Upstream `LICENSE` files are in `licenses/`. All six packages are MIT.
+`cytoscape-3.30.0.min.js` and `dagre-0.8.5.min.js` also carry the MIT notice
+inside the file. `layout-base-2.0.1.js` also carries the Apache-2.0 notice for
+its JamaJS-derived SVD code (in the file at line 4319). `docs.yml` publishes
+`licenses/` next to the scripts so those four bundles are not served without
+their grant.
 
 Dagre 0.8.5 does not call `Math.random`. The layered layout still sorts node
 ids and edge endpoints before it builds the graph, because dagre's rank and
