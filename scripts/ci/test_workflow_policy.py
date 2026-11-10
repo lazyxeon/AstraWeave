@@ -638,6 +638,20 @@ _KANI_TIMEOUT_RUN = (
 _PRODUCER_JOB_KEYS = frozenset(
     {"name", "permissions", "runs-on", "timeout-minutes", "steps"}
 )
+_KANI_JOB_KEYS = _PRODUCER_JOB_KEYS
+_PINNED_RUNS_ON = "ubuntu-latest"
+_PRODUCER_TIMEOUT_MINUTES = 45
+_KANI_TIMEOUT_MINUTES = {
+    "kani-ecs": 120,
+    "kani-math": 60,
+    "kani-sdk": 60,
+    "kani-core": 90,
+}
+_PINNED_REPORT_NAMES = {
+    "coverage.yml": "coverage-xml",
+    "aw-editor-tests.yml": "aw-editor-lcov",
+}
+_RUST_CI_SETUP_TOOLCHAIN = "1.89.0"
 _PRODUCER_STEP_KINDS = {
     "coverage.yml": ("checkout", "setup", "install-tarpaulin", "xml-tarpaulin", "upload"),
     "aw-editor-tests.yml": (
@@ -674,8 +688,20 @@ KANI_WORKDIR_MSG = "kani working-directory must be ."
 KANI_DUP_MSG = "kani step with: must not repeat an input"
 KANI_TIMEOUT_MSG = "kani timeout step must write only the validated timeout"
 KANI_JOB_STEPS_MSG = "kani job steps must equal the canonical ordered list"
+KANI_JOB_SHAPE_MSG = (
+    "kani job keys must be name, permissions, runs-on, timeout-minutes, and steps"
+)
+KANI_SUMMARY_MSG = (
+    "kani summary must need every mapped job, run with if always, and fail unless each result is success"
+)
+RUST_CI_SETUP_MSG = "rust-ci-setup steps must equal the canonical ordered list"
+RUST_CI_SETUP_TOOLCHAIN_MSG = "rust-ci-setup toolchain default must be the pinned toolchain"
+COVERAGE_HTML_STEPS_MSG = "coverage-html steps must equal the canonical ordered list"
+EDITOR_TEST_STEPS_MSG = "editor test steps must equal the canonical ordered list"
+PINNED_REPORT_MSG = "only the producer upload may publish the pinned report name"
+OVERWRITE_MSG = "upload steps must not set overwrite"
 RUN_CONTEXT_MSG = (
-    "defaults.run shell and working-directory, and env, must be absent or the canonical map"
+    "defaults is absent; workflow env is absent in coverage.yml and canonical in the other two; job env is absent"
 )
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
@@ -833,6 +859,218 @@ _KANI_JOBS = {
     }
     for job_id, package, report in _KANI_JOB_SPECS
 }
+_KANI_SUMMARY_NEEDS = [job_id for job_id, _package, _report in _KANI_JOB_SPECS]
+_KANI_SUMMARY_IF = "always()"
+_KANI_FAIL_STEP = {
+    "name": "Fail if any verification failed",
+    "if": (
+        "${{ needs.kani-ecs.result != 'success' || needs.kani-math.result != 'success' "
+        "|| needs.kani-sdk.result != 'success' || needs.kani-core.result != 'success' }}"
+    ),
+    "run": "exit 1",
+}
+_RUST_CI_SETUP_LINUX_RUN = (
+    "sudo apt-get update -q\n"
+    "sudo apt-get install -y -q \\\n"
+    "  build-essential pkg-config cmake ninja-build \\\n"
+    "  libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \\\n"
+    "  libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev \\\n"
+    "  libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev \\\n"
+    "  libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev \\\n"
+    "  libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools\n"
+)
+_RUST_CI_SETUP_MACOS_RUN = (
+    "if ! command -v cmake >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then\n"
+    "  brew install pkg-config cmake\n"
+    "fi\n"
+)
+_RUST_CI_SETUP_SCCACHE_RUN = (
+    'echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"\n'
+    'echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"\n'
+    'echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"\n'
+    'echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"\n'
+    'echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"\n'
+    "# sccache 0.19 writes through the Actions cache. A pull request that\n"
+    "# also writes hits the service rate limit (cache write errors) and\n"
+    "# evicts the shared cache. Main pushes and schedules populate it.\n"
+    "# CARGO_INCREMENTAL=0 is already required; sccache still refuses bins,\n"
+    "# cdylibs, and proc-macros.\n"
+    'if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then\n'
+    '  echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"\n'
+    "else\n"
+    '  echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"\n'
+    "fi\n"
+    "# Do not set RUSTFLAGS here. Cargo 1.89 replaces every rustflags\n"
+    "# entry in .cargo/config.toml when that variable is set. The Linux\n"
+    "# CPU pin lives in that file next to the Windows stack flags.\n"
+)
+_RUST_CI_SETUP_STEPS = [
+    {
+        "name": "Install Rust toolchain",
+        "uses": "dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8",
+        "with": {
+            "toolchain": "${{ inputs.toolchain }}",
+            "components": "${{ inputs.components }}",
+        },
+    },
+    {
+        "name": "Install system dependencies (Linux)",
+        "if": "runner.os == 'Linux'",
+        "shell": "bash",
+        "run": _RUST_CI_SETUP_LINUX_RUN,
+    },
+    {
+        "name": "Install system dependencies (macOS)",
+        "if": "runner.os == 'macOS'",
+        "shell": "bash",
+        "run": _RUST_CI_SETUP_MACOS_RUN,
+    },
+    {
+        "name": "Install sccache",
+        "uses": "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
+    },
+    {
+        "name": "Enable sccache",
+        "shell": "bash",
+        "run": _RUST_CI_SETUP_SCCACHE_RUN,
+    },
+    {
+        "name": "Cache cargo registry (one key per OS, save on main only)",
+        "uses": "Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0",
+        "with": {
+            "workspaces": ".",
+            "shared-key": "${{ runner.os }}-astraweave",
+            "cache-all-crates": "true",
+            "cache-targets": "false",
+            "save-if": "${{ github.ref == 'refs/heads/main' }}",
+        },
+    },
+    {
+        "name": "Install cargo-nextest",
+        "if": "inputs.install-nextest == 'true'",
+        "uses": "taiki-e/install-action@7c48f0a661edab95fdc666d1526d9ef945205245",
+    },
+]
+_COVERAGE_HTML_GENERATE_RUN = (
+    "cd tools/astraweave-assets\n"
+    "cargo tarpaulin --out Html --output-dir coverage-html "
+    "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n"
+)
+_COVERAGE_HTML_SUMMARY_RUN = (
+    "cd tools/astraweave-assets\n"
+    'echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "" >> $GITHUB_STEP_SUMMARY\n'
+    "if [ -f coverage/cobertura.xml ]; then\n"
+    "  COVERAGE=$(grep -oP 'line-rate=\"\\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf \"%.1f\", $1*100}')\n"
+    '  echo "**Overall Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY\n'
+    '  echo "" >> $GITHUB_STEP_SUMMARY\n'
+    '  echo "Target: 80%+ (Production Ready)" >> $GITHUB_STEP_SUMMARY\n'
+    "\n"
+    '  if (( $(echo "$COVERAGE >= 80" | bc -l) )); then\n'
+    '    echo "✅ **Status:** PASS (meets target)" >> $GITHUB_STEP_SUMMARY\n'
+    "  else\n"
+    '    echo "⚠️ **Status:** Below target (needs improvement)" >> $GITHUB_STEP_SUMMARY\n'
+    "  fi\n"
+    "else\n"
+    '  echo "⚠️ Coverage data not generated" >> $GITHUB_STEP_SUMMARY\n'
+    "fi\n"
+)
+_COVERAGE_HTML_STEPS = [
+    _COVERAGE_CHECKOUT_STEP,
+    _COVERAGE_SETUP_STEP,
+    _COVERAGE_INSTALL_STEP,
+    {
+        "name": "Download coverage XML",
+        "uses": "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
+        "with": {
+            "name": "coverage-xml",
+            "path": "tools/astraweave-assets/coverage",
+        },
+    },
+    {
+        "name": "Generate HTML report",
+        "if": "always()",
+        "run": _COVERAGE_HTML_GENERATE_RUN,
+    },
+    {
+        "name": "Upload HTML coverage report",
+        "if": "always()",
+        "uses": _UPLOAD_USES,
+        "with": {
+            "name": "coverage-report",
+            "path": "tools/astraweave-assets/coverage-html",
+            "retention-days": 30,
+        },
+    },
+    {
+        "name": "Coverage summary",
+        "if": "always()",
+        "run": _COVERAGE_HTML_SUMMARY_RUN,
+    },
+]
+_EDITOR_TEST_APT_RUN = (
+    "sudo apt-get update\n"
+    "sudo apt-get install -y \\\n"
+    "  pkg-config \\\n"
+    "  libxcb-shape0-dev \\\n"
+    "  libxcb-xfixes0-dev \\\n"
+    "  libxkbcommon-dev \\\n"
+    "  libegl1-mesa-dev \\\n"
+    "  libwayland-dev \\\n"
+    "  libudev-dev \\\n"
+    "  libasound2-dev\n"
+    "  \n"
+)
+_EDITOR_TEST_SUMMARY_RUN = (
+    'echo "## AW Editor Test Results" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "**Platform**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "**Rust Version**: $(rustc --version)" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "- **Unit Tests**: 146/164 passing (89%)" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "- **Integration Tests**: 9 test files (ui_gizmo_smoke, play_mode, prefab_workflow, etc.)" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "### Known Issues" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "- 18 unit test failures (gizmo math, undo stack, scene serialization)" >> $GITHUB_STEP_SUMMARY\n'
+    'echo "- 52 warnings (dead code, unused fields - tracked in Known Issues)" >> $GITHUB_STEP_SUMMARY\n'
+)
+_EDITOR_TEST_STEPS = [
+    _EDITOR_CHECKOUT_STEP,
+    _COVERAGE_SETUP_STEP,
+    {
+        "name": "Install Linux Dependencies",
+        "if": "runner.os == 'Linux'",
+        "run": _EDITOR_TEST_APT_RUN,
+    },
+    {"name": "Build AW Editor", "run": "cargo build -p aw_editor --lib --all-features"},
+    {
+        "name": "Run Unit Tests",
+        "run": "cargo test -p aw_editor --lib --all-features -- --nocapture",
+        "continue-on-error": True,
+    },
+    {
+        "name": "Run Integration Tests",
+        "if": "runner.os != 'macOS'",
+        "run": "cargo test -p aw_editor --test ui_gizmo_smoke --test play_mode --test prefab_workflow",
+        "continue-on-error": True,
+    },
+    {
+        "name": "Check Formatting",
+        "run": "cargo fmt -p aw_editor -- --check",
+        "continue-on-error": True,
+    },
+    {
+        "name": "Run Clippy",
+        "run": "cargo clippy -p aw_editor --all-features -- -D warnings",
+        "continue-on-error": True,
+    },
+    {
+        "name": "Generate Test Summary",
+        "if": "always()",
+        "run": _EDITOR_TEST_SUMMARY_RUN,
+    },
+]
 _RUN_CONTEXT_WORKFLOWS = frozenset({"coverage.yml", "aw-editor-tests.yml", "kani.yml"})
 _WORKFLOW_ENV = {
     "coverage.yml": None,
@@ -1205,6 +1443,15 @@ def _producer_job_keys_ok(job: object) -> bool:
     return set(job) == _PRODUCER_JOB_KEYS
 
 
+def _producer_runner_ok(job: dict) -> bool:
+    """runs-on and timeout-minutes are the pinned values, not only the keys."""
+    if job.get("runs-on") != _PINNED_RUNS_ON:
+        return False
+    if job.get("timeout-minutes") != _PRODUCER_TIMEOUT_MINUTES:
+        return False
+    return True
+
+
 def _producer_step_matches(step: object, kind: str) -> bool:
     if not isinstance(step, dict):
         return False
@@ -1338,6 +1585,7 @@ def _producer_tarpaulin_order_ok(job: object, workflow: str) -> bool:
 def _producer_end_ok(job: object, workflow: str, artifact_name: str) -> bool:
     return (
         _producer_job_keys_ok(job)
+        and _producer_runner_ok(job)
         and _producer_sequence_ok(job, workflow)
         and _producer_upload_name_ok(job, artifact_name)
         and _producer_steps_unconditional(job)
@@ -1381,7 +1629,10 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     canonical step fails. The coverage job is the exact ordered list of
     canonical steps, including Rust CI setup and Install Rust Toolchain,
     with their with: and env. An inserted, removed, or reordered step
-    fails. The key set matches, run matches after trailing whitespace is
+    fails. Its runs-on is ubuntu-latest and its timeout-minutes is 45.
+    coverage-html and the editor test job are each an exact ordered list
+    of canonical steps. The Install cargo-tarpaulin step in coverage-html
+    is that list's canonical install. The key set matches, run matches after trailing whitespace is
     trimmed, leading whitespace fails, and every other value matches,
     including the upload with: map. A generate-coverage script other than
     the approved cargo tarpaulin --out Xml command, or a step between the
@@ -1461,6 +1712,19 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
             violations.append(f"{prefix}{perm_line}: {CODECOV_PERMS_MSG}")
         if has_codecov and not upload_only:
             violations.append(f"{prefix}{job_line}: {CODECOV_UPLOAD_JOB_MSG}")
+    workflow = Path(path).name
+    if workflow == "coverage.yml":
+        html = jobs.get("coverage-html")
+        html_steps = html.get("steps") if isinstance(html, dict) else None
+        if not _steps_equal_ordered(html_steps, _COVERAGE_HTML_STEPS):
+            line = int(job_lines.get("coverage-html", 1))
+            violations.append(f"{prefix}{line}: {COVERAGE_HTML_STEPS_MSG}")
+    if workflow == "aw-editor-tests.yml":
+        editor = jobs.get("test")
+        editor_steps = editor.get("steps") if isinstance(editor, dict) else None
+        if not _steps_equal_ordered(editor_steps, _EDITOR_TEST_STEPS):
+            line = int(job_lines.get("test", 1))
+            violations.append(f"{prefix}{line}: {EDITOR_TEST_STEPS_MSG}")
     return violations
 
 
@@ -1611,12 +1875,11 @@ def _run_context_ok(node: object, key: str, expected: dict | None) -> bool:
 
 
 def run_context_violations(text: str, *, path: str = "") -> list[str]:
-    """defaults.run and env are absent or the canonical map.
+    """defaults is absent. Workflow env follows the per-file rule.
 
     Applies to coverage.yml, aw-editor-tests.yml, and kani.yml, at workflow
-    level and on every job. defaults.run shell and working-directory have
-    no canonical value in these files, so any defaults key fails. env is
-    absent in coverage.yml and the canonical variable map in the other two.
+    level and on every job. Any defaults key fails. Workflow env is absent
+    in coverage.yml and the canonical variable map in the other two.
     Job-level env is absent. A custom shell, a working-directory, or an
     env map that is not canonical fails.
     """
@@ -1654,6 +1917,69 @@ def run_context_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
+def rust_ci_setup_violations(text: str, *, path: str = "") -> list[str]:
+    """The shared setup action's steps and toolchain default are canonical.
+
+    runs.steps is the ordered list, including one RUSTC_WRAPPER assignment
+    in Enable sccache. An extra step, including one that writes GITHUB_ENV,
+    fails. The toolchain input default is the pinned toolchain.
+    """
+    if "rust-ci-setup" not in Path(path).as_posix():
+        return []
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    violations: list[str] = []
+    runs = doc["runs"]
+    if not _steps_equal_ordered(runs.get("steps"), _RUST_CI_SETUP_STEPS):
+        line = int(getattr(runs, "yaml_line", 1))
+        violations.append(f"{prefix}{line}: {RUST_CI_SETUP_MSG}")
+    toolchain = doc["inputs"]["toolchain"]
+    if toolchain.get("default") != _RUST_CI_SETUP_TOOLCHAIN:
+        line = int(getattr(toolchain, "key_lines", {}).get("default", 1))
+        violations.append(f"{prefix}{line}: {RUST_CI_SETUP_TOOLCHAIN_MSG}")
+    return violations
+
+
+def _has_overwrite(node: object) -> bool:
+    if not isinstance(node, dict):
+        return False
+    return any(isinstance(key, str) and key.casefold() == "overwrite" for key in node)
+
+
+def coverage_report_publish_violations(text: str, *, path: str = "") -> list[str]:
+    """Only the producer upload may publish the pinned report name.
+
+    coverage-xml and aw-editor-lcov are those names. Any other upload of
+    the pinned name fails, including a second upload in the producer job.
+    An overwrite key on a step or under with: fails.
+    """
+    workflow = Path(path).name
+    pinned = _PINNED_REPORT_NAMES.get(workflow)
+    if pinned is None:
+        return []
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    violations: list[str] = []
+    pinned_jobs: list[str] = []
+    for job_id, _job, step in _iter_steps(doc):
+        if _has_overwrite(step) or _has_overwrite(step.get("with")):
+            violations.append(f"{prefix}{_step_line(step)}: {OVERWRITE_MSG}")
+        if not _is_named_action(step, "actions/upload-artifact"):
+            continue
+        _key, name = _ci_item(_mapping(step.get("with")), "name")
+        if name == pinned:
+            pinned_jobs.append(job_id)
+    if any(job_id != "coverage" for job_id in pinned_jobs):
+        violations.append(f"{prefix}1: {PINNED_REPORT_MSG}")
+    if sum(job_id == "coverage" for job_id in pinned_jobs) != 1:
+        violations.append(f"{prefix}1: {PINNED_REPORT_MSG}")
+    return violations
+
+
 def _job_has_kani_action(job: dict) -> bool:
     steps = job.get("steps")
     if not isinstance(steps, list):
@@ -1664,15 +1990,58 @@ def _job_has_kani_action(job: dict) -> bool:
     )
 
 
+def _kani_job_shape_ok(job_id: str, job: dict) -> bool:
+    """The mapped job's keys, runner, and timeout are the canonical values."""
+    if set(job) != _KANI_JOB_KEYS:
+        return False
+    if job.get("runs-on") != _PINNED_RUNS_ON:
+        return False
+    if job.get("timeout-minutes") != _KANI_TIMEOUT_MINUTES.get(job_id):
+        return False
+    return True
+
+
+def _kani_fail_step_ok(job: dict) -> bool:
+    """The fail step is present once and equals the canonical step.
+
+    The canonical if: is true for every result other than success, so a
+    skipped or cancelled job fails the gate.
+    """
+    found = [
+        step
+        for step in job["steps"]
+        if step.get("name") == _KANI_FAIL_STEP["name"]
+    ]
+    if len(found) != 1:
+        return False
+    return _step_equals_canonical(found[0], _KANI_FAIL_STEP)
+
+
+def _kani_summary_gate_ok(job: object) -> bool:
+    """needs every mapped Kani job, if: always(), and the locked fail step."""
+    if not isinstance(job, dict):
+        return False
+    needs = job.get("needs")
+    if list(needs) != _KANI_SUMMARY_NEEDS:
+        return False
+    if job.get("if") != _KANI_SUMMARY_IF:
+        return False
+    return _kani_fail_step_ok(job)
+
+
 def kani_job_steps_violations(text: str, *, path: str = "") -> list[str]:
     """Each Kani job is the canonical ordered step list for its job id.
 
     The entry's args is a non-null string. Checkout, the timeout step, the
     Kani action, and the report upload each equal the canonical step,
     including the action step's keys and env. An inserted, removed, or
-    reordered step fails. A step condition or continue-on-error on the job
-    or on a step fails. An unmapped or renamed job that runs the action
-    fails.
+    reordered step fails, including a step appended after the last canonical
+    step. The job keys are name, permissions, runs-on, timeout-minutes, and
+    steps. runs-on is ubuntu-latest. timeout-minutes is the per-job value.
+    A job-level if: fails. A step if: or continue-on-error fails. An unmapped
+    or renamed job that runs the action fails. The summary job needs every
+    mapped Kani job, its if: is always(), and the fail step equals the
+    canonical step, so a skipped or cancelled result fails the gate.
     """
     if Path(path).name != "kani.yml":
         return []
@@ -1687,6 +2056,10 @@ def kani_job_steps_violations(text: str, *, path: str = "") -> list[str]:
         return []
     violations: list[str] = []
     job_lines = getattr(jobs, "key_lines", {})
+    summary = jobs.get("summary")
+    if not _kani_summary_gate_ok(summary):
+        line = int(job_lines.get("summary", 1))
+        violations.append(f"{prefix}{line}: {KANI_SUMMARY_MSG}")
     for job_id, job in jobs.items():
         if not isinstance(job, dict):
             continue
@@ -1696,6 +2069,8 @@ def kani_job_steps_violations(text: str, *, path: str = "") -> list[str]:
             if _job_has_kani_action(job):
                 violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
             continue
+        if not _kani_job_shape_ok(str(job_id), job):
+            violations.append(f"{prefix}{line}: {KANI_JOB_SHAPE_MSG}")
         if any(
             isinstance(key, str) and key.casefold() == "continue-on-error" for key in job
         ):
@@ -2773,6 +3148,8 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(kani_job_steps_violations(text, path=rel))
             codecov.extend(kani_timeout_run_violations(text, path=rel))
             codecov.extend(run_context_violations(text, path=rel))
+            codecov.extend(rust_ci_setup_violations(text, path=rel))
+            codecov.extend(coverage_report_publish_violations(text, path=rel))
             codecov.extend(checkout_persist_credentials_violations(text, path=rel))
             codecov.extend(kani_action_sha_violations(text, path=rel))
             codecov.extend(llvm_cov_pin_violations(text, path=rel))
@@ -5736,7 +6113,7 @@ jobs:
             self.assertEqual(kani_dispatch_args_violations(mutant, path="kani.yml"), [], label)
             violations = kani_job_steps_violations(mutant, path="kani.yml")
             self.assertTrue(violations, label)
-            self.assertIn(KANI_JOB_STEPS_MSG, violations[0], label)
+            self.assertIn(KANI_JOB_STEPS_MSG, " ".join(violations), label)
         if_doc, if_err = load_workflow_yaml(step_if)
         self.assertIsNone(if_err)
         if_step = next(
@@ -5906,6 +6283,473 @@ jobs:
         second_violations = kani_timeout_run_violations(second, path="kani.yml")
         self.assertTrue(second_violations)
         self.assertIn(KANI_TIMEOUT_MSG, second_violations[0])
+
+    def test_producer_runs_on_and_timeout_are_pinned(self) -> None:
+        """Producer runs-on and timeout-minutes are the pinned values.
+
+        The key set still matches, so a key-only allowlist accepts both.
+        """
+        anchors = {
+            "coverage.yml": (
+                "    name: Generate Code Coverage\n"
+                "    permissions:\n"
+                "      contents: read\n"
+                "    runs-on: ubuntu-latest\n"
+                "    timeout-minutes: 45\n"
+            ),
+            "aw-editor-tests.yml": (
+                "    name: Test Coverage\n"
+                "    permissions:\n"
+                "      contents: read\n"
+                "    runs-on: ubuntu-latest\n"
+                "    timeout-minutes: 45\n"
+            ),
+        }
+        for path, anchor in anchors.items():
+            text = (WORKFLOWS / path).read_text(encoding="utf-8")
+            self.assertEqual(text.count(anchor), 1, path)
+            self.assertNotIn(
+                COVERAGE_JOB_END_MSG,
+                " ".join(coverage_permission_violations(text, path=path)),
+                path,
+            )
+            runner = text.replace(anchor, anchor.replace("ubuntu-latest", "self-hosted", 1), 1)
+            timeout = text.replace(anchor, anchor.replace("timeout-minutes: 45", "timeout-minutes: 1", 1), 1)
+            for label, mutant in (("runner", runner), ("timeout", timeout)):
+                self.assertNotEqual(mutant, text, f"{path}:{label}")
+                job = self._coverage_job(mutant, f"{path}:{label}")
+                self.assertEqual(set(job), _PRODUCER_JOB_KEYS, f"{path}:{label}")
+                self.assertIn(
+                    COVERAGE_JOB_END_MSG,
+                    " ".join(coverage_permission_violations(mutant, path=path)),
+                    f"{path}:{label}",
+                )
+
+    def test_kani_job_keys_are_exact(self) -> None:
+        """Each extra job key, and a changed runner or timeout, fails the shape check.
+
+        The ordered steps stay canonical, so the step-list check stays quiet.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_job_steps_violations(text, path="kani.yml"), [])
+        anchor = "  kani-ecs:\n    name: Kani - astraweave-ecs\n"
+        self.assertEqual(text.count(anchor), 1)
+        extras = {
+            "container": "    container: example\n",
+            "services": "    services:\n      extra:\n        image: example\n",
+            "if": "    if: false\n",
+            "strategy": "    strategy:\n      matrix:\n        os: [ubuntu-latest]\n",
+            "environment": "    environment: example\n",
+            "outputs": "    outputs:\n      extra: set\n",
+            "concurrency": "    concurrency: example\n",
+            "needs": "    needs: kani-math\n",
+            "snapshot": "    snapshot: example\n",
+        }
+        for name, extra in extras.items():
+            mutant = text.replace(anchor, anchor + extra, 1)
+            self.assertNotEqual(mutant, text, name)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, name)
+            job = doc["jobs"]["kani-ecs"]
+            self.assertIn(name, job, name)
+            self.assertNotEqual(set(job), _KANI_JOB_KEYS, name)
+            self.assertTrue(
+                _steps_equal_ordered(job["steps"], _KANI_JOBS["kani-ecs"]["steps"]),
+                name,
+            )
+            self.assertEqual(kani_dispatch_args_violations(mutant, path="kani.yml"), [], name)
+            violations = kani_job_steps_violations(mutant, path="kani.yml")
+            self.assertIn(KANI_JOB_SHAPE_MSG, " ".join(violations), name)
+        runner = text.replace("    runs-on: ubuntu-latest\n", "    runs-on: self-hosted\n", 1)
+        self.assertNotEqual(runner, text)
+        runner_doc, runner_err = load_workflow_yaml(runner)
+        self.assertIsNone(runner_err)
+        runner_job = runner_doc["jobs"]["kani-ecs"]
+        self.assertEqual(set(runner_job), _KANI_JOB_KEYS)
+        self.assertEqual(runner_job.get("runs-on"), "self-hosted")
+        self.assertTrue(
+            _steps_equal_ordered(runner_job["steps"], _KANI_JOBS["kani-ecs"]["steps"])
+        )
+        self.assertIn(
+            KANI_JOB_SHAPE_MSG,
+            " ".join(kani_job_steps_violations(runner, path="kani.yml")),
+        )
+        timeout = text.replace("    timeout-minutes: 120\n", "    timeout-minutes: 1\n", 1)
+        self.assertNotEqual(timeout, text)
+        timeout_doc, timeout_err = load_workflow_yaml(timeout)
+        self.assertIsNone(timeout_err)
+        timeout_job = timeout_doc["jobs"]["kani-ecs"]
+        self.assertEqual(set(timeout_job), _KANI_JOB_KEYS)
+        self.assertEqual(timeout_job.get("timeout-minutes"), 1)
+        self.assertIn(
+            KANI_JOB_SHAPE_MSG,
+            " ".join(kani_job_steps_violations(timeout, path="kani.yml")),
+        )
+
+    def test_kani_summary_gate_is_canonical(self) -> None:
+        """The summary job needs every mapped id, runs on if: always(), and locks the fail step.
+
+        A result other than success, including skipped and cancelled, fails that step.
+        Removing the job, a needs id, or the fail step fails this check alone.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_job_steps_violations(text, path="kani.yml"), [])
+        needs = "    needs: [kani-ecs, kani-math, kani-sdk, kani-core]\n"
+        self.assertEqual(text.count(needs), 1)
+        added = text.replace(needs, "    needs: [kani-ecs, kani-math, kani-sdk, kani-core, kani-extra]\n", 1)
+        dropped = text.replace(needs, "    needs: [kani-ecs, kani-math, kani-sdk]\n", 1)
+        job_if = "    needs: [kani-ecs, kani-math, kani-sdk, kani-core]\n    if: always()\n"
+        self.assertEqual(text.count(job_if), 1)
+        always_off = text.replace(job_if, job_if.replace("if: always()", "if: false", 1), 1)
+        failure_only = text.replace("!= 'success'", "== 'failure'")
+        self.assertNotEqual(failure_only, text)
+        self.assertEqual(failure_only.count("== 'failure'"), 4)
+        fail_step = (
+            "      - name: Fail if any verification failed\n"
+            "        if: ${{ needs.kani-ecs.result != 'success' || "
+            "needs.kani-math.result != 'success' || needs.kani-sdk.result != 'success' || "
+            "needs.kani-core.result != 'success' }}\n"
+            "        run: exit 1\n"
+        )
+        self.assertEqual(text.count(fail_step), 1)
+        deleted_step = text.replace(fail_step, "", 1)
+        deleted_job = text.split("  summary:\n", 1)[0]
+        self.assertNotIn("summary:", deleted_job)
+        for label, mutant in (
+            ("needs-added", added),
+            ("needs-dropped", dropped),
+            ("job-if", always_off),
+            ("failure-only", failure_only),
+            ("fail-step-deleted", deleted_step),
+            ("summary-deleted", deleted_job),
+        ):
+            self.assertNotEqual(mutant, text, label)
+            violations = kani_job_steps_violations(mutant, path="kani.yml")
+            self.assertIn(KANI_SUMMARY_MSG, " ".join(violations), label)
+            self.assertNotIn(KANI_JOB_SHAPE_MSG, " ".join(violations), label)
+
+    def test_job_if_with_summary_edit_fails(self) -> None:
+        """A job condition together with a summary-step edit fails both checks.
+
+        The proof steps stay canonical, so neither half is the step-list check.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        anchor = "  kani-ecs:\n    name: Kani - astraweave-ecs\n"
+        fail_step = (
+            "      - name: Fail if any verification failed\n"
+            "        if: ${{ needs.kani-ecs.result != 'success' || "
+            "needs.kani-math.result != 'success' || needs.kani-sdk.result != 'success' || "
+            "needs.kani-core.result != 'success' }}\n"
+        )
+        self.assertEqual(text.count(anchor), 1)
+        self.assertEqual(text.count(fail_step), 1)
+        mutant = text.replace(anchor, anchor + "    if: false\n", 1)
+        mutant = mutant.replace(fail_step, "      - name: Fail if any verification failed\n        if: false\n", 1)
+        self.assertNotEqual(mutant, text)
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        self.assertIn("if", doc["jobs"]["kani-ecs"])
+        self.assertTrue(
+            _steps_equal_ordered(
+                doc["jobs"]["kani-ecs"]["steps"],
+                _KANI_JOBS["kani-ecs"]["steps"],
+            )
+        )
+        self.assertEqual(kani_dispatch_args_violations(mutant, path="kani.yml"), [])
+        violations = " ".join(kani_job_steps_violations(mutant, path="kani.yml"))
+        self.assertIn(KANI_JOB_SHAPE_MSG, violations)
+        self.assertIn(KANI_SUMMARY_MSG, violations)
+
+    def test_unmapped_kani_job_with_null_args_fails_dispatch(self) -> None:
+        """kani_dispatch_args_violations alone rejects an unmapped job whose args is null.
+
+        Both sides of the compare are None. Dropping the missing-entry half accepts the pair.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        start = text.index("  kani-ecs:\n")
+        end = text.index("  kani-math:\n")
+        renamed = text[start:end].replace("  kani-ecs:\n", "  kani-other:\n", 1)
+        renamed = renamed.replace(
+            "          args: --package astraweave-ecs -Z unstable-options "
+            "--harness-timeout ${{ steps.timeout.outputs.value }}\n",
+            "          args: null\n",
+            1,
+        )
+        mutant = text[:end] + renamed + text[end:]
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        step = next(
+            item
+            for job_id, _job, item in _iter_steps(doc)
+            if job_id == "kani-other" and _is_named_action(item, "model-checking/kani-github-action")
+        )
+        self.assertIsNone(_ci_item(step.get("with"), "args")[1])
+        self.assertIsNone(_approved_kani_args("kani-other"))
+        violations = kani_dispatch_args_violations(mutant, path="kani.yml")
+        self.assertTrue(violations)
+        self.assertIn(KANI_ARGS_MSG, " ".join(violations))
+
+    def test_trailing_kani_step_fails_the_length_check(self) -> None:
+        """A step appended after the canonical list fails the exact length compare.
+
+        The prefix still matches, so a compare that only rejects a shorter list stays quiet.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        extra = "      - name: After report\n        run: echo extra\n\n"
+        anchor = "  kani-math:\n"
+        self.assertEqual(text.count(anchor), 1)
+        mutant = text.replace(anchor, extra + anchor, 1)
+        self.assertNotEqual(mutant, text)
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        steps = doc["jobs"]["kani-ecs"]["steps"]
+        canonical = _KANI_JOBS["kani-ecs"]["steps"]
+        self.assertEqual(len(steps), len(canonical) + 1)
+        self.assertTrue(all(_step_equals_canonical(got, want) for got, want in zip(steps, canonical)))
+        violations = kani_job_steps_violations(mutant, path="kani.yml")
+        self.assertTrue(violations)
+        self.assertIn(KANI_JOB_STEPS_MSG, " ".join(violations))
+        self.assertNotIn(KANI_JOB_SHAPE_MSG, " ".join(violations))
+
+    def test_rust_ci_setup_steps_are_canonical(self) -> None:
+        """The setup action's steps and toolchain default are exact.
+
+        An extra step that writes GITHUB_ENV keeps the toolchain default.
+        A second RUSTC_WRAPPER assignment keeps the step count.
+        """
+        path = ".github/actions/rust-ci-setup/action.yml"
+        text = (ROOT / path).read_text(encoding="utf-8")
+        self.assertEqual(rust_ci_setup_violations(text, path=path), [])
+        doc, err = load_workflow_yaml(text)
+        self.assertIsNone(err)
+        self.assertEqual(doc["inputs"]["toolchain"]["default"], _RUST_CI_SETUP_TOOLCHAIN)
+        self.assertEqual(_RUST_CI_SETUP_SCCACHE_RUN.count("RUSTC_WRAPPER="), 1)
+        self.assertTrue(_steps_equal_ordered(doc["runs"]["steps"], _RUST_CI_SETUP_STEPS))
+        toolchain = text.replace('default: "1.89.0"', 'default: "0"', 1)
+        self.assertNotEqual(toolchain, text)
+        toolchain_hits = rust_ci_setup_violations(toolchain, path=path)
+        self.assertIn(RUST_CI_SETUP_TOOLCHAIN_MSG, " ".join(toolchain_hits))
+        self.assertNotIn(RUST_CI_SETUP_MSG, " ".join(toolchain_hits))
+        wrapper = '        echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"\n'
+        self.assertEqual(text.count(wrapper), 1)
+        second = text.replace(wrapper, wrapper + wrapper, 1)
+        second_doc, second_err = load_workflow_yaml(second)
+        self.assertIsNone(second_err)
+        self.assertEqual(len(second_doc["runs"]["steps"]), len(_RUST_CI_SETUP_STEPS))
+        self.assertEqual(second_doc["runs"]["steps"][4]["run"].count("RUSTC_WRAPPER="), 2)
+        second_hits = rust_ci_setup_violations(second, path=path)
+        self.assertIn(RUST_CI_SETUP_MSG, " ".join(second_hits))
+        self.assertNotIn(RUST_CI_SETUP_TOOLCHAIN_MSG, " ".join(second_hits))
+        extra = (
+            "\n"
+            "    - name: Extra env\n"
+            "      shell: bash\n"
+            '      run: echo "EXTRA=set" >> "$GITHUB_ENV"\n'
+        )
+        appended = text + extra
+        appended_doc, appended_err = load_workflow_yaml(appended)
+        self.assertIsNone(appended_err)
+        appended_steps = appended_doc["runs"]["steps"]
+        self.assertEqual(len(appended_steps), len(_RUST_CI_SETUP_STEPS) + 1)
+        self.assertTrue(
+            all(
+                _step_equals_canonical(got, want)
+                for got, want in zip(appended_steps, _RUST_CI_SETUP_STEPS)
+            )
+        )
+        self.assertIn("GITHUB_ENV", appended_steps[-1]["run"])
+        appended_hits = rust_ci_setup_violations(appended, path=path)
+        self.assertIn(RUST_CI_SETUP_MSG, " ".join(appended_hits))
+        self.assertNotIn(RUST_CI_SETUP_TOOLCHAIN_MSG, " ".join(appended_hits))
+
+    def test_coverage_html_and_editor_test_steps_are_canonical(self) -> None:
+        """coverage-html and the editor test job are exact ordered step lists.
+
+        A trailing step keeps the prefix. The HTML install drops its pin and stays one step.
+        """
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(coverage_permission_violations(coverage, path="coverage.yml"), [])
+        self.assertEqual(coverage_permission_violations(editor, path="aw-editor-tests.yml"), [])
+        html_extra = coverage + "\n      - name: After report\n        run: echo extra\n"
+        html_doc, html_err = load_workflow_yaml(html_extra)
+        self.assertIsNone(html_err)
+        html_steps = html_doc["jobs"]["coverage-html"]["steps"]
+        self.assertEqual(len(html_steps), len(_COVERAGE_HTML_STEPS) + 1)
+        self.assertTrue(
+            all(_step_equals_canonical(got, want) for got, want in zip(html_steps, _COVERAGE_HTML_STEPS))
+        )
+        self.assertEqual(coverage_report_publish_violations(html_extra, path="coverage.yml"), [])
+        self.assertIn(
+            COVERAGE_HTML_STEPS_MSG,
+            " ".join(coverage_permission_violations(html_extra, path="coverage.yml")),
+        )
+        install = (
+            "      - name: Install cargo-tarpaulin\n"
+            "        run: cargo install cargo-tarpaulin --version 0.35.2 --locked\n"
+            "\n"
+            "      - name: Download coverage XML\n"
+        )
+        self.assertEqual(coverage.count(install), 1)
+        unpinned = coverage.replace(
+            install,
+            install.replace(" --version 0.35.2 --locked", "", 1),
+            1,
+        )
+        self.assertNotEqual(unpinned, coverage)
+        unpinned_doc, unpinned_err = load_workflow_yaml(unpinned)
+        self.assertIsNone(unpinned_err)
+        self.assertEqual(
+            len(unpinned_doc["jobs"]["coverage-html"]["steps"]),
+            len(_COVERAGE_HTML_STEPS),
+        )
+        self.assertIn(
+            COVERAGE_HTML_STEPS_MSG,
+            " ".join(coverage_permission_violations(unpinned, path="coverage.yml")),
+        )
+        self.assertNotIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(unpinned, path="coverage.yml")),
+        )
+        renamed = coverage.replace("  coverage-html:\n", "  coverage-pages:\n", 1)
+        self.assertNotEqual(renamed, coverage)
+        self.assertIn(
+            COVERAGE_HTML_STEPS_MSG,
+            " ".join(coverage_permission_violations(renamed, path="coverage.yml")),
+        )
+        editor_anchor = "  # Coverage job (optional - Linux only for speed)\n"
+        self.assertEqual(editor.count(editor_anchor), 1)
+        editor_extra = editor.replace(
+            editor_anchor,
+            "    - name: After tests\n      run: echo extra\n\n" + editor_anchor,
+            1,
+        )
+        editor_doc, editor_err = load_workflow_yaml(editor_extra)
+        self.assertIsNone(editor_err)
+        editor_steps = editor_doc["jobs"]["test"]["steps"]
+        self.assertEqual(len(editor_steps), len(_EDITOR_TEST_STEPS) + 1)
+        self.assertTrue(
+            all(_step_equals_canonical(got, want) for got, want in zip(editor_steps, _EDITOR_TEST_STEPS))
+        )
+        self.assertEqual(
+            coverage_report_publish_violations(editor_extra, path="aw-editor-tests.yml"),
+            [],
+        )
+        self.assertIn(
+            EDITOR_TEST_STEPS_MSG,
+            " ".join(coverage_permission_violations(editor_extra, path="aw-editor-tests.yml")),
+        )
+        renamed_editor = editor.replace("  test:\n", "  editor-test:\n", 1)
+        self.assertEqual(editor.count("  test:\n"), 1)
+        self.assertIn(
+            EDITOR_TEST_STEPS_MSG,
+            " ".join(coverage_permission_violations(renamed_editor, path="aw-editor-tests.yml")),
+        )
+
+    def test_pinned_report_upload_and_overwrite_are_rejected(self) -> None:
+        """Only the producer upload may publish the pinned report, and overwrite is absent.
+
+        An upload on coverage-html or the editor test job is outside the producer.
+        A second producer upload keeps that job id. overwrite is a different key.
+        """
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(coverage_report_publish_violations(coverage, path="coverage.yml"), [])
+        self.assertEqual(
+            coverage_report_publish_violations(editor, path="aw-editor-tests.yml"),
+            [],
+        )
+        html_upload = (
+            "\n"
+            "      - name: Extra upload\n"
+            "        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9\n"
+            "        with:\n"
+            "          name: coverage-xml\n"
+            "          path: extra.txt\n"
+        )
+        html = coverage + html_upload
+        html_doc, html_err = load_workflow_yaml(html)
+        self.assertIsNone(html_err)
+        html_jobs = [
+            job_id
+            for job_id, _job, step in _iter_steps(html_doc)
+            if _is_named_action(step, "actions/upload-artifact")
+            and _ci_item(step.get("with"), "name")[1] == "coverage-xml"
+        ]
+        self.assertEqual(html_jobs, ["coverage", "coverage-html"])
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(coverage_report_publish_violations(html, path="coverage.yml")),
+        )
+        self.assertIn(
+            COVERAGE_HTML_STEPS_MSG,
+            " ".join(coverage_permission_violations(html, path="coverage.yml")),
+        )
+        editor_upload = (
+            "    - name: Extra upload\n"
+            "      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9\n"
+            "      with:\n"
+            "        name: aw-editor-lcov\n"
+            "        path: extra.txt\n\n"
+        )
+        editor_anchor = "  # Coverage job (optional - Linux only for speed)\n"
+        editor_mutant = editor.replace(editor_anchor, editor_upload + editor_anchor, 1)
+        editor_doc, editor_err = load_workflow_yaml(editor_mutant)
+        self.assertIsNone(editor_err)
+        editor_jobs = [
+            job_id
+            for job_id, _job, step in _iter_steps(editor_doc)
+            if _is_named_action(step, "actions/upload-artifact")
+            and _ci_item(step.get("with"), "name")[1] == "aw-editor-lcov"
+        ]
+        self.assertEqual(editor_jobs, ["test", "coverage"])
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(coverage_report_publish_violations(editor_mutant, path="aw-editor-tests.yml")),
+        )
+        self.assertIn(
+            EDITOR_TEST_STEPS_MSG,
+            " ".join(coverage_permission_violations(editor_mutant, path="aw-editor-tests.yml")),
+        )
+        producer = (
+            "      - name: Upload coverage XML\n"
+            "        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        with:\n"
+            "          name: coverage-xml\n"
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+            "          retention-days: 30\n"
+        )
+        self.assertEqual(coverage.count(producer), 1)
+        duplicated = coverage.replace(producer, producer + producer, 1)
+        dup_doc, dup_err = load_workflow_yaml(duplicated)
+        self.assertIsNone(dup_err)
+        dup_jobs = [
+            job_id
+            for job_id, _job, step in _iter_steps(dup_doc)
+            if _is_named_action(step, "actions/upload-artifact")
+            and _ci_item(step.get("with"), "name")[1] == "coverage-xml"
+        ]
+        self.assertEqual(dup_jobs, ["coverage", "coverage"])
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(coverage_report_publish_violations(duplicated, path="coverage.yml")),
+        )
+        report = (
+            "          name: coverage-report\n"
+            "          path: tools/astraweave-assets/coverage-html\n"
+        )
+        self.assertEqual(coverage.count(report), 1)
+        for label, key in (("lower", "overwrite"), ("cased", "Overwrite")):
+            mutant = coverage.replace(report, f"          name: coverage-report\n          {key}: true\n", 1)
+            self.assertNotEqual(mutant, coverage, label)
+            parsed, parse_err = load_workflow_yaml(mutant)
+            self.assertIsNone(parse_err, label)
+            upload = parsed["jobs"]["coverage-html"]["steps"][5]
+            self.assertTrue(_has_overwrite(upload.get("with")), label)
+            self.assertEqual(_ci_item(upload.get("with"), "name")[1], "coverage-report")
+            messages = " ".join(coverage_report_publish_violations(mutant, path="coverage.yml"))
+            self.assertIn(OVERWRITE_MSG, messages, label)
+            self.assertNotIn(PINNED_REPORT_MSG, messages, label)
 
 
 if __name__ == "__main__":
