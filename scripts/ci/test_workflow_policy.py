@@ -169,6 +169,18 @@ CODEOWNERS_PATHS = (
     "/.cursor/rules/",
     "/deny.toml",
     "/AGENTS.md",
+    "/.config/nextest.toml",
+    "/Cargo.toml",
+    "/docs/scripts/generate-sitemap.sh",
+    "/scripts/aravath-sha256.sh",
+    "/scripts/check-aravath-network.sh",
+    "/scripts/check_benchmark_thresholds.ps1",
+    "/scripts/export_benchmark_history.sh",
+    "/scripts/export_benchmark_jsonl.ps1",
+    "/scripts/generate_benchmark_graphs.py",
+    "/scripts/tsan_suppressions.txt",
+    "/tools/xtask/src/fetch_assets.rs",
+    "/tools/xtask/src/main.rs",
 )
 
 

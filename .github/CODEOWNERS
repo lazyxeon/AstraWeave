@@ -9,3 +9,15 @@
 /.cursor/rules/ @lazyxeon
 /deny.toml @lazyxeon
 /AGENTS.md @lazyxeon
+/.config/nextest.toml @lazyxeon
+/Cargo.toml @lazyxeon
+/docs/scripts/generate-sitemap.sh @lazyxeon
+/scripts/aravath-sha256.sh @lazyxeon
+/scripts/check-aravath-network.sh @lazyxeon
+/scripts/check_benchmark_thresholds.ps1 @lazyxeon
+/scripts/export_benchmark_history.sh @lazyxeon
+/scripts/export_benchmark_jsonl.ps1 @lazyxeon
+/scripts/generate_benchmark_graphs.py @lazyxeon
+/scripts/tsan_suppressions.txt @lazyxeon
+/tools/xtask/src/fetch_assets.rs @lazyxeon
+/tools/xtask/src/main.rs @lazyxeon
