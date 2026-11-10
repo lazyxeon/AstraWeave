@@ -113,6 +113,14 @@ document.getElementById('htu-toggle').addEventListener('click', (e) => {
 //   * partial set               →  include-only, hide non-matching
 //   * full set                  →  no filter, show all (equivalent to empty)
 // Chips default to "off" (dim). Click toggles them "on" (highlighted accent).
+function appendDomainChipContents(chip, d) {
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.style.background = d.color || '';
+  chip.appendChild(dot);
+  chip.appendChild(document.createTextNode(d.label == null ? '' : String(d.label)));
+}
+
 const domainFilters = document.getElementById('domain-filters');
 const enabledDomains = new Set();   // v2.1: empty by default = no filter active
 const domLabelSpan = document.createElement('span');
@@ -124,7 +132,7 @@ DOMAINS.forEach(d => {
   chip.className = 'domain-chip';
   chip.setAttribute('aria-pressed', 'false');
   chip.setAttribute('data-domain', d.id);
-  chip.innerHTML = `<span class="dot" style="background:${d.color}"></span>${d.label}`;
+  appendDomainChipContents(chip, d);
   chip.addEventListener('click', () => {
     if (chip.disabled) return;
     const nowOn = chip.classList.toggle('on');
@@ -256,6 +264,7 @@ EDGES.forEach((e, i) => {
       types: e.types,
       risk: e.risk,
       optional: e.optional,
+      runtime: e.runtime === true,
       gradStops: buildEdgeGradient(srcDom, tgtDom),
       arrowColor: domainColor[tgtDom] || '#6e7681',
     },
@@ -761,16 +770,16 @@ function publishEdgeFlow() {
     if (y[s] > y[t] + 0.5) up++;
     else if (y[t] > y[s] + 0.5) {
       down++;
-      downIds.push(s + ' → ' + t);
+      downIds.push({ label: s + ' → ' + t, runtime: e.data('runtime') === true });
     } else flat++;
   });
-  downIds.sort(cmpStr);
+  downIds.sort(function (a, b) { return cmpStr(a.label, b.label); });
   var total = up + down + flat;
   var text = up + ' of ' + total + ' edges point upward.';
   if (downIds.length) {
-    text += ' Downward: ' + downIds.join(', ') + '.';
-    var veilOnly = downIds.every(function (id) { return id.indexOf('astraweave-veil → ') === 0; });
-    if (veilOnly) {
+    text += ' Downward: ' + downIds.map(function (d) { return d.label; }).join(', ') + '.';
+    var runtimeOnly = downIds.every(function (d) { return d.runtime; });
+    if (runtimeOnly) {
       text += ' These are runtime edges declared in veil.md. Review #733 E3 reports them as reversed, not as dependency cycles. They drop off this list when that reversal is fixed.';
     } else {
       text += ' A downward edge is not a dependency cycle.';
@@ -898,6 +907,17 @@ function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// locApprox is a number in the current map. Number() rejects a string that
+// only looks numeric to toLocaleString, and the formatted result is escaped.
+function formatLoc(band, approx) {
+  var text = escapeHtml(band);
+  var n = Number(approx);
+  if (approx != null && approx !== '' && Number.isFinite(n)) {
+    text += ' (~' + escapeHtml(n.toLocaleString()) + ')';
+  }
+  return text;
 }
 
 function traceLink(trace, section) {
@@ -1078,7 +1098,7 @@ function renderNodePanel(n) {
       <div class="meta-grid">
         <span class="key">Domain</span><span class="val"><span class="badge-dot" style="background:${escapeHtml(domainColor[n.domain] || '#888')}"></span>${escapeHtml(n.domainLabel)}</span>
         <span class="key">Status</span><span class="val"><span class="status-pill ${escapeHtml(status)}">${escapeHtml(statusLabel)}</span></span>
-        <span class="key">LoC band</span><span class="val">${escapeHtml(n.locBand)}${n.locApprox ? ' (~'+n.locApprox.toLocaleString()+')' : ''}</span>
+        <span class="key">LoC band</span><span class="val">${formatLoc(n.locBand, n.locApprox)}</span>
       </div>
       <div class="one-liner">${escapeHtml(oneLiner)}</div>
     </div>
@@ -1212,7 +1232,7 @@ cy.on('mouseover', 'node', (evt) => {
   tooltip.innerHTML = `
     <div class="tip-title">${escapeHtml(d.label)}</div>
     <div class="tip-row"><span class="v">${escapeHtml(d.domainLabel || '')}</span></div>
-    <div class="tip-row">LoC band: <span class="v">${escapeHtml(d.locBand)}${d.locApprox ? ' (~'+d.locApprox.toLocaleString()+')' : ''}</span></div>
+    <div class="tip-row">LoC band: <span class="v">${formatLoc(d.locBand, d.locApprox)}</span></div>
     <div class="tip-row">Status: <span class="v">${escapeHtml(statusLabel)}</span></div>
     ${overlays.length ? '<div class="tip-row"><span class="v">'+overlays.join(' · ')+'</span></div>' : ''}
     <div class="tip-row" style="margin-top:3px;font-size:10px;opacity:0.6;">Click to inspect</div>
@@ -1347,7 +1367,7 @@ document.getElementById('show-path').addEventListener('click', () => {
   });
   document.getElementById('banner').classList.add('active');
   const nodes = pathTo.filter(el => el.isNode());
-  const labels = nodes.map(n => n.id());
+  const labels = nodes.map(n => escapeHtml(n.id()));
   document.getElementById('banner').innerHTML =
     `<strong>Path:</strong> ${labels.join(' → ')}  ·  ${pathTo.filter(el => el.isEdge()).length} edge(s) traversed. Hops = ${nodes.length - 1}. Click <em>Reset view</em> to clear.`;
 });
