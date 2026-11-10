@@ -539,6 +539,7 @@ CODECOV_PERMS_MSG = (
     "codecov upload job permissions must be contents: read and id-token: write"
 )
 DOWNLOAD_WITH_MSG = "download-artifact with: allows only name and path"
+COVERAGE_ARTIFACT_SHA_MSG = "coverage workflow artifact actions must use a commit SHA"
 UPLOAD_JOB_KEYS_MSG = (
     "codecov upload job keys must be name, needs, permissions, runs-on, "
     "timeout-minutes, and steps"
@@ -1042,6 +1043,17 @@ def _broken_action_ref_violation(old: str, new: str):
     return _exec_action_ref_violation_from_source(source)
 
 
+def _broken_policy_fn(fn, old: str, new: str):
+    source = inspect.getsource(fn).replace(old, new, 1)
+    namespace = dict(globals())
+    namespace["__builtins__"] = __builtins__
+    exec(compile(source, f"<{fn.__name__}>", "exec"), namespace)
+    broken = namespace.get(fn.__name__)
+    if not callable(broken):
+        raise RuntimeError(f"{fn.__name__} missing after exec")
+    return broken
+
+
 def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
 
@@ -1124,6 +1136,27 @@ def has_pull_request(text: str) -> bool:
     if err or names is None:
         return False
     return "pull_request" in names
+
+
+def coverage_artifact_pin_violations(text: str, *, path: str = "") -> list[str]:
+    """upload-artifact and download-artifact use commit SHAs in codecov workflows."""
+    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
+        return []
+    prefix = f"{path}: " if path else ""
+    found, err = _parsed_uses(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    violations: list[str] = []
+    for line_no, uses in found:
+        action = _action_name(uses)
+        if action not in ("actions/upload-artifact", "actions/download-artifact"):
+            continue
+        ref = uses.rsplit("@", 1)[1] if "@" in uses else ""
+        if _SHA_REF_RE.fullmatch(ref) is None:
+            violations.append(
+                f"{prefix}{line_no}: {action}@{ref} {COVERAGE_ARTIFACT_SHA_MSG}"
+            )
+    return violations
 
 
 def codecov_trigger_violations(text: str, *, path: str = "") -> list[str]:
@@ -1897,6 +1930,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(codecov_with_key_violations(text, path=rel))
             codecov.extend(codecov_token_violations(text, path=rel))
             codecov.extend(codecov_trigger_violations(text, path=rel))
+            codecov.extend(coverage_artifact_pin_violations(text, path=rel))
             codecov.extend(coverage_permission_violations(text, path=rel))
             codecov.extend(least_privilege_permission_violations(text, path=rel))
             codecov.extend(kani_version_violations(text, path=rel))
@@ -1905,6 +1939,20 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertEqual(codecov, [])
         ignored = "uses: actions/checkout@v7\nuses: ./.github/actions/rust-ci-setup\n"
         self.assertEqual(third_party_action_pin_violations(ignored), [])
+
+    def test_codecov_upload_artifact_tag_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertEqual(coverage_artifact_pin_violations(text, path="coverage.yml"), [])
+        mutant = text.replace(
+            "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2",
+            "uses: actions/upload-artifact@v7",
+            1,
+        )
+        self.assertNotEqual(mutant, text)
+        violations = coverage_artifact_pin_violations(mutant, path="coverage.yml")
+        self.assertTrue(violations)
+        self.assertIn("actions/upload-artifact@v7", violations[0])
+        self.assertIn(COVERAGE_ARTIFACT_SHA_MSG, violations[0])
 
     def test_codecov_action_v7_tag_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -2776,6 +2824,15 @@ jobs:
             CODECOV_PERMS_MSG,
             " ".join(coverage_permission_violations(extra_read, path="coverage.yml")),
         )
+        actions_read = text.replace(
+            "      id-token: write\n",
+            "      id-token: write\n      actions: read\n",
+            1,
+        )
+        self.assertIn(
+            CODECOV_PERMS_MSG,
+            " ".join(coverage_permission_violations(actions_read, path="coverage.yml")),
+        )
         self.assertTrue(has_pull_request("on: [push, pull_request]\n"))
         self.assertTrue(has_pull_request("on: pull_request\n"))
         self.assertTrue(has_pull_request('"on":\n  pull_request:\n'))
@@ -2805,6 +2862,51 @@ jobs:
                 codecov_trigger_violations(mutant, path="coverage.yml"),
                 block,
             )
+
+    def test_codecov_upload_job_download_with_survives_source_mutant(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        mutant = text.replace(
+            "          path: tools/astraweave-assets/coverage\n",
+            "          path: tools/astraweave-assets/coverage\n          github-token: cross\n",
+            1,
+        )
+        messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
+        self.assertIn(DOWNLOAD_WITH_MSG, messages)
+        broken = _broken_policy_fn(
+            coverage_permission_violations,
+            "for step_line in _download_with_violations(job) if has_codecov else []:",
+            "for step_line in [] if has_codecov else []:",
+        )
+        self.assertNotIn(DOWNLOAD_WITH_MSG, " ".join(broken(mutant, path="coverage.yml")))
+
+    def test_codecov_upload_job_key_allowlist_survives_source_mutant(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        mutant = text.replace(
+            "    timeout-minutes: 10\n",
+            "    timeout-minutes: 10\n    container: alpine\n",
+            1,
+        )
+        messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
+        self.assertIn(UPLOAD_JOB_KEYS_MSG, messages)
+        broken = _broken_policy_fn(
+            coverage_permission_violations,
+            "if has_codecov and set(job) != _UPLOAD_JOB_KEYS:",
+            "if False and has_codecov and set(job) != _UPLOAD_JOB_KEYS:",
+        )
+        self.assertNotIn(UPLOAD_JOB_KEYS_MSG, " ".join(broken(mutant, path="coverage.yml")))
+
+    def test_codecov_trusted_on_events_survive_source_mutant(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        start = text.index("\non:\n")
+        end = text.index("\nconcurrency:", start)
+        mutant = text[:start] + "\non:\n  pull_request_target:\n" + text[end:]
+        self.assertTrue(codecov_trigger_violations(mutant, path="coverage.yml"))
+        broken = _broken_policy_fn(
+            codecov_trigger_violations,
+            'return [f"{prefix}{line}: {CODECOV_EVENT_MSG}"]',
+            "return []",
+        )
+        self.assertEqual(broken(mutant, path="coverage.yml"), [])
 
     def test_policy_actions_matches_expected_set(self) -> None:
         self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
