@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-29 | **Version**: 0.8.15 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-11-09 | **Version**: 0.8.16 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.16 update (2026-11-09)**: Camera creation cite is `8c551c6ea` (not `52b9e711c`). `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1` (line 60 on 2026-05-13). Editor `pending_actions`: 31 panel files, 7 drained, 24 never drained. Dialogue LLM is 2,231 of 4,420 lines under `src/`.
 > **0.8.15 update (2026-10-29)**: `miri.yml` weekly jobs are ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), and ai (60m). Pull requests that touch `blob_vec.rs`, `sparse_set.rs`, or `archetype.rs` run `miri-ecs-hotpath` (45m). The nightly channel is `.github/rust-nightly-channel` (#560).
 > **0.8.14 update (2026-10-17)**: Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. `zip` 1.1.4 is not in the lockfile. No audit ignore for RUSTSEC-2026-0367, 0368, or 0369. #324 is closed. The fix is #353. Nineteen replay cases stay.
 > **0.8.13 update (2026-10-16)**: Rebased onto `22741c42`. #332 requires nineteen replay cases: `greybox_checkpoint`, `quest_ticks`, and `persist_replay` join the sixteen. The golden stays `b6a9d5a2c5da28a6`.
@@ -104,7 +105,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 |-------|---------------|
 | `astraweave-materials` | _(none)_ |
 | `astraweave-cinematics` | _(none)_ |
-| `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `52b9e711c` 2026-05-18)_ |
+| `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `8c551c6ea` 2026-05-18)_ |
 | `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:46 at `604d35d1`), **aw_asset_cli** (tool — unusual direction, Cargo.toml:64 at `604d35d1`; line 60 when first verified 2026-05-13) |
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
@@ -367,7 +368,7 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 | `load_bindings` collapses every error mode to `None` | `astraweave-input/src/save.rs:16-19` | `input.md` §6 |
 | `safe_llm_invoke` has zero workspace callers (4096-char limit unreachable) | `astraweave-llm/src/llm_adapter.rs` (file labeled "stub") | `ai_pipeline.md` §6, §13.7 |
 | `LLM_CACHE_SIM_THRESH < 1.0` causes test pollution; off by default | `astraweave-llm/src/lib.rs:57-67` | `ai_pipeline.md` §6 |
-| Editor `pending_actions` queues on 25 panels but only 7 `take_*_actions` drain functions exist | `tools/aw_editor/src/panels/*.rs` | `aw_editor.md` §6, §11 |
+| Editor `pending_actions`: 31 panel files queue `pending_actions`; production drains 7, and 24 are never drained | `tools/aw_editor/src/panels/*.rs` | `aw_editor.md` §6, §11 |
 
 **How to apply**: Run `rg 'let _ = .*[Rr]esult\|let _ = .*\?'` and `rg '\.ok\(\)' --type rust` periodically. Treat each match as a finding requiring justification.
 
@@ -967,6 +968,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.16 (2026-11-09)
+Camera creation cite is `8c551c6ea`. `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1`. Editor `pending_actions` is 31 panel files, 7 drained, 24 never drained. Dialogue LLM is 2,231 of 4,420 lines under `src/`.
 
 ### v0.8.15 (2026-10-29)
 `miri.yml` lists ecs `--lib`, ecs `--tests`, sdk `--lib --tests`, core, physics (non-blocking until #558), and ai. `miri-ecs-hotpath` runs on pull requests that touch BlobVec, SparseSet, or Archetype. Nightly is `.github/rust-nightly-channel` (#560).

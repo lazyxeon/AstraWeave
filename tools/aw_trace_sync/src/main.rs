@@ -672,9 +672,16 @@ fn render_map_inner(
         new_json,
         &current[close..]
     );
+    let mut oneliner_drift = None;
     if chrome {
         let traced = traces.iter().filter(|t| t.fm.is_some()).count();
         let examples = graph.packages.iter().filter(|p| p.is_example).count();
+        let want_oneliner = topology::examples_oneliner(examples);
+        if let Some(have) = examples_oneliner_text(&html) {
+            if have != want_oneliner {
+                oneliner_drift = Some(format!("examples one-liner: {have} -> {want_oneliner}"));
+            }
+        }
         html = sync_examples_oneliner(&html, examples)?;
         html = replace_marked(&html, FOOTER_START, FOOTER_END, &footer_block(traces))?;
         html = replace_marked(
@@ -697,8 +704,11 @@ fn render_map_inner(
         )?;
     }
     let mut chrome_changes = Vec::new();
+    if let Some(line) = oneliner_drift {
+        chrome_changes.push(line);
+    }
     if chrome {
-        chrome_changes = chrome_region_changes(current, &html);
+        chrome_changes.extend(chrome_region_changes(current, &html));
     }
     let runtime_changes = runtime_change_lines(&runtime_before, &runtime_snapshot(&data));
     Ok(MapRender {
@@ -765,6 +775,14 @@ fn runtime_change_lines(
         }
     }
     lines
+}
+
+fn examples_oneliner_text(html: &str) -> Option<&str> {
+    let key = "'examples_collapsed':";
+    let rest = html.get(html.find(key)? + key.len()..)?;
+    let q0 = rest.find('\'')?;
+    let q1 = rest.get(q0 + 1..)?.find('\'')?;
+    Some(&rest[q0 + 1..q0 + 1 + q1])
 }
 
 fn marked_inner<'a>(html: &'a str, start: &str, end: &str) -> Option<&'a str> {
@@ -1687,6 +1705,55 @@ mod tests {
         assert_eq!(d["edges"][0]["source"], "a");
         assert_eq!(d["edges"][0]["target"], "b");
         assert_ne!(d["edges"][0]["kind"], "workspace-dep");
+    }
+
+    #[test]
+    fn a_partial_required_anchor_set_is_an_error() {
+        let html = "\
+<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\n\
+<span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\n\
+<!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\n\
+<!-- TRACE-FOOTER:START -->x<!-- TRACE-FOOTER:END -->\n\
+'examples_collapsed': 'stale',\n\
+<a href=\"#5-active-file-map\"></a>\n\
+<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"a\",\"domain\":\"core\",\"trace\":null}],\"edges\":[],\"domains\":[{\"id\":\"core\"}]}</script>\n";
+        let graph = graph_of(&[("a", false)], &[]);
+        let out = render_map(html, &[], &graph, Path::new(".")).unwrap();
+        assert!(
+            out.problems.iter().any(|p| {
+                p.contains("links some trace-section anchors but not")
+                    && p.contains("#6-conflict-map")
+                    && p.contains("#7-decision-log")
+                    && p.contains("#8-invariants")
+                    && p.contains("#11-open-questions")
+            }),
+            "{:?}",
+            out.problems
+        );
+    }
+
+    #[test]
+    fn examples_oneliner_drift_is_named() {
+        let html = "\
+<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\n\
+<span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\n\
+<!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\n\
+<!-- TRACE-FOOTER:START -->x<!-- TRACE-FOOTER:END -->\n\
+'examples_collapsed': 'stale',\n\
+<a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+<a href=\"#7-decision-log\"></a><a href=\"#8-invariants\"></a>\
+<a href=\"#11-open-questions\"></a>\n\
+<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"a\",\"domain\":\"core\",\"trace\":null}],\"edges\":[],\"domains\":[{\"id\":\"core\"}]}</script>\n";
+        let graph = graph_of(&[("a", false)], &[]);
+        let out = render_map(html, &[], &graph, Path::new(".")).unwrap();
+        assert!(out.problems.is_empty(), "{:?}", out.problems);
+        assert!(
+            out.chrome_changes
+                .iter()
+                .any(|l| l.starts_with("examples one-liner: stale -> 0 example crates collapsed")),
+            "{:?}",
+            out.chrome_changes
+        );
     }
 
     #[test]

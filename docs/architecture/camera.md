@@ -23,7 +23,7 @@ last_verified_commit: 604d35d1
 | **Primary crates** | [`astraweave-camera`](../../astraweave-camera) (canonical types + FreeFly producer); consumed by [`astraweave-render`](../../astraweave-render) and [`tools/aw_editor`](../../tools/aw_editor) (OrbitCamera producer) |
 | **Document version** | 1.3 |
 | **Last verified against commit** | `604d35d1` (v1.3: summary SHA and consumers). Prior `7c29b8182`. |
-| **Last verified date** | 2026-10-13 |
+| **Last verified date** | 2026-11-09 (v1.3: summary SHA and consumers). Prior 2026-10-13. |
 | **Status** | Active. Unified Camera campaign (C.0→C.9) closed 2026-06-01 — single upload contract, hardened cinematics path. 1.2 adds `ThirdPersonCamera` as a third producer (world-relative `to_render_view`, camera-relative method beside it, same split as `FreeFly`). |
 | **Owner notes** | **Rev 1.3 (2026-11-09, `604d35d1`):** the summary cites reachable `8c551c6ea` and the consumers `astraweave-render`, `aw_editor`, `aravath_runtime`, and 13 examples. Product of the Unified Camera campaign. Canonical convention reference: [`docs/current/CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md). Campaign outcome: [`docs/audits/unified_camera_outcome_2026-06.md`](../audits/unified_camera_outcome_2026-06.md). |
 

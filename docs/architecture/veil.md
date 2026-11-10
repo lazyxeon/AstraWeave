@@ -30,7 +30,7 @@ runtime_edges:
 | **Primary crates** | `astraweave-veil` |
 | **Document version** | 1.2 |
 | **Last verified against commit** | `604d35d1` (v1.2: runtime edge direction). Prior `79fcf579` (parent of the feature; the code landed on `cursor/aravath-veil-scars-7098`). |
-| **Last verified date** | 2026-10-14 |
+| **Last verified date** | 2026-11-09 (v1.2: runtime edge direction). Prior 2026-10-14. |
 | **Status** | Active |
 | **Owner notes** | **Rev 1.2 (2026-11-09, `604d35d1`):** `runtime_edges` run from `astraweave-ai` and `aravath_runtime` to `astraweave-veil`. Inspired by the Chevel / Fate-Weave note. The spillway, floodgate, and guild-warden content was not built. |
 

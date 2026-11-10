@@ -770,6 +770,19 @@ pub fn anchor_problems(html: &str, traces: &[TraceDoc], linked: &BTreeSet<String
             "workspace_map.html names no trace-section anchors (#5-active-file-map, #6-conflict-map, #7-decision-log, #8-invariants, #11-open-questions)".into(),
         ];
     }
+    let all = all_trace_anchors();
+    if required.len() != all.len() {
+        let missing: Vec<String> = all
+            .iter()
+            .copied()
+            .filter(|a| !required.iter().any(|r| r == a))
+            .map(|a| format!("#{a}"))
+            .collect();
+        return vec![format!(
+            "workspace_map.html links some trace-section anchors but not {}",
+            missing.join(", ")
+        )];
+    }
     let mut problems = Vec::new();
     for t in traces {
         if !linked.contains(&t.file()) {
@@ -819,15 +832,19 @@ fn duplicate_explicit_ids(md: &str) -> Vec<String> {
         .collect()
 }
 
-fn required_anchors(html: &str) -> Vec<String> {
-    const NEED: &[&str] = &[
+fn all_trace_anchors() -> &'static [&'static str] {
+    &[
         "5-active-file-map",
         "6-conflict-map",
         "7-decision-log",
         "8-invariants",
         "11-open-questions",
-    ];
-    NEED.iter()
+    ]
+}
+
+fn required_anchors(html: &str) -> Vec<String> {
+    all_trace_anchors()
+        .iter()
         .filter(|a| html.contains(&format!("#{a}")))
         .map(|s| (*s).to_string())
         .collect()
