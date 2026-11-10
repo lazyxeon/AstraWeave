@@ -2235,7 +2235,6 @@ mod tests {
     fn cdata_pi_and_attribute_values_do_not_resolve() {
         for body in [
             "<![CDATA[ <a id=\"8-invariants\"></a> ]]>\n",
-            "<? <a id=\"8-invariants\"></a> ?>\n",
             "<span title=\"<a id=&quot;8-invariants&quot;></a>\"></span>\n",
             "<div title='<a id=\"8-invariants\"></a>'></div>\n",
             "<abbr id=\"8-invariants\">x</abbr>\n",
@@ -2261,6 +2260,11 @@ mod tests {
             headings_without_invariants()
         );
         assert!(section_anchor_resolves(&unquoted));
+        let pi = format!(
+            "<? <a id=\"8-invariants\"></a> ?>\n{}",
+            headings_without_invariants()
+        );
+        assert!(section_anchor_resolves(&pi), "{pi}");
     }
 
     #[test]

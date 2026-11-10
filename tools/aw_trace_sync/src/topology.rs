@@ -967,11 +967,15 @@ fn explicit_ids(md: &str) -> BTreeSet<String> {
 ///
 /// GitHub's tagfilter escapes `script`, `style`, `textarea`, `xmp`, `title`,
 /// `iframe`, `noembed`, `noframes`, and `plaintext`, so an anchor inside one
-/// of those tags is real. `<!-->` and `<!--->` close a comment. `<![CDATA[`
-/// and `<? ... ?>` still hide what they contain. Comment, CDATA, and
-/// processing-instruction state carry across HTML events. An id inside another
-/// attribute's quoted value is not an element. The first `id` and the first
-/// `name` on a start tag are kept; a later copy of the same attribute is not.
+/// of those tags is real. An anchor inside `select` is not. `<!-->` and
+/// `<!--->` close a comment, and so does `--!>`. `<![CDATA[` hides until the
+/// next `>`. `<!` followed by an uppercase ASCII letter hides until the next
+/// `>`. `<?` does not hide the following anchor. Comment, CDATA, declaration,
+/// and `select` state carry across HTML events. An id inside another
+/// attribute's quoted value is not an element, including on an end tag. The
+/// first `id` and the first `name` on a start tag are kept, and a valueless
+/// copy still counts as seen. An attribute name may contain `.`, so `data.id`
+/// is not `id`.
 fn anchor_tag_ids(md: &str) -> Vec<String> {
     let mut ids = Vec::new();
     let mut scan = AnchorScan::default();
@@ -990,13 +994,17 @@ enum Skip {
     None,
     Comment,
     Cdata,
-    Pi,
+    /// `<!` plus an uppercase ASCII letter, through the next `>`.
+    Decl,
+    /// Through the matching `</select>`.
+    Select,
 }
 
 struct AnchorScan {
     skip: Skip,
-    /// Unfinished `<...`, or the suffix of an unclosed comment / CDATA / PI
-    /// that is a prefix of its closer, so the closer can span HTML events.
+    /// Unfinished `<...`, or the suffix of an unclosed comment, CDATA,
+    /// declaration, or `select` that is a prefix of its closer, so the closer
+    /// can span HTML events.
     pending: String,
 }
 
@@ -1022,32 +1030,34 @@ impl AnchorScan {
             }
             match self.skip {
                 Skip::Comment => {
-                    if let Some(rel) = buf[i..].find("-->") {
-                        i += rel + 3;
+                    if let Some((rel, len)) = comment_end(&buf[i..]) {
+                        i += rel + len;
                         self.skip = Skip::None;
                         continue;
                     }
-                    self.pending = carry_tail(&buf[i..], "-->");
+                    self.pending = carry_comment(&buf[i..]);
                     return;
                 }
-                Skip::Cdata => {
-                    if let Some(rel) = buf[i..].find("]]>") {
-                        i += rel + 3;
+                Skip::Cdata | Skip::Decl => {
+                    if let Some(rel) = buf[i..].find('>') {
+                        i += rel + 1;
                         self.skip = Skip::None;
                         continue;
                     }
-                    self.pending = carry_tail(&buf[i..], "]]>");
+                    self.pending = carry_tail(&buf[i..], ">");
                     return;
                 }
-                Skip::Pi => {
-                    if let Some(rel) = buf[i..].find("?>") {
-                        i += rel + 2;
+                Skip::Select => match select_end(&buf[i..]) {
+                    SelectEnd::Closed(consumed) => {
+                        i += consumed;
                         self.skip = Skip::None;
                         continue;
                     }
-                    self.pending = carry_tail(&buf[i..], "?>");
-                    return;
-                }
+                    SelectEnd::Open(from) => {
+                        self.pending = buf[i + from..].to_string();
+                        return;
+                    }
+                },
                 Skip::None => {}
             }
             if bytes[i] != b'<' {
@@ -1065,13 +1075,97 @@ impl AnchorScan {
                     return;
                 }
                 Lt::Start(tag) => {
-                    ids.extend(tag.ids);
+                    if tag.name.eq_ignore_ascii_case("select") {
+                        self.skip = Skip::Select;
+                    } else {
+                        ids.extend(tag.ids);
+                    }
                     i += 1 + tag.consumed;
                 }
                 Lt::NotTag => i += 1,
             }
         }
     }
+}
+
+/// Earliest of `-->` and `--!>`.
+fn comment_end(s: &str) -> Option<(usize, usize)> {
+    let dash = s.find("-->").map(|i| (i, 3));
+    let bang = s.find("--!>").map(|i| (i, 4));
+    match (dash, bang) {
+        (Some(dash), Some(bang)) if dash.0 <= bang.0 => Some(dash),
+        (Some(_), Some(bang)) => Some(bang),
+        (Some(dash), None) => Some(dash),
+        (None, Some(bang)) => Some(bang),
+        (None, None) => None,
+    }
+}
+
+fn carry_comment(s: &str) -> String {
+    let dash = carry_tail(s, "-->");
+    let bang = carry_tail(s, "--!>");
+    if bang.len() > dash.len() {
+        bang
+    } else {
+        dash
+    }
+}
+
+enum SelectEnd {
+    /// Bytes from the start of `s` through the end tag's `>`.
+    Closed(usize),
+    /// An end tag started at this offset and has no `>` yet.
+    Open(usize),
+}
+
+fn select_end(s: &str) -> SelectEnd {
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i + 1 < b.len() {
+        if b[i] == b'<' && b[i + 1] == b'/' {
+            let name_at = i + 2;
+            if s[name_at..].len() >= "select".len()
+                && s.is_char_boundary(name_at + "select".len())
+                && s[name_at..name_at + "select".len()].eq_ignore_ascii_case("select")
+            {
+                let mut j = name_at + "select".len();
+                let boundary =
+                    j >= b.len() || b[j].is_ascii_whitespace() || b[j] == b'>' || b[j] == b'/';
+                if boundary {
+                    loop {
+                        if j >= b.len() {
+                            return SelectEnd::Open(i);
+                        }
+                        if b[j] == b'"' || b[j] == b'\'' {
+                            let quote = b[j];
+                            j += 1;
+                            while j < b.len() && b[j] != quote {
+                                j += 1;
+                            }
+                            if j >= b.len() {
+                                return SelectEnd::Open(i);
+                            }
+                            j += 1;
+                            continue;
+                        }
+                        if b[j] == b'>' {
+                            return SelectEnd::Closed(j + 1);
+                        }
+                        j += 1;
+                    }
+                }
+            } else if s.len() - name_at < "select".len()
+                && "select".starts_with(&s[name_at..].to_ascii_lowercase())
+            {
+                return SelectEnd::Open(i);
+            }
+        }
+        i += 1;
+    }
+    if b.last() == Some(&b'<') {
+        return SelectEnd::Open(b.len() - 1);
+    }
+    SelectEnd::Open(s.len())
 }
 
 /// Longest suffix of `s` that is a prefix of `needle`.
@@ -1113,16 +1207,15 @@ fn classify_lt(s: &str) -> Lt {
     if "![CDATA[".starts_with(rest) {
         return Lt::NeedMore;
     }
+    // GitHub drops `<?` and leaves the following anchor in the text.
     if rest.starts_with('?') {
-        return Lt::Enter(Skip::Pi, 2);
+        return Lt::Skip { consumed: 2 };
+    }
+    if declaration_at(rest) {
+        return Lt::Enter(Skip::Decl, 2);
     }
     if rest.starts_with('/') {
-        if let Some(rel) = rest.find('>') {
-            return Lt::Skip {
-                consumed: 1 + rel + 1,
-            };
-        }
-        return Lt::NeedMore;
+        return end_tag(rest);
     }
     match parse_start_tag(rest) {
         StartTag::Done(tag) => Lt::Start(tag),
@@ -1149,6 +1242,40 @@ fn comment_at(rest: &str) -> Lt {
     Lt::Enter(Skip::Comment, 4)
 }
 
+/// `<!DOCTYPE` hides. `<!x` does not. `<!--` is a comment and is handled first.
+fn declaration_at(rest: &str) -> bool {
+    let b = rest.as_bytes();
+    b.len() >= 2 && b[0] == b'!' && b[1].is_ascii_uppercase()
+}
+
+fn end_tag(rest: &str) -> Lt {
+    let b = rest.as_bytes();
+    let mut i = 1;
+    loop {
+        if i >= b.len() {
+            return Lt::NeedMore;
+        }
+        if b[i] == b'"' || b[i] == b'\'' {
+            let quote = b[i];
+            i += 1;
+            while i < b.len() && b[i] != quote {
+                i += 1;
+            }
+            if i >= b.len() {
+                return Lt::NeedMore;
+            }
+            i += 1;
+            continue;
+        }
+        if b[i] == b'>' {
+            return Lt::Skip {
+                consumed: 1 + i + 1,
+            };
+        }
+        i += 1;
+    }
+}
+
 fn is_name_start(b: u8) -> bool {
     b.is_ascii_alphabetic()
 }
@@ -1157,7 +1284,12 @@ fn is_name_char(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'-' || b == b':' || b == b'_'
 }
 
+fn is_attr_char(b: u8) -> bool {
+    is_name_char(b) || b == b'.'
+}
+
 struct DoneTag {
+    name: String,
     ids: Vec<String>,
     /// Bytes consumed from the slice that begins just after `<`, including `>`.
     consumed: usize,
@@ -1197,6 +1329,7 @@ fn parse_start_tag(s: &str) -> StartTag {
         }
         if b[i] == b'>' {
             return StartTag::Done(DoneTag {
+                name: name.to_string(),
                 ids,
                 consumed: i + 1,
             });
@@ -1215,7 +1348,7 @@ fn parse_start_tag(s: &str) -> StartTag {
         }
         let attr_at = i;
         i += 1;
-        while i < b.len() && is_name_char(b[i]) {
+        while i < b.len() && is_attr_char(b[i]) {
             i += 1;
         }
         if i >= b.len() {
@@ -1229,6 +1362,11 @@ fn parse_start_tag(s: &str) -> StartTag {
             return StartTag::NeedMore;
         }
         if b[i] != b'=' {
+            if anchor && attr.eq_ignore_ascii_case("id") {
+                saw_id = true;
+            } else if anchor && attr.eq_ignore_ascii_case("name") {
+                saw_name = true;
+            }
             continue;
         }
         i += 1;
@@ -1275,13 +1413,14 @@ fn parse_start_tag(s: &str) -> StartTag {
 /// and the string is not trimmed, so `Map / Residue` becomes `map--residue`
 /// and a leading space becomes a leading hyphen.
 pub fn github_slug(heading: &str) -> String {
-    let heading = heading.to_lowercase();
     let mut out = String::with_capacity(heading.len());
     for c in heading.chars() {
-        if is_unicode_word(c) {
-            out.push(c);
-        } else if c == ' ' || c == '-' {
-            out.push('-');
+        for lower in c.to_lowercase() {
+            if is_unicode_word(lower) {
+                out.push(lower);
+            } else if lower == ' ' || lower == '-' {
+                out.push('-');
+            }
         }
     }
     out
@@ -1517,17 +1656,108 @@ mod tests {
     }
 
     #[test]
-    fn cdata_and_processing_instructions_hide_the_anchor() {
-        assert!(anchor_ids_in_chunks(&[
-            "<![CDATA[ <a id=\"8-invariants\"></a> ]]>",
-            "<? <a id=\"8-invariants\"></a> ?>"
-        ])
-        .is_empty());
+    fn cdata_hides_until_the_next_gt_and_pi_does_not() {
+        assert!(
+            anchor_ids_in_chunks(&["<![CDATA[ <a id=\"8-invariants\"></a> ]]>"]).is_empty(),
+            "CDATA revealed an anchor whose own > was the closer"
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["x <![CDATA[ q > <a id=\"8-invariants\"></a> ]]>"]),
+            vec!["8-invariants".to_string()]
+        );
         assert_eq!(
             anchor_ids_in_chunks(&[
                 "<![CDATA[ <a id=\"hidden\"></a> ]]><a id=\"8-invariants\"></a>"
             ]),
             vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<? <a id=\"8-invariants\"></a> ?>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["x <? q > <a id=\"8-invariants\"></a> ?>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_declaration_hides_only_when_the_next_letter_is_uppercase() {
+        assert!(anchor_ids_in_chunks(&["<!DOCTYPE x <a id=\"8-invariants\"></a>"]).is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&["x <!x <a id=\"8-invariants\"></a> y"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!x <a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn select_hides_an_anchor_in_a_block_and_inline() {
+        assert!(
+            anchor_ids_in_chunks(&["<select>\n<a id=\"8-invariants\"></a>\n</select>\n"])
+                .is_empty()
+        );
+        assert!(
+            anchor_ids_in_chunks(&["x <select><a id=\"8-invariants\"></a></select> y"]).is_empty()
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&[
+                "<select>\n<a id=\"hidden\"></a>\n</select><a id=\"8-invariants\"></a>"
+            ]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_comment_closes_on_dash_dash_bang_gt() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!-- x --!> <a id=\"8-invariants\"></a> -->"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn github_slug_lowercases_sigma_one_character_at_a_time() {
+        assert_eq!(github_slug("ΑΣ"), "ασ");
+        assert_eq!(github_slug("ΣΑΣ x"), "σασ-x");
+        assert_eq!(github_slug("a-b"), "a-b");
+    }
+
+    #[test]
+    fn a_valueless_id_or_name_counts_as_seen() {
+        assert!(anchor_ids_in_chunks(&["<a id id=\"8-invariants\"></a>"]).is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=\"8-invariants\" id></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a name=\"keep\" name=\"8-invariants\"></a>"]),
+            vec!["keep".to_string()]
+        );
+        assert!(anchor_ids_in_chunks(&["<a name name=\"8-invariants\"></a>"]).is_empty());
+    }
+
+    #[test]
+    fn an_attribute_name_may_contain_a_dot() {
+        assert!(anchor_ids_in_chunks(&["<a data.id=\"8-invariants\"></a>"]).is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a data.id=\"nope\" id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_end_tag_honors_quotes_and_a_split_end_tag_carries() {
+        assert!(anchor_ids_in_chunks(&["</div title=\"<a id=\"8-invariants\">\">"]).is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&[
+                "</div title=\"<a id=\"8-invariants\"",
+                "\"></div><a id=\"real\"></a>"
+            ]),
+            vec!["real".to_string()]
         );
     }
 
