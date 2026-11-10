@@ -608,10 +608,18 @@ fn src_rs_lines(root: &Path, manifest: &str) -> usize {
             return;
         };
         for ent in rd.flatten() {
+            // `file_type` does not follow links. `path.is_dir()` would, and a
+            // link can point outside the crate or back at itself.
+            let Ok(ft) = ent.file_type() else {
+                continue;
+            };
+            if ft.is_symlink() {
+                continue;
+            }
             let path = ent.path();
-            if path.is_dir() {
+            if ft.is_dir() {
                 walk(&path, total);
-            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            } else if ft.is_file() && path.extension().and_then(|e| e.to_str()) == Some("rs") {
                 if let Ok(text) = std::fs::read_to_string(&path) {
                     *total += text.lines().count();
                 }
@@ -806,24 +814,12 @@ pub fn anchor_problems(html: &str, traces: &[TraceDoc], linked: &BTreeSet<String
     problems
 }
 
-/// Explicit `id="..."` values that occur more than once. A second copy of a
-/// section anchor (for example on `## 11.5`) still matches the first, so the
-/// presence check above does not catch it.
+/// Explicit anchor ids that occur more than once. A second copy of a section
+/// anchor still matches the first, so the presence check above does not catch it.
 fn duplicate_explicit_ids(md: &str) -> Vec<String> {
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    let bytes = md.as_bytes();
-    let mut i = 0;
-    while i + 4 < bytes.len() {
-        if bytes[i..].starts_with(b"id=\"") {
-            let start = i + 4;
-            if let Some(rel) = md[start..].find('"') {
-                let id = md[start..start + rel].to_string();
-                *counts.entry(id).or_insert(0) += 1;
-                i = start + rel;
-                continue;
-            }
-        }
-        i += 1;
+    for id in anchor_tag_ids(md) {
+        *counts.entry(id).or_insert(0) += 1;
     }
     counts
         .into_iter()
@@ -845,14 +841,32 @@ fn all_trace_anchors() -> &'static [&'static str] {
 fn required_anchors(html: &str) -> Vec<String> {
     all_trace_anchors()
         .iter()
-        .filter(|a| html.contains(&format!("#{a}")))
+        .filter(|a| html_links_anchor(html, a))
         .map(|s| (*s).to_string())
         .collect()
 }
 
+/// A page link counts only when the anchor is a whole token: `#name` followed
+/// by a quote or a backtick. A longer token that merely starts with the name
+/// does not.
+fn html_links_anchor(html: &str, anchor: &str) -> bool {
+    let needle = format!("#{anchor}");
+    let bytes = html.as_bytes();
+    let mut from = 0;
+    while let Some(rel) = html[from..].find(&needle) {
+        let after = from + rel + needle.len();
+        match bytes.get(after).copied() {
+            Some(b'"' | b'\'' | b'`') => return true,
+            _ => from += rel + 1,
+        }
+    }
+    false
+}
+
 fn heading_slugs(md: &str) -> BTreeSet<String> {
+    let visible = visible_markdown(md);
     let mut out = BTreeSet::new();
-    for line in md.lines() {
+    for line in visible.lines() {
         let line = line.trim();
         if let Some(rest) = line.strip_prefix("## ") {
             out.insert(github_slug(rest));
@@ -862,24 +876,74 @@ fn heading_slugs(md: &str) -> BTreeSet<String> {
 }
 
 fn explicit_ids(md: &str) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    let bytes = md.as_bytes();
+    anchor_tag_ids(md).into_iter().collect()
+}
+
+/// Ids from `<a id="...">` and `<a name="...">` only. The attribute name is a
+/// whole token preceded by whitespace, so `data-id` does not count. Fenced
+/// code and HTML comments are not markup.
+fn anchor_tag_ids(md: &str) -> Vec<String> {
+    let visible = visible_markdown(md);
+    let bytes = visible.as_bytes();
+    let mut ids = Vec::new();
     let mut i = 0;
-    while i + 4 < bytes.len() {
-        if bytes[i..].starts_with(b"id=\"") {
-            let start = i + 4;
-            if let Some(rel) = md[start..].find('"') {
-                out.insert(md[start..start + rel].to_string());
-                i = start + rel;
-                continue;
-            }
+    while i + 2 < bytes.len() {
+        if !visible.is_char_boundary(i) {
+            i += 1;
+            continue;
         }
-        if bytes[i..].starts_with(b"{#") {
-            let start = i + 2;
-            if let Some(rel) = md[start..].find('}') {
-                out.insert(md[start..start + rel].to_string());
-                i = start + rel;
-                continue;
+        if is_anchor_tag_start(&visible, i) {
+            let tag_end = visible[i..]
+                .find('>')
+                .map(|rel| i + rel)
+                .unwrap_or(visible.len());
+            let tag = &visible[i..tag_end];
+            ids.extend(quoted_attr(tag, "id"));
+            ids.extend(quoted_attr(tag, "name"));
+            i = tag_end;
+            continue;
+        }
+        i += 1;
+    }
+    ids
+}
+
+fn is_anchor_tag_start(s: &str, i: usize) -> bool {
+    let bytes = s.as_bytes();
+    let rest = &bytes[i..];
+    let open = if rest.starts_with(b"<a") || rest.starts_with(b"<A") {
+        2
+    } else {
+        return false;
+    };
+    matches!(
+        rest.get(open).copied(),
+        Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')
+    )
+}
+
+fn quoted_attr(tag: &str, name: &str) -> Vec<String> {
+    let bytes = tag.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if !tag.is_char_boundary(i) {
+            i += 1;
+            continue;
+        }
+        if bytes[i].is_ascii_whitespace() {
+            let rest = &tag[i + 1..];
+            let name_bytes = name.as_bytes();
+            if rest.as_bytes().starts_with(name_bytes)
+                && rest.as_bytes().get(name.len()) == Some(&b'=')
+                && rest.as_bytes().get(name.len() + 1) == Some(&b'"')
+            {
+                let vstart = i + 1 + name.len() + 2;
+                if let Some(rel) = tag[vstart..].find('"') {
+                    out.push(tag[vstart..vstart + rel].to_string());
+                    i = vstart + rel;
+                    continue;
+                }
             }
         }
         i += 1;
@@ -887,15 +951,88 @@ fn explicit_ids(md: &str) -> BTreeSet<String> {
     out
 }
 
-/// GitHub heading slug: lowercase, drop punctuation, spaces become hyphens.
-/// Hyphens are not collapsed, so `Map / Residue` becomes `map--residue`.
+/// Drop fenced code blocks and HTML comments. What remains is the markup and
+/// headings GitHub will render.
+fn visible_markdown(md: &str) -> String {
+    let bytes = md.as_bytes();
+    let mut out = String::with_capacity(md.len());
+    let mut i = 0;
+    let mut fence: Option<u8> = None;
+    while i < bytes.len() {
+        if let Some(ch) = fence {
+            let marker = [ch, ch, ch];
+            if is_line_start(bytes, i) && bytes[i..].starts_with(&marker) {
+                i = line_end(bytes, i);
+                fence = None;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if bytes[i..].starts_with(b"<!--") {
+            if let Some(rel) = md[i + 4..].find("-->") {
+                i = i + 4 + rel + 3;
+            } else {
+                break;
+            }
+            continue;
+        }
+        if is_line_start(bytes, i) {
+            if bytes[i..].starts_with(b"```") {
+                fence = Some(b'`');
+                i = line_end(bytes, i);
+                continue;
+            }
+            if bytes[i..].starts_with(b"~~~") {
+                fence = Some(b'~');
+                i = line_end(bytes, i);
+                continue;
+            }
+        }
+        let ch = md[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn is_line_start(bytes: &[u8], i: usize) -> bool {
+    i == 0 || bytes[i - 1] == b'\n'
+}
+
+fn line_end(bytes: &[u8], i: usize) -> usize {
+    match bytes[i..].iter().position(|b| *b == b'\n') {
+        Some(rel) => i + rel + 1,
+        None => bytes.len(),
+    }
+}
+
+/// GitHub heading slug: lowercase, drop punctuation, keep underscores, spaces
+/// become hyphens. Hyphens are not collapsed, so `Map / Residue` becomes
+/// `map--residue`.
 pub fn github_slug(heading: &str) -> String {
     let mut out = String::new();
     for c in heading.trim().chars() {
-        if c.is_ascii_alphanumeric() {
+        if c.is_ascii_alphanumeric() || c == '_' {
             out.push(c.to_ascii_lowercase());
         } else if c == ' ' || c == '-' {
             out.push('-');
+        }
+    }
+    out
+}
+
+/// Escape a value that is written into HTML text or an attribute.
+fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(c),
         }
     }
     out
@@ -941,6 +1078,7 @@ pub fn footer_block(traces: &[TraceDoc]) -> String {
     let mut left = String::new();
     let mut right = String::new();
     for (i, id) in rows.iter().enumerate() {
+        let id = html_escape(id);
         let item = format!(
             "        <li><a href=\"./{id}.md\" target=\"_blank\" rel=\"noopener\">{id}.md</a></li>\n"
         );
@@ -1017,6 +1155,7 @@ mod tests {
         );
         assert_eq!(github_slug("8. Known Invariants"), "8-known-invariants");
         assert_eq!(github_slug("8. Invariants"), "8-invariants");
+        assert_eq!(github_slug("8. Invariants_"), "8-invariants_");
         assert_eq!(
             github_slug("11. Open Questions / Parked Decisions"),
             "11-open-questions--parked-decisions"
@@ -1029,5 +1168,22 @@ mod tests {
         let ids = explicit_ids(md);
         assert!(ids.contains("8-invariants"));
         assert!(heading_slugs(md).contains("8-known-invariants"));
+        assert!(
+            explicit_ids("<a class=\"x\" name=\"8-invariants\"></a>\n").contains("8-invariants")
+        );
+    }
+
+    #[test]
+    fn line_count_skips_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("demo").join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("lib.rs"), "fn real() {}\n").unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("extra.rs"), "fn extra() {}\nfn more() {}\n").unwrap();
+        std::os::unix::fs::symlink(&outside, src.join("linked")).unwrap();
+        std::os::unix::fs::symlink(outside.join("extra.rs"), src.join("linked.rs")).unwrap();
+        assert_eq!(src_rs_lines(dir.path(), "demo/Cargo.toml"), 1);
     }
 }

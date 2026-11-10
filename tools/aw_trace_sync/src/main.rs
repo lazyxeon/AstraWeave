@@ -259,6 +259,16 @@ fn validate(traces: &[TraceDoc], crates: &[String]) -> Vec<String> {
                 fm.trace_id, t.stem
             ));
         }
+        if !is_plain_trace_name(&fm.trace_id) {
+            problems.push(format!(
+                "{file}: trace_id must match lowercase letters, digits, and underscores"
+            ));
+        }
+        if !is_plain_trace_name(&t.stem) {
+            problems.push(format!(
+                "{file}: file name must match lowercase letters, digits, and underscores"
+            ));
+        }
         if let Some(prev) = seen_ids.insert(fm.trace_id.clone(), file.clone()) {
             problems.push(format!(
                 "duplicate trace_id '{}' in {file} and {prev}",
@@ -317,6 +327,12 @@ fn validate(traces: &[TraceDoc], crates: &[String]) -> Vec<String> {
         }
     }
     problems
+}
+
+fn is_plain_trace_name(s: &str) -> bool {
+    !s.is_empty()
+        && s.bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 // ---- generation: CLAUDE.md trace table ---------------------------------------
@@ -1807,5 +1823,153 @@ mod tests {
             "lone LF leaked into a CRLF file"
         );
         assert!(out.html.contains("Subsystem Traces"));
+    }
+
+    fn anchor_problems_for(body: &str, html: &str) -> Vec<String> {
+        let y = "schema_version: 1\ntrace_id: water\ntitle: T\ndescription: D\nprimary_crate: astraweave-water\n\
+                 domain: physics-world\nlifecycle_status: active\nintegration_status: wired\nowns: [astraweave-water]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n";
+        let mut trace = tdoc("water", y);
+        trace.body = body.into();
+        let linked = std::collections::BTreeSet::from(["water.md".to_string()]);
+        topology::anchor_problems(html, &[trace], &linked)
+    }
+
+    fn page_links_all_five() -> &'static str {
+        "<a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+         <a href=\"#7-decision-log\"></a><a href=\"#8-invariants\"></a>\
+         <a href=\"#11-open-questions\"></a>"
+    }
+
+    fn headings_without_invariants() -> &'static str {
+        "## 5. Active File Map\n## 6. Conflict Map\n## 7. Decision Log\n## 11. Open Questions\n"
+    }
+
+    #[test]
+    fn a_fenced_anchor_tag_does_not_resolve() {
+        let body = format!(
+            "```\n<a id=\"8-invariants\"></a>\n```\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_commented_anchor_tag_does_not_resolve() {
+        let body = format!(
+            "<!-- <a id=\"8-invariants\"></a> -->\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn an_attribute_that_only_ends_in_id_does_not_resolve() {
+        let body = format!(
+            "<a data-id=\"8-invariants\"></a>\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_brace_anchor_in_prose_does_not_resolve() {
+        let body = format!(
+            "see {{#8-invariants}} in prose\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_brace_anchor_after_a_heading_does_not_resolve() {
+        let body = format!(
+            "{}## 8. Other {{#8-invariants}}\n",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_trailing_underscore_stays_in_the_heading_slug() {
+        let body = format!("{}## 8. Invariants_\n", headings_without_invariants());
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_page_link_must_match_the_whole_anchor() {
+        let html = "<a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+                    <a href=\"#7-decision-logX\"></a><a href=\"#8-invariants\"></a>\
+                    <a href=\"#11-open-questions\"></a>";
+        let body = "## 5. Active File Map\n## 6. Conflict Map\n## 7. Decision Log\n## 8. Invariants\n## 11. Open Questions\n";
+        let problems = anchor_problems_for(body, html);
+        assert!(
+            problems.iter().any(|p| p.contains("not #7-decision-log")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn trace_id_and_filename_must_be_plain_identifiers() {
+        let raw = "bad\"id<x>";
+        let mut both = ydoc("water", "astraweave-water", "[astraweave-water]");
+        both.fm.as_mut().unwrap().trace_id = raw.into();
+        both.stem = raw.into();
+        let crates = vec!["astraweave-water".to_string()];
+        let problems = validate(&[both], &crates);
+        assert!(
+            problems.iter().any(|m| m.contains("trace_id must match")),
+            "{problems:?}"
+        );
+        assert!(
+            problems.iter().any(|m| m.contains("file name must match")),
+            "{problems:?}"
+        );
+
+        let mut file_only = ydoc("water", "astraweave-water", "[astraweave-water]");
+        file_only.stem = raw.into();
+        let problems = validate(&[file_only], &crates);
+        assert!(
+            problems.iter().any(|m| m.contains("file name must match")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn footer_escapes_markup_characters_in_the_identifier() {
+        let raw = "bad\"id<x>";
+        let mut trace = ydoc("water", "astraweave-water", "[]");
+        trace.stem = raw.into();
+        trace.fm.as_mut().unwrap().trace_id = raw.into();
+        let html = topology::footer_block(&[trace]);
+        assert!(
+            !html.contains(raw),
+            "unescaped identifier reached the footer"
+        );
+        assert_eq!(html.matches("bad&quot;id&lt;x&gt;").count(), 2);
     }
 }
