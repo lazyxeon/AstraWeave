@@ -10,7 +10,9 @@
 //! table generation + map `trace`-link sync (v1). v1.1 adds map status sync (the
 //! primary crate's `status`/`statusCategory`/`statusEvidence`, driven by the owning
 //! trace) and `runtime_edges` (asserted runtime-integration edges, highlighted on the
-//! map). Cargo-derived topology + the curated `map_overlay.json` remain deferred.
+//! map). Cargo metadata now owns the node set and normal path-dependency edges,
+//! including the examples aggregate. `--check` fails when that topology, a trace
+//! section anchor, or an owned crate with no node drifts.
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
@@ -21,6 +23,22 @@ use std::path::{Path, PathBuf};
 const TABLE_START: &str = "<!-- TRACE-TABLE:START -->";
 const TABLE_END: &str = "<!-- TRACE-TABLE:END -->";
 const MAP_ELEMENT_ANCHOR: &str = "id=\"workspace-data\"";
+const FOOTER_START: &str = "<!-- TRACE-FOOTER:START -->";
+const FOOTER_END: &str = "<!-- TRACE-FOOTER:END -->";
+const COUNTER_START: &str = "<!-- MAP-COUNTER:START -->";
+const COUNTER_END: &str = "<!-- MAP-COUNTER:END -->";
+const TRACE_COUNT_START: &str = "<!-- MAP-TRACE-COUNT:START -->";
+const TRACE_COUNT_END: &str = "<!-- MAP-TRACE-COUNT:END -->";
+const MEMBERS_START: &str = "<!-- MAP-MEMBERS:START -->";
+const MEMBERS_END: &str = "<!-- MAP-MEMBERS:END -->";
+
+mod topology;
+
+use topology::{
+    anchor_problems, apply_runtime_edges, count_nodes_edges, footer_block, members_sentence,
+    node_trace_files, owned_without_node, replace_marked, sync_examples_oneliner,
+    sync_reconciliation, sync_topology, workspace_graph, Graph,
+};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -81,16 +99,18 @@ enum Integration {
     Unknown,
 }
 
-/// An asserted architectural (runtime) integration edge from this trace's
-/// `primary_crate` to `to`. Distinct from a cargo dependency: it marks confirmed
-/// runtime wiring, surfaced on the map with a `runtime` highlight. (v1.1)
+/// An asserted runtime-integration edge. Direction is `from` → `to`, matching
+/// the map ("source depends on target"). `from` defaults to `primary_crate`.
+/// This is not a cargo dependency: the map stores it as `runtime` on a cargo
+/// edge, or as `kind: runtime` when no cargo edge exists.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RuntimeEdge {
-    to: String,
-    /// Captured for future map-tooltip rendering (not yet displayed).
+    /// Defaults to the trace's `primary_crate` when omitted.
     #[serde(default)]
-    #[allow(dead_code)]
+    from: Option<String>,
+    to: String,
+    #[serde(default)]
     note: Option<String>,
 }
 
@@ -103,7 +123,6 @@ struct FrontMatter {
     title: String,
     description: String,
     primary_crate: String,
-    #[allow(dead_code)]
     domain: Domain,
     lifecycle_status: Lifecycle,
     integration_status: Integration,
@@ -133,6 +152,8 @@ struct TraceDoc {
     stem: String,
     fm: Option<FrontMatter>,
     fm_error: Option<String>,
+    /// Full markdown, used for trace-section anchor checks.
+    body: String,
 }
 
 impl TraceDoc {
@@ -183,37 +204,26 @@ fn load_traces(arch_dir: &Path) -> Result<Vec<TraceDoc>> {
                 Err(e) => (None, Some(format!("invalid front-matter: {e}"))),
             },
         };
-        out.push(TraceDoc { stem, fm, fm_error });
+        out.push(TraceDoc {
+            stem,
+            fm,
+            fm_error,
+            body: content,
+        });
     }
     Ok(out)
 }
 
-struct Pkg {
-    name: String,
-    /// true for demo/example crates under `examples/` — not subsystems, excluded from `--list-untraced`.
-    is_example: bool,
-}
-
-fn workspace_packages(root: &Path) -> Result<Vec<Pkg>> {
-    let meta = cargo_metadata::MetadataCommand::new()
-        .manifest_path(root.join("Cargo.toml"))
-        .no_deps()
-        .exec()
-        .context("running cargo metadata")?;
-    let mut pkgs: Vec<Pkg> = meta
-        .packages
-        .into_iter()
-        .map(|p| {
-            let mp = p.manifest_path.as_str().replace('\\', "/");
-            Pkg {
-                name: p.name,
-                is_example: mp.contains("/examples/"),
-            }
-        })
-        .collect();
-    pkgs.sort_by(|a, b| a.name.cmp(&b.name));
-    pkgs.dedup_by(|a, b| a.name == b.name);
-    Ok(pkgs)
+fn domain_id(d: Domain) -> &'static str {
+    match d {
+        Domain::Core => "core",
+        Domain::Ai => "ai",
+        Domain::Rendering => "rendering",
+        Domain::PhysicsWorld => "physics-world",
+        Domain::Gameplay => "gameplay",
+        Domain::Networking => "networking",
+        Domain::Tools => "tools",
+    }
 }
 
 // ---- validation --------------------------------------------------------------
@@ -286,15 +296,21 @@ fn validate(traces: &[TraceDoc], crates: &[String]) -> Vec<String> {
             }
         }
         for e in &fm.runtime_edges {
+            let from = e.from.as_deref().unwrap_or(fm.primary_crate.as_str());
+            if !resolves(from) {
+                problems.push(format!(
+                    "{file}: runtime_edges from '{from}' is not a workspace crate"
+                ));
+            }
             if !resolves(&e.to) {
                 problems.push(format!(
                     "{file}: runtime_edges target '{}' is not a workspace crate",
                     e.to
                 ));
             }
-            if e.to == fm.primary_crate {
+            if from == e.to {
                 problems.push(format!(
-                    "{file}: runtime_edges target '{}' is the primary_crate (self-edge)",
+                    "{file}: runtime_edges {from} -> {} is a self-edge",
                     e.to
                 ));
             }
@@ -406,9 +422,13 @@ struct MapRender {
     html: String,
     changed_links: Vec<(String, Option<String>, Option<String>)>, // (crate, old, new)
     changed_status: Vec<(String, String, String)>,                // (crate, old_status, new_status)
-    runtime_edges: Vec<(String, String, bool)>,                   // (from, to, newly_added?)
-    /// Integrity problems in the rendered map. Non-empty => nothing may be written.
+    runtime_edges: Vec<(String, String)>,                         // (from, to)
+    /// Integrity, anchor, and nodeless-owner problems. Non-empty => nothing may be written.
     problems: Vec<String>,
+    missing_nodes: Vec<String>,
+    extra_nodes: Vec<String>,
+    missing_edges: Vec<String>,
+    extra_edges: Vec<String>,
 }
 
 /// Referential integrity of the map's `workspace-data`.
@@ -475,7 +495,17 @@ fn map_integrity(data: &serde_json::Value) -> Vec<String> {
     problems
 }
 
-fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
+fn render_map(current: &str, traces: &[TraceDoc], graph: &Graph, root: &Path) -> Result<MapRender> {
+    render_map_inner(current, traces, graph, root, true)
+}
+
+fn render_map_inner(
+    current: &str,
+    traces: &[TraceDoc],
+    graph: &Graph,
+    root: &Path,
+    chrome: bool,
+) -> Result<MapRender> {
     let anchor = current
         .find(MAP_ELEMENT_ANCHOR)
         .with_context(|| format!("`{MAP_ELEMENT_ANCHOR}` not found in workspace_map.html"))?;
@@ -492,11 +522,13 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
 
     let mut data: serde_json::Value =
         serde_json::from_str(json_str).context("parsing workspace-data JSON")?;
+    let topo = sync_topology(&mut data, graph, root, traces)?;
     let owners = ownership_map(traces);
 
     // primary_crate -> (mapped status pair, statusEvidence-from-summary); + runtime edges
     let mut prim: BTreeMap<String, StatusEntry> = BTreeMap::new();
-    let mut rt_edges: Vec<(String, String, String)> = Vec::new(); // (trace file, from, to)
+    // (trace file, from, to, note)
+    let mut rt_edges: Vec<(String, String, String, Option<String>)> = Vec::new();
     for t in traces {
         if let Some(fm) = &t.fm {
             // A trace drives its primary crate's status only when it OWNS that crate.
@@ -512,7 +544,8 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
                 );
             }
             for e in &fm.runtime_edges {
-                rt_edges.push((t.file(), fm.primary_crate.clone(), e.to.clone()));
+                let from = e.from.clone().unwrap_or_else(|| fm.primary_crate.clone());
+                rt_edges.push((t.file(), from, e.to.clone(), e.note.clone()));
             }
         }
     }
@@ -578,11 +611,10 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
         }
     }
 
-    // Runtime edges: upgrade the matching cargo edge (set `runtime: true`) or add a new one.
-    // An edge is only emitted when both endpoints are map nodes: the node set is curated,
-    // and "is a workspace crate" (what `validate` checks) does not imply "is on the map".
-    let mut rt_report = Vec::new();
-    let mut problems = Vec::new();
+    // Runtime edges are applied after cargo edges exist. A pair that is also a
+    // cargo dep keeps its cargo kind and gains `runtime` / `runtimeNote`. A pair
+    // with no cargo dep is kind `runtime`, so it cannot be read as a dependency.
+    let mut problems = apply_runtime_edges(&mut data, &rt_edges)?;
     let node_ids: BTreeSet<String> = data
         .get("nodes")
         .and_then(|n| n.as_array())
@@ -592,68 +624,74 @@ fn render_map(current: &str, traces: &[TraceDoc]) -> Result<MapRender> {
                 .collect()
         })
         .unwrap_or_default();
-    {
-        let edges = data
-            .get_mut("edges")
-            .and_then(|e| e.as_array_mut())
-            .context("workspace-data has no `edges` array")?;
-        for (file, from, to) in &rt_edges {
-            let unmapped: Vec<&str> = [from, to]
-                .into_iter()
-                .filter(|c| !node_ids.contains(c.as_str()))
-                .map(String::as_str)
-                .collect();
-            if !unmapped.is_empty() {
-                problems.push(format!(
-                    "{file}: runtime edge {from} -> {to} has no map node for {} \
-                     (add the node to workspace_map.html's curated node set)",
-                    unmapped.join(", ")
-                ));
-                continue;
-            }
-            let mut found = false;
-            for edge in edges.iter_mut() {
-                let s = edge.get("source").and_then(|v| v.as_str());
-                let t = edge.get("target").and_then(|v| v.as_str());
-                if s == Some(from.as_str()) && t == Some(to.as_str()) {
-                    let obj = edge.as_object_mut().context("edge is not an object")?;
-                    let already = obj
-                        .get("runtime")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if !already {
-                        obj.insert("runtime".into(), serde_json::Value::Bool(true));
-                        rt_report.push((from.clone(), to.clone(), false)); // upgraded existing
-                    }
-                    found = true;
-                    break;
-                }
-            }
-            if !found {
-                edges.push(serde_json::json!({
-                    "source": from, "target": to, "kind": "workspace-dep",
-                    "anomaly": null, "types": [], "risk": "LOW", "optional": false, "runtime": true
-                }));
-                rt_report.push((from.clone(), to.clone(), true)); // newly added
-            }
-        }
+    problems.extend(owned_without_node(traces, &node_ids, graph));
+    if chrome {
+        problems.extend(anchor_problems(current, traces, &node_trace_files(&data)));
     }
-
     problems.extend(map_integrity(&data));
 
+    let (node_count, edge_count) = count_nodes_edges(&data);
+    sync_reconciliation(&mut data, graph);
+    // Counts were taken before runtime-only edges were appended. Refresh them.
+    if let Some(meta) = data.get_mut("metadata").and_then(|m| m.as_object_mut()) {
+        meta.insert(
+            "renderedNodeCount".into(),
+            serde_json::Value::from(node_count),
+        );
+        meta.insert(
+            "renderedEdgeCount".into(),
+            serde_json::Value::from(edge_count),
+        );
+        meta.insert("mapNodeClaim".into(), serde_json::Value::from(node_count));
+        // cargoEdgeCount stays the cargo-derived count from sync_topology.
+        // renderedEdgeCount includes kind:runtime edges that are not cargo deps.
+    }
+
     let new_json = escape_nonascii(&serde_json::to_string(&data)?);
-    let html = format!(
+    let mut html = format!(
         "{}{}{}",
         &current[..content_start],
         new_json,
         &current[close..]
     );
+    if chrome {
+        let traced = traces.iter().filter(|t| t.fm.is_some()).count();
+        let examples = graph.packages.iter().filter(|p| p.is_example).count();
+        html = sync_examples_oneliner(&html, examples)?;
+        html = replace_marked(&html, FOOTER_START, FOOTER_END, &footer_block(traces))?;
+        html = replace_marked(
+            &html,
+            COUNTER_START,
+            COUNTER_END,
+            &format!("Showing {node_count} of {node_count}"),
+        )?;
+        html = replace_marked(
+            &html,
+            TRACE_COUNT_START,
+            TRACE_COUNT_END,
+            &format!("{traced} traces"),
+        )?;
+        html = replace_marked(
+            &html,
+            MEMBERS_START,
+            MEMBERS_END,
+            &members_sentence(graph, node_count, edge_count),
+        )?;
+    }
+    let rt_report: Vec<(String, String)> = rt_edges
+        .iter()
+        .map(|(_, from, to, _)| (from.clone(), to.clone()))
+        .collect();
     Ok(MapRender {
         html,
         changed_links,
         changed_status,
         runtime_edges: rt_report,
         problems,
+        missing_nodes: topo.missing_nodes,
+        extra_nodes: topo.extra_nodes,
+        missing_edges: topo.missing_edges,
+        extra_edges: topo.extra_edges,
     })
 }
 
@@ -665,14 +703,18 @@ struct Target {
     rendered: String,
 }
 
-fn build_targets(root: &Path, traces: &[TraceDoc]) -> Result<(Vec<Target>, MapRender)> {
+fn build_targets(
+    root: &Path,
+    traces: &[TraceDoc],
+    graph: &Graph,
+) -> Result<(Vec<Target>, MapRender)> {
     let claude_path = root.join("CLAUDE.md");
     let claude_cur = std::fs::read_to_string(&claude_path).context("reading CLAUDE.md")?;
     let claude_new = render_claude_md(&claude_cur, traces)?;
 
     let map_path = root.join("docs/architecture/workspace_map.html");
     let map_cur = std::fs::read_to_string(&map_path).context("reading workspace_map.html")?;
-    let map_render = render_map(&map_cur, traces)?;
+    let map_render = render_map(&map_cur, traces, graph, root)?;
 
     let targets = vec![
         Target {
@@ -717,8 +759,8 @@ fn main() -> Result<()> {
     };
     let arch_dir = root.join("docs/architecture");
     let traces = load_traces(&arch_dir)?;
-    let pkgs = workspace_packages(&root)?;
-    let crates: Vec<String> = pkgs.iter().map(|p| p.name.clone()).collect();
+    let graph = workspace_graph(&root)?;
+    let crates: Vec<String> = graph.packages.iter().map(|p| p.name.clone()).collect();
 
     // Validation always runs first.
     let problems = validate(&traces, &crates);
@@ -738,13 +780,14 @@ fn main() -> Result<()> {
     if cli.list_untraced {
         let owners = ownership_map(&traces);
         // Subsystems only: examples/demos are excluded (they are not traced subsystems).
-        let mut untraced: Vec<&str> = pkgs
+        let mut untraced: Vec<&str> = graph
+            .packages
             .iter()
             .filter(|p| !p.is_example && !owners.contains_key(&p.name))
             .map(|p| p.name.as_str())
             .collect();
         untraced.sort();
-        let examples = pkgs.iter().filter(|p| p.is_example).count();
+        let examples = graph.packages.iter().filter(|p| p.is_example).count();
         println!(
             "Untraced subsystem crates ({}/{} non-example crates; {examples} examples excluded):",
             untraced.len(),
@@ -760,7 +803,7 @@ fn main() -> Result<()> {
     }
 
     if cli.write || cli.check {
-        let (targets, map_render) = build_targets(&root, &traces)?;
+        let (targets, map_render) = build_targets(&root, &traces, &graph)?;
         if !map_render.problems.is_empty() {
             eprintln!(
                 "Map integrity failed ({} problem(s)):",
@@ -802,15 +845,20 @@ fn main() -> Result<()> {
                         if old.is_empty() { "?" } else { old }
                     );
                 }
-                for (from, to, added) in &map_render.runtime_edges {
-                    eprintln!(
-                        "  runtime edge {from} -> {to} ({})",
-                        if *added {
-                            "added"
-                        } else {
-                            "marked on existing dep"
-                        }
-                    );
+                for (from, to) in &map_render.runtime_edges {
+                    eprintln!("  runtime edge {from} -> {to}");
+                }
+                for id in &map_render.missing_nodes {
+                    eprintln!("  missing node {id}");
+                }
+                for id in &map_render.extra_nodes {
+                    eprintln!("  extra node {id}");
+                }
+                for e in &map_render.missing_edges {
+                    eprintln!("  missing edge {e}");
+                }
+                for e in &map_render.extra_edges {
+                    eprintln!("  extra edge {e}");
                 }
             }
             if cli.write {
@@ -823,7 +871,11 @@ fn main() -> Result<()> {
             bail!("trace registry/map is out of sync with front-matter (run `--write`)");
         }
         if !drift {
-            eprintln!("In sync: CLAUDE.md trace table + map trace links match front-matter.");
+            let nodes = map_render.missing_nodes.len() + map_render.extra_nodes.len();
+            let edges = map_render.missing_edges.len() + map_render.extra_edges.len();
+            eprintln!(
+                "In sync: CLAUDE.md trace table, map nodes/edges, footer, and trace anchors match cargo metadata and front-matter ({nodes} node diffs, {edges} edge diffs)."
+            );
         }
     }
 
@@ -844,6 +896,7 @@ mod tests {
             stem: stem.to_string(),
             fm: Some(yaml_serde::from_str(&y).expect("valid front-matter")),
             fm_error: None,
+            body: String::new(),
         }
     }
 
@@ -993,6 +1046,24 @@ mod tests {
             stem: stem.to_string(),
             fm: Some(yaml_serde::from_str(yaml).expect("valid front-matter")),
             fm_error: None,
+            body: String::new(),
+        }
+    }
+
+    fn graph_of(pkgs: &[(&str, bool)], deps: &[(&str, &str, bool)]) -> Graph {
+        Graph {
+            packages: pkgs
+                .iter()
+                .map(|(name, is_example)| topology::Pkg {
+                    name: (*name).to_string(),
+                    is_example: *is_example,
+                    manifest: format!("{name}/Cargo.toml"),
+                })
+                .collect(),
+            deps: deps
+                .iter()
+                .map(|(from, to, optional)| (((*from).to_string(), (*to).to_string()), *optional))
+                .collect(),
         }
     }
 
@@ -1057,19 +1128,30 @@ mod tests {
              doc_version: \"1\"\nlast_verified_commit: c\n",
         );
         let html = "<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"astraweave-terrain\",\"domain\":\"physics-world\",\"status\":\"active\",\"statusCategory\":\"active\",\"statusEvidence\":null,\"trace\":null},{\"id\":\"astraweave-physics\",\"domain\":\"physics-world\",\"trace\":null}],\"edges\":[{\"source\":\"astraweave-terrain\",\"target\":\"astraweave-physics\",\"kind\":\"workspace-dep\"}],\"domains\":[{\"id\":\"physics-world\"}]}</script>";
-        let out = render_map(html, &[owner, slice]).unwrap();
+        let graph = graph_of(
+            &[("astraweave-terrain", false), ("astraweave-physics", false)],
+            &[("astraweave-terrain", "astraweave-physics", false)],
+        );
+        let out = render_map_inner(html, &[owner, slice], &graph, Path::new("."), false).unwrap();
         assert!(out.problems.is_empty(), "got {:?}", out.problems);
         let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
         let d: serde_json::Value = serde_json::from_str(json).unwrap();
+        let terrain = d["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|n| n["id"] == "astraweave-terrain")
+            .unwrap();
         assert_eq!(
-            d["nodes"][0]["status"], "partial",
+            terrain["status"], "partial",
             "owning trace (mixed) must win, not slice (wired)"
         );
-        assert_eq!(d["nodes"][0]["trace"], "terrain.md");
+        assert_eq!(terrain["trace"], "terrain.md");
         assert_eq!(
             d["edges"][0]["runtime"], true,
             "runtime edge must be marked on the cargo dep"
         );
+        assert_eq!(d["edges"][0]["kind"], "workspace-dep");
     }
 
     /// Regression: combat.md / destruction.md / veil.md declared runtime edges from crates
@@ -1084,7 +1166,8 @@ mod tests {
              doc_version: \"1\"\nlast_verified_commit: c\nruntime_edges:\n  - to: astraweave-ecs\n",
         );
         let html = "<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"astraweave-ecs\",\"domain\":\"core\",\"trace\":null}],\"edges\":[],\"domains\":[{\"id\":\"core\"}]}</script>";
-        let out = render_map(html, &[combat]).unwrap();
+        let graph = graph_of(&[("astraweave-ecs", false)], &[]);
+        let out = render_map_inner(html, &[combat], &graph, Path::new("."), false).unwrap();
         assert!(
             out.problems
                 .iter()
@@ -1133,5 +1216,219 @@ mod tests {
             "domains": [{"id": "core"}]
         });
         assert!(map_integrity(&data).is_empty());
+    }
+
+    fn bare(json: &str) -> String {
+        format!("<script id=\"workspace-data\">{json}</script>")
+    }
+
+    #[test]
+    fn removing_a_cargo_edge_is_reported_and_restored() {
+        let html = bare(
+            r#"{"nodes":[{"id":"a","domain":"core","trace":null},{"id":"b","domain":"core","trace":null}],"edges":[],"domains":[{"id":"core"}]}"#,
+        );
+        let graph = graph_of(&[("a", false), ("b", false)], &[("a", "b", false)]);
+        let out = render_map_inner(&html, &[], &graph, Path::new("."), false).unwrap();
+        assert!(
+            out.missing_edges.iter().any(|e| e == "a -> b"),
+            "{:?}",
+            out.missing_edges
+        );
+        assert!(out.html.contains("\"source\":\"a\""));
+        assert!(out.html.contains("\"target\":\"b\""));
+        assert_ne!(out.html, html);
+    }
+
+    #[test]
+    fn a_phantom_edge_is_reported_and_dropped() {
+        let html = bare(
+            r#"{"nodes":[{"id":"a","domain":"core","trace":null},{"id":"b","domain":"core","trace":null}],"edges":[{"source":"a","target":"b","kind":"workspace-dep","optional":false}],"domains":[{"id":"core"}]}"#,
+        );
+        let graph = graph_of(&[("a", false), ("b", false)], &[]);
+        let out = render_map_inner(&html, &[], &graph, Path::new("."), false).unwrap();
+        assert!(
+            out.extra_edges.iter().any(|e| e == "a -> b"),
+            "{:?}",
+            out.extra_edges
+        );
+        let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
+        let d: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert!(d["edges"].as_array().unwrap().is_empty(), "{d}");
+    }
+
+    #[test]
+    fn dropping_a_node_is_reported_and_restored() {
+        let html = bare(
+            r#"{"nodes":[{"id":"b","domain":"core","trace":null}],"edges":[],"domains":[{"id":"core"}]}"#,
+        );
+        let graph = graph_of(&[("a", false), ("b", false)], &[]);
+        let out = render_map_inner(&html, &[], &graph, Path::new("."), false).unwrap();
+        assert!(
+            out.missing_nodes.iter().any(|id| id == "a"),
+            "{:?}",
+            out.missing_nodes
+        );
+        assert!(out.html.contains("\"id\":\"a\""));
+        assert_ne!(out.html, html);
+    }
+
+    #[test]
+    fn a_trace_that_owns_a_crateless_node_is_an_error() {
+        // Example crates are collapsed, so an owned example has no node.
+        let y = "schema_version: 1\ntrace_id: demo\ntitle: T\ndescription: D\nprimary_crate: hello_companion\n\
+                 domain: gameplay\nlifecycle_status: active\nintegration_status: wired\nowns: [hello_companion]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n";
+        let trace = tdoc("demo", y);
+        let html = bare(
+            r#"{"nodes":[{"id":"astraweave-core","domain":"core","trace":null}],"edges":[],"domains":[{"id":"core"},{"id":"gameplay"},{"id":"examples"}]}"#,
+        );
+        let graph = graph_of(
+            &[("astraweave-core", false), ("hello_companion", true)],
+            &[("hello_companion", "astraweave-core", false)],
+        );
+        let out = render_map_inner(&html, &[trace], &graph, Path::new("."), false).unwrap();
+        assert!(
+            out.problems.iter().any(|p| {
+                p.contains("demo.md")
+                    && p.contains("owns 'hello_companion'")
+                    && p.contains("no map node")
+            }),
+            "{:?}",
+            out.problems
+        );
+        assert!(
+            !out.html.contains("\"id\":\"hello_companion\""),
+            "an example must stay inside the aggregate"
+        );
+    }
+
+    #[test]
+    fn a_broken_trace_section_anchor_is_an_error() {
+        let y = "schema_version: 1\ntrace_id: water\ntitle: T\ndescription: D\nprimary_crate: astraweave-water\n\
+                 domain: physics-world\nlifecycle_status: active\nintegration_status: wired\nowns: [astraweave-water]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n";
+        let mut trace = tdoc("water", y);
+        trace.body = "## 5. Active File Map\n## 7. Decision Log\n".into();
+        let html = format!(
+            "<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\n\
+             <span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\n\
+             <!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\n\
+             <!-- TRACE-FOOTER:START -->x<!-- TRACE-FOOTER:END -->\n\
+             'examples_collapsed': 'stale',\n\
+             <a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+             <a href=\"#7-decision-log\"></a><a href=\"#8-invariants\"></a>\
+             <a href=\"#11-open-questions\"></a>\n{}",
+            bare(
+                r#"{"nodes":[{"id":"astraweave-water","domain":"physics-world","trace":null}],"edges":[],"domains":[{"id":"physics-world"}]}"#
+            )
+        );
+        let graph = graph_of(&[("astraweave-water", false)], &[]);
+        let out = render_map(&html, &[trace], &graph, Path::new(".")).unwrap();
+        assert!(
+            out.problems
+                .iter()
+                .any(|p| p.contains("water.md") && p.contains("#6-conflict-map")),
+            "{:?}",
+            out.problems
+        );
+        assert!(
+            out.problems.iter().any(|p| p.contains("#8-invariants")),
+            "{:?}",
+            out.problems
+        );
+        assert!(
+            out.problems
+                .iter()
+                .any(|p| p.contains("#11-open-questions")),
+            "{:?}",
+            out.problems
+        );
+    }
+
+    #[test]
+    fn an_explicit_anchor_id_resolves() {
+        let y = "schema_version: 1\ntrace_id: water\ntitle: T\ndescription: D\nprimary_crate: astraweave-water\n\
+                 domain: physics-world\nlifecycle_status: active\nintegration_status: wired\nowns: [astraweave-water]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n";
+        let mut trace = tdoc("water", y);
+        trace.body = "\
+<a id=\"5-active-file-map\"></a>\n## 5. Active File Map\n\
+<a id=\"6-conflict-map\"></a>\n## 6. Conflict Map / Residue\n\
+<a id=\"7-decision-log\"></a>\n## 7. Decision Log\n\
+<a id=\"8-invariants\"></a>\n## 8. Known Invariants\n\
+<a id=\"11-open-questions\"></a>\n## 11. Open Questions / Parked Decisions\n"
+            .into();
+        let html = format!(
+            "<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\n\
+             <span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\n\
+             <!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\n\
+             <!-- TRACE-FOOTER:START -->x<!-- TRACE-FOOTER:END -->\n\
+             'examples_collapsed': 'stale',\n\
+             <a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+             <a href=\"#7-decision-log\"></a><a href=\"#8-invariants\"></a>\
+             <a href=\"#11-open-questions\"></a>\n{}",
+            bare(
+                r#"{"nodes":[{"id":"astraweave-water","domain":"physics-world","trace":null}],"edges":[],"domains":[{"id":"physics-world"}]}"#
+            )
+        );
+        let graph = graph_of(&[("astraweave-water", false)], &[]);
+        let out = render_map(&html, &[trace], &graph, Path::new(".")).unwrap();
+        assert!(
+            out.problems.iter().all(|p| !p.contains("anchor")),
+            "{:?}",
+            out.problems
+        );
+    }
+
+    #[test]
+    fn runtime_only_edge_uses_kind_runtime_not_workspace_dep() {
+        let y = "schema_version: 1\ntrace_id: veil\ntitle: T\ndescription: D\nprimary_crate: astraweave-veil\n\
+                 domain: gameplay\nlifecycle_status: active\nintegration_status: wired\nowns: [astraweave-veil]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n\
+                 runtime_edges:\n  - from: astraweave-ai\n    to: astraweave-veil\n    note: agents read the scar\n";
+        let trace = tdoc("veil", y);
+        let html = bare(
+            r#"{"nodes":[{"id":"astraweave-veil","domain":"gameplay","trace":null},{"id":"astraweave-ai","domain":"ai","trace":null}],"edges":[{"source":"astraweave-ai","target":"astraweave-veil","kind":"workspace-dep","anomaly":null,"types":[],"risk":"LOW","optional":false}],"domains":[{"id":"gameplay"},{"id":"ai"}]}"#,
+        );
+        let graph = graph_of(
+            &[("astraweave-veil", false), ("astraweave-ai", false)],
+            &[("astraweave-ai", "astraweave-veil", false)],
+        );
+        let out = render_map_inner(&html, &[trace], &graph, Path::new("."), false).unwrap();
+        assert!(out.problems.is_empty(), "{:?}", out.problems);
+        let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
+        let d: serde_json::Value = serde_json::from_str(json).unwrap();
+        let edges = d["edges"].as_array().unwrap();
+        assert_eq!(
+            edges.len(),
+            1,
+            "the reverse runtime edge must not be added: {edges:?}"
+        );
+        assert_eq!(edges[0]["source"], "astraweave-ai");
+        assert_eq!(edges[0]["target"], "astraweave-veil");
+        assert_eq!(edges[0]["kind"], "workspace-dep");
+        assert_eq!(edges[0]["runtime"], true);
+        assert_eq!(edges[0]["runtimeNote"], "agents read the scar");
+    }
+
+    #[test]
+    fn runtime_edge_without_a_cargo_dep_is_not_a_workspace_dep() {
+        let y = "schema_version: 1\ntrace_id: a\ntitle: T\ndescription: D\nprimary_crate: a\n\
+                 domain: core\nlifecycle_status: active\nintegration_status: wired\nowns: [a]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n\
+                 runtime_edges:\n  - to: b\n    note: calls b at runtime\n";
+        let trace = tdoc("a", y);
+        let html = bare(
+            r#"{"nodes":[{"id":"a","domain":"core","trace":null},{"id":"b","domain":"core","trace":null}],"edges":[],"domains":[{"id":"core"}]}"#,
+        );
+        let graph = graph_of(&[("a", false), ("b", false)], &[]);
+        let out = render_map_inner(&html, &[trace], &graph, Path::new("."), false).unwrap();
+        assert!(out.problems.is_empty(), "{:?}", out.problems);
+        let json = &out.html[out.html.find('>').unwrap() + 1..out.html.find("</script>").unwrap()];
+        let d: serde_json::Value = serde_json::from_str(json).unwrap();
+        assert_eq!(d["edges"][0]["kind"], "runtime");
+        assert_eq!(d["edges"][0]["source"], "a");
+        assert_eq!(d["edges"][0]["target"], "b");
+        assert_ne!(d["edges"][0]["kind"], "workspace-dep");
     }
 }

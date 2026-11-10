@@ -245,6 +245,7 @@ The terrain variant is a parallel, **synchronous, non-LLM** generator:
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -312,6 +313,7 @@ The terrain variant is a parallel, **synchronous, non-LLM** generator:
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -336,6 +338,7 @@ The terrain variant is a parallel, **synchronous, non-LLM** generator:
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Will the `astraweave-quests` LLM/terrain/ECS layer be wired to a runtime consumer?** It is fully implemented and tested but has no production constructor (§4, §7-7). [ai_pipeline.md](./ai_pipeline.md):2379 already flags this. Parked: whether the engine should add an ECS-integrated `QuestLlmSystem` driver or whether the layer is reference scaffolding.

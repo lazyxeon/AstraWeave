@@ -3,7 +3,7 @@ name = "aw_trace_sync"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "Deterministic trace -> registry/map synchronizer: trace front-matter is the source of truth; regenerates the CLAUDE.md trace table and workspace_map.html trace links, gated by --check. See docs/architecture/_meta/TRACE_SYNC_PROPOSAL.md."
+description = "Deterministic trace -> registry/map synchronizer. Front-matter owns trace links, status, and runtime edges. cargo metadata owns the node set and normal path edges. --check gates the CLAUDE.md table and workspace_map.html."
 
 [dependencies]
 anyhow = "1"

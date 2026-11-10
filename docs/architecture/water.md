@@ -7,7 +7,7 @@ primary_crate: astraweave-water
 domain: physics-world
 lifecycle_status: active
 integration_status: mixed
-summary: "Gameplay water-truth facade (WaterQuery/AnalyticWater) — sole backend after W.1 removed the voxel backend; physics buoyancy (astraweave-physics lib.rs:931) is the production consumer. Deterministic CPU truth (gate Q1). water.md §4,§5"
+summary: "Gameplay water-truth facade (WaterQuery/AnalyticWater) — sole backend after W.1 removed the voxel backend; physics buoyancy (astraweave-physics lib.rs:933, field water) is the production consumer. Deterministic CPU truth (gate Q1). water.md §4,§5"
 owns: [astraweave-water]
 doc_version: "1.4"
 last_verified_commit: 1e3d8f692
@@ -247,6 +247,7 @@ The system has two largely-independent data flows that meet only at the `WeaveOp
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Wired-vs-dormant inventory (the §8/Key-Lesson-8 honesty signal)
@@ -354,6 +355,7 @@ The honest summary: **water truth and the rendered surface are wired; the weave/
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -418,6 +420,7 @@ Measured on the documented min-spec: **NVIDIA GeForce GTX 1660 Ti with Max-Q Des
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Relocating the producers out of the example layer (F.4.3-editor follow-on).** `WaterWeaveProducer` and `WaterAccentProducer` live in the `weaving_playground` binary with zero library callers. The editor's accent pass mechanism is already live in `draw_into`, but visible editor accents need the producers in a shared crate + an editor producer feed (`F4_3_EXECUTION_REPORT.md` §3/§5). When/where is this relocation done?

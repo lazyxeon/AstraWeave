@@ -12,9 +12,11 @@ owns: [astraweave-veil]
 doc_version: "1.1"
 last_verified_commit: 79fcf579
 runtime_edges:
-  - to: astraweave-ai
+  - from: astraweave-ai
+    to: astraweave-veil
     note: stance_at reads ScarField through sense
-  - to: aravath_runtime
+  - from: aravath_runtime
+    to: astraweave-veil
     note: enemy deaths inject scars and aw-save meta restores them
 ---
 
@@ -130,6 +132,7 @@ The froxel grid stays the engine preset (80×45×32 in this demo). The scar text
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -163,6 +166,7 @@ The froxel grid stays the engine preset (80×45×32 in this demo). The scar text
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Should a settled floor ever fade?** Not in this version. The floor is the permanent scar. A later campaign can add a second, much slower decay if the island fills up.

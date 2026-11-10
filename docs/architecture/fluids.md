@@ -7,7 +7,7 @@ primary_crate: astraweave-fluids
 domain: physics-world
 lifecycle_status: dormant
 integration_status: example_only
-summary: "Post-W.1: SPH/voxel/simd_ops removed (−58.8K LoC). Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate; only examples consume. Water rendering successor lives in water.md. fluids.md §0.5,§0.6"
+summary: "24,509 lines of Rust under src/ at 604d35d1. FluidSystem and WaterEffectsManager remain; PcisphSystem, UnifiedSolver, and ResearchFluidSystem are gone. examples/fluids_demo and examples/weaving_playground depend on it. Water rendering successor lives in water.md."
 owns: [astraweave-fluids]
 doc_version: "2.8"
 last_verified_commit: 1640f16b
@@ -660,6 +660,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -792,6 +793,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -896,6 +898,7 @@ Per README:
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 > **W.1 closures (2026-06-20):** the W-series ratified deprecation removed the SPH
@@ -933,6 +936,7 @@ Per README:
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11.5 Revision History
 
 | Version | Date | Change |

@@ -761,6 +761,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -881,6 +882,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -963,6 +965,7 @@ This map enumerates the load-bearing files. Per-file traces of every subsystem a
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **macOS GPU skip census.** [Closed on this head.] A non-empty `gpu-skip-reasons.txt` is not success. `scripts/ci/gpu-skip-required-macos.txt` names the default-feature software-only tests profile ci runs, and `check-gpu-skip-log.sh` fails when one of those names is missing. Hardware probes stay off that list because Metal still runs them. `gpu-tests` binaries stay off it because Test full does not pass `--all-features`. `test_backend_detection`, `golden_triangle_render`, and `golden_determinism_check` are on it. An integration test sets `cfg(test)`, and those three request only a software adapter.

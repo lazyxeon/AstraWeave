@@ -243,6 +243,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -310,6 +311,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -352,6 +354,7 @@ GPU resources are a **separate, parallel** lifecycle (`GpuResourceBudget`) that 
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is the streaming layer (`WorldPartitionManager`), the GPU budget (`GpuResourceBudget`), `PartitionedScene`, and the ECS scene-graph/animation systems intended to be wired into a runtime, or are they reference/demo scaffolding?** Verified 2026-06-24: zero non-test/non-example production callers for any of these. Resolving this determines whether they should be marked Active (after wiring), kept as demo references, or pruned.

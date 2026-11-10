@@ -7,7 +7,7 @@ primary_crate: astraweave-camera
 domain: rendering
 lifecycle_status: active
 integration_status: wired
-summary: "Created Unified Camera C.2 (52b9e711c, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, and 13 examples"
+summary: "Created Unified Camera C.2 (8c551c6ea, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, aravath_runtime, and 13 examples"
 owns: [astraweave-camera]
 doc_version: "1.2"
 last_verified_commit: 7c29b8182
@@ -186,6 +186,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -262,6 +263,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 These are the parity-critical coordinate conventions. Authoritative source: [`CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md) §2. **Discrepancies between code and that doc are bugs in the code.**
@@ -309,6 +311,7 @@ These are the parity-critical coordinate conventions. Authoritative source: [`CA
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **`CameraMode` is `#[non_exhaustive]` with two variants (`FreeFly`, `Orbit`) ([`freefly.rs:153-158`](../../astraweave-camera/src/freefly.rs)).** Is a third controller mode (e.g. follow/cinematic movement) planned, or is `#[non_exhaustive]` purely forward-compat hygiene? Not recovered from available sources.

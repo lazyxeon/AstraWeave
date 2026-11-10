@@ -266,6 +266,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -373,6 +374,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -447,6 +449,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Should the four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip`/`AnimationChannel`/`ChannelData`/`Interpolation` type families be unified into a single shared crate (e.g., `astraweave-animation`)?** [Decisional.] Factual state: each of the four crates defines its own representation, optimized for its purpose (Pod serialization in asset, glam math in render, parallel arrays in scene ECS, glam matrices in editor). The §7.7 wrapped-component resource identity pattern documented in `docs/architecture/render_pipeline_material_system_shader_infrastructure.md` §6 and `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` Status header is the architectural precedent. No retirement campaign was identified.

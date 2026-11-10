@@ -133,6 +133,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 - `script_system` and `mod_script_system` are two callers of one sandbox, not two engines. They use different reload queues (`ScriptReloadQueue` vs `ModReloadQueue`).
@@ -175,6 +176,7 @@ Mods need a single sandboxed command set whose results are sim inputs. A second 
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -213,6 +215,7 @@ Each mod script is compiled on the tick it runs. The replay case is 32 ticks of 
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Play mode records the swap, then the mod system applies it on that tick.** `EditorRuntime::enter_play` calls `register_mod_runtime` and then `build_app`, which installs `ModScriptPlugin` before `sys_sim`. `queue_script_swap` stores the bytes. `run_fixed_steps` writes `(tick_count, path, sha256, source)` into the runtime log and the sim app's `ScriptReplayLog` only when `steps > 0`. `mod_script_system` stages `ModReloadQueue` from that log when `ModClock.tick` matches. A frame that runs zero steps does not assign a tick. Core does not name the plugin: scripting depends on core, so the installer is a function pointer recorded before `build_app`.

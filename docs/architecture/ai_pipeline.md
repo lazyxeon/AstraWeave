@@ -524,6 +524,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -653,6 +654,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -753,6 +755,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **`llm_dialogue.rs` did not compile and named `thread_rng`.** [Closed 2026-10-16.] The file is `pub mod llm_dialogue`. Drifted tests that named types the file does not define were removed. `recorded_line` is the pure helper intended as the recorded-line boundary. It is not wired into the tick yet. `generate_response` stays a proposal and is not called from the sim tick. No new required replay case: the helper does not draw.
