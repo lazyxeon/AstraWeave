@@ -396,39 +396,37 @@ jobs:
 
       - name: Run TSan on astraweave-ai
         run: |
-          echo "⚠️ TSan is ADVISORY — failures may be false positives"
           RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
             -p astraweave-ai \
+            -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
             --lib \
             -- --test-threads=1
-        continue-on-error: true  # TSan is advisory, not blocking
 
       - name: Run TSan on astraweave-coordination
         run: |
           RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
             -p astraweave-coordination \
+            -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
             --lib \
             -- --test-threads=1
-        continue-on-error: true  # TSan is advisory, not blocking
 
       - name: Run TSan on astraweave-ecs
         run: |
           RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
             -p astraweave-ecs \
+            -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
             --lib \
             -- --test-threads=1
-        continue-on-error: true  # TSan is advisory, not blocking
 
       - name: Write TSan summary
         if: always()
         run: |
-          echo "## ThreadSanitizer Results (Advisory)" >> $GITHUB_STEP_SUMMARY
+          echo "## ThreadSanitizer Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "TSan with async Rust produces many false positives." >> $GITHUB_STEP_SUMMARY
-          echo "These results are for **bug discovery only** and do not gate merges." >> $GITHUB_STEP_SUMMARY
+          echo "Std is rebuilt with \`-Zbuild-std\` so the sanitizer ABI matches \`core\`." >> $GITHUB_STEP_SUMMARY
 
   # ──────────────────────────────────────────────────────
   # Determinism Testing (nightly — critical for multiplayer/replay)
@@ -505,7 +503,6 @@ jobs:
           cargo test -p astraweave-physics \
             -- --test-threads=1 \
             determinism deterministic replay
-        continue-on-error: true  # Physics determinism is a stretch goal
 
       - name: Check for non-deterministic HashMap usage in hot paths
         run: |
@@ -591,12 +588,12 @@ jobs:
           echo "| ASan (Critical) | $(result_icon "${{ needs.asan-critical.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "| ASan (Full) | $(result_icon "${{ needs.asan-full.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "| LeakSanitizer | $(result_icon "${{ needs.leak-sanitizer.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
-          echo "| ThreadSanitizer | $(result_icon "${{ needs.thread-sanitizer.result }}") | No (advisory) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ThreadSanitizer | $(result_icon "${{ needs.thread-sanitizer.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "| Determinism | $(result_icon "${{ needs.determinism.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "_Run triggered by: \`${{ github.event_name }}\` at $(date -u)_" >> $GITHUB_STEP_SUMMARY
 
-          # Fail if any critical (non-advisory) job failed
+          # Fail if a required job failed.
           # Skipped jobs are OK — they run on different triggers
           FAILED=0
 
@@ -625,9 +622,9 @@ jobs:
             FAILED=1
           fi
 
-          # TSan is advisory — log but don't fail
           if [ "${{ needs.thread-sanitizer.result }}" = "failure" ]; then
-            echo "⚠️ ThreadSanitizer had failures (advisory — not blocking)"
+            echo "ThreadSanitizer FAILED"
+            FAILED=1
           fi
 
           if [ "$FAILED" -eq 1 ]; then

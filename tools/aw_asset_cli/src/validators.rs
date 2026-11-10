@@ -397,10 +397,13 @@ pub fn validate_material_toml(path: &Path) -> Result<ValidationResult> {
 
     // Check for required sections based on material type
     if let Some(table) = parsed.as_table() {
-        // Check for terrain materials (Phase PBR-F) FIRST - they have "layers" array
-        if table.contains_key("layers") {
+        // Terrain materials (Phase PBR-F) use `[[layers]]`, an array of tables.
+        // `arrays.toml` uses `[layers]` as a name-to-index table. That is not a material.
+        if table.get("layers").is_some_and(|value| value.is_array()) {
             result.info("Detected as terrain material (Phase PBR-F)");
             validate_terrain_material_structure(table, &mut result);
+        } else if table.get("layers").is_some_and(|value| value.is_table()) {
+            result.info("Detected as texture array index map");
         }
         // Check for biome materials - they have "biome" field and "layer" array
         else if table.contains_key("biome") {
@@ -689,6 +692,20 @@ mod tests {
         assert!(!is_power_of_two(3));
         assert!(!is_power_of_two(100));
         assert!(!is_power_of_two(1023));
+    }
+
+    #[test]
+    fn array_index_map_is_not_a_terrain_material() {
+        let path = std::env::temp_dir().join("aw_arrays_index_map.toml");
+        std::fs::write(&path, "[layers]\ngrass = 0\nrock = 1\n").unwrap();
+        let result = validate_material_toml(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(result.passed, "{:?}", result.errors);
+        assert!(result.errors.is_empty());
+        assert!(result
+            .info
+            .iter()
+            .any(|line| line.contains("texture array index map")));
     }
 
     #[test]

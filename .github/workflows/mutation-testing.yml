@@ -66,7 +66,6 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-ecs-results \
             --json
-        continue-on-error: true
       
       - name: Generate mutation report
         run: |
@@ -130,7 +129,6 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-core-results \
             --json
-        continue-on-error: true
       
       - name: Upload mutation results
         uses: actions/upload-artifact@v7
@@ -184,7 +182,6 @@ jobs:
             --shard ${{ matrix.shard }}/8 \
             --output mutants-ai-results \
             --json
-        continue-on-error: true
       
       - name: Verify astraweave-ai shard outcomes
         if: always()
@@ -262,7 +259,6 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-behavior-results \
             --json
-        continue-on-error: true
       
       - name: Upload mutation results
         uses: actions/upload-artifact@v7
@@ -303,7 +299,6 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-nav-results \
             --json
-        continue-on-error: true
       
       - name: Upload mutation results
         uses: actions/upload-artifact@v7
@@ -326,7 +321,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: all-results
-        continue-on-error: true
       
       - name: Generate summary report
         run: |

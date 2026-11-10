@@ -65,7 +65,7 @@ New workflow `.github/workflows/determinism-replay.yml`, on pull requests and on
 
 The current jobs do not implement this gate:
 
-- `.github/workflows/sanitizers.yml` job `determinism` runs on `schedule` / `workflow_dispatch` only. Physics is `continue-on-error: true`. The HashMap scan prints imports and exits 0.
+- `.github/workflows/sanitizers.yml` job `determinism` runs on `schedule` / `workflow_dispatch` only. The physics step has no `continue-on-error`. Its command does not pass `--features async-physics`, so `tests/determinism.rs` is not compiled. The HashMap scan prints imports and exits 0.
 - `.github/workflows/integration-tests.yml` job `determinism-cross-platform` runs `cargo test -p astraweave-ecs --test full_pipeline_integration -- determinism` on three OS and uploads `target/test-results/` with `if-no-files-found: ignore`. That test (`test_determinism_3_runs` in `astraweave-ecs/tests/full_pipeline_integration.rs`) discards its seed (`let _ = seed`) and compares a toy sim inside one process at `1e-6`. Each OS succeeds on its own. Nothing diffs the three machines.
 - `astraweave-core/tests/full_system_determinism.rs` sorts entities before hashing, then uses `DefaultHasher`. Sorting in the test hasher hides unsorted production iteration. The gate hashes the plan the production path actually emits.
 - `astraweave-physics/tests/determinism.rs` is `#![cfg(all(test, feature = "async-physics"))]`. Default `cargo test` does not compile those tests. The assertions allow a `0.0001` length error. `test_async_vs_sync_equivalence` checks that a scheduler handle exists and does not compare states.
@@ -415,7 +415,7 @@ Every stream's acceptance list includes the §0 gate for the sim state it writes
 
 - **Scope.** Keep the default `step` single-threaded. `async-physics` stays off the deterministic profile; document that in the crate root. Move determinism coverage out of the `async-physics` cfg so default `cargo test -p astraweave-physics --test determinism` runs the same-seed comparison. Assert `to_bits` equality, not a 0.0001 epsilon. Either implement a real sync-vs-async comparison or keep async from being compared (the stub test must not claim equivalence). Investigate Rapier 0.22's determinism/libm switch; enabling it is in scope if the flag exists on this pin. If it does not exist, the stream reports that and the `physics_bodies` case stays unrequired until a Rapier bump is its own reviewed change. Sort any projectile/destructible maps that affect spawn or hit order.
 - **Crates.** `astraweave-physics`.
-- **Acceptance.** Two default-feature worlds, same seed, same step count, identical translation bit patterns in-process. Cross-OS `physics_bodies` required only after the bit pattern matches on the three runners. `continue-on-error` for physics determinism is removed from `sanitizers.yml` in that same change.
+- **Acceptance.** Two default-feature worlds, same seed, same step count, identical translation bit patterns in-process. Cross-OS `physics_bodies` required only after the bit pattern matches on the three runners. The physics step in `sanitizers.yml` no longer has `continue-on-error`; this change still has to compile the tests on the default feature set.
 - **Conflict.** **High** with the demo: `astraweave-physics/src/lib.rs` is already modified on `cursor/aravath-greybox-b3de`. Rebase onto that branch or wait. **Medium** with #207 (`astraweave-physics/Cargo.toml` pin). Do not edit the Cargo.toml pin in this stream.
 - **Owns.** `astraweave-physics/src/**`, `astraweave-physics/tests/determinism.rs`.
 

@@ -103,6 +103,8 @@ Those four workflows still trigger on every pull request. The heavy jobs are con
 
 `scripts/ci/test_affected_crates.py` and `scripts/ci/test_workflow_policy.py` lock this in. `actionlint` 1.7.7 reports no findings on the workflow files.
 
+`test_step_continue_on_error_covers_every_step` rejects a step-level `continue-on-error` on every step of every workflow. The only allowed value is the bare scalar `false` (also `"false"` or `'false'`). `true`, a number, and any expression, including `${{ false }}`, are violations. A job-level key is not that check. Negating `step_continue_on_error_forbidden` fails the test. Job-level keys that are still in the tree stay until #747.
+
 ## Cache
 
 `.github/actions/rust-ci-setup` is the shared setup:

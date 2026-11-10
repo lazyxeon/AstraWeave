@@ -157,6 +157,146 @@ def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
 
 
+# Bare false is the only continue-on-error value that is not a violation.
+# An expression, including ${{ false }}, is not that scalar.
+_FALSE_CONTINUE = frozenset({"false", "False", "FALSE"})
+_BLOCK_SCALAR = frozenset({"|", ">", "|-", ">+", "|+", ">-"})
+
+
+def _yaml_scalar(raw: str) -> str:
+    raw = raw.strip()
+    if not raw:
+        return ""
+    if raw[0] in "\"'":
+        quote = raw[0]
+        end = raw.find(quote, 1)
+        if end != -1:
+            return raw[1:end]
+        return raw
+    if " #" in raw:
+        raw = raw.split(" #", 1)[0].rstrip()
+    return raw
+
+
+def iter_workflow_steps(text: str) -> list[tuple[str, str, str]]:
+    """Return (job id, step name, step block) for every step.
+
+    Job-level keys, comments, and `run:` / `with:` / `env:` bodies are not steps.
+    """
+    steps: list[tuple[str, str, str]] = []
+    in_jobs = False
+    job: str | None = None
+    in_steps = False
+    steps_indent = -1
+    step_lines: list[str] = []
+    step_name = ""
+
+    def flush() -> None:
+        nonlocal step_lines, step_name
+        if step_lines:
+            steps.append((job or "", step_name, "\n".join(step_lines)))
+        step_lines = []
+        step_name = ""
+
+    for line in text.splitlines():
+        stripped = line.lstrip(" ")
+        indent = len(line) - len(stripped)
+        if not in_jobs:
+            if line == "jobs:" or line.startswith("jobs:"):
+                in_jobs = True
+            continue
+        if stripped.startswith("#"):
+            if step_lines:
+                step_lines.append(line)
+            continue
+        if not stripped:
+            if step_lines:
+                step_lines.append(line)
+            continue
+        if indent == 0:
+            flush()
+            in_jobs = False
+            in_steps = False
+            job = None
+            continue
+        if indent == 2 and stripped.endswith(":") and not stripped.startswith("- "):
+            flush()
+            in_steps = False
+            job = stripped[:-1].strip().strip("\"'")
+            continue
+        if job is None:
+            continue
+        if not in_steps:
+            if stripped == "steps:" or stripped.startswith("steps:"):
+                in_steps = True
+                steps_indent = indent
+            continue
+        if indent <= steps_indent:
+            flush()
+            in_steps = False
+            if indent == 2 and stripped.endswith(":") and not stripped.startswith("- "):
+                job = stripped[:-1].strip().strip("\"'")
+            continue
+        if stripped.startswith("- "):
+            flush()
+            step_lines = [line]
+            rest = stripped[2:].strip()
+            if rest.startswith("name:"):
+                step_name = _yaml_scalar(rest.split(":", 1)[1])
+            elif rest:
+                step_name = rest.split(":", 1)[0].strip()
+            continue
+        if step_lines:
+            step_lines.append(line)
+            if stripped.startswith("name:"):
+                step_name = _yaml_scalar(stripped.split(":", 1)[1])
+    flush()
+    return steps
+
+
+def step_continue_on_error_value(step_text: str) -> str | None:
+    """The step mapping's continue-on-error scalar, or None when the key is absent."""
+    lines = step_text.splitlines()
+    if not lines:
+        return None
+    first = re.match(r"^(\s*)- (.*)$", lines[0])
+    if first is None:
+        return None
+    key_indent = len(first.group(1)) + 2
+    first_body = first.group(2).strip()
+    if first_body.startswith("continue-on-error:"):
+        return _yaml_scalar(first_body.split(":", 1)[1])
+    skip_deeper_than: int | None = None
+    for line in lines[1:]:
+        stripped = line.lstrip(" ")
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(stripped)
+        if skip_deeper_than is not None:
+            if indent > skip_deeper_than:
+                continue
+            skip_deeper_than = None
+        if indent != key_indent:
+            continue
+        key, _, rest = stripped.partition(":")
+        if key in {"run", "with", "env"} and rest.strip() in _BLOCK_SCALAR.union({""}):
+            skip_deeper_than = key_indent
+            continue
+        if key == "continue-on-error":
+            return _yaml_scalar(rest)
+    return None
+
+
+def step_continue_on_error_forbidden(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value not in _FALSE_CONTINUE
+
+
+def step_continue_on_error(step_text: str) -> bool:
+    return step_continue_on_error_forbidden(step_continue_on_error_value(step_text))
+
+
 def workflow_display_names() -> set[str]:
     names: set[str] = set()
     name_re = re.compile(r"^name:\s*(.+?)\s*$")
@@ -1148,6 +1288,59 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_step_continue_on_error_covers_every_step(self) -> None:
+        for name, text in workflow_texts().items():
+            for job, step_name, step in iter_workflow_steps(text):
+                self.assertFalse(
+                    step_continue_on_error(step),
+                    f"{name} job {job} step {step_name!r} has step-level continue-on-error",
+                )
+
+        self.assertTrue(step_continue_on_error("      - name: bad\n        continue-on-error: true\n"))
+        for value in ('"true"', "'true'", "yes", "on", "1", "${{ matrix.experimental || false }}"):
+            step = f"      - name: bad\n        continue-on-error: {value}\n"
+            self.assertTrue(step_continue_on_error(step), value)
+        for value in ("false", '"false"', "'false'", "False"):
+            step = f"      - name: ok\n        continue-on-error: {value}  # kept\n"
+            self.assertFalse(step_continue_on_error(step), value)
+
+        job_only = (
+            "name: sample\n"
+            "jobs:\n"
+            "  test:\n"
+            "    continue-on-error: true\n"
+            "    steps:\n"
+            "      - name: clean\n"
+            "        run: echo continue-on-error: true\n"
+            "        # continue-on-error: true\n"
+            "      - name: input\n"
+            "        uses: example/action@v1\n"
+            "        with:\n"
+            "          continue-on-error: true\n"
+        )
+        seen = iter_workflow_steps(job_only)
+        self.assertEqual([step_name for _job, step_name, _step in seen], ["clean", "input"])
+        for _job, _step_name, step in seen:
+            self.assertFalse(step_continue_on_error(step))
+        for _job, _step_name, step in iter_workflow_steps(job_only):
+            self.assertFalse(step_continue_on_error(step))
+
+        source = inspect.getsource(step_continue_on_error_forbidden)
+        mutated = source.replace(
+            "return value not in _FALSE_CONTINUE",
+            "return not (value not in _FALSE_CONTINUE)",
+            1,
+        )
+        self.assertNotEqual(source, mutated)
+        namespace = {"_FALSE_CONTINUE": _FALSE_CONTINUE}
+        exec(mutated, namespace)  # noqa: S102
+        broken = namespace["step_continue_on_error_forbidden"]
+        self.assertTrue(step_continue_on_error_forbidden("true"))
+        self.assertFalse(step_continue_on_error_forbidden(None))
+        self.assertFalse(broken(None))
+        with self.assertRaises(AssertionError):
+            self.assertTrue(broken("true"))
 
 
 if __name__ == "__main__":

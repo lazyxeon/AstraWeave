@@ -68,10 +68,9 @@ jobs:
         echo "::endgroup::"
     
     - name: Build aw_editor
-      continue-on-error: true  # Editor has known compilation issues
       run: |
         echo "::group::Building aw_editor"
-        cargo build -p aw_editor --release || echo "Editor build failed - known issue"
+        cargo build -p aw_editor --release
         echo "::endgroup::"
     
     - name: Run clippy (render crate)
@@ -83,7 +82,6 @@ jobs:
         cargo clippy -p aw_asset_cli --all-features -- -D warnings
     
     - name: Run clippy (editor)
-      continue-on-error: true  # Editor has known issues
       run: |
         cargo clippy -p aw_editor --all-features -- -W clippy::all
   
@@ -224,35 +222,53 @@ jobs:
     name: Validate WGSL Shaders
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true  # wgsl-analyzer is optional
-    
+    continue-on-error: true  # job-level key stays until #747
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    
-    - name: Install wgsl-analyzer
-      run: |
-        cargo install --locked wgsl-analyzer || echo "wgsl-analyzer installation optional"
-    
+
     - name: Check shader syntax
-      continue-on-error: true
       run: |
-        echo "::group::Validating WGSL shaders"
-        for shader in shaders/*.wgsl; do
-          echo "Checking: $shader"
-          # Basic syntax check (file exists and not empty)
-          if [ ! -s "$shader" ]; then
-            echo "::error file=$shader::Shader file is empty or missing"
+        set -euo pipefail
+        dirs=(
+          astraweave-render/shaders
+          astraweave-render/src/shaders
+          astraweave-fluids/shaders
+          assets/shaders
+        )
+        fail=0
+        for dir in "${dirs[@]}"; do
+          if [ ! -d "$dir" ]; then
+            echo "::error::$dir is missing"
+            exit 1
           fi
+          mapfile -d '' files < <(find "$dir" -name '*.wgsl' -type f -print0 | sort -z)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::$dir has no .wgsl files"
+            exit 1
+          fi
+          for shader in "${files[@]}"; do
+            if [ ! -s "$shader" ]; then
+              echo "::error file=$shader::Shader file is empty"
+              fail=1
+            fi
+          done
         done
-        echo "::endgroup::"
-    
+        if [ "$fail" -ne 0 ]; then
+          exit 1
+        fi
+
     - name: List shader files
       run: |
-        echo "## 📜 WGSL Shaders" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Shader Files:" >> $GITHUB_STEP_SUMMARY
-        for shader in shaders/*.wgsl; do
-          lines=$(wc -l < "$shader" 2>/dev/null || echo "?")
-          echo "- \`$(basename $shader)\` (${lines} lines)" >> $GITHUB_STEP_SUMMARY
-        done
+        set -euo pipefail
+        {
+          echo "## WGSL Shaders"
+          echo
+          echo "### Shader Files:"
+          find astraweave-render/shaders astraweave-render/src/shaders astraweave-fluids/shaders assets/shaders \
+            -name '*.wgsl' -type f -print | LC_ALL=C sort | while IFS= read -r shader; do
+            lines=$(wc -l < "$shader")
+            echo "- \`$shader\` (${lines} lines)"
+          done
+        } >> "$GITHUB_STEP_SUMMARY"

@@ -50,31 +50,44 @@ jobs:
 
       - name: Install mdBook (pre-built binary)
         run: |
-          curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz
-          sudo mv mdbook /usr/local/bin/
+          set -euo pipefail
+          url="https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          sum="084e4342ba564db270108763e404a7d1f309d932651a22484e93c0dc1a071f6d"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "$tmp/tool.tar.gz" "$url"
+          echo "$sum  $tmp/tool.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/tool.tar.gz" -C "$tmp"
+          sudo install -m 0755 "$tmp/mdbook" /usr/local/bin/mdbook
           mdbook --version
 
       - name: Install mdBook plugins
         run: |
-          # mdbook-mermaid is required by book.toml
-          curl -sSL "https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz" | tar -xz \
-            && sudo mv mdbook-mermaid /usr/local/bin/ \
-            && mdbook-mermaid --version
-        continue-on-error: true
+          set -euo pipefail
+          # book.toml requires the mermaid preprocessor.
+          url="https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz"
+          sum="8aced70d781830fb0e81988f081c4abdd49e056a001ae2f1e4d484e1f6385c57"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "$tmp/tool.tar.gz" "$url"
+          echo "$sum  $tmp/tool.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/tool.tar.gz" -C "$tmp"
+          sudo install -m 0755 "$tmp/mdbook-mermaid" /usr/local/bin/mdbook-mermaid
+          mdbook-mermaid --version
 
       - name: Build mdBook documentation
         run: |
+          set -euo pipefail
           cd docs
           mdbook build
           touch book/.nojekyll
-          cp src/robots.txt book/robots.txt 2>/dev/null || true
+          cp src/robots.txt book/robots.txt
           mkdir -p book/assets
-          cp -r src/assets/* book/assets/ 2>/dev/null || true
+          cp -r src/assets/. book/assets/
 
       - name: Copy standalone dashboard
         run: |
+          set -euo pipefail
           mkdir -p docs/book/dashboard/benchmark_dashboard
-          cp -r docs/archive/benchmark_dashboard/* docs/book/dashboard/benchmark_dashboard/ 2>/dev/null || true
+          cp -r docs/archive/benchmark_dashboard/. docs/book/dashboard/benchmark_dashboard/
 
       - name: Copy workspace architecture map
         run: |
@@ -83,15 +96,12 @@ jobs:
           echo "Workspace architecture map copied; URL slug /architecture/"
 
       - name: Install system dependencies (for cargo doc)
-        continue-on-error: true
         run: sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev
 
       - name: Install Rust
-        continue-on-error: true
         uses: dtolnay/rust-toolchain@1.89.0
 
       - name: Cache Rust dependencies
-        continue-on-error: true
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: ${{ runner.os }}-astraweave
@@ -99,8 +109,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Build API documentation
-        continue-on-error: true
         run: |
+          set -euo pipefail
           cargo doc --no-deps \
             --package astraweave-core \
             --package astraweave-ai \
@@ -111,33 +121,43 @@ jobs:
             --package astraweave-behavior \
             --package astraweave-llm \
             --package astraweave-gameplay \
-            --package astraweave-terrain || echo "Some packages had doc warnings"
+            --package astraweave-terrain
           echo '<meta http-equiv="refresh" content="0; url=astraweave_core/index.html">' > target/doc/index.html
           mkdir -p docs/book/api
-          cp -r target/doc/* docs/book/api/
+          cp -r target/doc/. docs/book/api/
           echo '<meta http-equiv="refresh" content="0; url=astraweave_core/index.html">' > docs/book/api/index.html
 
       - name: Generate sitemap
-        continue-on-error: true
-        run: |
-          chmod +x docs/scripts/generate-sitemap.sh || true
-          docs/scripts/generate-sitemap.sh docs/book || echo "Sitemap generation had issues"
+        run: bash docs/scripts/generate-sitemap.sh docs/book
 
       - name: Check for broken links
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_link_check) }}
-        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -sSL https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-          ./lychee docs/book/**/*.html \
+          set -euo pipefail
+          url="https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz"
+          sum="9afdf0f48064fdcd8a8815ca6d2d9fcd43a0ef4c2edf9da23d6f7bf46a764eb8"
+          tmp="$(mktemp -d)"
+          curl -fsSL -o "$tmp/tool.tar.gz" "$url"
+          echo "$sum  $tmp/tool.tar.gz" | sha256sum -c -
+          tar -xzf "$tmp/tool.tar.gz" -C "$tmp"
+          install -m 0755 "$tmp/lychee" "$tmp/lychee-bin"
+          status=0
+          # docs/book/api is generated rustdoc. Its links point at dependency
+          # docs.rs pages. The book pages are the check.
+          "$tmp/lychee-bin" "docs/book/**/*.html" \
+            --exclude-path docs/book/api \
             --exclude localhost \
             --exclude 127.0.0.1 \
             --exclude "file://" \
             --format markdown \
-            --output link-report.md || true
+            --output link-report.md || status=$?
           if [ -f link-report.md ]; then
-            echo "### Link Check Report" >> $GITHUB_STEP_SUMMARY
-            cat link-report.md >> $GITHUB_STEP_SUMMARY
+            echo "### Link Check Report" >> "$GITHUB_STEP_SUMMARY"
+            cat link-report.md >> "$GITHUB_STEP_SUMMARY"
           fi
+          exit "$status"
 
       - name: Upload link report artifact
         uses: actions/upload-artifact@v7

@@ -89,7 +89,6 @@ jobs:
 
       - name: Download benchmark shards
         uses: actions/download-artifact@v8
-        continue-on-error: true
         with:
           pattern: benchmark-alert-results-${{ github.sha }}-shard-*
           path: benchmark-shards
