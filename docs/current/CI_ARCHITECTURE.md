@@ -184,6 +184,8 @@ The rollup check-run name is `PR Rust checks`. The app id is 15368 (`github-acti
 
 `gh pr checks` prints the check-run `name`. It does not prefix the workflow name. The compare job's check-run name is `compare`, not `determinism-replay / compare`.
 
+`.github/CODEOWNERS` is advisory. It names @lazyxeon on `/.github/`, `/.cargo/`, `/scripts/ci/`, `/rust-toolchain.toml`, `/CLAUDE.md`, `/GROK.md`, `/.cursor/rules/`, `/deny.toml`, and `/AGENTS.md`. Those paths cover the workflows, composite actions, CI scripts, the audit ignore file, the Linux replay rustflags, the toolchain pin, and the constitution files. The file does not block a merge. On the `pull_request` rule, set `require_code_owner_review` to false and leave the other parameters on that rule as they are. The owner applies that with the status-check swap below. This file does not edit ruleset 7941616.
+
 Require these contexts, each with integration id 15368. On the #700 head every one of them completed success, and none of the three ruleset contexts above was present. The same nine were success on docs-only #597 and #616 and on `.github/dependabot.yml` pull request #645.
 
 ```json
@@ -204,7 +206,25 @@ Require these contexts, each with integration id 15368. On the #700 head every o
 }
 ```
 
-That object replaces `parameters` on the `required_status_checks` rule. The owner applies it. Drop `Code coverage`, `CodeQL`, and `Analyze (rust)`.
+`OpenSSF Scorecard Analysis` requests `security-events: write` and uploads SARIF (`github/codeql-action/upload-sarif@v4` in `scorecard.yml`). A pull request from a fork does not receive that permission. The upload step has no `continue-on-error`, so the job fails and this required context fails with it. Same-repository pull requests are the flow this list is for.
+
+That object replaces `parameters` on the `required_status_checks` rule. The owner applies it. Drop the status-check contexts `Code coverage`, `CodeQL`, and `Analyze (rust)`. Keep the separate `code_scanning` rule on the same ruleset. That rule is the alert gate: CodeQL at `errors` / `high_or_higher`, and Scorecard at the same thresholds. It is not in the JSON above.
+
+On the `pull_request` rule, replace `parameters` with the live object and `require_code_owner_review` set to false:
+
+```json
+{
+  "allowed_merge_methods": ["merge", "squash", "rebase"],
+  "dismiss_stale_reviews_on_push": true,
+  "require_code_owner_review": false,
+  "require_extra_approval_for_unattributed_changes": true,
+  "require_last_push_approval": true,
+  "required_approving_review_count": 2,
+  "required_reviewers": []
+}
+```
+
+The only change from the live `pull_request` parameters is `require_code_owner_review`. Do not change the `code_scanning` rule. This file does not edit ruleset 7941616.
 
 Require:
 

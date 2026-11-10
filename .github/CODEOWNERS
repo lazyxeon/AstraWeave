@@ -1,5 +1,11 @@
-# @lazyxeon owns these policy paths. No other ownership rule.
-.github/workflows/** @lazyxeon
-deny.toml @lazyxeon
-AGENTS.md @lazyxeon
-.github/CODEOWNERS @lazyxeon
+# Advisory. @lazyxeon is named on these paths. Review is not required to merge.
+# No other ownership rule. Patterns are root-anchored and do not overlap.
+/.github/ @lazyxeon
+/.cargo/ @lazyxeon
+/scripts/ci/ @lazyxeon
+/rust-toolchain.toml @lazyxeon
+/CLAUDE.md @lazyxeon
+/GROK.md @lazyxeon
+/.cursor/rules/ @lazyxeon
+/deny.toml @lazyxeon
+/AGENTS.md @lazyxeon

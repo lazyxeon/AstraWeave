@@ -155,12 +155,20 @@ def _broken_action_ref_violation(old: str, new: str):
 
 CODEOWNERS_FILE = ROOT / ".github" / "CODEOWNERS"
 CODEOWNERS_OWNER = "@lazyxeon"
-# File order. These four do not overlap; last-match would not change the owner.
+CODEOWNERS_ADVISORY = (
+    "Advisory. @lazyxeon is named on these paths. Review is not required to merge."
+)
+# File order. These patterns do not overlap; last-match would not change the owner.
 CODEOWNERS_PATHS = (
-    ".github/workflows/**",
-    "deny.toml",
-    "AGENTS.md",
-    ".github/CODEOWNERS",
+    "/.github/",
+    "/.cargo/",
+    "/scripts/ci/",
+    "/rust-toolchain.toml",
+    "/CLAUDE.md",
+    "/GROK.md",
+    "/.cursor/rules/",
+    "/deny.toml",
+    "/AGENTS.md",
 )
 
 
@@ -1195,23 +1203,22 @@ class WorkflowPolicyTest(unittest.TestCase):
 
     def test_codeowners_is_only_the_policy_paths(self) -> None:
         text = CODEOWNERS_FILE.read_text(encoding="utf-8")
+        self.assertIn(CODEOWNERS_ADVISORY, text)
         assert_codeowners(text)
-        missing = text.replace("AGENTS.md @lazyxeon\n", "", 1)
+        missing = text.replace("/AGENTS.md @lazyxeon\n", "", 1)
         self.assertNotEqual(missing, text)
         with self.assertRaises(AssertionError):
             assert_codeowners(missing)
-        extra = text + "CLAUDE.md @lazyxeon\n"
+        extra = text + "/README.md @lazyxeon\n"
         with self.assertRaises(AssertionError):
             assert_codeowners(extra)
         source = inspect.getsource(assert_codeowners)
-        self.assertIn("if rules != expected:", source)
-        broken = _exec_assert_codeowners(
-            source.replace(
-                "if rules != expected:",
-                "if False and rules != expected:",
-                1,
-            )
-        )
+        guard = "\n    if rules != expected:\n"
+        self.assertIn(guard, source)
+        weakened = source.replace(guard, "\n    if False and rules != expected:\n", 1)
+        self.assertNotEqual(weakened, source)
+        self.assertNotIn(guard, weakened)
+        broken = _exec_assert_codeowners(weakened)
         broken(missing)
         broken(extra)
 
