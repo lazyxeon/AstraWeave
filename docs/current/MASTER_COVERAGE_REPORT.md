@@ -260,7 +260,7 @@ Full details: [MIRI_VALIDATION_REPORT.md](MIRI_VALIDATION_REPORT.md)
 
 **Scope**: 4 crates, ~71 proof harnesses
 **Status**: Clean — all proofs verified
-**CI**: Weekly (Sunday 3:00 AM UTC) via `model-checking/kani-github-action@v1`
+**CI**: Weekly (Sunday 3:00 AM UTC) via `model-checking/kani-github-action` commit `69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237` (`# v1`)
 
 | Crate | Proofs | Properties Verified |
 |-------|--------|---------------------|
