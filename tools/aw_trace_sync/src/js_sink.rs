@@ -553,7 +553,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             }
             _ => {}
         }
-        i *= /* ~ changed by cargo-mutants ~ */ 1;
+        i += 1;
     }
 }
 
