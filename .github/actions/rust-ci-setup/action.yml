@@ -90,7 +90,8 @@ runs:
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
         # sccache 0.19 writes through the Actions cache. A pull request that
         # also writes hits the service rate limit (cache write errors) and
-        # evicts the shared cache. Main pushes and schedules populate it.
+        # evicts the shared cache. Any non-pull-request run on refs/heads/main
+        # (push, schedule, or manual dispatch) populates it.
         # sccache still refuses bins, cdylibs, and proc-macros.
         if [ "$AW_GITHUB_REF" = "refs/heads/main" ] && [ "$AW_GITHUB_EVENT_NAME" != "pull_request" ]; then
           echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"

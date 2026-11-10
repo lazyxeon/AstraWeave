@@ -9,13 +9,17 @@
 # fetch, which returns HTTP 504 often enough to fail the job (#721).
 #
 # The archive sha256 values are pinned below. A mismatch exits 1 immediately:
-# no retry and no fallback. Any other failure exits 0 and sets available=false.
-# A failed download retries with backoff. The workflow fallback step clears the
-# compiler wrapper. This script does not export compiler settings.
+# no retry and no fallback, including when removing the temp directory fails.
+# Any other failure exits 0 and records available=false when the step output
+# can be written. A failure to write that output still exits 0 and does not
+# record available=true. A failed download retries with backoff. The workflow
+# fallback step clears the compiler wrapper. This script does not export
+# compiler settings.
 #
 # --release-base is for the policy test harness. Workflows call this script
 # with no arguments.
-set -euo pipefail
+# -E runs the ERR trap inside functions and command substitutions.
+set -eEuo pipefail
 
 VERSION=v0.19.0
 ATTEMPTS="${SCCACHE_FETCH_ATTEMPTS:-5}"
@@ -35,14 +39,15 @@ write_output() {
 
 fail_closed() {
   echo "sccache prefetch failed: $*" >&2
-  write_output "available=false"
+  write_output "available=false" || true
   exit 0
 }
 
-# A checksum mismatch is the only path that exits non-zero. Command failures
-# under set -e land here and fall back instead of failing the job. A failure
-# inside a command substitution must keep failing so the parent shell, not the
-# subshell, runs the fallback.
+# A checksum mismatch is the only path that exits non-zero. It disarms this
+# trap before exit 1, so a cleanup failure cannot fall back. A failure in a
+# command substitution exits 1 so the parent shell, not the subshell, runs
+# the fallback. Writing the step output and removing the temp directory
+# cannot change a fallback exit.
 on_unexpected_error() {
   if [ "${BASH_SUBSHELL:-0}" -ne 0 ]; then
     exit 1
@@ -148,8 +153,14 @@ sha256_file() {
   node -e 'const fs=require("fs"),crypto=require("crypto");const h=crypto.createHash("sha256");h.update(fs.readFileSync(process.argv[1]));process.stdout.write(h.digest("hex"));' "$1"
 }
 
+# One regular file. lstat does not follow a link, and a link count above 1
+# is another name for the same inode.
+plain_binary() {
+  node -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (!st.isFile() || st.nlink !== 1) process.exit(1);' "$1"
+}
+
 tmp="$(mktemp -d)" || fail_closed "could not create a temp directory"
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp" || true' EXIT
 
 download_archive() {
   local attempt=1 delay="$DELAY"
@@ -177,6 +188,7 @@ got="$(sha256_file "$tmp/pkg.tar.gz")"
 want="$(pinned_sha256 "$filename")"
 if [ "${#want}" -ne 64 ] || [ "$got" != "$want" ]; then
   echo "sccache checksum mismatch for ${filename}" >&2
+  trap - ERR
   exit 1
 fi
 
@@ -194,7 +206,7 @@ done
 if [ -z "$inner" ]; then
   fail_closed "archive has no top-level directory"
 fi
-if [ ! -f "$inner/sccache" ] && [ ! -f "$inner/sccache.exe" ]; then
+if ! plain_binary "$inner/sccache" && ! plain_binary "$inner/sccache.exe"; then
   fail_closed "archive has no sccache binary"
 fi
 
@@ -202,17 +214,22 @@ dest="${tool_cache}/sccache/${clean_version}/${node_arch}"
 rm -rf "$dest" "${dest}.complete"
 if ! {
   mkdir -p "$dest" \
-    && cp -R "${inner}/." "${dest}/" \
-    && printf '' > "${dest}.complete"
+    && cp -R "${inner}/." "${dest}/"
 }; then
   rm -rf "$dest" "${dest}.complete"
   fail_closed "could not install sccache into the tool cache"
 fi
 
-if [ ! -f "$dest/sccache" ] && [ ! -f "$dest/sccache.exe" ]; then
+if ! plain_binary "$dest/sccache" && ! plain_binary "$dest/sccache.exe"; then
+  rm -rf "$dest" "${dest}.complete"
   fail_closed "tool cache is missing the sccache binary"
 fi
+if ! printf '' > "${dest}.complete"; then
+  rm -rf "$dest" "${dest}.complete"
+  fail_closed "tool cache is missing the .complete marker"
+fi
 if [ ! -f "${dest}.complete" ]; then
+  rm -rf "$dest" "${dest}.complete"
   fail_closed "tool cache is missing the .complete marker"
 fi
 
