@@ -612,12 +612,12 @@ _CODECOV_FILES_PIN = {
     "aw-editor-tests.yml": "./lcov.info",
 }
 _KANI_TIMEOUT_EXPR = "${{ steps.timeout.outputs.value }}"
-_KANI_PACKAGES = {
-    "kani-ecs": "astraweave-ecs",
-    "kani-math": "astraweave-math",
-    "kani-sdk": "astraweave-sdk",
-    "kani-core": "astraweave-core",
-}
+_KANI_ACTION_USES = (
+    "model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237"
+)
+_EDITOR_TOOLCHAIN_USES = (
+    "dtolnay/rust-toolchain@599c45df1a24c1c63ae1129a7e59f46654b8fb66"
+)
 _KANI_WITH_KEYS = frozenset({"kani-version", "working-directory", "args", "command"})
 _KANI_COMMAND = "cargo-kani"
 _KANI_WORKDIR = "."
@@ -673,6 +673,10 @@ KANI_COMMAND_MSG = "kani command must be cargo-kani"
 KANI_WORKDIR_MSG = "kani working-directory must be ."
 KANI_DUP_MSG = "kani step with: must not repeat an input"
 KANI_TIMEOUT_MSG = "kani timeout step must write only the validated timeout"
+KANI_JOB_STEPS_MSG = "kani job steps must equal the canonical ordered list"
+RUN_CONTEXT_MSG = (
+    "defaults.run shell and working-directory, and env, must be absent or the canonical map"
+)
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
 _COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
@@ -703,6 +707,15 @@ _CHECKOUT_CANONICAL = {
     "coverage.yml": _COVERAGE_CHECKOUT_STEP,
     "aw-editor-tests.yml": _EDITOR_CHECKOUT_STEP,
     "kani.yml": _KANI_CHECKOUT_STEP,
+}
+_COVERAGE_SETUP_STEP = {
+    "name": "Rust CI setup",
+    "uses": "./.github/actions/rust-ci-setup",
+}
+_EDITOR_TOOLCHAIN_STEP = {
+    "name": "Install Rust Toolchain",
+    "uses": _EDITOR_TOOLCHAIN_USES,
+    "with": {"components": "llvm-tools-preview"},
 }
 _COVERAGE_INSTALL_STEP = {
     "name": "Install cargo-tarpaulin",
@@ -750,12 +763,14 @@ _EDITOR_UPLOAD_STEP = {
 _LOCKED_PRODUCER_STEPS = {
     "coverage.yml": {
         "checkout": _COVERAGE_CHECKOUT_STEP,
+        "setup": _COVERAGE_SETUP_STEP,
         "install-tarpaulin": _COVERAGE_INSTALL_STEP,
         "xml-tarpaulin": _COVERAGE_GENERATE_STEP,
         "upload": _COVERAGE_UPLOAD_STEP,
     },
     "aw-editor-tests.yml": {
         "checkout": _EDITOR_CHECKOUT_STEP,
+        "toolchain": _EDITOR_TOOLCHAIN_STEP,
         "apt": _EDITOR_APT_STEP,
         "install-llvm": _EDITOR_INSTALL_LLVM_STEP,
         "llvm-cov": _EDITOR_LLVM_COV_STEP,
@@ -767,6 +782,62 @@ _KANI_TIMEOUT_STEP = {
     "id": "timeout",
     "env": {"KANI_TIMEOUT_INPUT": "${{ github.event.inputs.timeout }}"},
     "run": _KANI_TIMEOUT_RUN,
+}
+
+
+def _kani_args(package: str) -> str:
+    return f"--package {package} -Z unstable-options --harness-timeout {_KANI_TIMEOUT_EXPR}"
+
+
+def _kani_verification_step(package: str) -> dict:
+    return {
+        "name": "Kani Verification",
+        "uses": _KANI_ACTION_USES,
+        "with": {
+            "kani-version": "0.68.0",
+            "command": _KANI_COMMAND,
+            "working-directory": _KANI_WORKDIR,
+            "args": _kani_args(package),
+        },
+    }
+
+
+def _kani_upload_step(report: str) -> dict:
+    return {
+        "name": "Upload Kani Report",
+        "uses": _UPLOAD_USES,
+        "if": "always()",
+        "with": {
+            "name": report,
+            "path": "target/kani/",
+            "retention-days": 30,
+        },
+    }
+
+
+_KANI_JOB_SPECS = (
+    ("kani-ecs", "astraweave-ecs", "kani-report-ecs"),
+    ("kani-math", "astraweave-math", "kani-report-math"),
+    ("kani-sdk", "astraweave-sdk", "kani-report-sdk"),
+    ("kani-core", "astraweave-core", "kani-report-core"),
+)
+_KANI_JOBS = {
+    job_id: {
+        "args": _kani_args(package),
+        "steps": [
+            _KANI_CHECKOUT_STEP,
+            _KANI_TIMEOUT_STEP,
+            _kani_verification_step(package),
+            _kani_upload_step(report),
+        ],
+    }
+    for job_id, package, report in _KANI_JOB_SPECS
+}
+_RUN_CONTEXT_WORKFLOWS = frozenset({"coverage.yml", "aw-editor-tests.yml", "kani.yml"})
+_WORKFLOW_ENV = {
+    "coverage.yml": None,
+    "aw-editor-tests.yml": {"CARGO_TERM_COLOR": "always", "RUST_BACKTRACE": 1},
+    "kani.yml": {"CARGO_TERM_COLOR": "always", "CARGO_INCREMENTAL": 0},
 }
 _PRODUCER_PERMISSIONS = {"contents": "read"}
 KANI_ACTION_SHA_MSG = "kani checkout and upload-artifact must use a commit SHA"
@@ -1108,8 +1179,9 @@ def _step_equals_canonical(step: object, canonical: dict) -> bool:
     """The step equals the canonical step.
 
     The key set is the same. `run` matches after trailing whitespace is
-    trimmed. Every other key and value matches, including a nested `with:`
-    or `env` map. An extra key, a changed value, or an extra run line fails.
+    trimmed. Leading whitespace fails. A duplicate key fails. Every other
+    key and value matches, including a nested `with:` or `env` map. An extra
+    key, a changed value, or an extra run line fails.
     """
     if not isinstance(step, dict) or getattr(step, "duplicate_keys", None):
         return False
@@ -1178,21 +1250,19 @@ def _producer_sequence_ok(job: object, workflow: str) -> bool:
 
 
 def _producer_locked_exact(steps: list, workflow: str) -> bool:
-    """Each locked step equals its canonical step.
+    """The producer job is that workflow's exact ordered list of canonical steps.
 
-    Setup and toolchain steps are identified, not pinned here. The locked
-    steps are checkout, install, generate, and upload in coverage.yml, and
-    checkout, apt, install-llvm, llvm-cov, and upload in aw-editor-tests.yml.
+    Every kind is pinned, including Rust CI setup and Install Rust Toolchain,
+    with their with: and env. An unlocked kind fails. An inserted step fails
+    the length check in `_producer_sequence_ok` before this compare.
     """
     locked = _LOCKED_PRODUCER_STEPS.get(workflow)
     kinds = _PRODUCER_STEP_KINDS.get(workflow)
-    if locked is None or kinds is None:
+    if locked is None or kinds is None or set(locked) != set(kinds):
         return False
     for step, kind in zip(steps, kinds):
         canonical = locked.get(kind)
-        if canonical is None:
-            continue
-        if not _step_equals_canonical(step, canonical):
+        if not isinstance(canonical, dict) or not _step_equals_canonical(step, canonical):
             return False
     return True
 
@@ -1307,9 +1377,12 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     and steps. Its permissions map is exactly contents: read. An added,
     removed, or changed scope fails. Its last step is the upload-artifact
     whose with.name is the pinned report. A job-level if:, a step if:, a
-    later step, a different artifact name, or a locked step that is not
-    the canonical step fails. The key set matches, run matches after
-    trailing whitespace is trimmed, and every other value matches,
+    later step, a different artifact name, or a step that is not the
+    canonical step fails. The coverage job is the exact ordered list of
+    canonical steps, including Rust CI setup and Install Rust Toolchain,
+    with their with: and env. An inserted, removed, or reordered step
+    fails. The key set matches, run matches after trailing whitespace is
+    trimmed, leading whitespace fails, and every other value matches,
     including the upload with: map. A generate-coverage script other than
     the approved cargo tarpaulin --out Xml command, or a step between the
     editor cargo llvm-cov run and the lcov upload, fails. The upload
@@ -1447,10 +1520,14 @@ def kani_version_violations(text: str, *, path: str = "") -> list[str]:
 
 
 def _approved_kani_args(job_id: str) -> str | None:
-    package = _KANI_PACKAGES.get(job_id)
-    if package is None:
+    """Non-null args for a mapped Kani job id. An unmapped id is None."""
+    entry = _KANI_JOBS.get(job_id)
+    if not isinstance(entry, dict):
         return None
-    return f"--package {package} -Z unstable-options --harness-timeout {_KANI_TIMEOUT_EXPR}"
+    args = entry.get("args")
+    if not isinstance(args, str) or not args:
+        return None
+    return args
 
 
 def _kani_with_keys_ok(body: object) -> bool:
@@ -1482,7 +1559,9 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
     steps.timeout.outputs.value. command is exactly cargo-kani.
     working-directory is the literal `.`. Keys are kani-version, command,
     working-directory, and args. A repeated key fails, including a
-    case-variant where `_ci_item` would return the first match.
+    case-variant where `_ci_item` would return the first match. args is the
+    non-null string on that job id's canonical entry. An unmapped or renamed
+    job fails. A null args value does not compare equal to a missing entry.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -1507,8 +1586,127 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
                 violations.append(f"{prefix}{line_no}: {KANI_WORKDIR_MSG}")
             matches = _ci_matches(body, "args")
             args = matches[0][1] if len(matches) == 1 else None
-            if args != _approved_kani_args(job_id):
+            approved = _approved_kani_args(job_id)
+            # A missing map entry is None, and a null args value is None.
+            # Equality would accept that pair, so a missing entry fails alone.
+            if approved is None or args != approved:
                 violations.append(f"{prefix}{line_no}: {KANI_ARGS_MSG}")
+    return violations
+
+
+def _steps_equal_ordered(steps: object, canonical: list) -> bool:
+    """True when steps is that canonical list, in order, with no extras."""
+    if not isinstance(steps, list) or len(steps) != len(canonical):
+        return False
+    return all(_step_equals_canonical(got, want) for got, want in zip(steps, canonical))
+
+
+def _run_context_ok(node: object, key: str, expected: dict | None) -> bool:
+    """Absent when expected is None. Otherwise the map equals expected."""
+    if not isinstance(node, dict):
+        return False
+    if expected is None:
+        return key not in node
+    return key in node and _mapping_equals(node.get(key), expected)
+
+
+def run_context_violations(text: str, *, path: str = "") -> list[str]:
+    """defaults.run and env are absent or the canonical map.
+
+    Applies to coverage.yml, aw-editor-tests.yml, and kani.yml, at workflow
+    level and on every job. defaults.run shell and working-directory have
+    no canonical value in these files, so any defaults key fails. env is
+    absent in coverage.yml and the canonical variable map in the other two.
+    Job-level env is absent. A custom shell, a working-directory, or an
+    env map that is not canonical fails.
+    """
+    name = Path(path).name
+    if name not in _RUN_CONTEXT_WORKFLOWS:
+        return []
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if not isinstance(doc, dict):
+        return [f"{prefix}1: {RUN_CONTEXT_MSG}"]
+    violations: list[str] = []
+
+    def check(node: dict, key: str, expected: dict | None, fallback: int) -> None:
+        if _run_context_ok(node, key, expected):
+            return
+        line = int(getattr(node, "key_lines", {}).get(key, fallback))
+        violations.append(f"{prefix}{line}: {RUN_CONTEXT_MSG}")
+
+    top = int(getattr(doc, "yaml_line", 1))
+    check(doc, "defaults", None, top)
+    check(doc, "env", _WORKFLOW_ENV[name], top)
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        return violations
+    job_lines = getattr(jobs, "key_lines", {})
+    for job_id, job in jobs.items():
+        job_line = int(job_lines.get(job_id, 1))
+        if not isinstance(job, dict):
+            violations.append(f"{prefix}{job_line}: {RUN_CONTEXT_MSG}")
+            continue
+        check(job, "defaults", None, job_line)
+        check(job, "env", None, job_line)
+    return violations
+
+
+def _job_has_kani_action(job: dict) -> bool:
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return False
+    return any(
+        isinstance(step, dict) and _is_named_action(step, "model-checking/kani-github-action")
+        for step in steps
+    )
+
+
+def kani_job_steps_violations(text: str, *, path: str = "") -> list[str]:
+    """Each Kani job is the canonical ordered step list for its job id.
+
+    The entry's args is a non-null string. Checkout, the timeout step, the
+    Kani action, and the report upload each equal the canonical step,
+    including the action step's keys and env. An inserted, removed, or
+    reordered step fails. A step condition or continue-on-error on the job
+    or on a step fails. An unmapped or renamed job that runs the action
+    fails.
+    """
+    if Path(path).name != "kani.yml":
+        return []
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if not isinstance(doc, dict):
+        return []
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        return []
+    violations: list[str] = []
+    job_lines = getattr(jobs, "key_lines", {})
+    for job_id, job in jobs.items():
+        if not isinstance(job, dict):
+            continue
+        entry = _KANI_JOBS.get(str(job_id))
+        line = int(job_lines.get(job_id, 1))
+        if entry is None:
+            if _job_has_kani_action(job):
+                violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
+            continue
+        if any(
+            isinstance(key, str) and key.casefold() == "continue-on-error" for key in job
+        ):
+            violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
+        args = entry.get("args")
+        steps = entry.get("steps")
+        if not isinstance(args, str) or not args or not isinstance(steps, list):
+            violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
+            continue
+        if not _steps_equal_ordered(job.get("steps"), steps):
+            violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
     return violations
 
 
@@ -1517,8 +1715,9 @@ def kani_timeout_run_violations(text: str, *, path: str = "") -> list[str]:
 
     The keys are name, id, env, and run. env is exactly
     KANI_TIMEOUT_INPUT set to github.event.inputs.timeout. run matches the
-    approved script after trailing whitespace is trimmed. An extra key, a
-    changed env value, or an extra run line fails.
+    approved script after trailing whitespace is trimmed. Leading whitespace
+    fails. An extra key, a changed env value, an extra run line, or a second
+    timeout step fails.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -2571,7 +2770,9 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(least_privilege_permission_violations(text, path=rel))
             codecov.extend(kani_version_violations(text, path=rel))
             codecov.extend(kani_dispatch_args_violations(text, path=rel))
+            codecov.extend(kani_job_steps_violations(text, path=rel))
             codecov.extend(kani_timeout_run_violations(text, path=rel))
+            codecov.extend(run_context_violations(text, path=rel))
             codecov.extend(checkout_persist_credentials_violations(text, path=rel))
             codecov.extend(kani_action_sha_violations(text, path=rel))
             codecov.extend(llvm_cov_pin_violations(text, path=rel))
@@ -4714,10 +4915,9 @@ jobs:
         for workflow, job in (("coverage.yml", coverage), ("aw-editor-tests.yml", editor)):
             kinds = _PRODUCER_STEP_KINDS[workflow]
             self.assertEqual(len(job["steps"]), len(kinds), workflow)
+            self.assertEqual(set(_LOCKED_PRODUCER_STEPS[workflow]), set(kinds), workflow)
             for step, kind in zip(job["steps"], kinds):
-                canonical = _LOCKED_PRODUCER_STEPS[workflow].get(kind)
-                if canonical is None:
-                    continue
+                canonical = _LOCKED_PRODUCER_STEPS[workflow][kind]
                 self.assertTrue(
                     _step_equals_canonical(step, canonical),
                     f"{workflow}:{kind}",
@@ -5234,6 +5434,478 @@ jobs:
             messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
             self.assertIn(PRODUCER_PERMISSIONS_MSG, messages, label)
             self.assertNotIn(COVERAGE_WRITE_MSG, messages, label)
+
+    def test_run_context_is_absent_or_canonical(self) -> None:
+        """Workflow and job defaults.run and env are absent or canonical.
+
+        A custom shell and a working-directory fail on all three workflows.
+        An extra env variable fails where env is absent and where a canonical
+        map is already present. The same two keys fail on a Kani job.
+        """
+        files = ("coverage.yml", "aw-editor-tests.yml", "kani.yml")
+        texts = {name: (WORKFLOWS / name).read_text(encoding="utf-8") for name in files}
+        for name, text in texts.items():
+            self.assertEqual(run_context_violations(text, path=name), [], name)
+        shell = {
+            "coverage.yml": (
+                "permissions: {}\n\njobs:\n  coverage:\n",
+                "permissions: {}\n\ndefaults:\n  run:\n    shell: custom\n\njobs:\n  coverage:\n",
+            ),
+            "aw-editor-tests.yml": (
+                "permissions: {}\n\nenv:\n",
+                "permissions: {}\n\ndefaults:\n  run:\n    shell: custom\n\nenv:\n",
+            ),
+            "kani.yml": (
+                "permissions: {}\n\nenv:\n",
+                "permissions: {}\n\ndefaults:\n  run:\n    shell: custom\n\nenv:\n",
+            ),
+        }
+        workdir = {
+            "coverage.yml": (
+                "permissions: {}\n\njobs:\n  coverage:\n",
+                "permissions: {}\n\ndefaults:\n  run:\n"
+                "    working-directory: elsewhere\n\njobs:\n  coverage:\n",
+            ),
+            "aw-editor-tests.yml": (
+                "permissions: {}\n\nenv:\n",
+                "permissions: {}\n\ndefaults:\n  run:\n"
+                "    working-directory: elsewhere\n\nenv:\n",
+            ),
+            "kani.yml": (
+                "permissions: {}\n\nenv:\n",
+                "permissions: {}\n\ndefaults:\n  run:\n"
+                "    working-directory: elsewhere\n\nenv:\n",
+            ),
+        }
+        for name, (anchor, replacement) in shell.items():
+            self.assertEqual(texts[name].count(anchor), 1, name)
+            mutant = texts[name].replace(anchor, replacement, 1)
+            self.assertNotEqual(mutant, texts[name], name)
+            violations = run_context_violations(mutant, path=name)
+            self.assertTrue(violations, name)
+            self.assertIn(RUN_CONTEXT_MSG, violations[0], name)
+        for name, (anchor, replacement) in workdir.items():
+            mutant = texts[name].replace(anchor, replacement, 1)
+            self.assertNotEqual(mutant, texts[name], name)
+            self.assertIn(
+                RUN_CONTEXT_MSG,
+                run_context_violations(mutant, path=name)[0],
+                name,
+            )
+        coverage_env = texts["coverage.yml"].replace(
+            "permissions: {}\n\njobs:\n",
+            "permissions: {}\n\nenv:\n  EXTRA: set\n\njobs:\n",
+            1,
+        )
+        self.assertNotEqual(coverage_env, texts["coverage.yml"])
+        self.assertIn(
+            RUN_CONTEXT_MSG,
+            run_context_violations(coverage_env, path="coverage.yml")[0],
+        )
+        for name, anchor in (
+            ("aw-editor-tests.yml", "  RUST_BACKTRACE: 1\n"),
+            ("kani.yml", "  CARGO_INCREMENTAL: 0\n"),
+        ):
+            mutant = texts[name].replace(anchor, anchor + "  EXTRA: set\n", 1)
+            self.assertNotEqual(mutant, texts[name], name)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, name)
+            self.assertIn("EXTRA", doc["env"], name)
+            self.assertIn(
+                RUN_CONTEXT_MSG,
+                run_context_violations(mutant, path=name)[0],
+                name,
+            )
+        job_shell = texts["kani.yml"].replace(
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n",
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n"
+            "    defaults:\n      run:\n        shell: custom\n",
+            1,
+        )
+        job_dir = texts["kani.yml"].replace(
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n",
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n"
+            "    defaults:\n      run:\n        working-directory: elsewhere\n",
+            1,
+        )
+        job_env = texts["kani.yml"].replace(
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n",
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n    env:\n      EXTRA: set\n",
+            1,
+        )
+        producer_shell = texts["coverage.yml"].replace(
+            "  coverage:\n    name: Generate Code Coverage\n",
+            "  coverage:\n    name: Generate Code Coverage\n"
+            "    defaults:\n      run:\n        shell: custom\n",
+            1,
+        )
+        producer_env = texts["coverage.yml"].replace(
+            "  coverage:\n    name: Generate Code Coverage\n",
+            "  coverage:\n    name: Generate Code Coverage\n    env:\n      EXTRA: set\n",
+            1,
+        )
+        cases = (
+            ("job-shell", "kani.yml", job_shell),
+            ("job-dir", "kani.yml", job_dir),
+            ("job-env", "kani.yml", job_env),
+            ("producer-shell", "coverage.yml", producer_shell),
+            ("producer-env", "coverage.yml", producer_env),
+        )
+        for label, name, mutant in cases:
+            self.assertNotEqual(mutant, texts[name], label)
+            violations = run_context_violations(mutant, path=name)
+            self.assertTrue(violations, label)
+            self.assertIn(RUN_CONTEXT_MSG, violations[0], label)
+
+    def test_setup_and_toolchain_steps_are_canonical(self) -> None:
+        """Rust CI setup and Install Rust Toolchain equal their canonical steps.
+
+        An added env map or an added with: input keeps the uses value and
+        fails the producer end check.
+        """
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        coverage_job = self._coverage_job(coverage, "coverage.yml")
+        editor_job = self._coverage_job(editor, "aw-editor-tests.yml")
+        self.assertTrue(
+            _step_equals_canonical(coverage_job["steps"][1], _COVERAGE_SETUP_STEP)
+        )
+        self.assertTrue(
+            _step_equals_canonical(editor_job["steps"][1], _EDITOR_TOOLCHAIN_STEP)
+        )
+        setup_env = coverage.replace(
+            "      - name: Rust CI setup\n        uses: ./.github/actions/rust-ci-setup\n",
+            "      - name: Rust CI setup\n        uses: ./.github/actions/rust-ci-setup\n"
+            "        env:\n          EXTRA: set\n",
+            1,
+        )
+        setup_with = coverage.replace(
+            "      - name: Rust CI setup\n        uses: ./.github/actions/rust-ci-setup\n",
+            "      - name: Rust CI setup\n        uses: ./.github/actions/rust-ci-setup\n"
+            "        with:\n          toolchain: other\n",
+            1,
+        )
+        tool_with = editor.replace(
+            "      with:\n        components: llvm-tools-preview\n",
+            "      with:\n        components: llvm-tools-preview\n        toolchain: other\n",
+            1,
+        )
+        tool_env = editor.replace(
+            "    - name: Install Rust Toolchain\n",
+            "    - name: Install Rust Toolchain\n      env:\n        EXTRA: set\n",
+            1,
+        )
+        cases = (
+            ("setup-env", "coverage.yml", setup_env, "setup", _COVERAGE_SETUP_STEP),
+            ("setup-with", "coverage.yml", setup_with, "setup", _COVERAGE_SETUP_STEP),
+            ("toolchain-with", "aw-editor-tests.yml", tool_with, "toolchain", _EDITOR_TOOLCHAIN_STEP),
+            ("toolchain-env", "aw-editor-tests.yml", tool_env, "toolchain", _EDITOR_TOOLCHAIN_STEP),
+        )
+        for label, path, mutant, kind, canonical in cases:
+            job = self._assert_producer_rejected(mutant, path, label)
+            step = next(
+                item
+                for item, step_kind in zip(job["steps"], _PRODUCER_STEP_KINDS[path])
+                if step_kind == kind
+            )
+            self.assertTrue(_producer_step_matches(step, kind), label)
+            self.assertFalse(_step_equals_canonical(step, canonical), label)
+
+    def test_kani_jobs_are_exact_ordered_lists(self) -> None:
+        """Each Kani job id is the canonical step list, in order.
+
+        A step env on the action keeps with: and fails. An inserted run step
+        before the action keeps that action canonical and fails. A reorder
+        and a removed upload fail.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_job_steps_violations(text, path="kani.yml"), [])
+        doc, err = load_workflow_yaml(text)
+        self.assertIsNone(err)
+        for job_id, _package, _report in _KANI_JOB_SPECS:
+            entry = _KANI_JOBS[job_id]
+            self.assertIsInstance(entry["args"], str)
+            self.assertTrue(entry["args"])
+            self.assertTrue(_steps_equal_ordered(doc["jobs"][job_id]["steps"], entry["steps"]))
+        env_step = text.replace(
+            "      - name: Kani Verification\n        uses:",
+            "      - name: Kani Verification\n        env:\n          EXTRA: set\n        uses:",
+            1,
+        )
+        self.assertNotEqual(env_step, text)
+        env_doc, env_err = load_workflow_yaml(env_step)
+        self.assertIsNone(env_err)
+        action = next(
+            step
+            for job_id, _job, step in _iter_steps(env_doc)
+            if job_id == "kani-ecs" and _is_named_action(step, "model-checking/kani-github-action")
+        )
+        canonical_action = _KANI_JOBS["kani-ecs"]["steps"][2]
+        self.assertEqual(action.get("with"), canonical_action["with"])
+        self.assertIn("env", action)
+        self.assertFalse(_step_equals_canonical(action, canonical_action))
+        env_violations = kani_job_steps_violations(env_step, path="kani.yml")
+        self.assertTrue(env_violations)
+        self.assertIn(KANI_JOB_STEPS_MSG, env_violations[0])
+        inserted = text.replace(
+            "      - name: Kani Verification\n",
+            "      - name: Before verification\n        run: echo extra\n\n"
+            "      - name: Kani Verification\n",
+            1,
+        )
+        self.assertNotEqual(inserted, text)
+        inserted_doc, inserted_err = load_workflow_yaml(inserted)
+        self.assertIsNone(inserted_err)
+        inserted_action = next(
+            step
+            for job_id, _job, step in _iter_steps(inserted_doc)
+            if job_id == "kani-ecs" and _is_named_action(step, "model-checking/kani-github-action")
+        )
+        self.assertTrue(_step_equals_canonical(inserted_action, canonical_action))
+        self.assertGreater(
+            len(inserted_doc["jobs"]["kani-ecs"]["steps"]),
+            len(_KANI_JOBS["kani-ecs"]["steps"]),
+        )
+        inserted_violations = kani_job_steps_violations(inserted, path="kani.yml")
+        self.assertTrue(inserted_violations)
+        self.assertIn(KANI_JOB_STEPS_MSG, inserted_violations[0])
+        checkout = (
+            "      - uses: actions/checkout@"
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n"
+            "        with:\n"
+            "          persist-credentials: false\n\n"
+        )
+        timeout_at = text.index("      - name: Resolve harness timeout\n")
+        verify_at = text.index("      - name: Kani Verification\n")
+        timeout = text[timeout_at:verify_at]
+        self.assertTrue(text.startswith(checkout, text.index("    steps:\n") + len("    steps:\n")))
+        reordered = text.replace(checkout + timeout, timeout + checkout, 1)
+        self.assertNotEqual(reordered, text)
+        reorder_doc, reorder_err = load_workflow_yaml(reordered)
+        self.assertIsNone(reorder_err)
+        self.assertEqual(reorder_doc["jobs"]["kani-ecs"]["steps"][0].get("id"), "timeout")
+        reorder_violations = kani_job_steps_violations(reordered, path="kani.yml")
+        self.assertTrue(reorder_violations)
+        self.assertIn(KANI_JOB_STEPS_MSG, reorder_violations[0])
+        upload = (
+            "      - name: Upload Kani Report\n"
+            "        uses: actions/upload-artifact@"
+            "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        if: always()\n"
+            "        with:\n"
+            "          name: kani-report-ecs\n"
+            "          path: target/kani/\n"
+            "          retention-days: 30\n"
+        )
+        self.assertEqual(text.count(upload), 1)
+        removed = text.replace(upload, "", 1)
+        self.assertNotEqual(removed, text)
+        removed_violations = kani_job_steps_violations(removed, path="kani.yml")
+        self.assertTrue(removed_violations)
+        self.assertIn(KANI_JOB_STEPS_MSG, removed_violations[0])
+
+    def test_kani_conditions_fail_outside_the_args_check(self) -> None:
+        """A step condition, a step continue-on-error, and a job continue-on-error fail.
+
+        The action with: map stays canonical, so an args-only check stays quiet.
+        The job form keeps the ordered step list.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        canonical = _KANI_JOBS["kani-ecs"]["steps"][2]
+        step_if = text.replace(
+            "      - name: Kani Verification\n        uses:",
+            "      - name: Kani Verification\n        if: false\n        uses:",
+            1,
+        )
+        step_continue = text.replace(
+            "      - name: Kani Verification\n        uses:",
+            "      - name: Kani Verification\n        continue-on-error: true\n        uses:",
+            1,
+        )
+        job_continue = text.replace(
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n",
+            "  kani-ecs:\n    name: Kani - astraweave-ecs\n    continue-on-error: true\n",
+            1,
+        )
+        for label, mutant in (
+            ("step-condition", step_if),
+            ("step-continue", step_continue),
+            ("job-continue", job_continue),
+        ):
+            self.assertNotEqual(mutant, text, label)
+            self.assertEqual(kani_dispatch_args_violations(mutant, path="kani.yml"), [], label)
+            violations = kani_job_steps_violations(mutant, path="kani.yml")
+            self.assertTrue(violations, label)
+            self.assertIn(KANI_JOB_STEPS_MSG, violations[0], label)
+        if_doc, if_err = load_workflow_yaml(step_if)
+        self.assertIsNone(if_err)
+        if_step = next(
+            step
+            for job_id, _job, step in _iter_steps(if_doc)
+            if job_id == "kani-ecs" and _is_named_action(step, "model-checking/kani-github-action")
+        )
+        self.assertEqual(if_step.get("with"), canonical["with"])
+        self.assertIn("if", if_step)
+        self.assertFalse(_step_equals_canonical(if_step, canonical))
+        job_doc, job_err = load_workflow_yaml(job_continue)
+        self.assertIsNone(job_err)
+        self.assertTrue(
+            _steps_equal_ordered(job_doc["jobs"]["kani-ecs"]["steps"], _KANI_JOBS["kani-ecs"]["steps"])
+        )
+
+    def test_unmapped_kani_job_id_fails(self) -> None:
+        """A renamed Kani job is unmapped even when args is a non-null string."""
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        start = text.index("  kani-ecs:\n")
+        end = text.index("  kani-math:\n")
+        renamed = text[start:end].replace("  kani-ecs:\n", "  kani-other:\n", 1)
+        self.assertNotIn("kani-other", text)
+        mutant = text[:end] + renamed + text[end:]
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        step = next(
+            item
+            for job_id, _job, item in _iter_steps(doc)
+            if job_id == "kani-other" and _is_named_action(item, "model-checking/kani-github-action")
+        )
+        parsed = _ci_item(step.get("with"), "args")[1]
+        self.assertIsInstance(parsed, str)
+        self.assertTrue(parsed)
+        self.assertIsNone(_approved_kani_args("kani-other"))
+        args_violations = kani_dispatch_args_violations(mutant, path="kani.yml")
+        self.assertTrue(args_violations)
+        self.assertIn(KANI_ARGS_MSG, " ".join(args_violations))
+        job_violations = kani_job_steps_violations(mutant, path="kani.yml")
+        self.assertTrue(job_violations)
+        self.assertIn(KANI_JOB_STEPS_MSG, " ".join(job_violations))
+
+    def test_null_kani_args_fail_on_a_mapped_job(self) -> None:
+        """Null args on a mapped job is not the approved string."""
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        approved = _approved_kani_args("kani-ecs")
+        self.assertIsInstance(approved, str)
+        mutant = text.replace(
+            "          args: --package astraweave-ecs -Z unstable-options "
+            "--harness-timeout ${{ steps.timeout.outputs.value }}\n",
+            "          args: null\n",
+            1,
+        )
+        self.assertNotEqual(mutant, text)
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        step = next(
+            item
+            for job_id, _job, item in _iter_steps(doc)
+            if job_id == "kani-ecs" and _is_named_action(item, "model-checking/kani-github-action")
+        )
+        self.assertIsNone(_ci_item(step.get("with"), "args")[1])
+        args_violations = kani_dispatch_args_violations(mutant, path="kani.yml")
+        self.assertTrue(args_violations)
+        self.assertIn(KANI_ARGS_MSG, " ".join(args_violations))
+
+    def test_duplicate_keys_leading_whitespace_and_second_timeout_fail(self) -> None:
+        """Duplicate keys, run whitespace, and a second timeout step are guarded.
+
+        The duplicate key keeps the canonical value, so a key-set compare
+        accepts it. Trailing whitespace still matches. Leading whitespace
+        matches after a full strip and fails after trailing-only trim. Both
+        timeout steps equal the canonical step.
+        """
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        duplicated_name = coverage.replace(
+            "      - name: Install cargo-tarpaulin\n",
+            "      - name: Install cargo-tarpaulin\n"
+            "        name: Install cargo-tarpaulin\n",
+            1,
+        )
+        self.assertNotEqual(duplicated_name, coverage)
+        name_doc, name_err = load_workflow_yaml(duplicated_name)
+        self.assertIsNone(name_err)
+        name_step = name_doc["jobs"]["coverage"]["steps"][2]
+        self.assertTrue(getattr(name_step, "duplicate_keys", None))
+        self.assertEqual(set(name_step), set(_COVERAGE_INSTALL_STEP))
+        self.assertEqual(name_step.get("name"), _COVERAGE_INSTALL_STEP["name"])
+        self.assertEqual(
+            _run_rstrip(name_step.get("run")),
+            _run_rstrip(_COVERAGE_INSTALL_STEP["run"]),
+        )
+        self.assertFalse(_step_equals_canonical(name_step, _COVERAGE_INSTALL_STEP))
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(duplicated_name, path="coverage.yml")),
+        )
+        duplicated_with = coverage.replace(
+            "          name: coverage-xml\n",
+            "          name: coverage-xml\n          name: coverage-xml\n",
+            1,
+        )
+        self.assertNotEqual(duplicated_with, coverage)
+        with_doc, with_err = load_workflow_yaml(duplicated_with)
+        self.assertIsNone(with_err)
+        upload = with_doc["jobs"]["coverage"]["steps"][-1]
+        body = upload.get("with")
+        self.assertTrue(getattr(body, "duplicate_keys", None))
+        self.assertEqual(set(body), set(_COVERAGE_UPLOAD_STEP["with"]))
+        self.assertEqual(body.get("name"), "coverage-xml")
+        self.assertFalse(_mapping_equals(body, _COVERAGE_UPLOAD_STEP["with"]))
+        self.assertFalse(_step_equals_canonical(upload, _COVERAGE_UPLOAD_STEP))
+        leading = coverage.replace(
+            "        run: cargo install cargo-tarpaulin --version 0.35.2 --locked\n",
+            '        run: " cargo install cargo-tarpaulin --version 0.35.2 --locked"\n',
+            1,
+        )
+        self.assertNotEqual(leading, coverage)
+        lead_doc, lead_err = load_workflow_yaml(leading)
+        self.assertIsNone(lead_err)
+        lead_step = lead_doc["jobs"]["coverage"]["steps"][2]
+        self.assertEqual(lead_step.get("run").strip(), _COVERAGE_INSTALL_STEP["run"].strip())
+        self.assertNotEqual(
+            _run_rstrip(lead_step.get("run")),
+            _run_rstrip(_COVERAGE_INSTALL_STEP["run"]),
+        )
+        self.assertFalse(_step_equals_canonical(lead_step, _COVERAGE_INSTALL_STEP))
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(leading, path="coverage.yml")),
+        )
+        trailing = coverage.replace(
+            "        run: cargo install cargo-tarpaulin --version 0.35.2 --locked\n",
+            '        run: "cargo install cargo-tarpaulin --version 0.35.2 --locked  "\n',
+            1,
+        )
+        self.assertNotEqual(trailing, coverage)
+        trail_doc, trail_err = load_workflow_yaml(trailing)
+        self.assertIsNone(trail_err)
+        trail_step = trail_doc["jobs"]["coverage"]["steps"][2]
+        self.assertNotEqual(trail_step.get("run"), _COVERAGE_INSTALL_STEP["run"])
+        self.assertEqual(
+            _run_rstrip(trail_step.get("run")),
+            _run_rstrip(_COVERAGE_INSTALL_STEP["run"]),
+        )
+        self.assertTrue(_step_equals_canonical(trail_step, _COVERAGE_INSTALL_STEP))
+        self.assertNotIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(trailing, path="coverage.yml")),
+        )
+        kani = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        timeout_at = kani.index("      - name: Resolve harness timeout\n")
+        verify_at = kani.index("      - name: Kani Verification\n")
+        block = kani[timeout_at:verify_at]
+        self.assertEqual(kani.count(block), 4)
+        second = kani.replace(block, block + block, 1)
+        self.assertNotEqual(second, kani)
+        second_doc, second_err = load_workflow_yaml(second)
+        self.assertIsNone(second_err)
+        timeouts = [
+            step
+            for step in second_doc["jobs"]["kani-ecs"]["steps"]
+            if isinstance(step, dict) and step.get("id") == "timeout"
+        ]
+        self.assertEqual(len(timeouts), 2)
+        self.assertTrue(all(_step_equals_canonical(step, _KANI_TIMEOUT_STEP) for step in timeouts))
+        second_violations = kani_timeout_run_violations(second, path="kani.yml")
+        self.assertTrue(second_violations)
+        self.assertIn(KANI_TIMEOUT_MSG, second_violations[0])
 
 
 if __name__ == "__main__":
