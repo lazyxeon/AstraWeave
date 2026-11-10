@@ -45,7 +45,7 @@ jobs:
             bc jq coreutils
       
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
+        uses: mozilla-actions/sccache-action@v0.0.11
       
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
@@ -288,7 +288,7 @@ jobs:
           }
       
       - name: Create GitHub issue for regression
-        if: steps.regression_check.outputs.has_regressions == 'true'
+        if: ${{ !cancelled() && steps.regression_check.outputs.has_regressions == 'true' }}
         uses: actions/github-script@v9
         with:
           script: |
@@ -336,7 +336,7 @@ jobs:
             }
       
       - name: Upload regression report
-        if: steps.regression_check.outputs.has_regressions == 'true'
+        if: ${{ !cancelled() && steps.regression_check.outputs.has_regressions == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: regression-report-${{ github.sha }}
