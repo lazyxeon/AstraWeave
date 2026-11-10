@@ -39,7 +39,7 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@3f7c3597aa4e6da3f315e128de702ce61e7b2877 # cargo-llvm-cov
 
       - name: Format check
         run: cargo fmt -p aw_editor -- --check

@@ -11,9 +11,13 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions: {}
+
 jobs:
   coverage:
     name: Generate Code Coverage
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Coverage may fail on some configurations - non-blocking
@@ -35,12 +39,13 @@ jobs:
           cargo tarpaulin --out Xml --output-dir coverage --exclude-files 'src/main.rs' --exclude-files 'tests/*'
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           files: ./tools/astraweave-assets/coverage/cobertura.xml
           flags: astraweave-assets
           name: astraweave-assets-coverage
-          fail_ci_if_error: false
+          version: v11.3.2
+          fail_ci_if_error: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       

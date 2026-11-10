@@ -116,6 +116,99 @@ def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
+# actions/* keeps the major-tag policy above. A local `./` action has no
+# @ref. Everything else is a third-party action and must be a commit SHA.
+_REMOTE_ACTION_RE = re.compile(
+    r"uses:\s*(?P<action>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)@(?P<ref>[^\s#]+)"
+)
+_SHA40_RE = re.compile(r"[0-9a-f]{40}")
+THIRD_PARTY_SHA_MSG = "third-party action must be a 40-char commit SHA"
+CODECOV_FAIL_CI_MSG = "codecov step must set fail_ci_if_error: true"
+_STEP_DASH_RE = re.compile(r"^(\s*)-\s+\S")
+_FAIL_CI_VALUE_RE = re.compile(r"(?m)^\s*fail_ci_if_error:\s*(\S+)")
+
+
+def third_party_action_pin_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        match = _REMOTE_ACTION_RE.search(line)
+        if not match:
+            continue
+        action = match.group("action")
+        if action.startswith("actions/"):
+            continue
+        ref = match.group("ref")
+        if _SHA40_RE.fullmatch(ref):
+            continue
+        violations.append(f"{prefix}{line_no}: {action}@{ref} {THIRD_PARTY_SHA_MSG}")
+    return violations
+
+
+_STEPS_HEADER_RE = re.compile(r"^(\s*)steps:\s*(?:#.*)?$")
+
+
+def _step_blocks(text: str) -> list[tuple[int, str]]:
+    """Steps under a `steps:` key. Schedule and matrix lists are not steps."""
+    lines = text.splitlines()
+    blocks: list[tuple[int, str]] = []
+    index = 0
+    while index < len(lines):
+        header = _STEPS_HEADER_RE.match(lines[index])
+        if not header:
+            index += 1
+            continue
+        steps_indent = len(header.group(1))
+        index += 1
+        region_end = index
+        while region_end < len(lines):
+            line = lines[region_end]
+            if not line.strip() or line.lstrip().startswith("#"):
+                region_end += 1
+                continue
+            indent = len(line) - len(line.lstrip(" "))
+            if indent < steps_indent:
+                break
+            if indent == steps_indent and _STEP_DASH_RE.match(line) is None:
+                break
+            region_end += 1
+        dash_lines = [
+            (cursor, len(matched.group(1)))
+            for cursor in range(index, region_end)
+            if (matched := _STEP_DASH_RE.match(lines[cursor]))
+        ]
+        if dash_lines:
+            step_indent = min(indent for _, indent in dash_lines)
+            directs = [cursor for cursor, indent in dash_lines if indent == step_indent]
+            for position, start in enumerate(directs):
+                end = directs[position + 1] if position + 1 < len(directs) else region_end
+                blocks.append((start + 1, "\n".join(lines[start:end])))
+        index = region_end
+    return blocks
+
+
+def codecov_fail_ci_violations(text: str, *, path: str = "") -> list[str]:
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for line_no, block in _step_blocks(text):
+        if "codecov/codecov-action@" not in block:
+            continue
+        values = _FAIL_CI_VALUE_RE.findall(block)
+        if values == ["true"]:
+            continue
+        violations.append(f"{prefix}{line_no}: {CODECOV_FAIL_CI_MSG}")
+    return violations
+
+
+def github_action_surfaces() -> list[Path]:
+    roots = (WORKFLOWS, ROOT / ".github" / "actions")
+    found: list[Path] = []
+    for root in roots:
+        found.extend(root.rglob("*.yml"))
+        found.extend(root.rglob("*.yaml"))
+    return sorted(found)
+
+
 def find_action_uses_pos(block: str, action: str) -> int:
     pos = -1
     for match in ACTION_USES_RE.finditer(block):
@@ -940,6 +1033,60 @@ class WorkflowPolicyTest(unittest.TestCase):
         for name, text in workflow_texts().items():
             violations.extend(workflow_action_pin_violations(text, path=name))
         self.assertEqual(violations, [])
+
+    def test_third_party_actions_are_commit_pinned(self) -> None:
+        violations: list[str] = []
+        codecov: list[str] = []
+        for path in github_action_surfaces():
+            text = path.read_text(encoding="utf-8")
+            rel = str(path.relative_to(ROOT))
+            violations.extend(third_party_action_pin_violations(text, path=rel))
+            codecov.extend(codecov_fail_ci_violations(text, path=rel))
+        self.assertEqual(violations, [])
+        self.assertEqual(codecov, [])
+        ignored = "uses: actions/checkout@v7\nuses: ./.github/actions/rust-ci-setup\n"
+        self.assertEqual(third_party_action_pin_violations(ignored), [])
+
+    def test_codecov_action_v7_tag_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertEqual(third_party_action_pin_violations(text, path="coverage.yml"), [])
+        mutant = re.sub(
+            r"codecov/codecov-action@[0-9a-f]{40}",
+            "codecov/codecov-action@v7",
+            text,
+            count=1,
+        )
+        self.assertNotEqual(mutant, text)
+        violations = third_party_action_pin_violations(mutant, path="coverage.yml")
+        self.assertTrue(violations)
+        self.assertIn("codecov/codecov-action@v7", violations[0])
+        self.assertIn(THIRD_PARTY_SHA_MSG, violations[0])
+
+    def test_codecov_fail_ci_if_error_false_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_fail_ci_violations(text, path="coverage.yml"), [])
+        mutant = text.replace("fail_ci_if_error: true", "fail_ci_if_error: false", 1)
+        self.assertNotEqual(mutant, text)
+        violations = codecov_fail_ci_violations(mutant, path="coverage.yml")
+        upload_line = next(
+            number
+            for number, line in enumerate(mutant.splitlines(), start=1)
+            if "Upload coverage to Codecov" in line
+        )
+        self.assertEqual(
+            violations,
+            [f"coverage.yml: {upload_line}: {CODECOV_FAIL_CI_MSG}"],
+        )
+        # A later step that mentions the true value does not cover this step.
+        decoy = mutant.replace(
+            "fail_ci_if_error: false",
+            "fail_ci_if_error: false\n\n      - name: Not codecov\n        run: echo fail_ci_if_error: true",
+            1,
+        )
+        self.assertNotEqual(decoy, mutant)
+        decoy_violations = codecov_fail_ci_violations(decoy, path="coverage.yml")
+        self.assertTrue(decoy_violations)
+        self.assertIn(CODECOV_FAIL_CI_MSG, decoy_violations[0])
 
     def test_policy_actions_matches_expected_set(self) -> None:
         self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
