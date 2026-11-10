@@ -133,6 +133,7 @@ jobs:
 
       - name: sccache stats
         if: always() && needs.changes.outputs.docs_only != 'true' && steps.rust_ci.outputs.sccache-available == 'true'
+        shell: bash
         run: sccache --show-stats
 
   test-linux-build:

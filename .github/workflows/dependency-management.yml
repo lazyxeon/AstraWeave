@@ -197,6 +197,7 @@ jobs:
 
       - name: Show sccache stats (before)
         if: steps.sccache_fetch.outputs.available == 'true'
+        shell: bash
         run: sccache --show-stats
 
       - name: Warm dependency cache
@@ -221,6 +222,7 @@ jobs:
 
       - name: Show sccache stats (after)
         if: steps.sccache_fetch.outputs.available == 'true'
+        shell: bash
         run: sccache --show-stats
 
   workspace-analysis:

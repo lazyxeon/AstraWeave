@@ -70,6 +70,7 @@ jobs:
         if: always()
       
       - name: Display sccache statistics
+        shell: bash
         run: sccache --show-stats
         if: always() && steps.rust_ci.outputs.sccache-available == 'true'
 

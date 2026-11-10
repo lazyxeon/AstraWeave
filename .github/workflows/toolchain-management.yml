@@ -68,8 +68,6 @@ jobs:
           - os: macos-latest
             toolchain: beta
 
-    continue-on-error: ${{ matrix.experimental || false }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

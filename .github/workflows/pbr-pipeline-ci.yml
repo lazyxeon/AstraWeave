@@ -32,7 +32,6 @@ jobs:
     name: Build PBR Components (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    continue-on-error: true  # Allow workflow to pass if editor/platform issues occur
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]

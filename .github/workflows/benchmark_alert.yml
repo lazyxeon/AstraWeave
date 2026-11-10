@@ -95,6 +95,7 @@ jobs:
 
       - name: Display sccache statistics
         if: always() && steps.sccache_fetch.outputs.available == 'true'
+        shell: bash
         run: sccache --show-stats
 
   aggregate:
