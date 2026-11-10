@@ -10,32 +10,39 @@
 #
 # The archive sha256 values are pinned below. A mismatch exits 1 immediately:
 # no retry, no fallback, no available= line, and no tool cache. The mismatch
-# line is builtin printf after the ERR trap is disarmed, so a fault writing
+# line is builtin printf after the ERR trap is disarmed, so a write error on
 # that line still exits non-zero. Removing the temp directory cannot change
-# that exit. Any other failure exits 0, removes the tool-cache directory and
+# that exit.
+#
+# Every other handled failure exits 0, removes the tool-cache directory and
 # its .complete marker when that directory was created, and records
 # available=false when the step output can be written. A failure to write
-# that output still exits 0 and does not record available=true. A fault
-# writing this script's stdout or stderr cannot change the exit.
-# available=true is the last command, after the archive and the installed
-# file have been checked. A failed download retries with backoff.
+# that output still exits 0 and does not record available=true. A write error
+# on stdout or stderr cannot change the exit. A closed pipe is SIGPIPE
+# (exit 141): the tool cache is removed and the .complete marker is not left
+# behind. available=true is written only after the install checks. The marker
+# is written only after that. If that write fails, the tool cache is
+# removed and the step output is rewritten to available=false. A partial
+# or failed run leaves no marker.
+# A failure to remove the temp directory cannot change the exit or the
+# recorded output. A failed download retries with backoff.
 #
-# Before the copy, lstat walks the extracted tree and rejects a symlink or
-# any entry that is not a regular file or a directory. The top-level pick is
-# that same lstat and does not follow a link. The installed name is
-# sccache.exe on win32 and sccache otherwise. That entry must be one regular
-# file with a link count of 1, and the script copies that file alone. The
-# tool cache is checked again before the marker. The workflow fallback step
-# clears the compiler wrapper. This script does not export compiler settings.
+# Before extraction, archive headers must be regular files or directories.
+# Links and devices are refused, including when tar materializes a link as a
+# copy. After extraction, an lstat walk rejects a symlink or any entry that
+# is not a regular file or a directory. The archive must contain exactly one
+# top-level entry, a real directory named for this release asset. The
+# installed name is sccache.exe on win32 and sccache otherwise. That entry
+# must be one regular file with a link count of 1. The script copies that
+# file alone, checks the tool cache holds only that file, and checks its
+# bytes match the archive member.
 #
-# --release-base is for the policy test harness. Workflows call this script
-# with no arguments.
+# Workflow steps start this script with env -i and bash --noprofile --norc,
+# passing PATH, HOME, GITHUB_OUTPUT, and RUNNER_TOOL_CACHE. curl's first
+# argument is -q, so it does not read a curlrc. --release-base is for the
+# policy test harness. Workflows call this script with no arguments.
 # -E runs the ERR trap inside functions and command substitutions.
 set -eEuo pipefail
-# BASH_ENV and ENV are already sourced for this process. Drop them so a
-# child shell does not source a caller file. The mismatch line uses builtin
-# printf so a printf function from that file cannot replace it.
-unset BASH_ENV ENV
 
 VERSION=v0.19.0
 ATTEMPTS="${SCCACHE_FETCH_ATTEMPTS:-5}"
@@ -61,13 +68,23 @@ fail_closed() {
   exit 0
 }
 
-# A checksum mismatch is the only path that exits non-zero. It disarms this
-# trap before builtin printf, so a fault on that message still exits
-# non-zero and cannot fall back. The EXIT cleanup cannot fail (`|| true`).
-# A failure in a command substitution exits 1 so the parent shell, not the
-# subshell, runs the fallback. Writing the step output, the diagnostic
-# lines, and removing the temp directory or the tool cache cannot change a
-# fallback exit.
+# A closed pipe delivers SIGPIPE. Remove a partial install and exit 141
+# before a marker or available=true can count as success.
+on_sigpipe() {
+  if [ -n "$dest" ]; then
+    rm -rf "$dest" "${dest}.complete" || true
+  fi
+  exit 141
+}
+trap on_sigpipe PIPE
+
+# A checksum mismatch is the only path that exits non-zero on purpose. It
+# disarms this trap before builtin printf, so a write error on that message
+# still exits non-zero and cannot fall back. The EXIT cleanup cannot fail
+# (`|| true`). A failure in a command substitution exits 1 so the parent
+# shell, not the subshell, runs the fallback. Writing the step output, the
+# diagnostic lines, and removing the temp directory or the tool cache cannot
+# change a fallback exit.
 on_unexpected_error() {
   if [ "${BASH_SUBSHELL:-0}" -ne 0 ]; then
     exit 1
@@ -195,21 +212,54 @@ plain_binary() {
 
 # lstat does not follow a link. A symlink to a directory is not a directory.
 plain_directory() {
-  node -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (st.isSymbolicLink() || !st.isDirectory()) process.exit(1);' "$1"
+  node -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (!st.isDirectory()) process.exit(1);' "$1"
 }
 
 # Reject a symlink or any other non-regular entry anywhere under the root.
+# A failed directory read or a failed entry lstat rejects the tree.
 plain_tree() {
-  node -e 'const fs=require("fs"),path=require("path"); const root=process.argv[1]; function walk(dir){ let names; try { names=fs.readdirSync(dir); } catch (e) { process.exit(1); } for (const name of names) { const p=path.join(dir, name); let st; try { st=fs.lstatSync(p); } catch (e) { process.exit(1); } if (st.isSymbolicLink()) process.exit(1); if (st.isDirectory()) { walk(p); continue; } if (!st.isFile()) process.exit(1); } } let st; try { st=fs.lstatSync(root); } catch (e) { process.exit(1); } if (st.isSymbolicLink() || !st.isDirectory()) process.exit(1); walk(root);' "$1"
+  node -e 'const fs=require("fs"),path=require("path"); const root=process.argv[1]; function walk(dir){ let names; try { names=fs.readdirSync(dir); } catch (e) { process.exit(1); } for (const name of names) { const p=path.join(dir, name); let st; try { st=fs.lstatSync(p); } catch (e) { process.exit(1); } if (st.isDirectory()) { walk(p); continue; } if (!st.isFile()) process.exit(1); } } walk(root);' "$1"
+}
+
+# Deny by default. Type flags: NUL and "0" are regular files, "5" is a
+# directory. Anything else, including links and devices, is refused.
+# Exit 1 is a refused member. Exit 2 is an archive this parser cannot read.
+archive_plain_members() {
+  node -e 'const fs=require("fs"),zlib=require("zlib"); let buf; try { buf=zlib.gunzipSync(fs.readFileSync(process.argv[1])); } catch (e) { process.exit(2); } function field(header, start, length) { let end=start; const limit=start+length; while (end<limit && header[end]!==0) end++; return header.subarray(start, end).toString("utf8").trim(); } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) process.exit(0); let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=parseInt(field(h, 148, 8), 8); if (!Number.isFinite(recorded) || recorded!==sum) process.exit(2); const typ=h[156]; const plain=typ===0 || typ===48 || typ===53; if (!plain) process.exit(1); const size=parseInt(field(h, 124, 12)||"0", 8); if (!Number.isFinite(size) || size<0) process.exit(2); const blocks=Math.ceil(size/512); off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$1"
+}
+
+# An extracted member can be mode 000. chmod the directory before descending
+# so the temp tree can be removed. A failure here cannot change the exit.
+restore_tree() {
+  chmod u+rwx "$1" 2>/dev/null || true
+  local child
+  shopt -s nullglob dotglob
+  for child in "$1"/*; do
+    if [ -d "$child" ] && [ ! -L "$child" ]; then
+      restore_tree "$child"
+    else
+      chmod u+rwx "$child" 2>/dev/null || true
+    fi
+  done
+  shopt -u nullglob dotglob
+}
+
+cleanup_tmp() {
+  if [ -z "${tmp:-}" ] || [ ! -d "$tmp" ]; then
+    return 0
+  fi
+  restore_tree "$tmp" || true
+  rm -rf "$tmp" || true
 }
 
 tmp="$(mktemp -d)" || fail_closed "could not create a temp directory"
-trap 'rm -rf "$tmp" || true' EXIT
+trap cleanup_tmp EXIT
 
 download_archive() {
   local attempt=1 delay="$DELAY"
   while [ "$attempt" -le "$ATTEMPTS" ]; do
-    if curl -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.tar.gz" "$url"; then
+    # -q is first so curl does not read a curlrc from HOME or CURL_HOME.
+    if curl -q -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.tar.gz" "$url"; then
       return 0
     fi
     rm -f "$tmp/pkg.tar.gz"
@@ -236,6 +286,15 @@ if [ "${#want}" -ne 64 ] || [ "$got" != "$want" ]; then
   exit 1
 fi
 
+member_status=0
+archive_plain_members "$tmp/pkg.tar.gz" || member_status=$?
+if [ "$member_status" -eq 1 ]; then
+  fail_closed "archive has a symlink or non-regular entry"
+fi
+if [ "$member_status" -ne 0 ]; then
+  fail_closed "could not extract the archive"
+fi
+
 rm -rf "$tmp/extract"
 mkdir -p "$tmp/extract" || fail_closed "could not create the extract directory"
 tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
@@ -244,15 +303,14 @@ if ! plain_tree "$tmp/extract"; then
   fail_closed "archive has a symlink or non-regular entry"
 fi
 
-inner=""
-for candidate in "$tmp/extract"/*; do
-  if plain_directory "$candidate"; then
-    inner="$candidate"
-    break
-  fi
-done
-if [ -z "$inner" ]; then
-  fail_closed "archive has no top-level directory"
+release_root="${filename%.tar.gz}"
+top_name="$(node -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1) process.exit(1); process.stdout.write(names[0]);' "$tmp/extract")" || fail_closed "archive does not contain exactly one release root"
+if [ "$top_name" != "$release_root" ]; then
+  fail_closed "archive release root does not match the asset"
+fi
+inner="$tmp/extract/$release_root"
+if ! plain_directory "$inner"; then
+  fail_closed "archive release root is not a directory"
 fi
 if ! plain_binary "$inner/$binary_name"; then
   fail_closed "archive has no sccache binary"
@@ -264,22 +322,27 @@ if ! {
   mkdir -p "$dest" \
     && cp "${inner}/${binary_name}" "${dest}/${binary_name}"
 }; then
-  rm -rf "$dest" "${dest}.complete" || true
   fail_closed "could not install sccache into the tool cache"
 fi
 
-if ! plain_binary "$dest/$binary_name" || ! plain_tree "$dest"; then
-  rm -rf "$dest" "${dest}.complete" || true
+if ! plain_binary "$dest/$binary_name"; then
   fail_closed "tool cache is missing the sccache binary"
 fi
-if ! printf '' > "${dest}.complete"; then
-  rm -rf "$dest" "${dest}.complete" || true
-  fail_closed "tool cache is missing the .complete marker"
+if ! node -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1 || names[0]!==process.argv[2]) process.exit(1);' "$dest" "$binary_name"; then
+  fail_closed "tool cache is missing the sccache binary"
 fi
-if [ ! -f "${dest}.complete" ]; then
-  rm -rf "$dest" "${dest}.complete" || true
-  fail_closed "tool cache is missing the .complete marker"
+src_sum="$(sha256_file "${inner}/${binary_name}")"
+dst_sum="$(sha256_file "${dest}/${binary_name}")"
+if [ "$src_sum" != "$dst_sum" ]; then
+  fail_closed "tool cache is missing the sccache binary"
 fi
 
 echo "sccache ${VERSION} cached at ${dest}" || true
 write_output "available=true"
+if ! printf '' > "${dest}.complete"; then
+  rm -rf "$dest" "${dest}.complete" || true
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    printf 'available=false\n' > "$GITHUB_OUTPUT" || true
+  fi
+  exit 0
+fi

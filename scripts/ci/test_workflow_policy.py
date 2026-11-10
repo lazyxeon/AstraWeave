@@ -14,6 +14,7 @@ import inspect
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -841,6 +842,78 @@ def _run_fetch(
         command.extend(["--release-base", base])
     result = subprocess.run(command, env=env, text=True, capture_output=True, check=False)
     output_path = work / "output"
+    output = output_path.read_text(encoding="utf-8") if output_path.is_file() else ""
+    return result, output
+
+
+SCCACHE_FETCH_COMMAND = (
+    'env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" '
+    'RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" '
+    "bash --noprofile --norc scripts/ci/fetch_sccache_release.sh"
+)
+
+
+def sccache_fetch_run_violations(
+    texts: list[tuple[str, str]] | None = None,
+) -> list[str]:
+    repo_scan = texts is None
+    if texts is None:
+        paths = [ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml"]
+        paths.extend(sorted((ROOT / ".github" / "workflows").glob("*.yml")))
+        texts = [
+            (str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")) for path in paths
+        ]
+    violations: list[str] = []
+    found = 0
+    for label, text in texts:
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if "fetch_sccache_release.sh" not in line:
+                continue
+            found += 1
+            if line.strip() != f"run: {SCCACHE_FETCH_COMMAND}":
+                violations.append(f"{label}:{line_no} is not the clean fetch command")
+    if repo_scan and found != 10:
+        violations.append(f"expected 10 fetch steps, found {found}")
+    return violations
+
+
+def _workflow_fetch_argv(script: Path, base: str, env: dict[str, str]) -> list[str]:
+    argv: list[str] = []
+    for token in shlex.split(SCCACHE_FETCH_COMMAND):
+        if token == "scripts/ci/fetch_sccache_release.sh":
+            argv.append(str(script))
+            continue
+        if "=" in token:
+            key, value = token.split("=", 1)
+            if value.startswith("$"):
+                argv.append(f"{key}={env.get(value[1:], '')}")
+                continue
+        argv.append(token)
+    argv.extend(["--release-base", base])
+    return argv
+
+
+def _run_workflow_fetch(
+    work: Path,
+    *,
+    script: Path | None = None,
+    base: str,
+    hostile: dict[str, str] | None = None,
+    tool_cache: Path | None = None,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    env = os.environ.copy()
+    if hostile:
+        env.update(hostile)
+    env["GITHUB_OUTPUT"] = str(work / "output")
+    env["RUNNER_TOOL_CACHE"] = str(tool_cache or (work / "tool-cache"))
+    output_path = work / "output"
+    output_path.unlink(missing_ok=True)
+    argv = _workflow_fetch_argv(
+        script or (ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"),
+        base,
+        env,
+    )
+    result = subprocess.run(argv, env=env, text=True, capture_output=True, check=False)
     output = output_path.read_text(encoding="utf-8") if output_path.is_file() else ""
     return result, output
 
@@ -1930,10 +2003,10 @@ exit 1
                         cached_exists = cached.exists()
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(output, "available=false\n")
-                if kind == "symlink":
-                    self.assertIn("archive has a symlink or non-regular entry", result.stderr)
-                else:
+                if kind == "directory":
                     self.assertIn("archive has no sccache binary", result.stderr)
+                else:
+                    self.assertIn("archive has a symlink or non-regular entry", result.stderr)
                 self.assertNotIn("checksum mismatch", result.stderr)
                 self.assertFalse(marker_exists)
                 self.assertFalse(cached_exists)
@@ -1983,16 +2056,29 @@ exit 1
         self.assertNotIn("sccache.exe", post_check)
         self.assertIn("binary_name=sccache.exe", script_text)
         self.assertNotIn("cp -R", script_text)
-        self.assertIn('if plain_directory "$candidate"; then', script_text)
+        self.assertNotIn("cp -L", script_text)
+        self.assertIn(
+            'cp "${inner}/${binary_name}" "${dest}/${binary_name}"',
+            script_text,
+        )
+        self.assertNotIn("for candidate in", script_text)
+        self.assertIn('if ! plain_directory "$inner"; then', script_text)
+        self.assertLess(script_text.find("archive_plain_members"), script_text.find('tar -xzf'))
         plain_binary = script_text.split("plain_binary() {", 1)[1].split("plain_directory() {", 1)[0]
         self.assertIn("fs.lstatSync", plain_binary)
         self.assertNotIn("fs.statSync", plain_binary)
         branch = script_text.split('if [ "${#want}" -ne 64 ]', 1)[1].split("\nfi", 1)[0]
         self.assertLess(branch.find("trap - ERR"), branch.find("builtin printf"))
         self.assertNotIn("|| true", branch)
-        ending = [line for line in script_text.splitlines() if line.strip()][-2:]
-        self.assertEqual(ending[0], 'echo "sccache ${VERSION} cached at ${dest}" || true')
-        self.assertEqual(ending[1], 'write_output "available=true"')
+        echo_at = script_text.rfind('echo "sccache ${VERSION} cached at ${dest}" || true')
+        available_at = script_text.rfind('write_output "available=true"')
+        marker_token = "printf '' > \"${dest}.complete\""
+        self.assertEqual(script_text.count(marker_token), 1)
+        marker_at = script_text.find(marker_token)
+        self.assertLess(script_text.find("archive_plain_members \"$tmp/pkg.tar.gz\""), script_text.find("tar -xzf"))
+        self.assertGreater(echo_at, 0)
+        self.assertLess(echo_at, available_at)
+        self.assertLess(available_at, marker_at)
         self.assertIn('echo "sccache prefetch failed: $*" >&2 || true', script_text)
 
         payload = b"#!/bin/sh\necho sccache 0.19.0\n"
@@ -2138,12 +2224,14 @@ exit 1
                     cached_is_file = cached.is_file()
                     cached_is_link = cached.is_symlink()
                     marker_is_file = marker.is_file()
+                    names = sorted(path.name for path in cached.parent.iterdir())
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(output, "available=true\n")
             self.assertNotIn("available=false", output)
             self.assertTrue(cached_is_file)
             self.assertFalse(cached_is_link)
             self.assertTrue(marker_is_file)
+            self.assertEqual(names, ["sccache"])
             self.assertEqual(ran, "sccache 0.19.0")
             self.assertIn("cached at", result.stdout)
 
@@ -2413,6 +2501,813 @@ exec {real_node} "$@"
         self.assertNotIn("unexpected error", shadowed_run.stderr)
         self.assertFalse(marker_exists)
         self.assertFalse(cached_exists)
+
+    def test_sccache_fetch_steps_use_a_clean_environment(self) -> None:
+        violations = sccache_fetch_run_violations()
+        self.assertEqual(violations, [])
+        action = (ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml").read_text(
+            encoding="utf-8"
+        )
+        for old, new in (
+            (SCCACHE_FETCH_COMMAND, "bash scripts/ci/fetch_sccache_release.sh"),
+            (' RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE"', ""),
+            ("bash --noprofile --norc ", "bash "),
+        ):
+            mutant = action.replace(old, new, 1)
+            self.assertNotEqual(mutant, action)
+            self.assertTrue(sccache_fetch_run_violations([("action.yml", mutant)]))
+
+    def _mismatch_via_workflow(
+        self,
+        work: Path,
+        hostile: dict[str, str] | None = None,
+    ) -> tuple[subprocess.CompletedProcess[str], str, str]:
+        filename, arch = _host_sccache_filename()
+        blob = _valid_sccache_archive(work)
+        with _fixed_body_server(blob, status=200) as server:
+            port = server.server_address[1]
+            result, output = _run_workflow_fetch(
+                work,
+                base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                hostile=hostile,
+            )
+        return result, output, arch
+
+    def test_sccache_fetch_ignores_node_options(self) -> None:
+        filename, _arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            hook = work / "hook.js"
+            hook.write_text(
+                "const crypto = require('crypto');\n"
+                f"const forced = {PINNED_SCCACHE_SHA256[filename]!r};\n"
+                "const orig = crypto.createHash;\n"
+                "crypto.createHash = function (algo) {\n"
+                "  const hash = orig.call(crypto, algo);\n"
+                "  if (algo !== 'sha256') return hash;\n"
+                "  const digest = hash.digest.bind(hash);\n"
+                "  hash.digest = function (enc) {\n"
+                "    if (enc === 'hex') return forced;\n"
+                "    return digest(enc);\n"
+                "  };\n"
+                "  return hash;\n"
+                "};\n",
+                encoding="utf-8",
+            )
+            result, output, arch = self._mismatch_via_workflow(
+                work,
+                {"NODE_OPTIONS": f"--require {hook}"},
+            )
+            marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+            self.assertFalse(marker.exists())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertNotIn("available=", output)
+
+    def test_sccache_fetch_ignores_exported_shell_function(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            result, output, _arch = self._mismatch_via_workflow(
+                work,
+                {"BASH_FUNC_exit%%": "() {  command exit 0\n}"},
+            )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertNotIn("available=", output)
+
+    def test_sccache_fetch_ignores_bash_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            startup = work / "startup.sh"
+            startup.write_text("exit() { command exit 0; }\n", encoding="utf-8")
+            result, output, _arch = self._mismatch_via_workflow(
+                work,
+                {"BASH_ENV": str(startup), "ENV": str(startup)},
+            )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertNotIn("available=", output)
+
+    def test_sccache_fetch_ignores_shell_options(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            result, output, _arch = self._mismatch_via_workflow(
+                work,
+                {"SHELLOPTS": "noexec", "BASHOPTS": "extdebug"},
+            )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertNotIn("available=", output)
+
+    def test_sccache_fetch_ignores_ld_preload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            marker = work / "preload-hit"
+            source = work / "preload.c"
+            source.write_text(
+                "#include <stdio.h>\n"
+                "#include <string.h>\n"
+                "#include <unistd.h>\n"
+                "__attribute__((constructor)) static void aw_preload(void) {\n"
+                "  char comm[64];\n"
+                "  FILE *handle = fopen(\"/proc/self/comm\", \"r\");\n"
+                "  if (!handle) return;\n"
+                "  if (fgets(comm, sizeof comm, handle) == NULL) {\n"
+                "    fclose(handle);\n"
+                "    return;\n"
+                "  }\n"
+                "  fclose(handle);\n"
+                "  if (strncmp(comm, \"bash\", 4) != 0) return;\n"
+                f"  handle = fopen(\"{marker}\", \"w\");\n"
+                "  if (handle) { fputs(\"loaded\\n\", handle); fclose(handle); }\n"
+                "  _exit(0);\n"
+                "}\n",
+                encoding="utf-8",
+            )
+            library = work / "preload.so"
+            built = subprocess.run(
+                ["gcc", "-shared", "-fPIC", "-o", str(library), str(source)],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(built.returncode, 0, built.stderr)
+            result, output, _arch = self._mismatch_via_workflow(
+                work,
+                {"LD_PRELOAD": str(library)},
+            )
+            self.assertFalse(marker.exists())
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertNotIn("available=", output)
+
+    def test_sccache_fetch_ignores_tmpdir(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            hostile_tmp = work / "hostile-tmp"
+            hostile_tmp.mkdir()
+            hostile_tmp.chmod(0)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            try:
+                with _fixed_body_server(blob, status=200) as server:
+                    port = server.server_address[1]
+                    result, output = _run_workflow_fetch(
+                        work,
+                        script=script,
+                        base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                        hostile={"TMPDIR": str(hostile_tmp)},
+                    )
+                    marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+                    marker_exists = marker.is_file()
+            finally:
+                hostile_tmp.chmod(0o755)
+            left = list(hostile_tmp.iterdir())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertTrue(marker_exists)
+        self.assertEqual(left, [])
+
+    def test_sccache_fetch_ignores_curlrc(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            home = work / "home"
+            home.mkdir()
+            (home / ".curlrc").write_text('proxy = "http://127.0.0.1:9"\n', encoding="utf-8")
+            curl_home = work / "curl-home"
+            curl_home.mkdir()
+            (curl_home / ".curlrc").write_text('proxy = "http://127.0.0.1:9"\n', encoding="utf-8")
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_workflow_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    hostile={"HOME": str(home), "CURL_HOME": str(curl_home)},
+                )
+                marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+                cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+                ran = subprocess.check_output([str(cached)], text=True).strip()
+                marker_is_file = marker.is_file()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertTrue(marker_is_file)
+        self.assertEqual(ran, "sccache 0.19.0")
+
+    def test_sccache_fetch_keeps_archive_bytes_when_cp_is_replaced(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(
+                work / "bin",
+                "cp",
+                "#!/bin/sh\nprintf '%s\\n' '#!/bin/sh' 'echo SWAPPED' > \"$2\"\nchmod 755 \"$2\"\nexit 0\n",
+            )
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_workflow_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    hostile={"PATH": f"{work / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"},
+                )
+                dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
+                marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+                dest_exists = dest.exists()
+                marker_exists = marker.exists()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=false\n")
+        self.assertIn("tool cache is missing the sccache binary", result.stderr)
+        self.assertNotIn("SWAPPED", output)
+        self.assertFalse(dest_exists)
+        self.assertFalse(marker_exists)
+
+    def test_sccache_prefetch_requires_the_release_root(self) -> None:
+        filename, arch = _host_sccache_filename()
+        root = filename[: -len(".tar.gz")]
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        decoy = b"#!/bin/sh\necho decoy\n"
+
+        def pack(work: Path, members: list[tuple[str, bytes]]) -> bytes:
+            archive_path = work / filename
+            with tarfile.open(archive_path, "w:gz") as archive:
+                for name, data in members:
+                    info = tarfile.TarInfo(name=name)
+                    info.size = len(data)
+                    info.mode = 0o755
+                    archive.addfile(info, io.BytesIO(data))
+            return archive_path.read_bytes()
+
+        cases = (
+            (
+                "decoy-sorts-first",
+                [
+                    (f"aaa/sccache", decoy),
+                    (f"{root}/sccache", payload),
+                ],
+                "archive does not contain exactly one release root",
+            ),
+            (
+                "sibling-file",
+                [
+                    (f"{root}/sccache", payload),
+                    ("notes.txt", b"notes\n"),
+                ],
+                "archive does not contain exactly one release root",
+            ),
+            (
+                "wrong-root-name",
+                [("aaa/sccache", payload)],
+                "archive release root does not match the asset",
+            ),
+            (
+                "root-is-a-file",
+                [(root, payload)],
+                "archive release root is not a directory",
+            ),
+        )
+        for name, members, message in cases:
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    blob = pack(work, members)
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    with _fixed_body_server(blob, status=200) as server:
+                        port = server.server_address[1]
+                        result, output = _run_fetch(
+                            work,
+                            script=script,
+                            base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                        )
+                    _assert_prefetch_fell_back(
+                        self, result, output, work, arch, message=message
+                    )
+                    cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+                    self.assertFalse(cached.exists())
+
+    def test_sccache_prefetch_refuses_special_members_before_extract(self) -> None:
+        filename, arch = _host_sccache_filename()
+        root = filename[: -len(".tar.gz")]
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        outside_bytes = b"outside-the-archive\n"
+
+        def special(kind: str, directory: Path) -> bytes:
+            archive_path = directory / filename
+            with tarfile.open(archive_path, "w:gz") as archive:
+                if kind == "symlink":
+                    link = tarfile.TarInfo(name=f"{root}/sccache")
+                    link.type = tarfile.SYMTYPE
+                    link.linkname = str(directory / "outside")
+                    archive.addfile(link)
+                elif kind == "fifo":
+                    info = tarfile.TarInfo(name=f"{root}/sccache")
+                    info.size = len(payload)
+                    info.mode = 0o755
+                    archive.addfile(info, io.BytesIO(payload))
+                    fifo = tarfile.TarInfo(name=f"{root}/fifo")
+                    fifo.type = tarfile.FIFOTYPE
+                    archive.addfile(fifo)
+                elif kind == "device":
+                    info = tarfile.TarInfo(name=f"{root}/sccache")
+                    info.size = len(payload)
+                    info.mode = 0o755
+                    archive.addfile(info, io.BytesIO(payload))
+                    device = tarfile.TarInfo(name=f"{root}/device")
+                    device.type = tarfile.CHRTYPE
+                    device.devmajor = 1
+                    device.devminor = 3
+                    archive.addfile(device)
+                elif kind == "block":
+                    info = tarfile.TarInfo(name=f"{root}/sccache")
+                    info.size = len(payload)
+                    info.mode = 0o755
+                    archive.addfile(info, io.BytesIO(payload))
+                    device = tarfile.TarInfo(name=f"{root}/device")
+                    device.type = tarfile.BLKTYPE
+                    device.devmajor = 1
+                    device.devminor = 3
+                    archive.addfile(device)
+                else:
+                    raise AssertionError(kind)
+            return archive_path.read_bytes()
+
+        materializing_tar = """#!/bin/sh
+real=/usr/bin/tar
+extract=0
+for arg in "$@"; do
+  case "$arg" in
+    -*x*) extract=1 ;;
+  esac
+done
+if [ "$extract" -eq 0 ]; then
+  exec "$real" "$@"
+fi
+"$real" "$@" || exit $?
+dest=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-C" ]; then
+    dest=$arg
+  fi
+  prev=$arg
+done
+if [ -n "$dest" ]; then
+  find "$dest" \\( -type l -o -type p -o -type b -o -type c \\) -print | while IFS= read -r entry; do
+    rm -f "$entry"
+    cp "$AW_OUTSIDE" "$entry" 2>/dev/null || printf '%s\\n' 'materialized' > "$entry"
+  done
+fi
+exit 0
+"""
+        for kind in ("symlink", "fifo", "device", "block"):
+            with self.subTest(kind=kind):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    outside = work / "outside"
+                    outside.write_bytes(outside_bytes)
+                    blob = special(kind, work)
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    _write_exe(work / "bin", "tar", materializing_tar)
+                    env_path = f"{work / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"
+                    with _fixed_body_server(blob, status=200) as server:
+                        port = server.server_address[1]
+                        env = os.environ.copy()
+                        env["PATH"] = env_path
+                        env["AW_OUTSIDE"] = str(outside)
+                        env["GITHUB_OUTPUT"] = str(work / "output")
+                        env["GITHUB_ENV"] = str(work / "env")
+                        env["RUNNER_TOOL_CACHE"] = str(work / "tool-cache")
+                        env["SCCACHE_FETCH_ATTEMPTS"] = "1"
+                        env["SCCACHE_FETCH_DELAY_SECONDS"] = "0"
+                        result = subprocess.run(
+                            [
+                                "bash",
+                                str(script),
+                                "--release-base",
+                                f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                            ],
+                            env=env,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        output = (work / "output").read_text(encoding="utf-8")
+                    _assert_prefetch_fell_back(
+                        self,
+                        result,
+                        output,
+                        work,
+                        arch,
+                        message="archive has a symlink or non-regular entry",
+                    )
+                    self.assertNotIn("outside-the-archive", output)
+                    self.assertNotIn("outside-the-archive", result.stdout)
+
+    def test_sccache_prefetch_refuses_a_link_added_at_extract(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        planting_tar = """#!/bin/sh
+real=/usr/bin/tar
+"$real" "$@" || exit $?
+dest=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-C" ]; then
+    dest=$arg
+  fi
+  prev=$arg
+done
+if [ -n "$dest" ]; then
+  find "$dest" -type f -name README.md -print | while IFS= read -r file; do
+    rm -f "$file"
+    ln -s /etc/hostname "$file"
+  done
+fi
+exit 0
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _packed_archive(
+                work,
+                [
+                    ("sccache", "file", payload),
+                    ("README.md", "file", b"readme\n"),
+                ],
+            )
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(work / "bin", "tar", planting_tar)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    path_prefix=work / "bin",
+                )
+            _assert_prefetch_fell_back(
+                self,
+                result,
+                output,
+                work,
+                arch,
+                message="archive has a symlink or non-regular entry",
+            )
+
+    def test_sccache_prefetch_refuses_an_unreadable_member_directory(self) -> None:
+        filename, arch = _host_sccache_filename()
+        root = filename[: -len(".tar.gz")]
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+
+        def limited(directory: Path, mode: int, with_child: bool) -> bytes:
+            archive_path = directory / filename
+            with tarfile.open(archive_path, "w:gz") as archive:
+                info = tarfile.TarInfo(name=f"{root}/sccache")
+                info.size = len(payload)
+                info.mode = 0o755
+                archive.addfile(info, io.BytesIO(payload))
+                sub = tarfile.TarInfo(name=f"{root}/sub")
+                sub.type = tarfile.DIRTYPE
+                sub.mode = mode
+                archive.addfile(sub)
+                if with_child:
+                    leaf = tarfile.TarInfo(name=f"{root}/sub/leaf")
+                    leaf.size = 1
+                    leaf.mode = 0o644
+                    archive.addfile(leaf, io.BytesIO(b"z"))
+            return archive_path.read_bytes()
+
+        for name, mode, with_child in (
+            ("unreadable", 0o000, False),
+            ("unsearchable", 0o444, True),
+        ):
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    script_tmp = work / "script-tmp"
+                    script_tmp.mkdir()
+                    blob = limited(work, mode, with_child)
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    with _fixed_body_server(blob, status=200) as server:
+                        port = server.server_address[1]
+                        env = os.environ.copy()
+                        env["TMPDIR"] = str(script_tmp)
+                        env["GITHUB_OUTPUT"] = str(work / "output")
+                        env["GITHUB_ENV"] = str(work / "env")
+                        env["RUNNER_TOOL_CACHE"] = str(work / "tool-cache")
+                        env["SCCACHE_FETCH_ATTEMPTS"] = "1"
+                        env["SCCACHE_FETCH_DELAY_SECONDS"] = "0"
+                        result = subprocess.run(
+                            [
+                                "bash",
+                                str(script),
+                                "--release-base",
+                                f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                            ],
+                            env=env,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                        output = (work / "output").read_text(encoding="utf-8")
+                    _assert_prefetch_fell_back(
+                        self,
+                        result,
+                        output,
+                        work,
+                        arch,
+                        message="archive has a symlink or non-regular entry",
+                    )
+                    self.assertEqual(list(script_tmp.iterdir()), [])
+
+    def test_sccache_prefetch_rejects_an_extra_tool_cache_file(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _packed_archive(
+                work,
+                [
+                    ("sccache", "file", b"#!/bin/sh\necho sccache 0.19.0\n"),
+                    ("README.md", "file", b"readme\n"),
+                ],
+            )
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(
+                work / "bin",
+                "cp",
+                "#!/bin/sh\n/bin/cp \"$1\" \"$2\"\nprintf 'extra\\n' > \"$(dirname \"$2\")/cargo\"\nexit 0\n",
+            )
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    path_prefix=work / "bin",
+                )
+            _assert_prefetch_fell_back(
+                self,
+                result,
+                output,
+                work,
+                arch,
+                message="tool cache is missing the sccache binary",
+            )
+
+    def test_sccache_prefetch_replaces_a_preseeded_tool_cache(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
+            dest.mkdir(parents=True)
+            (dest / "cargo").write_text("stale\n", encoding="utf-8")
+            (dest.parent / f"{arch}.complete").write_text("stale\n", encoding="utf-8")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+                names = sorted(path.name for path in dest.iterdir())
+                marker = (dest.parent / f"{arch}.complete").read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertEqual(names, ["sccache"])
+        self.assertEqual(marker, "")
+
+    def test_sccache_prefetch_uses_sccache_on_darwin(self) -> None:
+        real_node = shutil.which("node")
+        self.assertIsNotNone(real_node)
+        darwin = "sccache-v0.19.0-x86_64-apple-darwin.tar.gz"
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        node = f"""#!/bin/sh
+if [ "$1" = "-p" ] && [ "$2" = "process.platform" ]; then
+  printf '%s\\n' darwin
+  exit 0
+fi
+if [ "$1" = "-p" ] && [ "$2" = "process.arch" ]; then
+  printf '%s\\n' x64
+  exit 0
+fi
+exec {real_node} "$@"
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            _write_exe(work / "bin", "node", node)
+            blob = _packed_archive(
+                work,
+                [("sccache", "file", payload)],
+                filename=darwin,
+            )
+            script = _script_pinned_named(work, darwin, hashlib.sha256(blob).hexdigest())
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    path_prefix=work / "bin",
+                )
+                cached = work / "tool-cache" / "sccache" / "0.19.0" / "x64" / "sccache"
+                exe = work / "tool-cache" / "sccache" / "0.19.0" / "x64" / "sccache.exe"
+                cached_is_file = cached.is_file()
+                exe_exists = exe.exists()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertTrue(cached_is_file)
+        self.assertFalse(exe_exists)
+
+    def test_sccache_prefetch_closed_pipe_leaves_no_marker(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        script = ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            patched = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                read_fd, write_fd = os.pipe()
+                os.close(read_fd)
+                try:
+                    result = subprocess.run(
+                        [
+                            "bash",
+                            str(patched),
+                            "--release-base",
+                            f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                        ],
+                        env={
+                            "PATH": os.environ["PATH"],
+                            "HOME": os.environ.get("HOME", "/tmp"),
+                            "GITHUB_OUTPUT": str(work / "output"),
+                            "RUNNER_TOOL_CACHE": str(work / "tool-cache"),
+                            "SCCACHE_FETCH_ATTEMPTS": "1",
+                            "SCCACHE_FETCH_DELAY_SECONDS": "0",
+                        },
+                        stdout=write_fd,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        check=False,
+                    )
+                finally:
+                    os.close(write_fd)
+                output = (
+                    (work / "output").read_text(encoding="utf-8")
+                    if (work / "output").is_file()
+                    else ""
+                )
+                marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+                dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
+                marker_exists = marker.exists()
+                dest_exists = dest.exists()
+        self.assertEqual(result.returncode, 141, result.stderr)
+        self.assertNotIn("available=true", output)
+        self.assertFalse(marker_exists)
+        self.assertFalse(dest_exists)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            read_fd, write_fd = os.pipe()
+            os.close(read_fd)
+            try:
+                result = subprocess.run(
+                    [
+                        "bash",
+                        str(script),
+                        "--release-base",
+                        "http://127.0.0.1:1/releases/download/v0.19.0",
+                    ],
+                    env={
+                        "PATH": os.environ["PATH"],
+                        "HOME": os.environ.get("HOME", "/tmp"),
+                        "GITHUB_OUTPUT": str(work / "output"),
+                        "RUNNER_TOOL_CACHE": str(work / "tool-cache"),
+                        "SCCACHE_FETCH_ATTEMPTS": "1",
+                        "SCCACHE_FETCH_DELAY_SECONDS": "0",
+                    },
+                    stdout=subprocess.PIPE,
+                    stderr=write_fd,
+                    text=True,
+                    check=False,
+                )
+            finally:
+                os.close(write_fd)
+            output = (
+                (work / "output").read_text(encoding="utf-8")
+                if (work / "output").is_file()
+                else ""
+            )
+            marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+        self.assertEqual(result.returncode, 141, result.stdout)
+        self.assertNotIn("available=true", output)
+        self.assertFalse(marker.exists())
+
+    def test_sccache_prefetch_keeps_success_when_temp_cleanup_fails(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_rm_that_refuses_tree_wipe(work / "bin")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    path_prefix=work / "bin",
+                )
+                marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+                cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+                marker_exists = marker.is_file()
+                cached_exists = cached.is_file()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertTrue(marker_exists)
+        self.assertTrue(cached_exists)
+
+    def test_sccache_prefetch_marker_failure_clears_the_install(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(
+                work / "bin",
+                "cp",
+                "#!/bin/sh\n"
+                '/bin/cp "$1" "$2"\n'
+                'mkdir "$(dirname "$2").complete"\n'
+                "exit 0\n",
+            )
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    path_prefix=work / "bin",
+                )
+                dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
+                marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+                dest_exists = dest.exists()
+                marker_exists = marker.exists()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=false\n")
+        self.assertNotIn("available=true", output)
+        self.assertFalse(dest_exists)
+        self.assertFalse(marker_exists)
+
+    def test_sccache_prefetch_rejects_a_hardlinked_binary_after_extract(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        planting_tar = """#!/bin/sh
+real=/usr/bin/tar
+"$real" "$@" || exit $?
+dest=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-C" ]; then
+    dest=$arg
+  fi
+  prev=$arg
+done
+if [ -n "$dest" ]; then
+  find "$dest" -type f -name sccache -print | while IFS= read -r file; do
+    ln "$file" "$(dirname "$file")/sccache-alias"
+  done
+fi
+exit 0
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _packed_archive(work, [("sccache", "file", payload)])
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(work / "bin", "tar", planting_tar)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    path_prefix=work / "bin",
+                )
+            _assert_prefetch_fell_back(
+                self,
+                result,
+                output,
+                work,
+                arch,
+                message="archive has no sccache binary",
+            )
 
     def test_cargo_incremental_step_has_no_if(self) -> None:
         paths = [ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml"]
