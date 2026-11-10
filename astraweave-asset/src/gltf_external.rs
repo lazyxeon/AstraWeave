@@ -35,12 +35,15 @@ pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
-/// Read a jailed file via `bounded_open::read_path`. Unix opens each component
-/// from a directory handle. Windows reopens each component by path.
+/// Read a jailed file via `bounded_open::read_unresolved`.
+///
+/// Unix opens each component from a directory handle. Windows reopens each
+/// component by path. A symlink at the file is not followed. The model file
+/// uses `read_path`, which resolves the caller-supplied path once.
 ///
 /// The read stops at `max_bytes`. The allocation follows the bytes read.
 pub fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
-    crate::bounded_open::read_path(path, max_bytes, "")
+    crate::bounded_open::read_unresolved(path, max_bytes, "")
 }
 
 /// Refuse a document with more external buffer and image URIs than
@@ -193,9 +196,8 @@ fn read_buffers(
             }
             gltf::buffer::Source::Uri(uri) => uri_bytes(base, uri, budget)?,
         };
-        while data.len() % 4 != 0 {
-            data.push(0);
-        }
+        // Compare the bytes on hand before the 4-byte pad. A buffer one to
+        // three bytes short would otherwise grow to `byteLength` and pass.
         let declared = buffer.length();
         if data.len() < declared {
             bail!(
@@ -203,6 +205,9 @@ fn read_buffers(
                 buffer.index(),
                 data.len()
             );
+        }
+        while data.len() % 4 != 0 {
+            data.push(0);
         }
         buffers.push(gltf::buffer::Data(data));
     }
@@ -490,6 +495,25 @@ mod tests {
         let gltf = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,YWI=","byteLength":8}]}"#;
         let err = load_jailed_gltf(dir.path(), gltf, 64).expect_err("short");
         assert!(err.to_string().contains("byteLength"), "{err}");
+    }
+
+    #[test]
+    fn buffer_one_byte_under_a_multiple_of_four_is_an_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // Three payload bytes and byteLength 4. Padding to 4 would hide the gap.
+        let gltf = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,YWJj","byteLength":4}]}"#;
+        let err = load_jailed_gltf(dir.path(), gltf, 64).expect_err("short of 4");
+        let msg = err.to_string();
+        assert!(msg.contains("is 3 bytes"), "{msg}");
+        assert!(msg.contains("byteLength is 4"), "{msg}");
+    }
+
+    #[test]
+    fn buffer_at_byte_length_is_padded_to_four() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gltf = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,YWJj","byteLength":3}]}"#;
+        let (_doc, buffers, _) = load_jailed_gltf(dir.path(), gltf, 64).expect("exact");
+        assert_eq!(buffers[0].0.as_slice(), b"abc\0");
     }
 
     #[test]

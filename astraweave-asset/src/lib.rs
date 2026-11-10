@@ -938,6 +938,8 @@ pub mod gltf_loader {
     ///
     /// The model directory is resolved once. On Unix each component is opened
     /// from that handle. On Windows each URI component is reopened by path.
+    /// The model file itself is resolved once before that leaf open, so a
+    /// symlink at the file loads. URI components are not resolved that way.
     pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
         let bytes = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
         reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;

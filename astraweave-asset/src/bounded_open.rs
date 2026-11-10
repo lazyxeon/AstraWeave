@@ -4,7 +4,9 @@
 //! then opened from the parent directory handle with `O_NOFOLLOW`. On Windows
 //! the resolved root is opened without reparse-point semantics, each URI
 //! component is reopened by path and any reparse point is rejected, and the
-//! file's final path must stay under the root's final path. File type and
+//! file's final path must stay under the root's final path. Those two paths
+//! compare as exact UTF-16 units. A caller-supplied model file is resolved
+//! once before its leaf is opened. URI components are not. File type and
 //! size come from the opened handle, and the read stops at the caller's byte cap.
 
 use anyhow::{bail, Context, Result};
@@ -13,14 +15,28 @@ use std::io::Read;
 use std::path::{Component, Path};
 
 pub(crate) fn read_path(path: &Path, max_bytes: u64, noun: &str) -> Result<Vec<u8>> {
+    // Resolve the caller-supplied file once, then open that leaf. A symlink
+    // at the file itself loads. `canonicalize` uses `O_PATH` here, so a FIFO
+    // returns without a blocking read; the leaf open still rejects it.
+    let resolved =
+        std::fs::canonicalize(path).with_context(|| format!("open {}", subject(noun, path)))?;
+    open_leaf(&resolved, max_bytes, noun, path)
+}
+
+/// Open `path` without resolving a symlink at the file.
+pub(crate) fn read_unresolved(path: &Path, max_bytes: u64, noun: &str) -> Result<Vec<u8>> {
+    open_leaf(path, max_bytes, noun, path)
+}
+
+fn open_leaf(path: &Path, max_bytes: u64, noun: &str, display: &Path) -> Result<Vec<u8>> {
     let parent = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
     };
     let name = path
         .file_name()
-        .with_context(|| format!("open {}", subject(noun, path)))?;
-    read_under(parent, Path::new(name), max_bytes, noun, path)
+        .with_context(|| format!("open {}", subject(noun, display)))?;
+    read_under(parent, Path::new(name), max_bytes, noun, display)
 }
 
 pub(crate) fn read_under(
@@ -148,6 +164,12 @@ fn opened(result: rustix::io::Result<rustix::fd::OwnedFd>) -> std::io::Result<ru
     }
 }
 
+#[cfg(all(windows, test))]
+thread_local! {
+    static FILE_FINAL_OVERRIDE: std::cell::Cell<Option<std::path::PathBuf>> =
+        std::cell::Cell::new(None);
+}
+
 #[cfg(windows)]
 fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
@@ -199,7 +221,11 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
             held.push(file);
             continue;
         }
-        let file_final = final_path(&file)?;
+        let mut file_final = final_path(&file)?;
+        #[cfg(test)]
+        if let Some(overridden) = FILE_FINAL_OVERRIDE.with(|cell| cell.take()) {
+            file_final = overridden;
+        }
         if !path_is_under(&root_final, &file_final) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
@@ -265,15 +291,43 @@ fn final_path(file: &File) -> std::io::Result<std::path::PathBuf> {
 
 #[cfg_attr(not(windows), allow(dead_code))]
 fn path_is_under(root: &Path, file: &Path) -> bool {
-    windows_final_path_is_under(&root.to_string_lossy(), &file.to_string_lossy())
+    windows_final_path_is_under_units(&os_units(root.as_os_str()), &os_units(file.as_os_str()))
+}
+
+fn os_units(os: &std::ffi::OsStr) -> Vec<u16> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        // `encode_wide` keeps unpaired surrogates. `to_string_lossy` would
+        // fold those names onto one U+FFFD string.
+        os.encode_wide().collect()
+    }
+    #[cfg(not(windows))]
+    {
+        // Production compares Windows final paths. A non-Unicode test path
+        // fails closed instead of substituting U+FFFD.
+        match os.to_str() {
+            Some(text) => text.encode_utf16().collect(),
+            None => Vec::new(),
+        }
+    }
+}
+
+#[cfg(test)]
+fn windows_final_path_is_under(root: &str, file: &str) -> bool {
+    windows_final_path_is_under_units(
+        &root.encode_utf16().collect::<Vec<_>>(),
+        &file.encode_utf16().collect::<Vec<_>>(),
+    )
 }
 
 /// Component prefix check for two Windows final paths.
 ///
-/// Both strings are the kind `GetFinalPathNameByHandleW` returns. A stream
-/// suffix, a `.` or `..` component, or a different device is not under the
-/// root. On Windows each component uses `CompareStringOrdinal`.
-fn windows_final_path_is_under(root: &str, file: &str) -> bool {
+/// Both slices are the UTF-16 `GetFinalPathNameByHandleW` returns, including
+/// unpaired surrogates. A component matches only when its units are equal.
+/// A stream suffix, a `.` or `..` component, or a different device is not
+/// under the root.
+fn windows_final_path_is_under_units(root: &[u16], file: &[u16]) -> bool {
     let root_parts = match windows_final_components(root) {
         Some(parts) => parts,
         None => return false,
@@ -288,59 +342,54 @@ fn windows_final_path_is_under(root: &str, file: &str) -> bool {
     root_parts
         .iter()
         .zip(&file_parts)
-        .all(|(root_part, file_part)| component_eq(root_part, file_part))
+        .all(|(root_part, file_part)| root_part == file_part)
 }
 
-fn windows_final_components(path: &str) -> Option<Vec<String>> {
-    if path.is_empty() || path.contains('\0') {
+fn windows_final_components(path: &[u16]) -> Option<Vec<Vec<u16>>> {
+    if path.is_empty() || path.contains(&0) {
         return None;
     }
-    let bytes = path.as_bytes();
     let mut parts = Vec::new();
-    let rest = if is_extended_prefix(bytes) {
+    let rest = if is_extended_prefix(path) {
         let body = &path[4..];
-        if starts_with_ignore_ascii(body, "UNC\\") || starts_with_ignore_ascii(body, "UNC/") {
+        if starts_with_ascii(body, b"UNC\\") || starts_with_ascii(body, b"UNC/") {
             let after = &body[4..];
             let (server, after) = take_component(after)?;
             let (share, after) = take_component(after)?;
             if server.is_empty() || share.is_empty() {
                 return None;
             }
-            parts.push(r"\\?\UNC".to_string());
-            parts.push(server.to_string());
-            parts.push(share.to_string());
+            parts.push(utf16(r"\\?\UNC"));
+            parts.push(server.to_vec());
+            parts.push(share.to_vec());
             after
         } else if is_drive_prefix(body) {
-            let drive = &body[..2];
-            parts.push(format!(r"\\?\{drive}"));
+            let mut drive = utf16(r"\\?\");
+            drive.extend_from_slice(&body[..2]);
+            parts.push(drive);
             strip_sep(&body[2..])
         } else {
             return None;
         }
-    } else if is_unc_prefix(bytes) {
+    } else if is_unc_prefix(path) {
         let after = &path[2..];
         let (server, after) = take_component(after)?;
         let (share, after) = take_component(after)?;
         if server.is_empty() || share.is_empty() {
             return None;
         }
-        parts.push(format!(r"\\{server}"));
-        parts.push(share.to_string());
+        let mut unc = vec![b'\\' as u16, b'\\' as u16];
+        unc.extend_from_slice(server);
+        parts.push(unc);
+        parts.push(share.to_vec());
         after
     } else if is_drive_prefix(path) {
-        parts.push(path[..2].to_string());
+        parts.push(path[..2].to_vec());
         strip_sep(&path[2..])
     } else {
         path
     };
-    if !rest.is_empty() {
-        for component in rest.split(['\\', '/']) {
-            if component.is_empty() || component == "." || component == ".." {
-                return None;
-            }
-            parts.push(component.to_string());
-        }
-    }
+    push_relative(&mut parts, rest)?;
     if parts.is_empty() {
         return None;
     }
@@ -350,102 +399,103 @@ fn windows_final_components(path: &str) -> Option<Vec<String>> {
     Some(parts)
 }
 
-fn is_extended_prefix(bytes: &[u8]) -> bool {
-    bytes.len() >= 4
-        && (bytes[0] == b'\\' || bytes[0] == b'/')
-        && bytes[1] == bytes[0]
-        && bytes[2] == b'?'
-        && (bytes[3] == b'\\' || bytes[3] == b'/')
+fn push_relative(parts: &mut Vec<Vec<u16>>, rest: &[u16]) -> Option<()> {
+    if rest.is_empty() {
+        return Some(());
+    }
+    let mut start = 0;
+    for (index, unit) in rest.iter().enumerate() {
+        if is_sep(*unit) {
+            push_component(parts, &rest[start..index])?;
+            start = index + 1;
+        }
+    }
+    push_component(parts, &rest[start..])?;
+    Some(())
 }
 
-fn is_unc_prefix(bytes: &[u8]) -> bool {
-    bytes.len() >= 2 && (bytes[0] == b'\\' || bytes[0] == b'/') && bytes[1] == bytes[0]
+fn push_component(parts: &mut Vec<Vec<u16>>, component: &[u16]) -> Option<()> {
+    if component.is_empty() || component == [b'.' as u16] || component == [b'.' as u16, b'.' as u16]
+    {
+        return None;
+    }
+    parts.push(component.to_vec());
+    Some(())
 }
 
-fn is_drive_prefix(path: &str) -> bool {
-    let bytes = path.as_bytes();
-    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+fn is_sep(unit: u16) -> bool {
+    unit == b'\\' as u16 || unit == b'/' as u16
 }
 
-fn component_has_stream(part: &str) -> bool {
-    let tail = part.strip_prefix(r"\\?\").unwrap_or(part);
-    let bytes = tail.as_bytes();
-    if bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+fn is_extended_prefix(path: &[u16]) -> bool {
+    path.len() >= 4
+        && is_sep(path[0])
+        && path[1] == path[0]
+        && path[2] == b'?' as u16
+        && is_sep(path[3])
+}
+
+fn is_unc_prefix(path: &[u16]) -> bool {
+    path.len() >= 2 && is_sep(path[0]) && path[1] == path[0]
+}
+
+fn is_drive_prefix(path: &[u16]) -> bool {
+    path.len() >= 2
+        && u8::try_from(path[0]).is_ok_and(|byte| byte.is_ascii_alphabetic())
+        && path[1] == b':' as u16
+}
+
+fn component_has_stream(part: &[u16]) -> bool {
+    let prefix = [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16];
+    let tail = part.strip_prefix(&prefix[..]).unwrap_or(part);
+    if tail.len() == 2
+        && u8::try_from(tail[0]).is_ok_and(|byte| byte.is_ascii_alphabetic())
+        && tail[1] == b':' as u16
+    {
         return false;
     }
-    part.contains(':')
+    part.contains(&(b':' as u16))
 }
 
-fn starts_with_ignore_ascii(text: &str, prefix: &str) -> bool {
+fn starts_with_ascii(text: &[u16], prefix: &[u8]) -> bool {
     text.len() >= prefix.len()
-        && text.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+        && text[..prefix.len()]
+            .iter()
+            .zip(prefix)
+            .all(|(unit, expect)| *unit == u16::from(*expect))
 }
 
-fn take_component(path: &str) -> Option<(&str, &str)> {
+fn take_component(path: &[u16]) -> Option<(&[u16], &[u16])> {
     if path.is_empty() {
         return None;
     }
-    let end = path.find(['\\', '/']).unwrap_or(path.len());
+    let end = path
+        .iter()
+        .position(|unit| is_sep(*unit))
+        .unwrap_or(path.len());
     let component = &path[..end];
-    if component.is_empty() || component == "." || component == ".." {
+    if component.is_empty() || component == [b'.' as u16] || component == [b'.' as u16, b'.' as u16]
+    {
         return None;
     }
     let rest = if end == path.len() {
-        ""
+        &[]
     } else {
         &path[end + 1..]
     };
     Some((component, rest))
 }
 
-fn strip_sep(path: &str) -> &str {
-    path.strip_prefix(['\\', '/']).unwrap_or(path)
-}
-
-#[cfg(windows)]
-fn component_eq(left: &str, right: &str) -> bool {
-    ordinal_eq_ignore_case(left, right)
-}
-
-#[cfg(not(windows))]
-fn component_eq(left: &str, right: &str) -> bool {
-    // CompareStringOrdinal is the Windows check. This keeps the same split
-    // under test where that call is not available.
-    left.eq_ignore_ascii_case(right)
-}
-
-#[cfg(windows)]
-#[allow(
-    unsafe_code,
-    reason = "CompareStringOrdinal has no safe wrapper in this crate"
-)]
-fn ordinal_eq_ignore_case(left: &str, right: &str) -> bool {
-    if left.is_empty() || right.is_empty() {
-        return left.is_empty() && right.is_empty();
+fn strip_sep(path: &[u16]) -> &[u16] {
+    if path.first().is_some_and(|unit| is_sep(*unit)) {
+        &path[1..]
+    } else {
+        path
     }
-    let left: Vec<u16> = left.encode_utf16().collect();
-    let right: Vec<u16> = right.encode_utf16().collect();
-    let (Ok(left_len), Ok(right_len)) = (i32::try_from(left.len()), i32::try_from(right.len()))
-    else {
-        return false;
-    };
+}
 
-    #[link(name = "kernel32")]
-    extern "system" {
-        fn CompareStringOrdinal(
-            left: *const u16,
-            left_len: i32,
-            right: *const u16,
-            right_len: i32,
-            ignore_case: i32,
-        ) -> i32;
-    }
-
-    const CSTR_EQUAL: i32 = 2;
-    // Both buffers are non-empty, live for this call, and the lengths are theirs.
-    let result =
-        unsafe { CompareStringOrdinal(left.as_ptr(), left_len, right.as_ptr(), right_len, 1) };
-    result == CSTR_EQUAL
+fn utf16(text: &str) -> Vec<u16> {
+    text.encode_utf16().collect()
 }
 
 #[cfg(test)]
@@ -455,7 +505,8 @@ mod tests {
     #[test]
     fn opened_path_must_stay_under_root() {
         assert!(path_is_under(Path::new("jail"), Path::new("jail/a.bin")));
-        assert!(path_is_under(Path::new("Jail"), Path::new("jail/A.bin")));
+        assert!(path_is_under(Path::new("Jail"), Path::new("Jail/A.bin")));
+        assert!(!path_is_under(Path::new("Jail"), Path::new("jail/A.bin")));
         assert!(!path_is_under(Path::new("jail"), Path::new("jail2/a.bin")));
         assert!(!path_is_under(Path::new("jail"), Path::new("jail")));
         assert!(!path_is_under(
@@ -472,7 +523,15 @@ mod tests {
         ));
         assert!(windows_final_path_is_under(
             r"\\?\C:\Jail",
-            r"\\?\c:\jail\A.bin"
+            r"\\?\C:\Jail\A.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\Jail",
+            r"\\?\C:\jail\A.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\Jail",
+            r"\\?\c:\Jail\A.bin"
         ));
         assert!(!windows_final_path_is_under(
             r"\\?\C:\jail",
@@ -649,5 +708,138 @@ mod tests {
         )
         .expect_err("link");
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[test]
+    fn unpaired_surrogates_compare_as_utf16_units() {
+        let mut root_a = utf16(r"\\?\C:\");
+        root_a.push(0xD800);
+        let mut root_b = utf16(r"\\?\C:\");
+        root_b.push(0xD801);
+        let mut file_a = root_a.clone();
+        file_a.extend(utf16(r"\a.bin"));
+        let mut file_b = root_b.clone();
+        file_b.extend(utf16(r"\a.bin"));
+        assert!(windows_final_path_is_under_units(&root_a, &file_a));
+        assert!(!windows_final_path_is_under_units(&root_a, &file_b));
+        // `from_utf16_lossy` folds both names onto one string. The compare must not.
+        assert_eq!(
+            String::from_utf16_lossy(&root_a),
+            String::from_utf16_lossy(&root_b)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_model_file_loads_and_a_uri_link_does_not() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let real = dir.path().join("real.gltf");
+        std::fs::write(&real, b"gltf").expect("write");
+        let link = dir.path().join("model.gltf");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let bytes = read_path(&link, 64, "").expect("model link");
+        assert_eq!(bytes, b"gltf");
+        let container = crate::gltf_loader::read_gltf_container(&link).expect("container");
+        assert_eq!(container, b"gltf");
+
+        let bin = dir.path().join("real.bin");
+        std::fs::write(&bin, b"bin!").expect("bin");
+        let bin_link = dir.path().join("link.bin");
+        std::os::unix::fs::symlink(&bin, &bin_link).expect("bin link");
+        let err = read_unresolved(&bin_link, 64, "").expect_err("uri link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn path_is_under_keeps_unpaired_surrogates() {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+        let mut root_a = utf16(r"\\?\C:\");
+        root_a.push(0xD800);
+        let mut root_b = utf16(r"\\?\C:\");
+        root_b.push(0xD801);
+        let mut file_a = root_a.clone();
+        file_a.extend(utf16(r"\a.bin"));
+        let mut file_b = root_b.clone();
+        file_b.extend(utf16(r"\a.bin"));
+        let root = std::path::PathBuf::from(OsString::from_wide(&root_a));
+        let same = std::path::PathBuf::from(OsString::from_wide(&file_a));
+        let other = std::path::PathBuf::from(OsString::from_wide(&file_b));
+        assert!(path_is_under(&root, &same));
+        assert!(!path_is_under(&root, &other));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn final_path_outside_the_root_is_refused() {
+        struct ClearOverride;
+        impl Drop for ClearOverride {
+            fn drop(&mut self) {
+                super::FILE_FINAL_OVERRIDE.with(|cell| cell.take());
+            }
+        }
+        let _guard = ClearOverride;
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::write(root.path().join("box.bin"), b"box!").expect("bin");
+        super::FILE_FINAL_OVERRIDE.with(|cell| {
+            cell.set(Some(std::path::PathBuf::from(r"\\?\D:\outside\box.bin")));
+        });
+        let err = read_under(
+            root.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect_err("outside final path");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+        let bytes = read_under(
+            root.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect("real final path");
+        assert_eq!(bytes, b"box!");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_parent_junction_loads() {
+        let real = tempfile::tempdir().expect("real");
+        let models = real.path().join("models");
+        std::fs::create_dir(&models).expect("models");
+        std::fs::write(models.join("box.bin"), b"box!").expect("bin");
+        let parent = tempfile::tempdir().expect("parent");
+        let link = parent.path().join("linked");
+        junction(&link, real.path());
+        let model_dir = link.join("models");
+        let bytes = read_under(
+            &model_dir,
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect("parent junction");
+        assert_eq!(bytes, b"box!");
+        let via_path = read_path(&model_dir.join("box.bin"), 64, "").expect("parent junction file");
+        assert_eq!(via_path, b"box!");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_symlinked_model_file_loads() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let real = dir.path().join("real.gltf");
+        std::fs::write(&real, b"gltf").expect("write");
+        let link = dir.path().join("model.gltf");
+        std::os::windows::fs::symlink_file(&real, &link).expect("symlink");
+        let bytes = read_path(&link, 64, "").expect("model link");
+        assert_eq!(bytes, b"gltf");
+        let container = crate::gltf_loader::read_gltf_container(&link).expect("container");
+        assert_eq!(container, b"gltf");
     }
 }
