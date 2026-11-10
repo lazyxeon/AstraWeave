@@ -124,6 +124,9 @@ _REMOTE_ACTION_RE = re.compile(
 _SHA40_RE = re.compile(r"[0-9a-f]{40}")
 THIRD_PARTY_SHA_MSG = "third-party action must be a 40-char commit SHA"
 CODECOV_FAIL_CI_MSG = "codecov step must set fail_ci_if_error: true"
+CODECOV_CONTINUE_MSG = "codecov job or step must not set continue-on-error"
+_JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
+_CONTINUE_ON_ERROR_RE = re.compile(r"^\s*continue-on-error\s*:")
 _STEP_DASH_RE = re.compile(r"^(\s*)-\s+\S")
 _FAIL_CI_VALUE_RE = re.compile(r"(?m)^\s*fail_ci_if_error:\s*(\S+)")
 
@@ -197,6 +200,60 @@ def codecov_fail_ci_violations(text: str, *, path: str = "") -> list[str]:
         if values == ["true"]:
             continue
         violations.append(f"{prefix}{line_no}: {CODECOV_FAIL_CI_MSG}")
+    return violations
+
+
+def _job_blocks(text: str) -> list[tuple[int, str, str]]:
+    """Return (line number, job id, block) for each job under jobs:."""
+    lines = text.splitlines()
+    jobs_at = next(
+        (index for index, line in enumerate(lines) if line == "jobs:" or line.startswith("jobs:")),
+        None,
+    )
+    if jobs_at is None:
+        return []
+    headers: list[int] = []
+    end = len(lines)
+    for index in range(jobs_at + 1, len(lines)):
+        line = lines[index]
+        if line and not line.startswith(" ") and not line.startswith("#"):
+            end = index
+            break
+        if _JOB_HEADER_RE.match(line):
+            headers.append(index)
+    blocks: list[tuple[int, str, str]] = []
+    for position, start in enumerate(headers):
+        stop = headers[position + 1] if position + 1 < len(headers) else end
+        job_id = _JOB_HEADER_RE.match(lines[start]).group(1)
+        blocks.append((start + 1, job_id, "\n".join(lines[start:stop])))
+    return blocks
+
+
+def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[str]:
+    """A job that runs Codecov, and the step that runs it, must not continue on error.
+
+    Other steps in that job are not this check. Other jobs are not this check.
+    """
+    violations: list[str] = []
+    prefix = f"{path}: " if path else ""
+    for job_line, _job_id, block in _job_blocks(text):
+        if "codecov/codecov-action@" not in block:
+            continue
+        step_spans: list[tuple[int, int, str]] = []
+        for rel_line, step in _step_blocks(block):
+            start = job_line + rel_line - 1
+            stop = start + len(step.splitlines()) - 1
+            step_spans.append((start, stop, step))
+        for offset, line in enumerate(block.splitlines()):
+            if _CONTINUE_ON_ERROR_RE.match(line) is None:
+                continue
+            abs_line = job_line + offset
+            owner = next(
+                (step for start, stop, step in step_spans if start <= abs_line <= stop),
+                None,
+            )
+            if owner is None or "codecov/codecov-action@" in owner:
+                violations.append(f"{prefix}{abs_line}: {CODECOV_CONTINUE_MSG}")
     return violations
 
 
@@ -1042,6 +1099,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             rel = str(path.relative_to(ROOT))
             violations.extend(third_party_action_pin_violations(text, path=rel))
             codecov.extend(codecov_fail_ci_violations(text, path=rel))
+            codecov.extend(codecov_continue_on_error_violations(text, path=rel))
         self.assertEqual(violations, [])
         self.assertEqual(codecov, [])
         ignored = "uses: actions/checkout@v7\nuses: ./.github/actions/rust-ci-setup\n"
@@ -1087,6 +1145,49 @@ class WorkflowPolicyTest(unittest.TestCase):
         decoy_violations = codecov_fail_ci_violations(decoy, path="coverage.yml")
         self.assertTrue(decoy_violations)
         self.assertIn(CODECOV_FAIL_CI_MSG, decoy_violations[0])
+
+    def test_codecov_continue_on_error_mutant_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_continue_on_error_violations(text, path="coverage.yml"), [])
+        self.assertNotIn("continue-on-error", text)
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertIn("continue-on-error: true", editor)
+        self.assertEqual(
+            codecov_continue_on_error_violations(editor, path="aw-editor-tests.yml"),
+            [],
+        )
+        job_mutant = text.replace(
+            "    timeout-minutes: 45\n",
+            "    timeout-minutes: 45\n    continue-on-error: true\n",
+            1,
+        )
+        self.assertNotEqual(job_mutant, text)
+        job_line = next(
+            number
+            for number, line in enumerate(job_mutant.splitlines(), start=1)
+            if line.strip() == "continue-on-error: true"
+        )
+        job_violations = codecov_continue_on_error_violations(job_mutant, path="coverage.yml")
+        self.assertEqual(
+            job_violations,
+            [f"coverage.yml: {job_line}: {CODECOV_CONTINUE_MSG}"],
+        )
+        step_mutant = text.replace(
+            "        uses: codecov/codecov-action@",
+            "        continue-on-error: true\n        uses: codecov/codecov-action@",
+            1,
+        )
+        self.assertNotEqual(step_mutant, text)
+        step_line = next(
+            number
+            for number, line in enumerate(step_mutant.splitlines(), start=1)
+            if line.strip() == "continue-on-error: true"
+        )
+        step_violations = codecov_continue_on_error_violations(step_mutant, path="coverage.yml")
+        self.assertEqual(
+            step_violations,
+            [f"coverage.yml: {step_line}: {CODECOV_CONTINUE_MSG}"],
+        )
 
     def test_policy_actions_matches_expected_set(self) -> None:
         self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
