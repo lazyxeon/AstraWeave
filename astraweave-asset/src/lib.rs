@@ -1,4 +1,5 @@
-#![forbid(unsafe_code)]
+#![cfg_attr(windows, deny(unsafe_code))]
+#![cfg_attr(not(windows), forbid(unsafe_code))]
 use anyhow::Result;
 use notify::Watcher;
 use serde::{Deserialize, Serialize};
@@ -1115,11 +1116,19 @@ pub mod gltf_loader {
                 let buf_idx = view.buffer().index();
                 let offset = view.offset();
                 let length = view.length();
-                let data = &buffers
-                    .ok_or_else(|| anyhow!("Missing buffers for buffer view image"))?[buf_idx]
+                let buffers =
+                    buffers.ok_or_else(|| anyhow!("Missing buffers for buffer view image"))?;
+                let data = buffers
+                    .get(buf_idx)
+                    .context("image buffer view has no buffer")?;
+                let end = offset
+                    .checked_add(length)
+                    .context("image view length overflows")?;
+                let bytes = data
                     .0
-                    .as_slice()[offset..offset + length];
-                decode_image_bytes(data)
+                    .get(offset..end)
+                    .context("image view is outside its buffer")?;
+                decode_image_bytes(bytes)
             }
             gltf::image::Source::Uri { uri, .. } => {
                 let bytes = if uri.starts_with("data:") {

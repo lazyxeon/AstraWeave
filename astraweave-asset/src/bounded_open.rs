@@ -1,8 +1,9 @@
 //! Size-bounded read from a directory handle.
 //!
-//! The directory is opened first. Each component under it is opened from that
-//! handle. File type and size come from the opened handle, and the read stops
-//! at the caller's byte cap.
+//! On Unix each component is opened from the parent directory handle.
+//! On Windows each directory handle stays open until the file is opened, and
+//! the opened file stays under the canonical root. File type and size come
+//! from the opened handle, and the read stops at the caller's byte cap.
 
 use anyhow::{bail, Context, Result};
 use std::fs::File;
@@ -133,7 +134,7 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
 fn opened(result: rustix::io::Result<rustix::fd::OwnedFd>) -> std::io::Result<rustix::fd::OwnedFd> {
     match result {
         Ok(fd) => Ok(fd),
-        Err(rustix::io::Errno::LOOP) => Err(std::io::Error::new(
+        Err(rustix::io::Errno::LOOP) | Err(rustix::io::Errno::NOTDIR) => Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "not a regular file",
         )),
@@ -145,12 +146,15 @@ fn opened(result: rustix::io::Result<rustix::fd::OwnedFd>) -> std::io::Result<ru
 fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
 
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    const FILE_SHARE_WRITE: u32 = 0x0000_0002;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 
     fn open_handle(path: &Path) -> std::io::Result<File> {
         std::fs::OpenOptions::new()
             .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
             .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
             .open(path)
     }
@@ -169,19 +173,196 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     let names = relative_names(relative)?;
     let root_file = open_handle(root)?;
     ensure_directory(&root_file)?;
-    drop(root_file);
+    let root_final = final_path(&root_file)?;
+    let mut held = vec![root_file];
 
     let mut cursor = root.to_path_buf();
-    let mut opened = None;
     for (index, name) in names.iter().enumerate() {
         cursor.push(name);
         let file = open_handle(&cursor)?;
-        if index + 1 == names.len() {
-            opened = Some(file);
-            break;
+        let last = index + 1 == names.len();
+        if !last {
+            ensure_directory(&file)?;
+            held.push(file);
+            continue;
         }
-        ensure_directory(&file)?;
+        let file_final = final_path(&file)?;
+        if !path_is_under(&root_final, &file_final) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "not a regular file",
+            ));
+        }
+        drop(held);
+        return Ok(file);
     }
-    opened
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "empty relative path"))
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        "empty relative path",
+    ))
+}
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "GetFinalPathNameByHandleW has no safe wrapper in this crate"
+)]
+fn final_path(file: &File) -> std::io::Result<std::path::PathBuf> {
+    use std::ffi::{c_void, OsString};
+    use std::os::windows::ffi::OsStringExt;
+    use std::os::windows::io::AsRawHandle;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFinalPathNameByHandleW(
+            file: *mut c_void,
+            buffer: *mut u16,
+            length: u32,
+            flags: u32,
+        ) -> u32;
+    }
+
+    const VOLUME_NAME_DOS: u32 = 0;
+    let handle = file.as_raw_handle();
+    let mut buf = vec![0u16; 512];
+    let mut grew = false;
+    loop {
+        // The handle is open and the buffer length is the capacity passed in.
+        let n = unsafe {
+            GetFinalPathNameByHandleW(handle, buf.as_mut_ptr(), buf.len() as u32, VOLUME_NAME_DOS)
+        };
+        if n == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let n = n as usize;
+        if n < buf.len() {
+            buf.truncate(n);
+            return Ok(std::path::PathBuf::from(OsString::from_wide(&buf)));
+        }
+        if grew || n > 32_768 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "path is too long",
+            ));
+        }
+        buf.resize(n, 0);
+        grew = true;
+    }
+}
+
+#[cfg_attr(not(windows), allow(dead_code))]
+fn path_is_under(root: &Path, file: &Path) -> bool {
+    let root_parts: Vec<std::ffi::OsString> = root
+        .components()
+        .map(|component| component.as_os_str().to_os_string())
+        .collect();
+    let file_parts: Vec<std::ffi::OsString> = file
+        .components()
+        .map(|component| component.as_os_str().to_os_string())
+        .collect();
+    if file_parts.len() <= root_parts.len() {
+        return false;
+    }
+    root_parts
+        .iter()
+        .zip(&file_parts)
+        .all(|(root_part, file_part)| root_part.eq_ignore_ascii_case(file_part))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opened_path_must_stay_under_root() {
+        assert!(path_is_under(Path::new("jail"), Path::new("jail/a.bin")));
+        assert!(path_is_under(Path::new("Jail"), Path::new("jail/A.bin")));
+        assert!(!path_is_under(Path::new("jail"), Path::new("jail2/a.bin")));
+        assert!(!path_is_under(Path::new("jail"), Path::new("jail")));
+        assert!(!path_is_under(
+            Path::new("jail/sub"),
+            Path::new("jail/a.bin")
+        ));
+    }
+
+    #[test]
+    fn parent_component_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        let err = read_under(
+            dir.path(),
+            Path::new("../box.bin"),
+            64,
+            "",
+            Path::new("../box.bin"),
+        )
+        .expect_err("parent");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unsupported"), "{msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_intermediate_directory_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("loot.bin"), b"loot").expect("loot");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("sub")).expect("link");
+        let err = read_under(
+            dir.path(),
+            Path::new("sub/loot.bin"),
+            64,
+            "",
+            Path::new("sub/loot.bin"),
+        )
+        .expect_err("link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_linked_directory_is_rejected() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("note.bin"), b"outside").expect("note");
+        let sub = root.path().join("sub");
+        std::fs::create_dir(&sub).expect("sub");
+        std::fs::remove_dir(&sub).expect("remove");
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&sub)
+            .arg(outside.path())
+            .status()
+            .expect("mklink");
+        assert!(status.success(), "mklink");
+        let err = read_under(
+            root.path(),
+            Path::new("sub/note.bin"),
+            64,
+            "",
+            Path::new("sub/note.bin"),
+        )
+        .expect_err("link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_linked_file_is_rejected() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let outside = tempfile::tempdir().expect("outside");
+        let real = outside.path().join("real.bin");
+        std::fs::write(&real, b"real").expect("real");
+        let link = root.path().join("link.bin");
+        std::os::windows::fs::symlink_file(&real, &link).expect("link");
+        let err = read_under(
+            root.path(),
+            Path::new("link.bin"),
+            64,
+            "",
+            Path::new("link.bin"),
+        )
+        .expect_err("link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
 }

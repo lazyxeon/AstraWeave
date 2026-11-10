@@ -769,12 +769,9 @@ mod tests {
             r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"sub/loot.bin","byteLength":4}]}"#,
         )
         .unwrap();
-        let err = import_validated_model(&path).unwrap_err();
+        let err = validate_model_file(&path).unwrap_err();
         let msg = format!("{err:#}");
-        assert!(
-            msg.contains("escapes") || msg.contains("traversal") || msg.contains("rejected"),
-            "{msg}"
-        );
+        assert!(msg.contains("escapes"), "{msg}");
     }
 
     #[test]

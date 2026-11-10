@@ -459,6 +459,64 @@ mod gltf_tests {
             eprintln!("⚠ No real GLB assets found (Git LFS objects may not be pulled) — skipping assertion");
         }
     }
+
+    #[test]
+    fn image_view_past_its_buffer_is_an_error() {
+        let mut bin = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        for index in [0u32, 1, 2] {
+            bin.extend_from_slice(&index.to_le_bytes());
+        }
+        assert_eq!(bin.len(), 84);
+        let json = r#"{
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 128}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                {"buffer": 0, "byteOffset": 72, "byteLength": 12},
+                {"buffer": 0, "byteOffset": 100, "byteLength": 16}
+            ],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]},
+                {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                {"bufferView": 2, "componentType": 5125, "count": 3, "type": "SCALAR"}
+            ],
+            "images": [{"bufferView": 3, "mimeType": "image/png"}],
+            "textures": [{"source": 0}],
+            "materials": [{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2, "material": 0}]}]
+        }"#;
+        let bytes = glb(json, &bin);
+        let err =
+            load_first_mesh_and_material(std::path::Path::new("."), &bytes).expect_err("view");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("outside its buffer"), "{msg}");
+    }
+
+    fn glb(json: &str, bin: &[u8]) -> Vec<u8> {
+        let mut json_bytes = json.as_bytes().to_vec();
+        while json_bytes.len() % 4 != 0 {
+            json_bytes.push(b' ');
+        }
+        let total = 12 + 8 + json_bytes.len() + 8 + bin.len();
+        let mut out = Vec::with_capacity(total);
+        out.extend_from_slice(&0x4654_6C67u32.to_le_bytes());
+        out.extend_from_slice(&2u32.to_le_bytes());
+        out.extend_from_slice(&(total as u32).to_le_bytes());
+        out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x4E4F_534Au32.to_le_bytes());
+        out.extend_from_slice(&json_bytes);
+        out.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x004E_4942u32.to_le_bytes());
+        out.extend_from_slice(bin);
+        out
+    }
 }
 
 #[cfg(not(feature = "gltf"))]

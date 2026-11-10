@@ -120,9 +120,10 @@ impl Budget {
 fn uri_bytes(base: &Path, uri: &str, budget: &mut Budget) -> Result<Vec<u8>> {
     match jail_gltf_uri(base, uri)? {
         None => {
-            let bytes = decode_data_uri(uri)?;
-            budget.charge(bytes.len() as u64)?;
-            Ok(bytes)
+            let encoded = data_uri_encoded(uri)?;
+            let decoded_len = decoded_base64_len(encoded)?;
+            budget.charge(decoded_len)?;
+            decode_data_uri(uri)
         }
         Some(_) => {
             let relative = uri.split('?').next().unwrap_or(uri);
@@ -139,17 +140,39 @@ fn uri_bytes(base: &Path, uri: &str, budget: &mut Budget) -> Result<Vec<u8>> {
     }
 }
 
-fn decode_data_uri(uri: &str) -> Result<Vec<u8>> {
+fn data_uri_encoded(uri: &str) -> Result<&str> {
     let rest = uri
         .strip_prefix("data:")
         .context("gltf data uri is missing its prefix")?;
-    let encoded = if let Some((_, data)) = rest.split_once(";base64,") {
-        data
+    if let Some((_, data)) = rest.split_once(";base64,") {
+        Ok(data)
     } else if let Some((_, data)) = rest.split_once(',') {
-        data
+        Ok(data)
     } else {
-        rest
-    };
+        Ok(rest)
+    }
+}
+
+fn decoded_base64_len(encoded: &str) -> Result<u64> {
+    let bytes = encoded.as_bytes();
+    let pad = bytes.iter().rev().take_while(|byte| **byte == b'=').count();
+    if pad > 2 {
+        bail!("gltf data uri is not base64");
+    }
+    let len = bytes.len() as u64;
+    let pad = pad as u64;
+    if len % 4 != 0 {
+        return match len % 4 {
+            2 if pad == 0 => Ok(len / 4 * 3 + 1),
+            3 if pad == 0 => Ok(len / 4 * 3 + 2),
+            _ => bail!("gltf data uri is not base64"),
+        };
+    }
+    Ok(len / 4 * 3 - pad)
+}
+
+fn decode_data_uri(uri: &str) -> Result<Vec<u8>> {
+    let encoded = data_uri_encoded(uri)?;
     base64::engine::general_purpose::STANDARD
         .decode(encoded)
         .context("gltf data uri is not base64")
@@ -171,6 +194,14 @@ fn read_buffers(
         };
         while data.len() % 4 != 0 {
             data.push(0);
+        }
+        let declared = buffer.length();
+        if data.len() < declared {
+            bail!(
+                "buffer {} is {} bytes; byteLength is {declared}",
+                buffer.index(),
+                data.len()
+            );
         }
         buffers.push(gltf::buffer::Data(data));
     }
@@ -416,6 +447,48 @@ mod tests {
             msg.contains("traversal") || msg.contains("escapes") || msg.contains("rejected"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn backslash_uri_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = jail_gltf_uri(dir.path(), r"a\b").expect_err("slash");
+        assert!(
+            err.to_string().contains("gltf uri is not a relative file"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn nul_uri_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = jail_gltf_uri(dir.path(), "a\0b").expect_err("nul");
+        assert!(
+            err.to_string().contains("gltf uri is not a relative file"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn data_uri_respects_total_budget() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let over = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,!!!!","byteLength":3}]}"#;
+        let err = load_jailed_gltf(dir.path(), over, 1).expect_err("budget");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("exceed"), "{msg}");
+        assert!(!msg.contains("not base64"), "{msg}");
+
+        let fits = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,YWI=","byteLength":2}]}"#;
+        let (_doc, buffers, _) = load_jailed_gltf(dir.path(), fits, 2).expect("fits");
+        assert_eq!(&buffers[0].0[..2], b"ab");
+    }
+
+    #[test]
+    fn short_buffer_is_an_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let gltf = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,YWI=","byteLength":8}]}"#;
+        let err = load_jailed_gltf(dir.path(), gltf, 64).expect_err("short");
+        assert!(err.to_string().contains("byteLength"), "{err}");
     }
 
     #[test]

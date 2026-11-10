@@ -8,7 +8,7 @@ domain: rendering
 lifecycle_status: active
 integration_status: wired
 owns: []
-doc_version: "1.0"
+doc_version: "1.1"
 last_verified_commit: 32afac52f
 ---
 
@@ -20,13 +20,15 @@ last_verified_commit: 32afac52f
 |---|---|
 | **System name** | Skeletal Animation System |
 | **Primary crates** | `astraweave-render` (canonical runtime), `astraweave-asset` (glTF import), `astraweave-scene` (ECS integration), `tools/aw_editor` (editor UI + bridge) |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 | **Last verified against commit** | `32afac52f` |
 | **Last verified date** | 2026-05-10 |
 | **Status** | Active. Phase 2 Task 5 delivered the core pipeline (asset import → animation runtime → CPU/GPU skinning → ECS integration → tests + demo) on 2025-10-01. Continues to evolve via the editor's `EditorAnimationBridge` and Wave 2 mutation-remediation tests. |
 | **Owner notes** | The system spans **four crates** with **parallel type families** for the same logical concepts (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `Interpolation`, `ChannelData`). Each family is internally consistent but distinct from the others. The crossings are handled at integration points (glTF loader → runtime, runtime → ECS, editor → bridge). See §6 for the forensic conflict map. |
 
 ---
+
+> **Revision note (1.1).** `gltf_loader::load_skeleton` and `load_animations` take a base directory: `load_skeleton(base, bytes)` and `load_animations(base, bytes, skeleton)`.
 
 ## 1. Executive Summary
 
@@ -57,9 +59,9 @@ The core pipeline is Phase-2-Task-5 complete (per `docs/archive/phase_reports/PH
 ```text
 [A: glTF asset file (.gltf / .glb)]
     │
-    │ astraweave_asset::load_skeleton(bytes) / load_animations(bytes, skeleton)
-    │   file: astraweave-asset/src/lib.rs:942-… (load_skeleton),
-    │         astraweave-asset/src/lib.rs:1091-… (load_animations)
+    │ gltf_loader::load_skeleton(base, bytes) / load_animations(base, bytes, skeleton)
+    │   file: astraweave-asset/src/lib.rs:1385-… (load_skeleton),
+    │         astraweave-asset/src/lib.rs:1530-… (load_animations)
     │   role: parse glTF skin + animation, emit asset-side
     │         Skeleton / AnimationClip with [f32;3]/[f32;4]/[[f32;4];4] field storage
     ▼
