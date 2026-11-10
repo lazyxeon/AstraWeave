@@ -374,7 +374,7 @@ pub fn sync_reconciliation(data: &mut Value, graph: &Graph) {
         "cargo metadata reports {members} workspace members: {non_ex} non-example crates and {examples} examples. The map renders {nodes} nodes and {edges} edges. Nodes are the non-example crates plus the examples aggregate. Edges are the normal path dependencies among those nodes, plus a runtime edge when a trace asserts one that is not also a cargo dependency. Dev-dependencies and build-dependencies are excluded. astraweave-camera was added in 8c551c6ea (2026-05-18). Commit 52b9e711c is not in this repository's history."
     );
     let note1 = format!(
-        "Examples count: {examples} (cargo metadata, manifest path under examples/). Collapsed to one node. exampleList is that set, sorted by package name."
+        "Examples count: {examples} (cargo metadata). A crate is an example when its manifest path is under examples/ or contains /examples/. Collapsed to one node. exampleList is that set, sorted by package name."
     );
     let Some(root) = data.as_object_mut() else {
         return;
@@ -766,7 +766,9 @@ pub fn node_trace_files(data: &Value) -> BTreeSet<String> {
 pub fn anchor_problems(html: &str, traces: &[TraceDoc], linked: &BTreeSet<String>) -> Vec<String> {
     let required = required_anchors(html);
     if required.is_empty() {
-        return Vec::new();
+        return vec![
+            "workspace_map.html names no trace-section anchors (#5-active-file-map, #6-conflict-map, #7-decision-log, #8-invariants, #11-open-questions)".into(),
+        ];
     }
     let mut problems = Vec::new();
     for t in traces {
@@ -884,7 +886,7 @@ pub fn github_slug(heading: &str) -> String {
 
 pub fn examples_oneliner(count: usize) -> String {
     format!(
-        "{count} example crates collapsed into one node. The member list is cargo metadata (manifest path under examples/)."
+        "{count} example crates collapsed into one node. A crate is an example when its manifest path is under examples/ or contains /examples/."
     )
 }
 
@@ -957,7 +959,18 @@ pub fn replace_marked(current: &str, start: &str, end: &str, inner: &str) -> Res
         .find(end)
         .with_context(|| format!("`{end}` marker not found in workspace_map.html"))?;
     let e = after + rel;
+    let inner = match_line_endings(current, inner);
     Ok(format!("{}{}{}", &current[..after], inner, &current[e..]))
+}
+
+/// Generated marker text uses `\n`. A CRLF checkout must get CRLF inserts, or
+/// `--check` reports a footer change on an otherwise clean Windows tree.
+fn match_line_endings(file: &str, inner: &str) -> String {
+    if file.contains("\r\n") {
+        inner.replace("\r\n", "\n").replace('\n', "\r\n")
+    } else {
+        inner.replace("\r\n", "\n")
+    }
 }
 
 pub fn count_nodes_edges(data: &Value) -> (usize, usize) {

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| **Status** | **v1 + v1.1 IMPLEMENTED (2026-06-25)** — `tools/aw_trace_sync` + CI `.github/workflows/trace-sync.yml`. v1.1 added map status sync + `runtime_edges` (see notes below). **2026-11-09:** cargo topology is no longer deferred. The tool writes the node set, normal path edges, and the examples aggregate from `cargo metadata`, and `--check` fails on a missing or extra node or edge, on a trace that owns a crate with no node, and on a broken trace-section anchor. Curated fields stay on the map JSON. `map_overlay.json` (§14) is still not a separate file. |
+| **Status** | **v1 + v1.1 IMPLEMENTED (2026-06-25)** — `tools/aw_trace_sync` + CI `.github/workflows/trace-sync.yml`. v1.1 added map status sync + `runtime_edges` (see notes below). **2026-11-09:** cargo topology is no longer deferred. Cargo metadata owns the node set, normal path edges, the examples aggregate, each crate node's `locApprox`/`locBand` (from `src/**/*.rs`), and the member/node/edge counts; trace front-matter owns the footer trace list. `--check` fails on any drift in those, on a trace that owns a crate with no node, on a missing or duplicated trace-section anchor, and on a raw `<` in the `workspace-data` block. Curated fields stay on the map JSON. `map_overlay.json` (§14) is still not a separate file. |
 | **Target version** | Toolkit automation v1.0 (the "rung 2.5" sweet spot) — shipped |
 | **Author note** | Design ratified in discussion 2026-06-25, incorporating an external adversarial critique. Supersedes the ad-hoc manual sync performed during the 2026-06-25 trace campaign (commit `00bb1fac3`). |
 | **Owner decision** | Land as a proposal first; `runtime_edges` deferred to v1.1. |

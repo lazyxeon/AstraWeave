@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: wired
 summary: "Deaths write a sparse fixed-point scar. Fog and agents read it."
 owns: [astraweave-veil]
-doc_version: "1.1"
-last_verified_commit: 79fcf579
+doc_version: "1.2"
+last_verified_commit: 604d35d1
 runtime_edges:
   - from: astraweave-ai
     to: astraweave-veil
@@ -28,11 +28,11 @@ runtime_edges:
 |---|---|
 | **System name** | Fate-scars (veil) |
 | **Primary crates** | `astraweave-veil` |
-| **Document version** | 1.1 |
-| **Last verified against commit** | `79fcf579` (parent of the feature; the code landed on `cursor/aravath-veil-scars-7098`) |
+| **Document version** | 1.2 |
+| **Last verified against commit** | `604d35d1` (v1.2: runtime edge direction). Prior `79fcf579` (parent of the feature; the code landed on `cursor/aravath-veil-scars-7098`). |
 | **Last verified date** | 2026-10-14 |
 | **Status** | Active |
-| **Owner notes** | Inspired by the Chevel / Fate-Weave note. The spillway, floodgate, and guild-warden content was not built. |
+| **Owner notes** | **Rev 1.2 (2026-11-09, `604d35d1`):** `runtime_edges` run from `astraweave-ai` and `aravath_runtime` to `astraweave-veil`. Inspired by the Chevel / Fate-Weave note. The spillway, floodgate, and guild-warden content was not built. |
 
 ---
 

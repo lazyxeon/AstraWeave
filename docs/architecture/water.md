@@ -9,8 +9,8 @@ lifecycle_status: active
 integration_status: mixed
 summary: "Gameplay water-truth facade (WaterQuery/AnalyticWater) — sole backend after W.1 removed the voxel backend; physics buoyancy (astraweave-physics lib.rs:933, field water) is the production consumer. Deterministic CPU truth (gate Q1). water.md §4,§5"
 owns: [astraweave-water]
-doc_version: "1.4"
-last_verified_commit: 1e3d8f692
+doc_version: "1.5"
+last_verified_commit: 604d35d1
 ---
 
 # Architecture Trace: Water (Successor) — Rendering, Query Facade & Weave-Response
@@ -21,11 +21,11 @@ last_verified_commit: 1e3d8f692
 |---|---|
 | **System name** | Water (Successor) — layered rendering + gameplay-truth query facade + weave-response deformation |
 | **Primary crates** | `astraweave-water` (truth facade), `astraweave-render` (surface + weave presentation), `astraweave-physics` (buoyancy consumer), `astraweave-gameplay` (`WeaveOp` source + `water_movement`), `astraweave-fluids` (particle accent substrate), `examples/weaving_playground` (weave/accent producers — example layer) |
-| **Document version** | 1.4 |
-| **Last verified against commit** | `1e3d8f692` |
+| **Document version** | 1.5 |
+| **Last verified against commit** | `604d35d1` (v1.5: buoyancy cite). Prior `1e3d8f692`. |
 | **Last verified date** | 2026-07-24 |
 | **Status** | Active (post-W.1 layered-rendering re-scope; surface + refraction + weave deformation + accents all wired; some layers example-only — see §5/§6) |
-| **Owner notes** | First trace for the W-series (Water Successor) campaign; derived from forensic reading at `7c29b8182` plus the campaign docs under `docs/campaigns/water-successor/`. **Rev 1.2 (T.W.1, 2026-07-21, `88c6ba588`):** editor water repaired + re-gated (HDR-format fix + install assert, aquatic-census enable, sea-level single-sourcing, W.2c.2 scaffolding-weave deletion); invariants 11-12 added; the W-FU-2 "woke the editor water" claim corrected in §5/Appendix B (per `TWR_WATER_RECON.md` §1.6 + `TW1_OUTCOME.md`). **Rev 1.3 (T.W.1.A, 2026-07-23, `49f1e3396`):** world-scale presentation — horizon shell (flat far annulus past every camera far plane), camera-distance amplitude fade (flat before the shell seam), per-`WaterStyle` `set_wave_params` (amplitude/steepness scale + foam threshold); invariants 13-14 added; see `TW1A_OUTCOME.md`. **Rev 1.4 (T.W.2, 2026-07-24, `1e3d8f692`):** authored bounded water bodies — `WaterVolumeDesc` + `set_water_volumes` render a per-volume patch (own uniform block: level/colors/wave, no weaves) through the same pipeline as the plane, clipped to XZ bounds, terrain-occluded; `plane_visible`/`has_renderable_content` gate a volumes-only scene; the editor `WaterVolume` entity + Carve Water brush (a terrain op, not water config) are the two authored-water surfaces. Invariant 15 added; see `TW2_OUTCOME.md`. Cross-references the (DEPRECATED-solver) [`fluids.md`](./fluids.md) and the [render trace](./render_pipeline_material_system_shader_infrastructure.md). |
+| **Owner notes** | **Rev 1.5 (2026-11-09, `604d35d1`):** the physics buoyancy cite is `astraweave-physics/src/lib.rs:933` (`pub water`). First trace for the W-series (Water Successor) campaign; derived from forensic reading at `7c29b8182` plus the campaign docs under `docs/campaigns/water-successor/`. **Rev 1.2 (T.W.1, 2026-07-21, `88c6ba588`):** editor water repaired + re-gated (HDR-format fix + install assert, aquatic-census enable, sea-level single-sourcing, W.2c.2 scaffolding-weave deletion); invariants 11-12 added; the W-FU-2 "woke the editor water" claim corrected in §5/Appendix B (per `TWR_WATER_RECON.md` §1.6 + `TW1_OUTCOME.md`). **Rev 1.3 (T.W.1.A, 2026-07-23, `49f1e3396`):** world-scale presentation — horizon shell (flat far annulus past every camera far plane), camera-distance amplitude fade (flat before the shell seam), per-`WaterStyle` `set_wave_params` (amplitude/steepness scale + foam threshold); invariants 13-14 added; see `TW1A_OUTCOME.md`. **Rev 1.4 (T.W.2, 2026-07-24, `1e3d8f692`):** authored bounded water bodies — `WaterVolumeDesc` + `set_water_volumes` render a per-volume patch (own uniform block: level/colors/wave, no weaves) through the same pipeline as the plane, clipped to XZ bounds, terrain-occluded; `plane_visible`/`has_renderable_content` gate a volumes-only scene; the editor `WaterVolume` entity + Carve Water brush (a terrain op, not water config) are the two authored-water surfaces. Invariant 15 added; see `TW2_OUTCOME.md`. Cross-references the (DEPRECATED-solver) [`fluids.md`](./fluids.md) and the [render trace](./render_pipeline_material_system_shader_infrastructure.md). |
 
 ---
 

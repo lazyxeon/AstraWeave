@@ -1688,4 +1688,57 @@ mod tests {
         assert_eq!(d["edges"][0]["target"], "b");
         assert_ne!(d["edges"][0]["kind"], "workspace-dep");
     }
+
+    #[test]
+    fn an_empty_required_anchor_set_is_an_error() {
+        let html = "\
+<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\n\
+<span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\n\
+<!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\n\
+<!-- TRACE-FOOTER:START -->x<!-- TRACE-FOOTER:END -->\n\
+'examples_collapsed': 'stale',\n\
+<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"a\",\"domain\":\"core\",\"trace\":null}],\"edges\":[],\"domains\":[{\"id\":\"core\"}]}</script>\n";
+        let graph = graph_of(&[("a", false)], &[]);
+        let out = render_map(html, &[], &graph, Path::new(".")).unwrap();
+        assert!(
+            out.problems
+                .iter()
+                .any(|p| p.contains("no trace-section anchors")),
+            "{:?}",
+            out.problems
+        );
+    }
+
+    #[test]
+    fn footer_and_marker_inserts_keep_crlf() {
+        let y = "schema_version: 1\ntrace_id: a\ntitle: T\ndescription: D\nprimary_crate: a\n\
+                 domain: core\nlifecycle_status: active\nintegration_status: wired\nowns: [a]\n\
+                 doc_version: \"1\"\nlast_verified_commit: c\n";
+        let mut trace = tdoc("a", y);
+        trace.body = "\
+<a id=\"5-active-file-map\"></a>\n## 5. Active File Map\n\
+<a id=\"6-conflict-map\"></a>\n## 6. Conflict Map\n\
+<a id=\"7-decision-log\"></a>\n## 7. Decision Log\n\
+<a id=\"8-invariants\"></a>\n## 8. Invariants\n\
+<a id=\"11-open-questions\"></a>\n## 11. Open Questions\n"
+            .into();
+        let html = "\
+<span><!-- MAP-TRACE-COUNT:START -->x<!-- MAP-TRACE-COUNT:END --></span>\r\n\
+<span><!-- MAP-COUNTER:START -->x<!-- MAP-COUNTER:END --></span>\r\n\
+<!-- MAP-MEMBERS:START -->x<!-- MAP-MEMBERS:END -->\r\n\
+<!-- TRACE-FOOTER:START -->\r\nstale\r\n<!-- TRACE-FOOTER:END -->\r\n\
+'examples_collapsed': 'stale',\r\n\
+<a href=\"#5-active-file-map\"></a><a href=\"#6-conflict-map\"></a>\
+<a href=\"#7-decision-log\"></a><a href=\"#8-invariants\"></a>\
+<a href=\"#11-open-questions\"></a>\r\n\
+<script id=\"workspace-data\">{\"nodes\":[{\"id\":\"a\",\"domain\":\"core\",\"trace\":null}],\"edges\":[],\"domains\":[{\"id\":\"core\"}]}</script>\r\n";
+        let graph = graph_of(&[("a", false)], &[]);
+        let out = render_map(html, &[trace], &graph, Path::new(".")).unwrap();
+        assert!(out.problems.is_empty(), "{:?}", out.problems);
+        assert!(
+            !out.html.replace("\r\n", "").contains('\n'),
+            "lone LF leaked into a CRLF file"
+        );
+        assert!(out.html.contains("Subsystem Traces"));
+    }
 }
