@@ -934,10 +934,10 @@ pub mod gltf_loader {
     /// Read a glTF container without letting `st_size` choose the allocation.
     /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
     /// with `gltf_external::load_jailed_gltf`, which reads buffers and images
-    /// through `read_jailed_file`, instead of `Gltf::open` and `gltf::import`.
+    /// through `bounded_open::read_under`, instead of `Gltf::open` and `gltf::import`.
     ///
-    /// The parent directory is opened, then the file name is opened from that
-    /// handle. A FIFO is not a regular file, so the read never blocks on it.
+    /// The model directory is resolved once. On Unix each component is opened
+    /// from that handle. On Windows each URI component is reopened by path.
     pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
         let bytes = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
         reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;

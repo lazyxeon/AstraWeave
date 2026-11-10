@@ -35,7 +35,8 @@ pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
-/// Read a jailed file from its parent directory handle.
+/// Read a jailed file via `bounded_open::read_path`. Unix opens each component
+/// from a directory handle. Windows reopens each component by path.
 ///
 /// The read stops at `max_bytes`. The allocation follows the bytes read.
 pub fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {

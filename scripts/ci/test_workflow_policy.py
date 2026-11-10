@@ -664,6 +664,18 @@ class WorkflowPolicyTest(unittest.TestCase):
             _kind, package, binary = stripped.split(" ", 2)
             self.assertIn(f"package(={package})", linux)
             self.assertIn(f"binary(={binary})", linux)
+        # cfg(windows) tests live in the astraweave-asset lib. The Windows
+        # archive compiles them, and the partition profile must not drop them.
+        self.assertIn("AW_CI_PROFILE: ci-pr-archive", windows_job)
+        self.assertIn("AW_CI_PARTITION: count:", windows_job)
+        self.assertNotIn("continue-on-error", windows_job)
+        archive = nextest.split("[profile.ci-pr-archive]", 1)[1].split("\n[", 1)[0]
+        self.assertNotIn("astraweave-asset", archive)
+        self.assertNotIn("bounded_open", archive)
+        for name in ("archive_only_skips.txt", "deferred_pr_tests.txt", "linux_archive_skips.txt"):
+            body = (ROOT / "scripts" / "ci" / name).read_text(encoding="utf-8")
+            self.assertNotIn("astraweave-asset", body)
+            self.assertNotIn("bounded_open", body)
 
     def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
         listed = []

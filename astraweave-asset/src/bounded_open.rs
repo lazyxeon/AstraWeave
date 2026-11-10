@@ -1,9 +1,11 @@
 //! Size-bounded read from a directory handle.
 //!
-//! On Unix each component is opened from the parent directory handle.
-//! On Windows each directory handle stays open until the file is opened, and
-//! the opened file stays under the canonical root. File type and size come
-//! from the opened handle, and the read stops at the caller's byte cap.
+//! The caller-supplied root is resolved once. On Unix each URI component is
+//! then opened from the parent directory handle with `O_NOFOLLOW`. On Windows
+//! the resolved root is opened without reparse-point semantics, each URI
+//! component is reopened by path and any reparse point is rejected, and the
+//! file's final path must stay under the root's final path. File type and
+//! size come from the opened handle, and the read stops at the caller's byte cap.
 
 use anyhow::{bail, Context, Result};
 use std::fs::File;
@@ -118,10 +120,14 @@ fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
 fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     use rustix::fs::{openat, Mode, OFlags, CWD};
 
+    // The root is resolved once, then opened as a directory. URI components
+    // keep NOFOLLOW so a link under the root is not followed.
+    let root_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
     let directory = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
     let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let names = relative_names(relative)?;
-    let mut dir = opened(openat(CWD, root, directory, Mode::empty()))?;
+    let resolved = std::fs::canonicalize(root)?;
+    let mut dir = opened(openat(CWD, &resolved, root_flags, Mode::empty()))?;
     for (index, name) in names.iter().enumerate() {
         let last = index + 1 == names.len();
         let flags = if last { file_flags } else { directory };
@@ -151,11 +157,15 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 
-    fn open_handle(path: &Path) -> std::io::Result<File> {
+    fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
+        let mut flags = FILE_FLAG_BACKUP_SEMANTICS;
+        if reparse {
+            flags |= FILE_FLAG_OPEN_REPARSE_POINT;
+        }
         std::fs::OpenOptions::new()
             .read(true)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS)
+            .custom_flags(flags)
             .open(path)
     }
 
@@ -171,15 +181,18 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     }
 
     let names = relative_names(relative)?;
-    let root_file = open_handle(root)?;
+    // Resolve the caller-supplied root once, then open that directory by
+    // handle without reparse-point semantics. URI components below keep it.
+    let resolved = std::fs::canonicalize(root)?;
+    let root_file = open_path(&resolved, false)?;
     ensure_directory(&root_file)?;
     let root_final = final_path(&root_file)?;
     let mut held = vec![root_file];
 
-    let mut cursor = root.to_path_buf();
+    let mut cursor = resolved;
     for (index, name) in names.iter().enumerate() {
         cursor.push(name);
-        let file = open_handle(&cursor)?;
+        let file = open_path(&cursor, true)?;
         let last = index + 1 == names.len();
         if !last {
             ensure_directory(&file)?;
@@ -252,21 +265,187 @@ fn final_path(file: &File) -> std::io::Result<std::path::PathBuf> {
 
 #[cfg_attr(not(windows), allow(dead_code))]
 fn path_is_under(root: &Path, file: &Path) -> bool {
-    let root_parts: Vec<std::ffi::OsString> = root
-        .components()
-        .map(|component| component.as_os_str().to_os_string())
-        .collect();
-    let file_parts: Vec<std::ffi::OsString> = file
-        .components()
-        .map(|component| component.as_os_str().to_os_string())
-        .collect();
+    windows_final_path_is_under(&root.to_string_lossy(), &file.to_string_lossy())
+}
+
+/// Component prefix check for two Windows final paths.
+///
+/// Both strings are the kind `GetFinalPathNameByHandleW` returns. A stream
+/// suffix, a `.` or `..` component, or a different device is not under the
+/// root. On Windows each component uses `CompareStringOrdinal`.
+fn windows_final_path_is_under(root: &str, file: &str) -> bool {
+    let root_parts = match windows_final_components(root) {
+        Some(parts) => parts,
+        None => return false,
+    };
+    let file_parts = match windows_final_components(file) {
+        Some(parts) => parts,
+        None => return false,
+    };
     if file_parts.len() <= root_parts.len() {
         return false;
     }
     root_parts
         .iter()
         .zip(&file_parts)
-        .all(|(root_part, file_part)| root_part.eq_ignore_ascii_case(file_part))
+        .all(|(root_part, file_part)| component_eq(root_part, file_part))
+}
+
+fn windows_final_components(path: &str) -> Option<Vec<String>> {
+    if path.is_empty() || path.contains('\0') {
+        return None;
+    }
+    let bytes = path.as_bytes();
+    let mut parts = Vec::new();
+    let rest = if is_extended_prefix(bytes) {
+        let body = &path[4..];
+        if starts_with_ignore_ascii(body, "UNC\\") || starts_with_ignore_ascii(body, "UNC/") {
+            let after = &body[4..];
+            let (server, after) = take_component(after)?;
+            let (share, after) = take_component(after)?;
+            if server.is_empty() || share.is_empty() {
+                return None;
+            }
+            parts.push(r"\\?\UNC".to_string());
+            parts.push(server.to_string());
+            parts.push(share.to_string());
+            after
+        } else if is_drive_prefix(body) {
+            let drive = &body[..2];
+            parts.push(format!(r"\\?\{drive}"));
+            strip_sep(&body[2..])
+        } else {
+            return None;
+        }
+    } else if is_unc_prefix(bytes) {
+        let after = &path[2..];
+        let (server, after) = take_component(after)?;
+        let (share, after) = take_component(after)?;
+        if server.is_empty() || share.is_empty() {
+            return None;
+        }
+        parts.push(format!(r"\\{server}"));
+        parts.push(share.to_string());
+        after
+    } else if is_drive_prefix(path) {
+        parts.push(path[..2].to_string());
+        strip_sep(&path[2..])
+    } else {
+        path
+    };
+    if !rest.is_empty() {
+        for component in rest.split(['\\', '/']) {
+            if component.is_empty() || component == "." || component == ".." {
+                return None;
+            }
+            parts.push(component.to_string());
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    if parts.iter().any(|part| component_has_stream(part)) {
+        return None;
+    }
+    Some(parts)
+}
+
+fn is_extended_prefix(bytes: &[u8]) -> bool {
+    bytes.len() >= 4
+        && (bytes[0] == b'\\' || bytes[0] == b'/')
+        && bytes[1] == bytes[0]
+        && bytes[2] == b'?'
+        && (bytes[3] == b'\\' || bytes[3] == b'/')
+}
+
+fn is_unc_prefix(bytes: &[u8]) -> bool {
+    bytes.len() >= 2 && (bytes[0] == b'\\' || bytes[0] == b'/') && bytes[1] == bytes[0]
+}
+
+fn is_drive_prefix(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+fn component_has_stream(part: &str) -> bool {
+    let tail = part.strip_prefix(r"\\?\").unwrap_or(part);
+    let bytes = tail.as_bytes();
+    if bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return false;
+    }
+    part.contains(':')
+}
+
+fn starts_with_ignore_ascii(text: &str, prefix: &str) -> bool {
+    text.len() >= prefix.len()
+        && text.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+fn take_component(path: &str) -> Option<(&str, &str)> {
+    if path.is_empty() {
+        return None;
+    }
+    let end = path.find(['\\', '/']).unwrap_or(path.len());
+    let component = &path[..end];
+    if component.is_empty() || component == "." || component == ".." {
+        return None;
+    }
+    let rest = if end == path.len() {
+        ""
+    } else {
+        &path[end + 1..]
+    };
+    Some((component, rest))
+}
+
+fn strip_sep(path: &str) -> &str {
+    path.strip_prefix(['\\', '/']).unwrap_or(path)
+}
+
+#[cfg(windows)]
+fn component_eq(left: &str, right: &str) -> bool {
+    ordinal_eq_ignore_case(left, right)
+}
+
+#[cfg(not(windows))]
+fn component_eq(left: &str, right: &str) -> bool {
+    // CompareStringOrdinal is the Windows check. This keeps the same split
+    // under test where that call is not available.
+    left.eq_ignore_ascii_case(right)
+}
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "CompareStringOrdinal has no safe wrapper in this crate"
+)]
+fn ordinal_eq_ignore_case(left: &str, right: &str) -> bool {
+    if left.is_empty() || right.is_empty() {
+        return left.is_empty() && right.is_empty();
+    }
+    let left: Vec<u16> = left.encode_utf16().collect();
+    let right: Vec<u16> = right.encode_utf16().collect();
+    let (Ok(left_len), Ok(right_len)) = (i32::try_from(left.len()), i32::try_from(right.len()))
+    else {
+        return false;
+    };
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CompareStringOrdinal(
+            left: *const u16,
+            left_len: i32,
+            right: *const u16,
+            right_len: i32,
+            ignore_case: i32,
+        ) -> i32;
+    }
+
+    const CSTR_EQUAL: i32 = 2;
+    // Both buffers are non-empty, live for this call, and the lengths are theirs.
+    let result =
+        unsafe { CompareStringOrdinal(left.as_ptr(), left_len, right.as_ptr(), right_len, 1) };
+    result == CSTR_EQUAL
 }
 
 #[cfg(test)]
@@ -282,6 +461,79 @@ mod tests {
         assert!(!path_is_under(
             Path::new("jail/sub"),
             Path::new("jail/a.bin")
+        ));
+    }
+
+    #[test]
+    fn final_path_comparison_rejects_outside_prefixes() {
+        assert!(windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\C:\jail\a.bin"
+        ));
+        assert!(windows_final_path_is_under(
+            r"\\?\C:\Jail",
+            r"\\?\c:\jail\A.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\C:\other\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\C:\jail2\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\D:\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail\sub",
+            r"\\?\C:\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(r"\\?\C:\jail", r"\\?\C:\jail"));
+        assert!(windows_final_path_is_under(
+            r"\\?\UNC\server\share\jail",
+            r"\\?\UNC\server\share\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\UNC\server\share\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\UNC\server\share\jail",
+            r"\\?\UNC\server\share2\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\UNC\server\share\jail",
+            r"\\server\share\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"C:\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"C:\jail",
+            r"\\?\C:\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\C:\jail\..\windows\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\Program Files\jail",
+            r"\\?\C:\PROGRA~1\jail\a.bin"
+        ));
+        assert!(windows_final_path_is_under(
+            r"\\?\C:\PROGRA~1\jail",
+            r"\\?\C:\PROGRA~1\jail\a.bin"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\C:\jail\a.bin:stream"
+        ));
+        assert!(!windows_final_path_is_under(
+            r"\\?\C:\jail",
+            r"\\?\C:\jail\a.bin:stream:$DATA"
         ));
     }
 
@@ -319,6 +571,47 @@ mod tests {
         assert!(err.to_string().contains("not a regular file"), "{err}");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_root_loads() {
+        let real = tempfile::tempdir().expect("real");
+        std::fs::write(real.path().join("box.bin"), b"box!").expect("bin");
+        let parent = tempfile::tempdir().expect("parent");
+        let link = parent.path().join("models");
+        std::os::unix::fs::symlink(real.path(), &link).expect("symlink");
+        let bytes = read_under(&link, Path::new("box.bin"), 64, "", Path::new("box.bin"))
+            .expect("linked root");
+        assert_eq!(bytes, b"box!");
+        let via_path = read_path(&link.join("box.bin"), 64, "").expect("linked parent");
+        assert_eq!(via_path, b"box!");
+    }
+
+    #[cfg(windows)]
+    fn junction(link: &Path, target: &Path) {
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .status()
+            .expect("mklink");
+        assert!(status.success(), "mklink");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_junction_root_loads() {
+        let real = tempfile::tempdir().expect("real");
+        std::fs::write(real.path().join("box.bin"), b"box!").expect("bin");
+        let parent = tempfile::tempdir().expect("parent");
+        let link = parent.path().join("models");
+        junction(&link, real.path());
+        let bytes = read_under(&link, Path::new("box.bin"), 64, "", Path::new("box.bin"))
+            .expect("junction root");
+        assert_eq!(bytes, b"box!");
+        let via_path = read_path(&link.join("box.bin"), 64, "").expect("junction parent");
+        assert_eq!(via_path, b"box!");
+    }
+
     #[cfg(windows)]
     #[test]
     fn windows_linked_directory_is_rejected() {
@@ -326,15 +619,7 @@ mod tests {
         let outside = tempfile::tempdir().expect("outside");
         std::fs::write(outside.path().join("note.bin"), b"outside").expect("note");
         let sub = root.path().join("sub");
-        std::fs::create_dir(&sub).expect("sub");
-        std::fs::remove_dir(&sub).expect("remove");
-        let status = std::process::Command::new("cmd")
-            .args(["/C", "mklink", "/J"])
-            .arg(&sub)
-            .arg(outside.path())
-            .status()
-            .expect("mklink");
-        assert!(status.success(), "mklink");
+        junction(&sub, outside.path());
         let err = read_under(
             root.path(),
             Path::new("sub/note.bin"),

@@ -243,8 +243,8 @@ fn import_validated_model(
     astraweave_asset::gltf_loader::reject_short_glb_header(&bytes)?;
     // `import_slice` has no base directory. `import_buffers` reads a file URI
     // with gltf `read_to_end` (`st_size + 1`, no cap). `load_jailed_gltf`
-    // reads the sibling after the jail, with `is_file()` and `MAX_MODEL_BYTES`.
-    // `Glb::from_reader` stays off this path.
+    // reads the sibling through `bounded_open::read_under`. File type and size
+    // come from the opened handle. `Glb::from_reader` stays off this path.
     let base = path.parent().context("model has no directory")?;
     astraweave_asset::gltf_external::load_jailed_gltf(base, &bytes, MAX_MODEL_BYTES)
         .with_context(|| format!("import {}", path.display()))
@@ -266,6 +266,9 @@ fn validate_model_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut external_bytes = 0u64;
     for uri in uris {
         check_relative_uri(&uri)?;
+        if uri.starts_with("data:") {
+            continue;
+        }
         let sibling = parent.join(&uri);
         let meta = regular_file(&sibling, MAX_MODEL_BYTES)
             .with_context(|| format!("external uri {uri}"))?;
@@ -328,6 +331,9 @@ fn collect_uris(value: &serde_json::Value, out: &mut Vec<String>) {
 }
 
 fn check_relative_uri(uri: &str) -> Result<()> {
+    if uri.starts_with("data:") {
+        return Ok(());
+    }
     if uri.is_empty() || uri.len() > 240 {
         bail!("gltf uri length is not allowed");
     }
@@ -772,6 +778,33 @@ mod tests {
         let err = validate_model_file(&path).unwrap_err();
         let msg = format!("{err:#}");
         assert!(msg.contains("escapes"), "{msg}");
+    }
+
+    #[test]
+    fn data_uri_stays_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,Ym94IQ==","byteLength":4}]}"#,
+        )
+        .unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let (_doc, buffers, images) = import_validated_model(&path).unwrap();
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert!(images.is_empty());
+
+        fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"file:box.bin","byteLength":1}]}"#,
+        )
+        .unwrap();
+        let err = validate_model_file(&path).unwrap_err();
+        assert!(err.to_string().contains("relative"), "{err}");
     }
 
     #[test]
