@@ -66,8 +66,8 @@ Task 5 implements **automated CI validation** for PBR materials and pipeline com
 - **Output**: GitHub Step Summary with test status
 
 #### **Job 3: Validate WGSL Shaders**
-- **Checks**: Shader file syntax (basic)
-- **Lists**: All `.wgsl` files with line counts
+- **Checks**: `shaders/*.wgsl`. The repository has no top-level `shaders/` directory, so the step checks zero files and cannot fail the job. #750 tracks its step-level `continue-on-error`.
+- **Lists**: the same empty glob, with line counts
 - **Analyzer**: the job does not install `wgsl-analyzer`. The old install was unpinned and unused.
 
 ---

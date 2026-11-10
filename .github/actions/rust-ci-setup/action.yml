@@ -58,7 +58,7 @@ runs:
     - name: Fetch sccache release
       id: sccache_fetch
       shell: bash
-      run: bash scripts/ci/fetch_sccache_release.sh
+      run: env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" bash --noprofile --norc scripts/ci/fetch_sccache_release.sh
 
     - name: Note sccache unavailable
       if: steps.sccache_fetch.outputs.available != 'true'
