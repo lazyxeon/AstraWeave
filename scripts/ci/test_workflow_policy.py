@@ -472,7 +472,7 @@ def _is_upload_only(job: dict) -> bool:
         name = _action_name(uses).casefold()
         if name == "actions/download-artifact":
             keys = _with_key_names(step)
-            if keys is None or not keys <= _DOWNLOAD_WITH_KEYS:
+            if keys is None or keys != _DOWNLOAD_WITH_KEYS:
                 return False
             continue
         if name != "codecov/codecov-action":
@@ -524,6 +524,7 @@ CODECOV_FAIL_CI_MSG = "codecov step must set fail_ci_if_error: true"
 CODECOV_VERSION_MSG = "codecov step must set version to an exact vX.Y.Z"
 CODECOV_SEARCH_MSG = "codecov step must set disable_search: true"
 CODECOV_FILES_MSG = "codecov step must set files to an explicit path"
+CODECOV_FILES_PIN_MSG = "codecov step must set files to the pinned report path"
 CODECOV_OIDC_MSG = "codecov step must set use_oidc: true"
 CODECOV_CONTINUE_MSG = "codecov job or step must not set continue-on-error"
 COVERAGE_WRITE_MSG = "coverage workflow must not grant write permissions"
@@ -537,8 +538,12 @@ CODECOV_WITH_MSG = (
 CODECOV_PERMS_MSG = (
     "codecov upload job permissions must be contents: read and id-token: write"
 )
-DOWNLOAD_WITH_MSG = "download-artifact with: allows only name and path"
+DOWNLOAD_WITH_MSG = "download-artifact with: must be exactly name and path"
+DOWNLOAD_NAME_MSG = "download-artifact name must be the pinned report artifact"
 DOWNLOAD_STEP_MSG = "download-artifact step keys must be name, uses, and with"
+CODECOV_STEP_KEYS_MSG = "codecov step keys must be name, uses, and with"
+UPLOAD_NEEDS_MSG = "codecov upload job needs must be exactly coverage"
+COVERAGE_JOB_END_MSG = "coverage job must end at the report upload-artifact step"
 COVERAGE_ARTIFACT_SHA_MSG = "coverage workflow actions must use a commit SHA"
 UPLOAD_JOB_KEYS_MSG = (
     "codecov upload job keys must be name, needs, permissions, runs-on, "
@@ -559,6 +564,22 @@ _UPLOAD_JOB_KEYS = frozenset(
 )
 _DOWNLOAD_WITH_KEYS = frozenset({"name", "path"})
 _DOWNLOAD_STEP_KEYS = frozenset({"name", "uses", "with"})
+_CODECOV_STEP_KEYS = frozenset({"name", "uses", "with"})
+_DOWNLOAD_ARTIFACT_NAMES = {
+    "coverage.yml": "coverage-xml",
+    "aw-editor-tests.yml": "aw-editor-lcov",
+}
+_CODECOV_FILES_PIN = {
+    "coverage.yml": "./tools/astraweave-assets/coverage/cobertura.xml",
+    "aw-editor-tests.yml": "./lcov.info",
+}
+_KANI_TIMEOUT_EXPR = "${{ steps.timeout.outputs.value }}"
+_KANI_PACKAGES = {
+    "kani-ecs": "astraweave-ecs",
+    "kani-math": "astraweave-math",
+    "kani-sdk": "astraweave-sdk",
+    "kani-core": "astraweave-core",
+}
 _UPLOAD_PERMISSIONS = {"contents": "read", "id-token": "write"}
 _CODECOV_WITH_KEYS = frozenset(
     {
@@ -575,7 +596,7 @@ _CODECOV_EVENTS = frozenset({"push", "schedule", "workflow_dispatch"})
 _LEAST_PRIVILEGE_WORKFLOWS = frozenset({"kani.yml", "editor-ci.yml"})
 _MISSING = object()
 KANI_VERSION_MSG = "kani step must set kani-version to an exact X.Y.Z"
-KANI_ARGS_MSG = "kani args must not read github.event.inputs"
+KANI_ARGS_MSG = "kani args must match the approved package line"
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
 _COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
@@ -745,11 +766,16 @@ def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[s
 
 
 def codecov_explicit_file_violations(text: str, *, path: str = "") -> list[str]:
-    """Read disable_search and files from the step's with: mapping only."""
+    """Read disable_search and files from the step's with: mapping only.
+
+    On coverage.yml and aw-editor-tests.yml, files must be that workflow's
+    pinned report path, not merely a non-empty path.
+    """
     prefix = f"{path}: " if path else ""
     steps, err = _codecov_steps(text)
     if err:
         return [f"{prefix}1: {err}"]
+    pinned = _CODECOV_FILES_PIN.get(Path(path).name)
     violations: list[str] = []
     for step in steps or []:
         line_no = _step_line(step)
@@ -761,6 +787,8 @@ def codecov_explicit_file_violations(text: str, *, path: str = "") -> list[str]:
         _files_key, files = _ci_item(body, "files")
         if _key_outside_with(step, "files") or not _explicit_file_value(files):
             violations.append(f"{prefix}{line_no}: {CODECOV_FILES_MSG}")
+        elif pinned is not None and files != pinned:
+            violations.append(f"{prefix}{line_no}: {CODECOV_FILES_PIN_MSG}")
     return violations
 
 
@@ -780,13 +808,23 @@ def codecov_oidc_violations(text: str, *, path: str = "") -> list[str]:
 
 
 def codecov_with_key_violations(text: str, *, path: str = "") -> list[str]:
-    """Allow only the with: keys the two Codecov steps use today."""
+    """Allow only the Codecov step keys and with: keys used today.
+
+    The step's own keys are name, uses, and with. An if: is not in that
+    set, so a condition that skips the upload fails the check. with: keys
+    stay files, disable_search, flags, name, version, fail_ci_if_error,
+    and use_oidc.
+    """
     prefix = f"{path}: " if path else ""
     steps, err = _codecov_steps(text)
     if err:
         return [f"{prefix}1: {err}"]
     violations: list[str] = []
     for step in steps or []:
+        for key in step:
+            if not isinstance(key, str) or key.casefold() not in _CODECOV_STEP_KEYS:
+                violations.append(f"{prefix}{_step_line(step)}: {CODECOV_STEP_KEYS_MSG}")
+                break
         if "with" not in step or step.get("with") is None:
             continue
         keys = _with_key_names(step)
@@ -844,9 +882,43 @@ def _download_with_violations(job: dict) -> list[int]:
     lines: list[int] = []
     for step in _download_steps(job):
         keys = _with_key_names(step)
-        if keys is None or not keys <= _DOWNLOAD_WITH_KEYS:
+        if keys is None or keys != _DOWNLOAD_WITH_KEYS:
             lines.append(_step_line(step))
     return lines
+
+
+def _download_name_violations(job: dict, artifact_name: str) -> list[int]:
+    lines: list[int] = []
+    for step in _download_steps(job):
+        _key, name = _ci_item(_mapping(step.get("with")), "name")
+        if name != artifact_name:
+            lines.append(_step_line(step))
+    return lines
+
+
+def _needs_exactly(needs: object, job_id: str) -> bool:
+    if isinstance(needs, str):
+        return needs == job_id
+    return isinstance(needs, list) and needs == [job_id]
+
+
+def _ends_at_upload_artifact(job: object) -> bool:
+    if not isinstance(job, dict):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list) or not steps or not isinstance(steps[-1], dict):
+        return False
+    return _is_named_action(steps[-1], "actions/upload-artifact")
+
+
+def _producer_end_line(jobs: dict, producer_id: str, fallback: int) -> int:
+    producer = jobs.get(producer_id)
+    if isinstance(producer, dict):
+        steps = producer.get("steps")
+        if isinstance(steps, list) and steps and isinstance(steps[-1], dict):
+            return _step_line(steps[-1])
+        return int(getattr(producer, "yaml_line", fallback))
+    return int(getattr(jobs, "key_lines", {}).get(producer_id, fallback))
 
 
 def _download_step_key_violations(job: dict) -> list[int]:
@@ -866,11 +938,13 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     Top-level permissions must be {}. A missing key fails. write-all, and any
     permission value write, fail, including a flow mapping or a quoted key.
     The upload job's keys are exactly name, needs, permissions, runs-on,
-    timeout-minutes, and steps. Its steps are actions/download-artifact, with
-    only name and path, plus the SHA-pinned Codecov action. That download
-    step's keys are only name, uses, and with. Its permissions are exactly
-    contents: read and id-token: write. This check does not apply to other
-    workflow file names.
+    timeout-minutes, and steps. needs is exactly the job coverage. The
+    coverage job ends at its upload-artifact step. The upload job's steps
+    are actions/download-artifact, with exactly name and path, plus the
+    SHA-pinned Codecov action. That download step's keys are only name,
+    uses, and with, and its name is the pinned report artifact. Its
+    permissions are exactly contents: read and id-token: write. This check
+    does not apply to other workflow file names.
     """
     if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
         return []
@@ -921,8 +995,18 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
             violations.append(f"{prefix}{job_line}: {UPLOAD_JOB_KEYS_MSG}")
         for step_line in _download_with_violations(job) if has_codecov else []:
             violations.append(f"{prefix}{step_line}: {DOWNLOAD_WITH_MSG}")
+        artifact_name = _DOWNLOAD_ARTIFACT_NAMES.get(Path(path).name)
+        if has_codecov and artifact_name is not None:
+            for step_line in _download_name_violations(job, artifact_name):
+                violations.append(f"{prefix}{step_line}: {DOWNLOAD_NAME_MSG}")
         for step_line in _download_step_key_violations(job) if has_codecov else []:
             violations.append(f"{prefix}{step_line}: {DOWNLOAD_STEP_MSG}")
+        if has_codecov and not _needs_exactly(job.get("needs"), "coverage"):
+            needs_line = int(getattr(job, "key_lines", {}).get("needs", job_line))
+            violations.append(f"{prefix}{needs_line}: {UPLOAD_NEEDS_MSG}")
+        if has_codecov and not _ends_at_upload_artifact(jobs.get("coverage")):
+            end_line = _producer_end_line(jobs, "coverage", job_line)
+            violations.append(f"{prefix}{end_line}: {COVERAGE_JOB_END_MSG}")
         if upload_only and not _exact_upload_permissions(job_perms):
             violations.append(f"{prefix}{perm_line}: {CODECOV_PERMS_MSG}")
         if has_codecov and not upload_only:
@@ -985,8 +1069,21 @@ def kani_version_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
+def _approved_kani_args(job_id: str) -> str | None:
+    package = _KANI_PACKAGES.get(job_id)
+    if package is None:
+        return None
+    return f"--package {package} -Z unstable-options --harness-timeout {_KANI_TIMEOUT_EXPR}"
+
+
 def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
-    """Read args from each Kani step's with: mapping."""
+    """Each Kani step's args must be that job's approved package line.
+
+    The line is `--package <crate> -Z unstable-options --harness-timeout
+    ${{ steps.timeout.outputs.value }}`. The only expression is
+    steps.timeout.outputs.value. Any other string fails, including a dot,
+    bracket, quoted, whitespace, or case spelling of the input context.
+    """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
     if err:
@@ -994,11 +1091,11 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
     if doc is None:
         return []
     violations: list[str] = []
-    for _job_id, _job, step in _iter_steps(doc):
+    for job_id, _job, step in _iter_steps(doc):
         if not _is_named_action(step, "model-checking/kani-github-action"):
             continue
         _key, args = _ci_item(_mapping(step.get("with")), "args")
-        if isinstance(args, str) and "github.event.inputs" in args:
+        if args != _approved_kani_args(job_id):
             violations.append(f"{prefix}{_step_line(step)}: {KANI_ARGS_MSG}")
     return violations
 
@@ -2820,6 +2917,62 @@ jobs:
         self.assertEqual(len(folded_violations), 1)
         self.assertIn(KANI_ARGS_MSG, folded_violations[0])
 
+    def test_kani_args_allowlist_rejects_input_context_spellings(self) -> None:
+        """Each spelling of the input context fails the args allowlist.
+
+        The anchor is the kani-math step, not the ecs line the folded test
+        edits. The non-dot spellings do not contain github.event.inputs, so
+        a substring check of that one spelling stays green.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_dispatch_args_violations(text, path="kani.yml"), [])
+        anchor = (
+            "          args: --package astraweave-math -Z unstable-options "
+            "--harness-timeout ${{ steps.timeout.outputs.value }}\n"
+        )
+        self.assertIn(anchor, text)
+        spellings = {
+            "dot": "${{ github.event.inputs.timeout }}",
+            "bracket": "${{ github.event['inputs'].timeout }}",
+            "quoted": '${{ github.event["inputs"].timeout }}',
+            "whitespace": "${{ github . event . inputs . timeout }}",
+            "case": "${{ GitHub.Event.Inputs.timeout }}",
+            "inputs": "${{ inputs.timeout }}",
+            "inputs-bracket": "${{ inputs['timeout'] }}",
+            "inputs-quoted": '${{ inputs["timeout"] }}',
+        }
+        for name, expr in spellings.items():
+            mutant = text.replace(anchor, anchor.replace("\n", f" {expr}\n", 1), 1)
+            self.assertNotEqual(mutant, text, name)
+            math_line = next(
+                line for line in mutant.splitlines() if "astraweave-math" in line and "args:" in line
+            )
+            if name != "dot":
+                self.assertNotIn("github.event.inputs", math_line, name)
+            violations = kani_dispatch_args_violations(mutant, path="kani.yml")
+            self.assertEqual(len(violations), 1, name)
+            self.assertIn(KANI_ARGS_MSG, violations[0], name)
+            self.assertIn("kani.yml:", violations[0], name)
+        injected = text.replace(anchor, anchor.replace("\n", " && echo injected\n", 1), 1)
+        injected_line = next(
+            line for line in injected.splitlines() if "astraweave-math" in line and "args:" in line
+        )
+        self.assertNotIn("inputs", injected_line.casefold())
+        self.assertIn(
+            KANI_ARGS_MSG,
+            kani_dispatch_args_violations(injected, path="kani.yml")[0],
+        )
+        swapped = text.replace(
+            "--package astraweave-math -Z unstable-options",
+            "--package astraweave-ecs -Z unstable-options",
+            1,
+        )
+        self.assertNotEqual(swapped, text)
+        self.assertIn(
+            KANI_ARGS_MSG,
+            kani_dispatch_args_violations(swapped, path="kani.yml")[0],
+        )
+
     def test_codecov_token_secrets_and_with_placement_mutants_are_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         self.assertEqual(codecov_token_violations(text, path="coverage.yml"), [])
@@ -3230,6 +3383,182 @@ jobs:
             self.assertNotEqual(mutant, text, extra)
             messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
             self.assertIn(DOWNLOAD_STEP_MSG, messages, extra)
+
+    def test_codecov_download_with_and_name_are_exact(self) -> None:
+        """with: is exactly {name, path}, and name is the pinned artifact.
+
+        A missing name is still a subset of {name, path}. A rename to
+        coverage-report keeps both keys. Both pass a subset check.
+        """
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(coverage_permission_violations(text, path="coverage.yml"), [])
+        self.assertNotIn(
+            DOWNLOAD_NAME_MSG,
+            " ".join(coverage_permission_violations(editor, path="aw-editor-tests.yml")),
+        )
+        download = (
+            "          name: coverage-xml\n"
+            "          path: tools/astraweave-assets/coverage\n"
+        )
+        self.assertEqual(text.count(download), 2)
+        missing_name = text.replace(
+            download,
+            "          path: tools/astraweave-assets/coverage\n",
+            1,
+        )
+        self.assertNotEqual(missing_name, text)
+        missing_doc, missing_err = load_workflow_yaml(missing_name)
+        self.assertIsNone(missing_err)
+        codecov_job = missing_doc["jobs"]["codecov"]
+        self.assertFalse(_is_upload_only(codecov_job))
+        missing_messages = " ".join(
+            coverage_permission_violations(missing_name, path="coverage.yml")
+        )
+        self.assertIn(DOWNLOAD_WITH_MSG, missing_messages)
+        renamed = text.replace(download, download.replace("coverage-xml", "coverage-report"), 1)
+        self.assertNotEqual(renamed, text)
+        renamed_doc, renamed_err = load_workflow_yaml(renamed)
+        self.assertIsNone(renamed_err)
+        self.assertTrue(_is_upload_only(renamed_doc["jobs"]["codecov"]))
+        renamed_messages = " ".join(
+            coverage_permission_violations(renamed, path="coverage.yml")
+        )
+        self.assertIn(DOWNLOAD_NAME_MSG, renamed_messages)
+        self.assertNotIn(DOWNLOAD_WITH_MSG, renamed_messages)
+        cased = text.replace(download, download.replace("coverage-xml", "Coverage-XML"), 1)
+        self.assertIn(
+            DOWNLOAD_NAME_MSG,
+            " ".join(coverage_permission_violations(cased, path="coverage.yml")),
+        )
+        editor_download = "        name: aw-editor-lcov\n        path: .\n"
+        editor_renamed = editor.replace(
+            editor_download,
+            editor_download.replace("aw-editor-lcov", "coverage-xml"),
+            1,
+        )
+        self.assertNotEqual(editor_renamed, editor)
+        self.assertIn(
+            DOWNLOAD_NAME_MSG,
+            " ".join(coverage_permission_violations(editor_renamed, path="aw-editor-tests.yml")),
+        )
+
+    def test_codecov_upload_needs_and_job_end_are_pinned(self) -> None:
+        """needs is exactly coverage, and that job ends at upload-artifact."""
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        for path, body in (("coverage.yml", text), ("aw-editor-tests.yml", editor)):
+            self.assertNotIn(UPLOAD_NEEDS_MSG, " ".join(coverage_permission_violations(body, path=path)))
+            self.assertNotIn(
+                COVERAGE_JOB_END_MSG,
+                " ".join(coverage_permission_violations(body, path=path)),
+            )
+            listed = body.replace(
+                "    name: Codecov upload\n    needs: coverage\n",
+                "    name: Codecov upload\n    needs: [coverage]\n",
+                1,
+            )
+            self.assertNotEqual(listed, body, path)
+            self.assertNotIn(
+                UPLOAD_NEEDS_MSG,
+                " ".join(coverage_permission_violations(listed, path=path)),
+                path,
+            )
+            widened = body.replace(
+                "    name: Codecov upload\n    needs: coverage\n",
+                "    name: Codecov upload\n    needs: [coverage, coverage-html]\n",
+                1,
+            )
+            self.assertNotEqual(widened, body, path)
+            self.assertIn(
+                UPLOAD_NEEDS_MSG,
+                " ".join(coverage_permission_violations(widened, path=path)),
+                path,
+            )
+            other = body.replace(
+                "    name: Codecov upload\n    needs: coverage\n",
+                "    name: Codecov upload\n    needs: coverage-html\n",
+                1,
+            )
+            self.assertIn(
+                UPLOAD_NEEDS_MSG,
+                " ".join(coverage_permission_violations(other, path=path)),
+                path,
+            )
+        html_back = text.replace(
+            "          retention-days: 30\n\n  codecov:\n    name: Codecov upload\n",
+            "          retention-days: 30\n\n"
+            "      - name: Generate HTML report\n"
+            "        run: exit 1\n\n"
+            "  codecov:\n    name: Codecov upload\n",
+            1,
+        )
+        self.assertNotEqual(html_back, text)
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(html_back, path="coverage.yml")),
+        )
+        editor_tail = editor.replace(
+            "        retention-days: 30\n\n  codecov:\n    name: Codecov upload\n",
+            "        retention-days: 30\n\n"
+            "    - name: After lcov\n"
+            "      run: exit 1\n\n"
+            "  codecov:\n    name: Codecov upload\n",
+            1,
+        )
+        self.assertNotEqual(editor_tail, editor)
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(editor_tail, path="aw-editor-tests.yml")),
+        )
+
+    def test_codecov_files_path_is_pinned(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(codecov_explicit_file_violations(text, path="coverage.yml"), [])
+        self.assertEqual(codecov_explicit_file_violations(editor, path="aw-editor-tests.yml"), [])
+        xml = text.replace(
+            "files: ./tools/astraweave-assets/coverage/cobertura.xml",
+            "files: ./tools/astraweave-assets/coverage-html/index.html",
+            1,
+        )
+        self.assertNotEqual(xml, text)
+        self.assertIn(
+            CODECOV_FILES_PIN_MSG,
+            codecov_explicit_file_violations(xml, path="coverage.yml")[0],
+        )
+        lcov = editor.replace("files: ./lcov.info", "files: ./other.info", 1)
+        self.assertNotEqual(lcov, editor)
+        self.assertIn(
+            CODECOV_FILES_PIN_MSG,
+            codecov_explicit_file_violations(lcov, path="aw-editor-tests.yml")[0],
+        )
+
+    def test_codecov_step_keys_reject_if(self) -> None:
+        """An if: on the Codecov step is not name, uses, or with."""
+        workflows = {
+            "coverage.yml": (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8"),
+            "aw-editor-tests.yml": (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8"),
+        }
+        conditions = ("false", "${{ false }}", "failure()")
+        for path, text in workflows.items():
+            self.assertEqual(codecov_with_key_violations(text, path=path), [], path)
+            for condition in conditions:
+                mutant = text.replace(
+                    "uses: codecov/codecov-action@",
+                    f"if: {condition}\n        uses: codecov/codecov-action@",
+                    1,
+                )
+                if path == "aw-editor-tests.yml":
+                    mutant = text.replace(
+                        "uses: codecov/codecov-action@",
+                        f"if: {condition}\n      uses: codecov/codecov-action@",
+                        1,
+                    )
+                self.assertNotEqual(mutant, text, (path, condition))
+                messages = " ".join(codecov_with_key_violations(mutant, path=path))
+                self.assertIn(CODECOV_STEP_KEYS_MSG, messages, (path, condition))
+                self.assertNotIn(CODECOV_WITH_MSG, messages, (path, condition))
 
     def test_codecov_upload_job_key_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
