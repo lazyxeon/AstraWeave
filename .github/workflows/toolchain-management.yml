@@ -107,12 +107,26 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install pkg-config cmake
 
+      - name: Fetch sccache release
+        id: sccache_fetch
+        shell: bash
+        run: bash scripts/ci/fetch_sccache_release.sh
+
+      - name: Note sccache unavailable
+        if: steps.sccache_fetch.outputs.available != 'true'
+        shell: bash
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "::warning::sccache unavailable, building without cache"
+
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@d651010b8da762cde178750d8eda7b5febfe147a # v0.0.9
+        if: steps.sccache_fetch.outputs.available == 'true'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         with:
           version: v0.19.0
 
       - name: Configure sccache
+        if: steps.sccache_fetch.outputs.available == 'true'
         run: |
           echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
           echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
@@ -280,12 +294,26 @@ jobs:
             libasound2-dev libudev-dev \
             mesa-vulkan-drivers libvulkan1 vulkan-tools time
 
+      - name: Fetch sccache release
+        id: sccache_fetch
+        shell: bash
+        run: bash scripts/ci/fetch_sccache_release.sh
+
+      - name: Note sccache unavailable
+        if: steps.sccache_fetch.outputs.available != 'true'
+        shell: bash
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "::warning::sccache unavailable, building without cache"
+
       - name: Install sccache
-        uses: mozilla-actions/sccache-action@d651010b8da762cde178750d8eda7b5febfe147a # v0.0.9
+        if: steps.sccache_fetch.outputs.available == 'true'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
         with:
           version: v0.19.0
 
       - name: Configure sccache
+        if: steps.sccache_fetch.outputs.available == 'true'
         run: |
           echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
           echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV

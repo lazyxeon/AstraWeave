@@ -7,6 +7,8 @@ wrapper. It does not dispatch a workflow.
 
 from __future__ import annotations
 
+import hashlib
+import http.server
 import inspect
 import json
 import os
@@ -14,7 +16,9 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -534,6 +538,209 @@ def assert_mutation_summary_checks_out_before_scoring(text: str) -> None:
         raise AssertionError("mutants-summary must score astraweave-ai outcomes")
     if checkout > scoring:
         raise AssertionError("checkout must precede mutation_ai_outcomes.py in mutants-summary")
+
+
+# v0.0.11 peeled commit from `git ls-remote --tags ... 'v0.0.11^{}'`.
+# fd02668681acd5f960e1372061bee5e3e987195c is the annotated tag object.
+SCCACHE_ACTION_COMMIT = "fc920bf0ec8de6ee65d409111f7ec508035751ba"
+SCCACHE_ACTION_TAG_OBJECT = "fd02668681acd5f960e1372061bee5e3e987195c"
+SCCACHE_VERSION = "v0.19.0"
+SCCACHE_UNAVAILABLE_WARNING = "::warning::sccache unavailable, building without cache"
+EXPECTED_SCCACHE_ACTION_USES = {
+    ".github/actions/rust-ci-setup/action.yml": 1,
+    ".github/workflows/benchmark_alert.yml": 1,
+    ".github/workflows/dependency-management.yml": 1,
+    ".github/workflows/integration-tests.yml": 5,
+    ".github/workflows/toolchain-management.yml": 2,
+}
+_ENV_ASSIGN_RE = re.compile(
+    r"""echo\s+["']([A-Za-z_][A-Za-z0-9_]*=[^"']*)["']\s*>>\s*["']?\$GITHUB_ENV["']?"""
+)
+
+
+def sccache_policy_texts() -> dict[str, str]:
+    texts: dict[str, str] = {}
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        texts[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
+    actions = ROOT / ".github" / "actions"
+    for path in sorted(actions.rglob("action.yml")):
+        texts[path.relative_to(ROOT).as_posix()] = path.read_text(encoding="utf-8")
+    return texts
+
+
+def workflow_job_chunks(text: str) -> list[str]:
+    match = re.search(r"(?m)^jobs:\s*$", text)
+    if match is None:
+        raise AssertionError("workflow is missing jobs:")
+    pieces = re.split(r"(?m)^(  [A-Za-z0-9_-]+:\s*)$", text[match.end() :])
+    chunks: list[str] = []
+    index = 1
+    while index + 1 < len(pieces):
+        chunks.append(pieces[index] + pieces[index + 1])
+        index += 2
+    if not chunks:
+        raise AssertionError("jobs: block has no jobs")
+    return chunks
+
+
+def step_blocks(text: str) -> list[str]:
+    matches = list(re.finditer(r"(?m)^(?P<indent> +)- name:", text))
+    blocks: list[str] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        lines = text[match.start() : end].splitlines()
+        header_indent = len(match.group("indent"))
+        kept = [lines[0]]
+        for line in lines[1:]:
+            if not line.strip():
+                kept.append(line)
+                continue
+            indent = len(line) - len(line.lstrip(" "))
+            if indent <= header_indent:
+                break
+            kept.append(line)
+        blocks.append("\n".join(kept))
+    return blocks
+
+
+def _has_continue_on_error(step: str) -> bool:
+    return re.search(r"(?m)^\s*continue-on-error\s*:", step) is not None
+
+
+def _version_value(step: str) -> str | None:
+    match = re.search(r"(?m)^\s*version:\s*(.*?)\s*$", step)
+    if match is None:
+        return None
+    value = match.group(1).strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1]
+    return value
+
+
+def _env_writes(step: str) -> list[str]:
+    return _ENV_ASSIGN_RE.findall(step)
+
+
+def _last_index_before(steps: list[str], end: int, needle: str) -> int:
+    found = -1
+    for index, step in enumerate(steps[:end]):
+        if needle in step:
+            found = index
+    return found
+
+
+def _sccache_wrapper_violations(path: str, steps: list[str]) -> list[str]:
+    violations: list[str] = []
+    for step in steps:
+        if "RUSTC_WRAPPER=sccache" not in step:
+            continue
+        if "steps.sccache_fetch.outputs.available == 'true'" not in step:
+            violations.append(f"{path}: RUSTC_WRAPPER=sccache is set without a successful prefetch")
+        if _has_continue_on_error(step):
+            violations.append(f"{path}: continue-on-error is set on the RUSTC_WRAPPER step")
+    return violations
+
+
+def _sccache_stats_violations(path: str, step: str) -> list[str]:
+    violations: list[str] = []
+    if "available == 'true'" not in step:
+        violations.append(f"{path}: sccache --show-stats must run only when sccache is available")
+    if "|| true" in step:
+        violations.append(f"{path}: sccache --show-stats must not ignore failure")
+    if _has_continue_on_error(step):
+        violations.append(f"{path}: continue-on-error is set on sccache --show-stats")
+    return violations
+
+
+def _sccache_action_step_violations(path: str, steps: list[str], index: int) -> list[str]:
+    violations: list[str] = []
+    step = steps[index]
+    prefix = f"{path}: sccache-action"
+    match = re.search(r"uses:\s*mozilla-actions/sccache-action@([^\s#]+)", step)
+    ref = match.group(1) if match else ""
+    if not re.fullmatch(r"[0-9a-f]{40}", ref):
+        violations.append(f"{prefix}: ref {ref!r} is not a 40-char commit SHA")
+    elif ref != SCCACHE_ACTION_COMMIT:
+        violations.append(f"{prefix}: commit {ref} is not {SCCACHE_ACTION_COMMIT} (v0.0.11)")
+    if _version_value(step) != SCCACHE_VERSION:
+        violations.append(
+            f"{prefix}: unpinned version {_version_value(step)!r}; want explicit {SCCACHE_VERSION}"
+        )
+    if "steps.sccache_fetch.outputs.available == 'true'" not in step:
+        violations.append(f"{prefix}: install must run only after a successful prefetch")
+    if _has_continue_on_error(step):
+        violations.append(f"{prefix}: continue-on-error is set")
+
+    fetch_at = _last_index_before(steps, index, "bash scripts/ci/fetch_sccache_release.sh")
+    if fetch_at < 0:
+        violations.append(f"{prefix}: missing prefetch step")
+    else:
+        fetch = steps[fetch_at]
+        if "id: sccache_fetch" not in fetch:
+            violations.append(f"{prefix}: prefetch step is missing id sccache_fetch")
+        if _has_continue_on_error(fetch):
+            violations.append(f"{prefix}: continue-on-error is set on the prefetch")
+
+    fallback_at = _last_index_before(steps, index, "- name: Note sccache unavailable")
+    if fallback_at < 0:
+        violations.append(f"{prefix}: missing fallback step")
+    else:
+        fallback = steps[fallback_at]
+        if SCCACHE_UNAVAILABLE_WARNING not in fallback:
+            violations.append(f"{prefix}: fallback does not emit {SCCACHE_UNAVAILABLE_WARNING}")
+        env_lines = [line for line in fallback.splitlines() if "GITHUB_ENV" in line]
+        writes = _env_writes(fallback)
+        if writes != ["RUSTC_WRAPPER="] or len(env_lines) != 1:
+            violations.append(f"{prefix}: fallback must only touch RUSTC_WRAPPER, wrote {writes or env_lines}")
+        if "steps.sccache_fetch.outputs.available != 'true'" not in fallback:
+            violations.append(f"{prefix}: fallback if must be the failed prefetch")
+        if _has_continue_on_error(fallback):
+            violations.append(f"{prefix}: continue-on-error is set on the fallback")
+    return violations
+
+
+def sccache_install_violations(texts: dict[str, str]) -> list[str]:
+    violations: list[str] = []
+    uses_per_file: dict[str, int] = {}
+    for path, text in texts.items():
+        if SCCACHE_ACTION_TAG_OBJECT in text:
+            violations.append(f"{path}: sccache-action is pinned to the v0.0.11 tag object")
+        chunks = [text] if path.endswith("/action.yml") else workflow_job_chunks(text)
+        file_uses = 0
+        for chunk in chunks:
+            steps = step_blocks(chunk)
+            action_indexes = [
+                index
+                for index, step in enumerate(steps)
+                if "uses: mozilla-actions/sccache-action@" in step
+            ]
+            file_uses += len(action_indexes)
+            if action_indexes:
+                violations.extend(_sccache_wrapper_violations(path, steps))
+            for index in action_indexes:
+                violations.extend(_sccache_action_step_violations(path, steps, index))
+            for step in steps:
+                if "sccache --show-stats" in step:
+                    violations.extend(_sccache_stats_violations(path, step))
+        if file_uses:
+            uses_per_file[path] = file_uses
+    for path, count in EXPECTED_SCCACHE_ACTION_USES.items():
+        found = uses_per_file.get(path, 0)
+        if found != count:
+            violations.append(f"{path}: expected {count} sccache-action uses, found {found}")
+    for path in sorted(set(uses_per_file) - set(EXPECTED_SCCACHE_ACTION_USES)):
+        violations.append(f"{path}: unexpected sccache-action use")
+    return violations
+
+
+def _replace_policy_once(texts: dict[str, str], path: str, old: str, new: str) -> dict[str, str]:
+    if old not in texts[path]:
+        raise AssertionError(f"mutant anchor missing in {path}")
+    copied = dict(texts)
+    copied[path] = texts[path].replace(old, new, 1)
+    if copied[path] == texts[path]:
+        raise AssertionError(f"mutant did not change {path}")
+    return copied
 
 
 def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
@@ -1148,6 +1355,199 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_sccache_action_is_pinned_and_falls_back_without_continue_on_error(self) -> None:
+        texts = sccache_policy_texts()
+        self.assertEqual(sccache_install_violations(texts), [])
+        script = (ROOT / "scripts" / "ci" / "fetch_sccache_release.sh").read_text(encoding="utf-8")
+        self.assertIn("VERSION=v0.19.0", script)
+        self.assertIn('ATTEMPTS="${SCCACHE_FETCH_ATTEMPTS:-5}"', script)
+        self.assertIn("createHash(\"sha256\")", script)
+        self.assertIn('sleep "$delay"', script)
+        self.assertIn("available=false", script)
+        self.assertIn("available=true", script)
+        self.assertIn(".complete", script)
+        for token in (
+            "x86_64",
+            "aarch64",
+            "armv7",
+            "apple-darwin",
+            "pc-windows-msvc",
+            "unknown-linux-musl",
+            "unknown-linux-musleabi",
+        ):
+            self.assertIn(token, script)
+        self.assertNotIn("RUSTC_WRAPPER", script)
+        self.assertNotIn("GITHUB_ENV", script)
+        self.assertNotIn("continue-on-error", script)
+        self.assertNotIn("|| true", script)
+
+        silent = _replace_policy_once(
+            texts,
+            ".github/workflows/integration-tests.yml",
+            'echo "::warning::sccache unavailable, building without cache"\n',
+            "\n",
+        )
+        silent_violations = sccache_install_violations(silent)
+        self.assertTrue(
+            any("does not emit" in item for item in silent_violations),
+            silent_violations,
+        )
+
+        softened = _replace_policy_once(
+            texts,
+            ".github/workflows/toolchain-management.yml",
+            "        uses: mozilla-actions/sccache-action@" + SCCACHE_ACTION_COMMIT,
+            "        continue-on-error: true\n"
+            "        uses: mozilla-actions/sccache-action@" + SCCACHE_ACTION_COMMIT,
+        )
+        soft_violations = sccache_install_violations(softened)
+        self.assertTrue(
+            any("continue-on-error is set" in item for item in soft_violations),
+            soft_violations,
+        )
+
+        unpinned = _replace_policy_once(
+            texts,
+            ".github/workflows/benchmark_alert.yml",
+            "          version: v0.19.0\n",
+            '          version: ""\n',
+        )
+        unpinned_violations = sccache_install_violations(unpinned)
+        self.assertTrue(
+            any("unpinned version" in item for item in unpinned_violations),
+            unpinned_violations,
+        )
+
+        tag_object = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            SCCACHE_ACTION_COMMIT,
+            SCCACHE_ACTION_TAG_OBJECT,
+        )
+        tag_violations = sccache_install_violations(tag_object)
+        self.assertTrue(tag_violations)
+        self.assertTrue(
+            any(SCCACHE_ACTION_TAG_OBJECT in item or "tag object" in item for item in tag_violations),
+            tag_violations,
+        )
+
+    def test_sccache_prefetch_retries_checksum_and_leaves_rustc_wrapper_alone(self) -> None:
+        script = ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"
+        arch = subprocess.check_output(["node", "-p", "process.arch"], text=True).strip()
+        platform = subprocess.check_output(["node", "-p", "process.platform"], text=True).strip()
+        asset_arch = {"x64": "x86_64", "arm64": "aarch64", "arm": "armv7"}[arch]
+        if platform == "darwin":
+            asset_os = "apple-darwin"
+        elif platform == "win32":
+            asset_os = "pc-windows-msvc"
+        elif arch == "arm":
+            asset_os = "unknown-linux-musleabi"
+        else:
+            asset_os = "unknown-linux-musl"
+        filename = f"sccache-v0.19.0-{asset_arch}-{asset_os}.tar.gz"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_path = Path(tmp) / filename
+            with tarfile.open(archive_path, "w:gz") as archive:
+                payload = Path(tmp) / "sccache"
+                payload.write_text("#!/bin/sh\necho sccache 0.19.0\n", encoding="utf-8")
+                payload.chmod(0o755)
+                info = tarfile.TarInfo(name=f"sccache-v0.19.0-{asset_arch}-{asset_os}/sccache")
+                info.size = payload.stat().st_size
+                info.mode = 0o755
+                with payload.open("rb") as handle:
+                    archive.addfile(info, handle)
+            blob = archive_path.read_bytes()
+            digest = hashlib.sha256(blob).hexdigest().encode("ascii")
+
+            class Handler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self) -> None:  # noqa: N802
+                    server = self.server
+                    assert isinstance(server, http.server.ThreadingHTTPServer)
+                    hits = getattr(server, "hits")
+                    mode = getattr(server, "mode")
+                    hits.append(self.path)
+                    if self.path.endswith(".sha256"):
+                        body = digest if mode != "badsum" else b"0" * 64
+                        code = 200
+                    elif self.path.endswith(".tar.gz"):
+                        if mode == "504":
+                            body, code = b"gateway", 504
+                        elif mode == "badsum":
+                            body, code = b"not-the-archive", 200
+                        else:
+                            body, code = blob, 200
+                    else:
+                        body, code = b"missing", 404
+                    self.send_response(code)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, fmt: str, *args: object) -> None:
+                    return
+
+            server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+            setattr(server, "hits", [])
+            setattr(server, "mode", "ok")
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            port = server.server_address[1]
+            try:
+                def run(mode: str) -> tuple[subprocess.CompletedProcess[str], list[str], Path]:
+                    setattr(server, "mode", mode)
+                    hits = getattr(server, "hits")
+                    hits.clear()
+                    work = Path(tmp) / mode
+                    work.mkdir()
+                    env = os.environ.copy()
+                    env["GITHUB_OUTPUT"] = str(work / "output")
+                    env["GITHUB_ENV"] = str(work / "env")
+                    env["RUNNER_TOOL_CACHE"] = str(work / "tool-cache")
+                    env["SCCACHE_RELEASE_BASE"] = f"http://127.0.0.1:{port}/releases/download/v0.19.0"
+                    env["SCCACHE_FETCH_ATTEMPTS"] = "2"
+                    env["SCCACHE_FETCH_DELAY_SECONDS"] = "0"
+                    (work / "env").write_text("", encoding="utf-8")
+                    result = subprocess.run(
+                        ["bash", str(script)],
+                        env=env,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    return result, list(hits), work
+
+                ok, ok_hits, ok_work = run("ok")
+                self.assertEqual(ok.returncode, 0, ok.stderr)
+                self.assertEqual((ok_work / "output").read_text(encoding="utf-8"), "available=true\n")
+                self.assertEqual((ok_work / "env").read_text(encoding="utf-8"), "")
+                self.assertEqual(len(ok_hits), 2, ok_hits)
+                cached = ok_work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+                self.assertTrue(cached.is_file(), cached)
+                self.assertTrue((ok_work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete").is_file())
+                self.assertEqual(
+                    subprocess.check_output([str(cached)], text=True).strip(),
+                    "sccache 0.19.0",
+                )
+
+                down, down_hits, down_work = run("504")
+                self.assertEqual(down.returncode, 0, down.stderr)
+                self.assertEqual((down_work / "output").read_text(encoding="utf-8"), "available=false\n")
+                self.assertEqual((down_work / "env").read_text(encoding="utf-8"), "")
+                self.assertEqual(len(down_hits), 2, down_hits)
+                self.assertIn("retrying in 0s", down.stderr)
+                self.assertNotIn("RUSTC_WRAPPER", down.stdout + down.stderr)
+
+                bad, bad_hits, bad_work = run("badsum")
+                self.assertEqual(bad.returncode, 0, bad.stderr)
+                self.assertEqual((bad_work / "output").read_text(encoding="utf-8"), "available=false\n")
+                self.assertEqual((bad_work / "env").read_text(encoding="utf-8"), "")
+                self.assertEqual(len(bad_hits), 4, bad_hits)
+                self.assertIn("checksum mismatch", bad.stderr)
+            finally:
+                server.shutdown()
+                server.server_close()
 
 
 if __name__ == "__main__":

@@ -43,7 +43,3 @@ updates:
     labels:
       - "dependencies"
       - "ci"
-    # TEMPORARY: remove per #725 (504 on sccache download, see #721).
-    ignore:
-      - dependency-name: "mozilla-actions/sccache-action"
-        versions: [">=0.0.10"]

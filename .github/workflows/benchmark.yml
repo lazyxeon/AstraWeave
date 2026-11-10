@@ -43,6 +43,7 @@ jobs:
           fetch-depth: 0
       
       - name: Rust CI setup
+        id: rust_ci
         uses: ./.github/actions/rust-ci-setup
 
       - name: Install benchmark tools
@@ -71,7 +72,7 @@ jobs:
       
       - name: Display sccache statistics
         run: sccache --show-stats
-        if: always()
+        if: always() && steps.rust_ci.outputs.sccache-available == 'true'
 
   aggregate:
     name: Aggregate Benchmark Results
