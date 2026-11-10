@@ -965,9 +965,13 @@ fn explicit_ids(md: &str) -> BTreeSet<String> {
 /// indented 1–3 spaces, or sitting mid-line, still counts. The tag name is the
 /// whole token, so `<abbr` is not `<a`, and `data-id` is not `id`.
 ///
-/// Comment state, bogus-comment state (`<![CDATA[` and `<?`), and raw-text
-/// state (`script`, `style`, `textarea`) carry across the per-line HTML events.
-/// An id inside another attribute's quoted value is not an element.
+/// GitHub's tagfilter escapes `script`, `style`, `textarea`, `xmp`, `title`,
+/// `iframe`, `noembed`, `noframes`, and `plaintext`, so an anchor inside one
+/// of those tags is real. `<!-->` and `<!--->` close a comment. `<![CDATA[`
+/// and `<? ... ?>` still hide what they contain. Comment, CDATA, and
+/// processing-instruction state carry across HTML events. An id inside another
+/// attribute's quoted value is not an element. The first `id` and the first
+/// `name` on a start tag are kept; a later copy of the same attribute is not.
 fn anchor_tag_ids(md: &str) -> Vec<String> {
     let mut ids = Vec::new();
     let mut scan = AnchorScan::default();
@@ -981,13 +985,28 @@ fn anchor_tag_ids(md: &str) -> Vec<String> {
     ids
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Skip {
+    None,
+    Comment,
+    Cdata,
+    Pi,
+}
+
 struct AnchorScan {
-    comment: bool,
-    bogus: bool,
-    raw: Option<String>,
-    /// Unfinished `<...` so a start tag can span HTML events.
+    skip: Skip,
+    /// Unfinished `<...`, or the suffix of an unclosed comment / CDATA / PI
+    /// that is a prefix of its closer, so the closer can span HTML events.
     pending: String,
+}
+
+impl Default for AnchorScan {
+    fn default() -> Self {
+        Self {
+            skip: Skip::None,
+            pending: String::new(),
+        }
+    }
 }
 
 impl AnchorScan {
@@ -1001,78 +1020,133 @@ impl AnchorScan {
                 i += 1;
                 continue;
             }
-            if self.comment {
-                if let Some(rel) = buf[i..].find("-->") {
-                    i += rel + 3;
-                    self.comment = false;
-                    continue;
+            match self.skip {
+                Skip::Comment => {
+                    if let Some(rel) = buf[i..].find("-->") {
+                        i += rel + 3;
+                        self.skip = Skip::None;
+                        continue;
+                    }
+                    self.pending = carry_tail(&buf[i..], "-->");
+                    return;
                 }
-                // The comment never closes in this chunk. Drop the rest.
-                return;
-            }
-            if self.bogus {
-                if let Some(rel) = buf[i..].find('>') {
-                    i += rel + 1;
-                    self.bogus = false;
-                    continue;
+                Skip::Cdata => {
+                    if let Some(rel) = buf[i..].find("]]>") {
+                        i += rel + 3;
+                        self.skip = Skip::None;
+                        continue;
+                    }
+                    self.pending = carry_tail(&buf[i..], "]]>");
+                    return;
                 }
-                return;
-            }
-            if let Some(name) = self.raw.clone() {
-                if let Some(end) = raw_end(&buf[i..], &name) {
-                    i += end;
-                    self.raw = None;
-                    continue;
+                Skip::Pi => {
+                    if let Some(rel) = buf[i..].find("?>") {
+                        i += rel + 2;
+                        self.skip = Skip::None;
+                        continue;
+                    }
+                    self.pending = carry_tail(&buf[i..], "?>");
+                    return;
                 }
-                self.pending = raw_tail(&buf[i..], &name);
-                return;
+                Skip::None => {}
             }
             if bytes[i] != b'<' {
                 i += 1;
                 continue;
             }
-            let rest = &buf[i + 1..];
-            if rest.starts_with("!--") {
-                self.comment = true;
-                i += 4;
-                continue;
-            }
-            if rest.starts_with('!') || rest.starts_with('?') {
-                self.bogus = true;
-                i += 2;
-                continue;
-            }
-            if rest.starts_with('/') {
-                if let Some(rel) = rest.find('>') {
-                    i += 1 + rel + 1;
-                    continue;
+            match classify_lt(&buf[i..]) {
+                Lt::Skip { consumed } => i += consumed,
+                Lt::Enter(kind, consumed) => {
+                    self.skip = kind;
+                    i += consumed;
                 }
-                self.pending = buf[i..].to_string();
-                return;
-            }
-            match parse_start_tag(rest) {
-                StartTag::Done(tag) => {
-                    ids.extend(tag.ids);
-                    if is_raw_text(&tag.name) {
-                        self.raw = Some(tag.name.to_ascii_lowercase());
-                    }
-                    i += 1 + tag.consumed;
-                }
-                StartTag::NeedMore => {
+                Lt::NeedMore => {
                     self.pending = buf[i..].to_string();
                     return;
                 }
-                StartTag::NotTag => i += 1,
+                Lt::Start(tag) => {
+                    ids.extend(tag.ids);
+                    i += 1 + tag.consumed;
+                }
+                Lt::NotTag => i += 1,
             }
         }
     }
 }
 
-fn is_raw_text(name: &str) -> bool {
-    matches!(
-        name.to_ascii_lowercase().as_str(),
-        "script" | "style" | "textarea"
-    )
+/// Longest suffix of `s` that is a prefix of `needle`.
+///
+/// `->` does not carry a `-`: `->` and `>` are not prefixes of `-->`, so the
+/// next chunk's `->` does not close the comment.
+fn carry_tail(s: &str, needle: &str) -> String {
+    let max = needle.len().min(s.len());
+    for len in (1..=max).rev() {
+        let start = s.len() - len;
+        if s.is_char_boundary(start) && needle.starts_with(&s[start..]) {
+            return s[start..].to_string();
+        }
+    }
+    String::new()
+}
+
+enum Lt {
+    /// Bytes to advance, including the `<`. A closed `<!-->` / `<!--->` or an
+    /// end tag. The contents are not anchors.
+    Skip {
+        consumed: usize,
+    },
+    Enter(Skip, usize),
+    NeedMore,
+    Start(DoneTag),
+    NotTag,
+}
+
+/// `s` begins at `<`.
+fn classify_lt(s: &str) -> Lt {
+    let rest = &s[1..];
+    if rest.starts_with("!--") || "!--".starts_with(rest) {
+        return comment_at(rest);
+    }
+    if rest.starts_with("![CDATA[") {
+        return Lt::Enter(Skip::Cdata, 1 + "![CDATA[".len());
+    }
+    if "![CDATA[".starts_with(rest) {
+        return Lt::NeedMore;
+    }
+    if rest.starts_with('?') {
+        return Lt::Enter(Skip::Pi, 2);
+    }
+    if rest.starts_with('/') {
+        if let Some(rel) = rest.find('>') {
+            return Lt::Skip {
+                consumed: 1 + rel + 1,
+            };
+        }
+        return Lt::NeedMore;
+    }
+    match parse_start_tag(rest) {
+        StartTag::Done(tag) => Lt::Start(tag),
+        StartTag::NeedMore => Lt::NeedMore,
+        StartTag::NotTag => Lt::NotTag,
+    }
+}
+
+/// `rest` is the bytes after `<` and is either a prefix of `!--` or starts with it.
+fn comment_at(rest: &str) -> Lt {
+    if rest.len() < 3 {
+        return Lt::NeedMore;
+    }
+    let after = &rest[3..];
+    if after.is_empty() || after == "-" {
+        return Lt::NeedMore;
+    }
+    if after.starts_with('>') {
+        return Lt::Skip { consumed: 5 };
+    }
+    if after.starts_with("->") {
+        return Lt::Skip { consumed: 6 };
+    }
+    Lt::Enter(Skip::Comment, 4)
 }
 
 fn is_name_start(b: u8) -> bool {
@@ -1084,7 +1158,6 @@ fn is_name_char(b: u8) -> bool {
 }
 
 struct DoneTag {
-    name: String,
     ids: Vec<String>,
     /// Bytes consumed from the slice that begins just after `<`, including `>`.
     consumed: usize,
@@ -1113,16 +1186,17 @@ fn parse_start_tag(s: &str) -> StartTag {
     if i >= b.len() {
         return StartTag::NeedMore;
     }
-    let name = s[..i].to_string();
+    let name = &s[..i];
     let anchor = name.eq_ignore_ascii_case("a");
     let mut ids = Vec::new();
+    let mut saw_id = false;
+    let mut saw_name = false;
     loop {
         if i >= b.len() {
             return StartTag::NeedMore;
         }
         if b[i] == b'>' {
             return StartTag::Done(DoneTag {
-                name,
                 ids,
                 consumed: i + 1,
             });
@@ -1184,68 +1258,41 @@ fn parse_start_tag(s: &str) -> StartTag {
             }
             s[start..i].to_string()
         };
-        if anchor && (attr.eq_ignore_ascii_case("id") || attr.eq_ignore_ascii_case("name")) {
+        if anchor && attr.eq_ignore_ascii_case("id") && !saw_id {
+            saw_id = true;
+            ids.push(value);
+        } else if anchor && attr.eq_ignore_ascii_case("name") && !saw_name {
+            saw_name = true;
             ids.push(value);
         }
     }
 }
 
-fn raw_end(s: &str, name: &str) -> Option<usize> {
-    let lower = s.to_ascii_lowercase();
-    let needle = format!("</{name}");
-    let bytes = lower.as_bytes();
-    let mut from = 0;
-    while let Some(rel) = lower[from..].find(&needle) {
-        let at = from + rel;
-        let after = at + needle.len();
-        if after >= bytes.len() {
-            return None;
-        }
-        let c = bytes[after];
-        if c == b'>' || c == b'/' || c.is_ascii_whitespace() {
-            if let Some(gt) = lower[after..].find('>') {
-                return Some(after + gt + 1);
-            }
-            return None;
-        }
-        from = at + 1;
-    }
-    None
-}
-
-/// Suffix that may be the start of `</name`, so the end tag can span events.
-fn raw_tail(s: &str, name: &str) -> String {
-    let needle = format!("</{name}");
-    let lower = s.to_ascii_lowercase();
-    let max = needle.len().min(lower.len());
-    let mut start = lower.len() - max;
-    while start < lower.len() && !lower.is_char_boundary(start) {
-        start += 1;
-    }
-    for i in start..lower.len() {
-        if needle.starts_with(&lower[i..]) {
-            return s[i..].to_string();
-        }
-    }
-    String::new()
-}
-
-/// GitHub heading slug. Unicode-lowercase first, keep letters, numbers, and
-/// `_`, turn spaces into hyphens, and drop everything else — including line
-/// breaks, so a break does not become a hyphen. Hyphens are not collapsed and
-/// the string is not trimmed, so `Map / Residue` becomes `map--residue` and a
-/// leading space becomes a leading hyphen.
+/// GitHub heading slug. Unicode-lowercase first, keep every `\p{Word}`
+/// character (letters, marks, decimal digits, connector punctuation, and join
+/// controls), turn spaces into hyphens, and drop everything else — including
+/// line breaks, so a break does not become a hyphen. Hyphens are not collapsed
+/// and the string is not trimmed, so `Map / Residue` becomes `map--residue`
+/// and a leading space becomes a leading hyphen.
 pub fn github_slug(heading: &str) -> String {
     let heading = heading.to_lowercase();
     let mut out = String::with_capacity(heading.len());
     for c in heading.chars() {
-        if c.is_alphanumeric() || c == '_' {
+        if is_unicode_word(c) {
             out.push(c);
         } else if c == ' ' || c == '-' {
             out.push('-');
         }
     }
     out
+}
+
+fn is_unicode_word(c: char) -> bool {
+    use std::sync::OnceLock;
+    static WORD: OnceLock<regex::Regex> = OnceLock::new();
+    let re = WORD.get_or_init(|| regex::Regex::new(r"^\w$").expect("word class"));
+    let mut buf = [0u8; 4];
+    re.is_match(c.encode_utf8(&mut buf))
 }
 
 /// Escape a value that is written into HTML text or an attribute.
@@ -1397,6 +1444,14 @@ mod tests {
         assert_eq!(github_slug(" a"), "-a");
         assert_eq!(github_slug("a "), "a-");
         assert_eq!(github_slug("Hello 🌍 World"), "hello--world");
+        assert_eq!(github_slug("Cafe\u{0301}"), "cafe\u{0301}");
+        assert_eq!(github_slug("a\u{203F}b"), "a\u{203f}b");
+        assert_eq!(github_slug("a\u{FF3F}b"), "a\u{ff3f}b");
+        assert_eq!(github_slug("a\u{200D}b"), "a\u{200d}b");
+        assert_eq!(github_slug("a\u{00B7}b"), "ab");
+        // Nl is Alphabetic, so \p{Word} keeps it. No (½) is not a word character.
+        assert_eq!(github_slug("a\u{2163}b"), "a\u{2173}b");
+        assert_eq!(github_slug("a\u{00BD}b"), "ab");
         assert!(heading_slugs("## Café Été\n").contains("café-été"));
         assert!(heading_slugs("Café Été\n--------\n").contains("café-été"));
         assert!(heading_slugs("8 Invari\nants\n-------------\n").contains("8-invariants"));
@@ -1429,25 +1484,139 @@ mod tests {
     }
 
     #[test]
-    fn raw_text_bogus_comments_and_attribute_values_are_not_anchors() {
-        for tag in ["script", "style", "textarea"] {
+    fn tagfilter_tags_keep_the_inner_anchor() {
+        for tag in [
+            "script",
+            "style",
+            "textarea",
+            "xmp",
+            "title",
+            "iframe",
+            "noembed",
+            "noframes",
+            "plaintext",
+            "SCRIPT",
+            "noscript",
+            "pre",
+            "div",
+        ] {
             let one = format!("<{tag}><a id=\"8-invariants\"></a></{tag}>");
-            assert!(
-                anchor_ids_in_chunks(&[&one]).is_empty(),
-                "{tag} counted an anchor"
+            assert_eq!(
+                anchor_ids_in_chunks(&[&one]),
+                vec!["8-invariants".to_string()],
+                "{tag}"
             );
             let split = format!("<{tag}>\n");
             let end = format!("</{tag}>\n");
-            assert!(
-                anchor_ids_in_chunks(&[&split, "<a id=\"8-invariants\"></a>\n", &end]).is_empty(),
-                "split {tag} counted an anchor"
+            assert_eq!(
+                anchor_ids_in_chunks(&[&split, "<a id=\"8-invariants\"></a>\n", &end]),
+                vec!["8-invariants".to_string()],
+                "split {tag}"
             );
         }
+    }
+
+    #[test]
+    fn cdata_and_processing_instructions_hide_the_anchor() {
         assert!(anchor_ids_in_chunks(&[
             "<![CDATA[ <a id=\"8-invariants\"></a> ]]>",
             "<? <a id=\"8-invariants\"></a> ?>"
         ])
         .is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&[
+                "<![CDATA[ <a id=\"hidden\"></a> ]]><a id=\"8-invariants\"></a>"
+            ]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_comment_closes_on_bang_dash_dash_gt() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!--><a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!---><a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!--", "><a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!--", "-><a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert!(
+            anchor_ids_in_chunks(&["<!-- note --", "><a id=\"8-invariants\"></a>"])
+                == vec!["8-invariants".to_string()]
+        );
+        assert!(
+            anchor_ids_in_chunks(&["<!-- note ->", "-><a id=\"8-invariants\"></a>"]).is_empty(),
+            "-> plus -> closed the comment"
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!- <a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn the_first_id_and_the_first_name_are_the_anchors() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=\"x\" id=\"8-invariants\"></a>"]),
+            vec!["x".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=\"8-invariants\" id=\"x\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=\"keep\" id=\"drop\" name=\"name-id\"></a>"]),
+            vec!["keep".to_string(), "name-id".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a name=\"8-invariants\" id=\"x\"></a>"]),
+            vec!["8-invariants".to_string(), "x".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_unquoted_id_stops_at_whitespace_or_gt() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=8-invariants class=z></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=8-invariants></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_start_tag_split_across_chunks_still_yields_the_id() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a id=\"8-invar", "iants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_id_on_an_end_tag_is_not_an_anchor() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["</a id=\"8-invariants\"><a id=\"real\"></a>"]),
+            vec!["real".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["</a id=\"8-invar", "iants\"><a id=\"real\"></a>"]),
+            vec!["real".to_string()]
+        );
+    }
+
+    #[test]
+    fn raw_text_bogus_comments_and_attribute_values_are_not_anchors() {
         assert!(anchor_ids_in_chunks(&[
             "<span title=\"<a id=&quot;8-invariants&quot;></a>\"></span>",
             "<div title='<a id=\"8-invariants\"></a>'></div>",

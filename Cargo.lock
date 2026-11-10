@@ -2061,6 +2061,7 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "pulldown-cmark",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

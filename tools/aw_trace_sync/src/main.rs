@@ -1068,7 +1068,11 @@ fn main() -> Result<()> {
 }
 
 #[cfg(test)]
+mod js_sink;
+
+#[cfg(test)]
 mod tests {
+    use super::js_sink::html_parsing_sink;
     use super::*;
 
     fn ydoc(stem: &str, primary: &str, owns: &str) -> TraceDoc {
@@ -2191,19 +2195,44 @@ mod tests {
     }
 
     #[test]
-    fn an_anchor_inside_raw_text_or_a_bogus_comment_does_not_resolve() {
-        for tag in ["script", "style", "textarea"] {
+    fn an_anchor_inside_a_tagfiltered_tag_resolves() {
+        for tag in [
+            "script",
+            "style",
+            "textarea",
+            "xmp",
+            "title",
+            "iframe",
+            "noembed",
+            "noframes",
+            "plaintext",
+            "SCRIPT",
+        ] {
             let one = format!(
                 "<{tag}><a id=\"8-invariants\"></a></{tag}>\n{}",
                 headings_without_invariants()
             );
-            assert!(!section_anchor_resolves(&one), "{tag}");
+            assert!(section_anchor_resolves(&one), "{tag}");
             let split = format!(
                 "<{tag}>\n<a id=\"8-invariants\"></a>\n</{tag}>\n{}",
                 headings_without_invariants()
             );
-            assert!(!section_anchor_resolves(&split), "split {tag}");
+            assert!(section_anchor_resolves(&split), "split {tag}");
         }
+        for body in [
+            "<!--><a id=\"8-invariants\"></a>\n",
+            "<!---><a id=\"8-invariants\"></a>\n",
+            "<!- <a id=\"8-invariants\"></a>\n",
+            "<noscript><a id=\"8-invariants\"></a></noscript>\n",
+            "<pre><a id=\"8-invariants\"></a></pre>\n",
+        ] {
+            let body = format!("{body}{}", headings_without_invariants());
+            assert!(section_anchor_resolves(&body), "{body}");
+        }
+    }
+
+    #[test]
+    fn cdata_pi_and_attribute_values_do_not_resolve() {
         for body in [
             "<![CDATA[ <a id=\"8-invariants\"></a> ]]>\n",
             "<? <a id=\"8-invariants\"></a> ?>\n",
@@ -2211,6 +2240,8 @@ mod tests {
             "<div title='<a id=\"8-invariants\"></a>'></div>\n",
             "<abbr id=\"8-invariants\">x</abbr>\n",
             "<a title=\"<a id=&quot;8-invariants&quot;>\"></a>\n",
+            "<a id=\"x\" id=\"8-invariants\"></a>\n",
+            "</a id=\"8-invariants\">\n",
         ] {
             let body = format!("{body}{}", headings_without_invariants());
             assert!(!section_anchor_resolves(&body), "{body}");
@@ -2220,6 +2251,16 @@ mod tests {
             headings_without_invariants()
         );
         assert!(section_anchor_resolves(&real));
+        let first = format!(
+            "<a id=\"8-invariants\" id=\"x\"></a>\n{}",
+            headings_without_invariants()
+        );
+        assert!(section_anchor_resolves(&first));
+        let unquoted = format!(
+            "<a id=8-invariants class=z></a>\n{}",
+            headings_without_invariants()
+        );
+        assert!(section_anchor_resolves(&unquoted));
     }
 
     #[test]
@@ -2383,220 +2424,13 @@ mod tests {
         })
     }
 
-    /// HTML-parsing and string-evaluating DOM APIs. The page's helpers are held
-    /// to the allowlist exercised by `map_color_risk_status_and_loc_guards_hold`:
-    /// text nodes, `textContent`, and `createElement` of `strong` / `em` / `code`
-    /// / `span`. Anything below is rejected, including a sink name built by
-    /// concatenating string literals (`'inner'+'HT'+'ML'`).
-    fn html_parsing_sink(src: &str) -> Option<&'static str> {
-        let folded = fold_string_concats(src);
-        for name in ["innerHTML", "outerHTML", "insertAdjacentHTML"] {
-            if folded.contains(name) {
-                return Some(name);
-            }
-        }
-        if contains_ident(&folded, "createContextualFragment") {
-            return Some("createContextualFragment");
-        }
-        if contains_ident(&folded, "DOMParser") && folded.contains("text/html") {
-            return Some("DOMParser");
-        }
-        if contains_ident(&folded, "srcdoc") {
-            return Some("srcdoc");
-        }
-        if string_timer(&folded) {
-            return Some("string timer");
-        }
-        if folded.contains("document.write") {
-            return Some("document.write");
-        }
-        if call_with_paren(&folded, "eval") {
-            return Some("eval");
-        }
-        if call_with_paren(&folded, "Function") {
-            return Some("Function");
-        }
-        None
-    }
-
-    fn contains_ident(src: &str, name: &str) -> bool {
-        let bytes = src.as_bytes();
-        let mut i = 0;
-        while i + name.len() <= bytes.len() {
-            if !src.is_char_boundary(i) {
-                i += 1;
-                continue;
-            }
-            if src[i..].starts_with(name) {
-                let prev_ok = i == 0 || !is_js_ident(bytes[i - 1]);
-                let after = i + name.len();
-                let next_ok = after >= bytes.len() || !is_js_ident(bytes[after]);
-                if prev_ok && next_ok {
-                    return true;
-                }
-            }
-            i += 1;
-        }
-        false
-    }
-
-    fn is_js_ident(b: u8) -> bool {
-        b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
-    }
-
-    fn string_timer(src: &str) -> bool {
-        for name in ["setTimeout", "setInterval"] {
-            let bytes = src.as_bytes();
-            let mut i = 0;
-            while i + name.len() <= bytes.len() {
-                if !src.is_char_boundary(i) {
-                    i += 1;
-                    continue;
-                }
-                if src[i..].starts_with(name) {
-                    let prev_ok = i == 0 || !is_js_ident(bytes[i - 1]);
-                    if prev_ok && call_opens_with_string(&src[i + name.len()..]) {
-                        return true;
-                    }
-                }
-                i += 1;
-            }
-        }
-        false
-    }
-
-    fn call_opens_with_string(src: &str) -> bool {
-        let rest = src.trim_start();
-        let Some(rest) = rest.strip_prefix('(') else {
-            return false;
-        };
-        matches!(
-            rest.trim_start().as_bytes().first(),
-            Some(b'\'' | b'"' | b'`')
-        )
-    }
-
-    /// Join adjacent quoted literals (`'inner'+'HT'+'ML'` → `'innerHTML'`) so a
-    /// split sink name is visible to the scan. A template with `${` is left whole.
-    fn fold_string_concats(src: &str) -> String {
-        let bytes = src.as_bytes();
-        let mut out = String::with_capacity(src.len());
-        let mut i = 0;
-        while i < bytes.len() {
-            if !src.is_char_boundary(i) {
-                i += 1;
-                continue;
-            }
-            if matches!(bytes[i], b'\'' | b'"' | b'`') {
-                if let Some((joined, end)) = concat_literals(src, i) {
-                    out.push('\'');
-                    out.push_str(&joined);
-                    out.push('\'');
-                    i = end;
-                    continue;
-                }
-                if let Some(end) = skip_literal(src, i) {
-                    out.push_str(&src[i..end]);
-                    i = end;
-                    continue;
-                }
-            }
-            let ch = src[i..].chars().next().unwrap();
-            out.push(ch);
-            i += ch.len_utf8();
-        }
-        out
-    }
-
-    fn concat_literals(src: &str, start: usize) -> Option<(String, usize)> {
-        let (mut piece, mut i) = read_literal(src, start)?;
-        let mut joined = piece;
-        let mut parts = 1;
-        loop {
-            let rest = src[i..].trim_start();
-            let skipped = src[i..].len() - rest.len();
-            if !rest.starts_with('+') {
-                break;
-            }
-            let after_plus = rest[1..].trim_start();
-            let plus_span = skipped + 1 + (rest[1..].len() - after_plus.len());
-            let next_at = i + plus_span;
-            if next_at >= src.len() || !matches!(src.as_bytes()[next_at], b'\'' | b'"' | b'`') {
-                break;
-            }
-            (piece, i) = read_literal(src, next_at)?;
-            joined.push_str(&piece);
-            parts += 1;
-        }
-        if parts < 2 {
-            return None;
-        }
-        Some((joined, i))
-    }
-
-    fn skip_literal(src: &str, start: usize) -> Option<usize> {
-        read_literal(src, start).map(|(_, end)| end)
-    }
-
-    fn read_literal(src: &str, start: usize) -> Option<(String, usize)> {
-        let bytes = src.as_bytes();
-        let quote = bytes.get(start).copied()?;
-        if !matches!(quote, b'\'' | b'"' | b'`') {
-            return None;
-        }
-        let mut i = start + 1;
-        let mut value = String::new();
-        while i < bytes.len() {
-            if quote == b'`' && bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'{') {
-                return None;
-            }
-            if bytes[i] == b'\\' {
-                if i + 1 >= bytes.len() {
-                    return None;
-                }
-                value.push(bytes[i + 1] as char);
-                i += 2;
-                continue;
-            }
-            if bytes[i] == quote {
-                return Some((value, i + 1));
-            }
-            let ch = src[i..].chars().next()?;
-            value.push(ch);
-            i += ch.len_utf8();
-        }
-        None
-    }
-
-    fn call_with_paren(src: &str, name: &str) -> bool {
-        let bytes = src.as_bytes();
-        let mut i = 0;
-        while i + name.len() <= bytes.len() {
-            if !src.is_char_boundary(i) {
-                i += 1;
-                continue;
-            }
-            if src[i..].starts_with(name) {
-                let mut j = i + name.len();
-                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                    j += 1;
-                }
-                if j < bytes.len() && bytes[j] == b'(' {
-                    return true;
-                }
-            }
-            i += 1;
-        }
-        false
-    }
-
     #[test]
     fn workspace_map_has_no_html_parsing_sink() {
         let html = workspace_map_html();
+        let problems = super::js_sink::html_parsing_problems(&html);
         assert!(
-            html_parsing_sink(&html).is_none(),
-            "workspace_map.html parses HTML: {:?}",
-            html_parsing_sink(&html)
+            problems.is_empty(),
+            "workspace_map.html parses HTML: {problems:?}"
         );
     }
 
@@ -2640,17 +2474,96 @@ mod tests {
             "node.textContent = String(props.text)",
             "node.appendChild(document.createTextNode(String(kid)))",
             "function safeColor(value) { return ''; }",
-            "evaluation(x)",
             "setTimeout(() => {}, 10)",
             "setTimeout(function () {}, 1)",
             "setTimeout(tryRestore, 100)",
-            "setInterval(tick, 50)",
-            "new DOMParser().parseFromString(x, 'text/xml')",
-            "srcdocs(x)",
         ];
         for sample in safe {
             assert!(html_parsing_sink(sample).is_none(), "{sample} was a sink");
         }
+    }
+
+    fn assert_sink(sample: &str) {
+        assert!(
+            html_parsing_sink(sample).is_some(),
+            "{sample} was not a sink"
+        );
+    }
+
+    #[test]
+    fn sink_set_html_unsafe() {
+        assert_sink("node.setHTMLUnsafe(x)");
+    }
+
+    #[test]
+    fn sink_parse_html_unsafe() {
+        assert_sink("Document.parseHTMLUnsafe(x)");
+    }
+
+    #[test]
+    fn sink_exec_command_insert_html() {
+        assert_sink("document.execCommand('insertHTML', false, x)");
+    }
+
+    #[test]
+    fn sink_concat_eval() {
+        assert_sink("window['ev'+'al'](x)");
+    }
+
+    #[test]
+    fn sink_concat_timer() {
+        assert_sink("window['set'+'Timeout']('alert(1)')");
+    }
+
+    #[test]
+    fn sink_constructor_constructor() {
+        assert_sink("[].constructor.constructor('return 1')()");
+    }
+
+    #[test]
+    fn sink_parse_from_string_variable_mime() {
+        assert_sink("parser.parseFromString(x, mime)");
+        assert_sink("new DOMParser().parseFromString(x, 'text/xml')");
+    }
+
+    #[test]
+    fn sink_event_handler_attribute_concat() {
+        assert_sink("node.setAttribute('on'+'click', x)");
+    }
+
+    #[test]
+    fn sink_variable_plus_html_key() {
+        assert_sink("const w='inner'; node[w+'HTML'] = x");
+    }
+
+    #[test]
+    fn sink_template_key() {
+        assert_sink("node[`${'inner'}HTML`] = x");
+    }
+
+    #[test]
+    fn sink_hex_escape() {
+        assert_sink(r"node['\x69nnerHTML'] = x");
+    }
+
+    #[test]
+    fn sink_unicode_ident_escape() {
+        assert_sink(r"node.inner\u0048TML = x");
+    }
+
+    #[test]
+    fn sink_bracket_document_write() {
+        assert_sink("document['write'](x)");
+    }
+
+    #[test]
+    fn sink_spaced_document_write() {
+        assert_sink("document . write(x)");
+    }
+
+    #[test]
+    fn sink_indirect_eval() {
+        assert_sink("(0, eval)(x)");
     }
 
     fn matching_brace(html: &str, open: usize) -> usize {
@@ -2751,7 +2664,7 @@ assert.strictEqual(safeColor('#abc'), '#abc');
 assert.strictEqual(safeColor('#abcd'), '#abcd');
 assert.strictEqual(safeColor('#abcdef'), '#abcdef');
 assert.strictEqual(safeColor('#ABCDEFff'), '#ABCDEFff');
-for (const bad of ['red', 'rgb(0,0,0)', '#gggggg', '#fff;color:red', '#ff', ' #fff', '#fff ', '', null, 12]) {
+for (const bad of ['red', 'rgb(0,0,0)', '#gggggg', '#fff;color:red', '#ff', '#abcde', '#1234567', ' #fff', '#fff ', '', null, 12]) {
   assert.strictEqual(safeColor(bad), '', 'safeColor accepted ' + bad);
 }
 for (const risk of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
@@ -3009,6 +2922,39 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
         assert!(cargo.contains("regex"));
         assert!(!cargo.lines().any(|line| line.contains("rand")));
         assert!(doc.contains(&format!("Dialogue (§13.4) had {test_sum} tests")));
+
+        let section = doc
+            .split("### 13.4 ")
+            .nth(1)
+            .expect("§13.4")
+            .split("### 13.5 ")
+            .next()
+            .unwrap();
+        assert!(
+            !section
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .any(|tok| tok == "rand"),
+            "§13.4 still names rand"
+        );
+        assert!(section.contains("SimRng"), "§13.4 does not name SimRng");
+        let recorded = llm_src
+            .lines()
+            .position(|line| line.starts_with("pub fn recorded_line"))
+            .expect("recorded_line")
+            + 1;
+        assert!(
+            section.contains(&format!("llm_dialogue.rs:{recorded}")),
+            "missing recorded_line cite"
+        );
+        assert!(section.contains("game_loop.rs:17"));
+        for line in section.lines() {
+            if line.contains("game_loop.rs:446") {
+                assert!(
+                    line.contains("#[cfg(test)]"),
+                    "unmarked test-only cite: {line}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -3117,6 +3063,96 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
                 "{example} does not depend on astraweave-fluids"
             );
         }
+        let note = doc
+            .split("**Status note (read first):**")
+            .nth(1)
+            .expect("status note")
+            .split("\n## ")
+            .next()
+            .unwrap();
+        assert!(note.contains("`examples/fluids_demo`"), "{note}");
+        assert!(note.contains("`examples/weaving_playground`"), "{note}");
+        assert!(!note.contains("ONLY consumer"), "{note}");
+        let pbd = doc
+            .split("### Decision: Use Position-Based Dynamics")
+            .nth(1)
+            .expect("PBD decision")
+            .split("### Decision:")
+            .next()
+            .unwrap();
+        assert!(pbd.contains("**Status:** Historical"), "{pbd}");
+        assert!(pbd.contains("7 compute pipelines"), "{pbd}");
+        assert!(!pbd.contains("**Status:** Active"), "{pbd}");
+        let eight = doc
+            .split("### Decision: Eight-stage")
+            .nth(1)
+            .expect("eight-stage decision")
+            .split("### Decision:")
+            .next()
+            .unwrap();
+        assert!(eight.contains("**Status:** Historical"), "{eight}");
+        assert!(
+            eight.contains("removed the ping-pong particle buffer"),
+            "{eight}"
+        );
+        assert!(!eight.contains("**Status:** Active"), "{eight}");
+        assert!(doc.contains("`wgpu::ComputePipeline` (7 PBD pipelines)"));
+        assert!(!doc.contains("8 PBD pipelines"));
+        let mut manifests = Vec::new();
+        fluids_manifests(&root, &root, &mut manifests);
+        manifests.sort();
+        assert_eq!(
+            manifests,
+            vec![
+                "astraweave-fluids/Cargo.toml".to_string(),
+                "examples/fluids_demo/Cargo.toml".to_string(),
+                "examples/weaving_playground/Cargo.toml".to_string(),
+            ]
+        );
+    }
+
+    fn fluids_manifests(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == "target" || name == ".git" || name == "node_modules" {
+                continue;
+            }
+            if path.is_dir() {
+                fluids_manifests(root, &path, out);
+                continue;
+            }
+            if name != "Cargo.toml" {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            let named = text.lines().any(|line| {
+                line.split('#')
+                    .next()
+                    .unwrap()
+                    .contains("name = \"astraweave-fluids\"")
+            });
+            let dep = text.lines().any(|line| {
+                line.split('#')
+                    .next()
+                    .unwrap()
+                    .trim_start()
+                    .starts_with("astraweave-fluids")
+            });
+            if named || dep {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.push(rel);
+            }
+        }
     }
 
     fn test_attr_count(text: &str) -> usize {
@@ -3154,6 +3190,12 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             !doc.contains("dock_panels.rs:1-626"),
             "stale dock_panels range"
         );
+        let row = doc
+            .lines()
+            .find(|line| line.starts_with("| `src/dock_panels.rs`"))
+            .expect("dock_panels file-map row");
+        assert!(row.contains(&format!("{lines} lines")), "{row}");
+        assert!(!row.contains("626 lines"), "{row}");
     }
 
     fn table_loc(row: &str) -> usize {
