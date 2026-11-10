@@ -208,7 +208,7 @@ Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid si
 - **WGSL shaders:** `astraweave-fluids/shaders/{anisotropic,fluid,sdf_gen,secondary,ssfr_depth,ssfr_shade,ssfr_smooth_v2}.wgsl` (7 files, 1,132 LoC total) + `astraweave-fluids/shaders/research/pcisph.wgsl` (~27.8 KB) — 8 shader files total
 
 **Status note (read first):**
-1. **The crate is dormant in production game-loop integration.** Workspace grep verified 2026-05-12: `examples/fluids_demo` is the ONLY consumer outside the crate itself. No production game-loop crate depends on `astraweave-fluids`.
+1. **The crate is dormant in production game-loop integration.** The manifests that depend on `astraweave-fluids` are `examples/fluids_demo` and `examples/weaving_playground`. No production game-loop crate depends on `astraweave-fluids`.
 2. **Five parallel solver/manager surfaces coexist** with overlapping responsibilities — see §6 Conflict Map. The original `FluidSystem` (lib.rs PBD pipeline) predates the `ResearchFluidSystem` + `PCISPHSystem` + `UnifiedSolver` triad, which were added per the `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` roadmap.
 3. **`#![forbid(unsafe_code)]` is NOT declared.** The crate does not enforce no-unsafe at the lib.rs level. Verified 2026-05-12: workspace grep for the keyword `unsafe` across `astraweave-fluids/src/*.rs` returned exactly 2 matches — both at `debug_viz.rs:479-480` (`unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}`). These are standard bytemuck unsafe-trait impls (no unsafe blocks). The crate contains zero `unsafe { ... }` blocks in the surveyed 84.5K LoC.
 4. **GPU-first design.** The core `FluidSystem` constructor (`lib.rs:412`) takes `&wgpu::Device` and creates compute pipelines from `shaders/fluid.wgsl`. Most subsystems hold `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup` resources directly.
@@ -722,15 +722,15 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ### Decision: Use Position-Based Dynamics (PBD) as the original GPU pipeline
 - **Date:** [Reasoning not recovered — predates the research-grade roadmap document]
-- **Status:** Active (the original `FluidSystem` PBD path in lib.rs is what the demo uses)
+- **Status:** Historical
 - **Context:** PBD is a non-iterative-pressure constraint-projection scheme well-suited to GPU compute (fast convergence, visual fidelity).
-- **Decision:** Implement PBD in `shaders/fluid.wgsl` (8 compute kernels: clear_grid, build_grid, predict, lambda, delta_pos, integrate, mix_dye, secondary).
+- **Decision:** The original write-up listed 8 compute kernels, including `secondary`. F.1 left 7 compute pipelines (`clear_grid`, `build_grid`, `predict`, `lambda`, `delta_pos`, `integrate`, `mix_dye`) and removed the ping-pong particle buffer.
 - **Alternatives considered:** [Reasoning not recovered]
 - **Consequences:** Demo runs at the PBD quality tier (B-grade per audit). Research-grade solvers exist in parallel but are not the default consumer path.
 
 ### Decision: Eight-stage compute pipeline + ping-pong buffers + grid-linked-list broadphase
 - **Date:** [Reasoning not recovered]
-- **Status:** Active
+- **Status:** Historical. F.1 left 7 compute pipelines and removed the ping-pong particle buffer. The grid-linked-list broadphase remains.
 - **Context:** PBD requires per-iteration neighbor search. GPU-friendly options include grid-cell linked lists (head + next pointers) or sorted spatial hash.
 - **Decision:** Use head-pointer / next-pointer linked list per cell (`head_pointers + next_pointers` buffers per `lib.rs:270-272`) populated by `clear_grid` + `build_grid` compute passes at the start of every step.
 - **Alternatives considered:** Sorted spatial hash (Morton code), bitonic sort — `MortonCode` type exists in `optimization.rs` and `position_to_morton` in `simd_ops.rs`, suggesting Morton-coding was prototyped, possibly for the research-grade path.
@@ -870,7 +870,7 @@ Per README:
 | Resource | Owner | Lifetime | Access pattern |
 |---|---|---|---|
 | `wgpu::Buffer` (particle_buffers, head_pointers, next_pointers, params_buffer, etc.) | `FluidSystem` | `FluidSystem` lifetime | Mutated by compute passes; read by render passes |
-| `wgpu::ComputePipeline` (8 PBD pipelines) | `FluidSystem` | `FluidSystem` lifetime | Read-only after construction |
+| `wgpu::ComputePipeline` (7 PBD pipelines) | `FluidSystem` | `FluidSystem` lifetime | Read-only after construction |
 | `wgpu::BindGroup` + `wgpu::BindGroupLayout` (4 + cache) | `FluidSystem` | `FluidSystem` lifetime | Bound per compute pass |
 | `density_error_staging_buffers: [wgpu::Buffer; 2]` | `FluidSystem` | `FluidSystem` lifetime | Ping-pong async readback for CPU-side convergence monitoring |
 | `staging_mapped: [bool; 2]` | `FluidSystem` | `FluidSystem` lifetime | Tracks mapped state of staging buffers |

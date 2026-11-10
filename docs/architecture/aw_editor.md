@@ -379,7 +379,7 @@ The editor has 152 `.rs` files under `src/` (237 `.rs` files in the crate outsid
 | `src/tab_viewer/{inspectors,models,panel_event,sky_colors}.rs` | Per-panel inspector UI, data-only structs, PanelEvent enum, sky-color computation | Active | Split from tab_viewer/mod.rs during a refactor. |
 | `src/panel_type.rs` | `PanelType` enum (41 variants) + `PanelCategory` (6 variants) + helper methods | Active | 794 lines. |
 | `src/dock_layout.rs` | `DockLayout` + `LayoutPreset` enum (developer, level designer, etc.) | Active | 966 lines. Dock chrome derives from the active egui style via the single `themed_style()` fn — called at construction AND re-derived per frame in `show`/`show_inside` (theme-reactive; do not cache a second styled copy). |
-| `src/dock_panels.rs` | Panel registration table for `egui_dock` | Active | 626 lines. |
+| `src/dock_panels.rs` | Panel registration table for `egui_dock` | Active | 628 lines. |
 | `src/viewport/mod.rs` + `widget.rs` + `renderer.rs` + `engine_adapter.rs` | 3D viewport widget; post-Fix27 unified pipeline coordinator | Active | The architecture docstring at `mod.rs:11-27` is canonical post-Fix27. `engine_adapter.rs` was the site of the Round 5 §7.7 trap (Mediator Brush diagnostic). |
 | `src/viewport/{grid,gizmo,physics,blueprint_overlay}_renderer.rs` | Editor-local overlay renderers | Active | Local renderers preserved post-Fix27 unification. |
 | `src/viewport/camera.rs` | Orbit camera + ray casting + depth unprojection | Active | `read_depth_at_pixel` + `unproject_depth_to_world` are exercised by the Multi-Tool Architecture diagnostic Rounds 4-5. |
