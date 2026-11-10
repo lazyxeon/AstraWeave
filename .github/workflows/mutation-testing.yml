@@ -68,6 +68,7 @@ jobs:
             --json
       
       - name: Generate mutation report
+        if: always()
         run: |
           if [ -f mutants-ecs-results/mutants.json ]; then
             echo "## Mutation Testing: astraweave-ecs" >> $GITHUB_STEP_SUMMARY
@@ -91,6 +92,7 @@ jobs:
           fi
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-ecs-results
@@ -131,6 +133,7 @@ jobs:
             --json
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-core-results
@@ -261,6 +264,7 @@ jobs:
             --json
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-behavior-results
@@ -301,6 +305,7 @@ jobs:
             --json
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-nav-results

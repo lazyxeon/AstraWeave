@@ -18,6 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
@@ -157,140 +159,198 @@ def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
 
 
-# Bare false is the only continue-on-error value that is not a violation.
-# An expression, including ${{ false }}, is not that scalar.
-_FALSE_CONTINUE = frozenset({"false", "False", "FALSE"})
-_BLOCK_SCALAR = frozenset({"|", ">", "|-", ">+", "|+", ">-"})
+# Plain or quoted false, False, and FALSE are the only continue-on-error
+# values that are not violations. Words such as no/off, numbers, empty
+# values, block scalars, and expressions (including ${{ false }}) are.
+# The key match is case-sensitive.
+_PLAIN_FALSE = frozenset({"false", "False", "FALSE"})
+_ACCEPTED_SCALAR_STYLES = frozenset({None, '"', "'"})
+_FORBIDDEN_CONTINUE_EXAMPLES = (
+    "true",
+    '"true"',
+    "'true'",
+    "yes",
+    "on",
+    "1",
+    "no",
+    "off",
+    "0",
+    '""',
+    "${{ false }}",
+    "${{ matrix.experimental || false }}",
+)
+_ALLOWED_CONTINUE_EXAMPLES = (
+    "false",
+    "False",
+    "FALSE",
+    '"false"',
+    "'false'",
+    '"False"',
+    "'False'",
+    '"FALSE"',
+    "'FALSE'",
+)
 
 
-def _yaml_scalar(raw: str) -> str:
-    raw = raw.strip()
-    if not raw:
-        return ""
-    if raw[0] in "\"'":
-        quote = raw[0]
-        end = raw.find(quote, 1)
-        if end != -1:
-            return raw[1:end]
-        return raw
-    if " #" in raw:
-        raw = raw.split(" #", 1)[0].rstrip()
-    return raw
+class _YamlScalar(str):
+    """Scalar text plus the YAML style that produced it."""
+
+    __slots__ = ("style",)
+
+    def __new__(cls, text: str, style: str | None) -> "_YamlScalar":
+        obj = str.__new__(cls, text)
+        obj.style = style
+        return obj
 
 
-def iter_workflow_steps(text: str) -> list[tuple[str, str, str]]:
-    """Return (job id, step name, step block) for every step.
+class _WorkflowLoader(yaml.SafeLoader):
+    """Safe loader that keeps each scalar's spelling and quote style.
 
-    Job-level keys, comments, and `run:` / `with:` / `env:` bodies are not steps.
+    Implicit resolvers are off so `on`, `yes`, `no`, and `off` stay words.
     """
-    steps: list[tuple[str, str, str]] = []
-    in_jobs = False
-    job: str | None = None
-    in_steps = False
-    steps_indent = -1
-    step_lines: list[str] = []
-    step_name = ""
-
-    def flush() -> None:
-        nonlocal step_lines, step_name
-        if step_lines:
-            steps.append((job or "", step_name, "\n".join(step_lines)))
-        step_lines = []
-        step_name = ""
-
-    for line in text.splitlines():
-        stripped = line.lstrip(" ")
-        indent = len(line) - len(stripped)
-        if not in_jobs:
-            if line == "jobs:" or line.startswith("jobs:"):
-                in_jobs = True
-            continue
-        if stripped.startswith("#"):
-            if step_lines:
-                step_lines.append(line)
-            continue
-        if not stripped:
-            if step_lines:
-                step_lines.append(line)
-            continue
-        if indent == 0:
-            flush()
-            in_jobs = False
-            in_steps = False
-            job = None
-            continue
-        if indent == 2 and stripped.endswith(":") and not stripped.startswith("- "):
-            flush()
-            in_steps = False
-            job = stripped[:-1].strip().strip("\"'")
-            continue
-        if job is None:
-            continue
-        if not in_steps:
-            if stripped == "steps:" or stripped.startswith("steps:"):
-                in_steps = True
-                steps_indent = indent
-            continue
-        if indent <= steps_indent:
-            flush()
-            in_steps = False
-            if indent == 2 and stripped.endswith(":") and not stripped.startswith("- "):
-                job = stripped[:-1].strip().strip("\"'")
-            continue
-        if stripped.startswith("- "):
-            flush()
-            step_lines = [line]
-            rest = stripped[2:].strip()
-            if rest.startswith("name:"):
-                step_name = _yaml_scalar(rest.split(":", 1)[1])
-            elif rest:
-                step_name = rest.split(":", 1)[0].strip()
-            continue
-        if step_lines:
-            step_lines.append(line)
-            if stripped.startswith("name:"):
-                step_name = _yaml_scalar(stripped.split(":", 1)[1])
-    flush()
-    return steps
 
 
-def step_continue_on_error_value(step_text: str) -> str | None:
-    """The step mapping's continue-on-error scalar, or None when the key is absent."""
-    lines = step_text.splitlines()
-    if not lines:
-        return None
-    first = re.match(r"^(\s*)- (.*)$", lines[0])
-    if first is None:
-        return None
-    key_indent = len(first.group(1)) + 2
-    first_body = first.group(2).strip()
-    if first_body.startswith("continue-on-error:"):
-        return _yaml_scalar(first_body.split(":", 1)[1])
-    skip_deeper_than: int | None = None
-    for line in lines[1:]:
-        stripped = line.lstrip(" ")
-        if not stripped or stripped.startswith("#"):
-            continue
-        indent = len(line) - len(stripped)
-        if skip_deeper_than is not None:
-            if indent > skip_deeper_than:
+_WorkflowLoader.yaml_constructors = dict(yaml.SafeLoader.yaml_constructors)
+_WorkflowLoader.yaml_implicit_resolvers = {}
+
+
+def _construct_kept_scalar(loader: yaml.SafeLoader, node: yaml.Node) -> _YamlScalar:
+    text = loader.construct_scalar(node)
+    if not isinstance(text, str):
+        text = str(text)
+    return _YamlScalar(text, node.style)
+
+
+_WorkflowLoader.add_constructor("tag:yaml.org,2002:str", _construct_kept_scalar)
+
+
+def _load_workflow(text: str) -> object:
+    loaded = yaml.load(text, Loader=_WorkflowLoader)  # noqa: S506
+    return loaded
+
+
+def policy_yaml_paths(root: Path | None = None) -> list[Path]:
+    """Workflow files and composite actions the step check reads."""
+    root = ROOT if root is None else root
+    workflows = root / ".github" / "workflows"
+    actions = root / ".github" / "actions"
+    paths: list[Path] = []
+    if workflows.is_dir():
+        paths.extend(workflows.glob("*.yml"))
+        paths.extend(workflows.glob("*.yaml"))
+    if actions.is_dir():
+        paths.extend(actions.glob("**/action.yml"))
+        paths.extend(actions.glob("**/action.yaml"))
+    return sorted(paths)
+
+
+def _append_step_list(found: list[tuple[str, object]], owner: str, steps: object) -> None:
+    if not isinstance(steps, list):
+        raise ValueError(f"{owner} steps is not a list")
+    for step in steps:
+        found.append((owner, step))
+
+
+def _iter_step_mappings(doc: object) -> list[tuple[str, object]]:
+    """Steps from jobs.*.steps and from a composite action's runs.steps."""
+    if not isinstance(doc, dict):
+        return []
+    found: list[tuple[str, object]] = []
+    jobs = doc.get("jobs")
+    if isinstance(jobs, dict):
+        for job_id, job in jobs.items():
+            if not isinstance(job, dict) or "steps" not in job:
                 continue
-            skip_deeper_than = None
-        if indent != key_indent:
+            _append_step_list(found, str(job_id), job.get("steps"))
+    runs = doc.get("runs")
+    if isinstance(runs, dict) and "steps" in runs:
+        _append_step_list(found, "runs", runs.get("steps"))
+    return found
+
+
+def iter_workflow_steps(text: str) -> list[tuple[str, str, object]]:
+    """Return (job id, step name, step mapping) for every step.
+
+    A composite action contributes its `runs.steps`. Job-level keys are not steps.
+    """
+    rows: list[tuple[str, str, object]] = []
+    for job_id, step in _iter_step_mappings(_load_workflow(text)):
+        name = ""
+        if isinstance(step, dict):
+            raw_name = step.get("name")
+            if raw_name is not None:
+                name = str(raw_name)
+            rows.append((job_id, name, step))
             continue
-        key, _, rest = stripped.partition(":")
-        if key in {"run", "with", "env"} and rest.strip() in _BLOCK_SCALAR.union({""}):
-            skip_deeper_than = key_indent
-            continue
-        if key == "continue-on-error":
-            return _yaml_scalar(rest)
+        rows.append((job_id, name, {}))
+    return rows
+
+
+def parsed_step_count(text: str) -> int:
+    """Step count from the stock safe loader, independent of the policy walker."""
+    doc = yaml.safe_load(text)
+    if not isinstance(doc, dict):
+        return 0
+    total = 0
+    jobs = doc.get("jobs")
+    if isinstance(jobs, dict):
+        for job in jobs.values():
+            if isinstance(job, dict) and isinstance(job.get("steps"), list):
+                total += len(job["steps"])
+    runs = doc.get("runs")
+    if isinstance(runs, dict) and isinstance(runs.get("steps"), list):
+        total += len(runs["steps"])
+    return total
+
+
+def document_has_steps(text: str) -> bool:
+    doc = yaml.safe_load(text)
+    if not isinstance(doc, dict):
+        return False
+    jobs = doc.get("jobs")
+    if isinstance(jobs, dict):
+        for job in jobs.values():
+            if isinstance(job, dict) and "steps" in job:
+                return True
+    runs = doc.get("runs")
+    return isinstance(runs, dict) and "steps" in runs
+
+
+def _mapping_from_step(step: object) -> dict | None:
+    if isinstance(step, dict):
+        return step
+    if not isinstance(step, str):
+        return None
+    loaded = _load_workflow(step)
+    if isinstance(loaded, list):
+        if len(loaded) == 1 and isinstance(loaded[0], dict):
+            return loaded[0]
+        return None
+    if isinstance(loaded, dict):
+        return loaded
     return None
+
+
+def step_continue_on_error_value(step: object) -> str | None:
+    """The step mapping's continue-on-error scalar, or None when the key is absent."""
+    mapping = _mapping_from_step(step)
+    if not isinstance(mapping, dict) or "continue-on-error" not in mapping:
+        return None
+    value = mapping["continue-on-error"]
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    return _YamlScalar(str(value), None)
 
 
 def step_continue_on_error_forbidden(value: str | None) -> bool:
     if value is None:
         return False
-    return value not in _FALSE_CONTINUE
+    style = getattr(value, "style", None)
+    if style not in _ACCEPTED_SCALAR_STYLES:
+        return True
+    return str(value) not in _PLAIN_FALSE
 
 
 def step_continue_on_error(step_text: str) -> bool:
@@ -1290,21 +1350,345 @@ class WorkflowPolicyTest(unittest.TestCase):
             assert_alert_followup_runs(mutant)
 
     def test_step_continue_on_error_covers_every_step(self) -> None:
-        for name, text in workflow_texts().items():
-            for job, step_name, step in iter_workflow_steps(text):
+        paths = policy_yaml_paths()
+        workflow_files = [
+            path for path in paths if path.parent == WORKFLOWS and path.suffix == ".yml"
+        ]
+        self.assertEqual(
+            {path.name for path in workflow_files},
+            {path.name for path in WORKFLOWS.glob("*.yml")},
+        )
+        self.assertEqual(len(workflow_files), 37)
+        rels = {path.relative_to(ROOT).as_posix() for path in paths}
+        self.assertIn(".github/actions/rust-ci-setup/action.yml", rels)
+        self.assertIn(".github/actions/rust-nightly/action.yml", rels)
+        total = 0
+        scanned = 0
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            walked = iter_workflow_steps(text)
+            rel = path.relative_to(ROOT).as_posix()
+            self.assertEqual(len(walked), parsed_step_count(text), rel)
+            if document_has_steps(text):
+                self.assertGreater(len(walked), 0, rel)
+            for _job, step_name, step in walked:
                 self.assertFalse(
                     step_continue_on_error(step),
-                    f"{name} job {job} step {step_name!r} has step-level continue-on-error",
+                    f"{rel} step {step_name!r} has step-level continue-on-error",
                 )
+            total += len(walked)
+            scanned += 1
+        self.assertEqual(scanned, len(paths))
+        self.assertGreater(total, 0)
+        for name in (
+            "aw-editor-tests.yml",
+            "material-validation.yml",
+            "pbr-pipeline-ci.yml",
+            "codeql-analysis.yml",
+        ):
+            live = (WORKFLOWS / name).read_text(encoding="utf-8")
+            self.assertGreater(len(iter_workflow_steps(live)), 0, name)
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertIn("\n    continue-on-error: true\n", editor)
+        self.assertFalse(any(step_continue_on_error(step) for _job, _name, step in iter_workflow_steps(editor)))
 
-        self.assertTrue(step_continue_on_error("      - name: bad\n        continue-on-error: true\n"))
-        for value in ('"true"', "'true'", "yes", "on", "1", "${{ matrix.experimental || false }}"):
+    def test_live_scan_source_still_checks_counts(self) -> None:
+        source = inspect.getsource(self.test_step_continue_on_error_covers_every_step)
+        self.assertIn("parsed_step_count(text)", source)
+        self.assertIn("len(workflow_files), 37", source)
+        self.assertIn("assertGreater(total, 0", source)
+        self.assertIn("assertEqual(scanned, len(paths))", source)
+        self.assertIn("document_has_steps(text)", source)
+
+    def test_empty_steps_list_fails_the_nonempty_rule(self) -> None:
+        empty = (
+            "name: sample\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps: []\n"
+        )
+        self.assertTrue(document_has_steps(empty))
+        self.assertEqual(iter_workflow_steps(empty), [])
+        with self.assertRaises(AssertionError):
+            self.assertGreater(len(iter_workflow_steps(empty)), 0)
+
+    def test_same_column_step_list_is_checked(self) -> None:
+        fixture = (
+            "name: sample\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "    - name: Run Unit Tests\n"
+            "      run: cargo test\n"
+            "      continue-on-error: true\n"
+        )
+        steps = iter_workflow_steps(fixture)
+        self.assertEqual(len(steps), 1)
+        self.assertTrue(step_continue_on_error(steps[0][2]))
+        for name in (
+            "aw-editor-tests.yml",
+            "material-validation.yml",
+            "pbr-pipeline-ci.yml",
+            "codeql-analysis.yml",
+        ):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            marker = "\n    steps:\n    - "
+            self.assertIn(marker, text, name)
+            injected = text.replace(
+                marker,
+                "\n    steps:\n    - continue-on-error: true\n      ",
+                1,
+            )
+            self.assertNotEqual(injected, text, name)
+            flagged = [
+                step_name
+                for _job, step_name, step in iter_workflow_steps(injected)
+                if step_continue_on_error(step)
+            ]
+            self.assertTrue(flagged, name)
+
+    def test_continue_on_error_spellings(self) -> None:
+        forms = (
+            '      - name: bad\n        "continue-on-error": true\n',
+            "      - name: bad\n        continue-on-error : true\n",
+            "      - name: bad\n        ? continue-on-error\n        : true\n",
+        )
+        for step in forms:
+            self.assertTrue(step_continue_on_error(step), step)
+        different_case = "      - name: bad\n        Continue-On-Error: true\n"
+        self.assertFalse(step_continue_on_error(different_case))
+        self.assertIsNone(step_continue_on_error_value(different_case))
+
+    def test_flow_style_steps_are_checked(self) -> None:
+        documents = (
+            "name: sample\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - {name: s, run: echo, continue-on-error: true}\n",
+            "name: sample\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps: [{run: echo, continue-on-error: true}]\n",
+            "name: sample\n"
+            "jobs: {a: {runs-on: ubuntu-latest, steps: [{run: echo, continue-on-error: true}]}}\n",
+        )
+        for document in documents:
+            steps = iter_workflow_steps(document)
+            self.assertGreaterEqual(len(steps), 1, document)
+            self.assertTrue(any(step_continue_on_error(step) for _j, _n, step in steps), document)
+
+    def test_step_layout_variants(self) -> None:
+        dash_spaces = (
+            "name: sample\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      -   name: bad\n"
+            "          run: echo\n"
+            "          continue-on-error: true\n"
+        )
+        commented_job = (
+            "name: sample\n"
+            "jobs:\n"
+            "  a:  # c\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: bad\n"
+            "        continue-on-error: true\n"
+        )
+        indented_jobs = (
+            "name: sample\n"
+            "jobs:\n"
+            "    build:\n"
+            "        runs-on: ubuntu-latest\n"
+            "        steps:\n"
+            "          - name: bad\n"
+            "            continue-on-error: true\n"
+        )
+        quoted_jobs = (
+            "name: sample\n"
+            '"jobs":\n'
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: bad\n"
+            "        continue-on-error: true\n"
+        )
+        for document in (dash_spaces, commented_job, indented_jobs, quoted_jobs):
+            steps = iter_workflow_steps(document)
+            self.assertEqual(len(steps), parsed_step_count(document))
+            self.assertTrue(any(step_continue_on_error(step) for _j, _n, step in steps), document)
+
+    def test_block_scalar_text_is_not_a_step(self) -> None:
+        document = (
+            "name: sample\n"
+            "jobs:\n"
+            "  dash:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: Prepare Dashboard Assets\n"
+            "        run: |\n"
+            "          cat <<'EOF'\n"
+            "          - name: fake\n"
+            "            continue-on-error: true\n"
+            "          EOF\n"
+            "      - name: real\n"
+            "        run: echo ok\n"
+        )
+        steps = iter_workflow_steps(document)
+        self.assertEqual([name for _job, name, _step in steps], ["Prepare Dashboard Assets", "real"])
+        self.assertEqual(len(steps), parsed_step_count(document))
+        for _job, _name, step in steps:
+            self.assertFalse(step_continue_on_error(step))
+        real_bad = document.replace("      - name: real\n        run: echo ok\n", "      - name: real\n        continue-on-error: true\n        run: echo ok\n", 1)
+        flagged = [name for _job, name, step in iter_workflow_steps(real_bad) if step_continue_on_error(step)]
+        self.assertEqual(flagged, ["real"])
+        block_false = "      - name: bad\n        continue-on-error: |-\n          false\n"
+        self.assertTrue(step_continue_on_error(block_false))
+
+    def test_nested_with_env_run_are_not_the_step_key(self) -> None:
+        step = (
+            "      - name: input\n"
+            '        run: "echo continue-on-error: true"\n'
+            "        env:\n"
+            "          continue-on-error: true\n"
+            "        uses: example/action@v1\n"
+            "        with:\n"
+            "          continue-on-error: true\n"
+        )
+        self.assertFalse(step_continue_on_error(step))
+        self.assertIsNone(step_continue_on_error_value(step))
+
+    def test_comment_is_not_a_continue_on_error_key(self) -> None:
+        commented = (
+            "      - name: clean\n"
+            "        run: echo hi\n"
+            "        # continue-on-error: true\n"
+        )
+        self.assertFalse(step_continue_on_error(commented))
+        inline = "      - name: bad\n        continue-on-error: true # note\n"
+        self.assertTrue(step_continue_on_error(inline))
+        kept = "      - name: ok\n        continue-on-error: false # kept\n"
+        self.assertFalse(step_continue_on_error(kept))
+
+    def test_dash_line_continue_on_error_is_checked(self) -> None:
+        step = "      - continue-on-error: true\n        name: bad\n"
+        self.assertTrue(step_continue_on_error(step))
+        self.assertEqual(step_continue_on_error_value(step), "true")
+
+    def test_later_job_and_later_step_are_checked(self) -> None:
+        document = (
+            "name: sample\n"
+            "jobs:\n"
+            "  first:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: clean\n"
+            "        run: echo ok\n"
+            "  second:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: also-clean\n"
+            "        run: echo ok\n"
+            "      - name: bad\n"
+            "        run: echo bad\n"
+            "        continue-on-error: true\n"
+        )
+        steps = iter_workflow_steps(document)
+        self.assertEqual(len(steps), 3)
+        self.assertEqual(len(steps), parsed_step_count(document))
+        flagged = [(job, name) for job, name, step in steps if step_continue_on_error(step)]
+        self.assertEqual(flagged, [("second", "bad")])
+
+    def test_yaml_workflows_and_composite_actions_are_scanned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workflow_dir = root / ".github" / "workflows"
+            action_dir = root / ".github" / "actions" / "demo"
+            workflow_dir.mkdir(parents=True)
+            action_dir.mkdir(parents=True)
+            workflow = (
+                "name: sample\n"
+                "jobs:\n"
+                "  build:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - name: bad\n"
+                "        continue-on-error: true\n"
+            )
+            composite = (
+                "name: demo\n"
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - name: bad\n"
+                "      shell: bash\n"
+                "      run: echo\n"
+                "      continue-on-error: true\n"
+            )
+            (workflow_dir / "extra.yaml").write_text(workflow, encoding="utf-8")
+            (action_dir / "action.yaml").write_text(composite, encoding="utf-8")
+            found = {path.relative_to(root).as_posix(): path.read_text(encoding="utf-8") for path in policy_yaml_paths(root)}
+            self.assertIn(".github/workflows/extra.yaml", found)
+            self.assertIn(".github/actions/demo/action.yaml", found)
+            for rel, text in found.items():
+                self.assertGreater(len(iter_workflow_steps(text)), 0, rel)
+                self.assertTrue(
+                    any(step_continue_on_error(step) for _j, _n, step in iter_workflow_steps(text)),
+                    rel,
+                )
+        live = {path.relative_to(ROOT).as_posix() for path in policy_yaml_paths()}
+        self.assertIn(".github/actions/rust-ci-setup/action.yml", live)
+        self.assertIn(".github/actions/rust-nightly/action.yml", live)
+        for rel in (
+            ".github/actions/rust-ci-setup/action.yml",
+            ".github/actions/rust-nightly/action.yml",
+        ):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertGreater(len(iter_workflow_steps(text)), 0, rel)
+            self.assertEqual(len(iter_workflow_steps(text)), parsed_step_count(text), rel)
+
+    def test_continue_on_error_rejected_values(self) -> None:
+        self.assertGreaterEqual(len(_FORBIDDEN_CONTINUE_EXAMPLES), 12)
+        checked = 0
+        for value in _FORBIDDEN_CONTINUE_EXAMPLES:
             step = f"      - name: bad\n        continue-on-error: {value}\n"
             self.assertTrue(step_continue_on_error(step), value)
-        for value in ("false", '"false"', "'false'", "False"):
+            self.assertTrue(step_continue_on_error_forbidden(step_continue_on_error_value(step)), value)
+            checked += 1
+        self.assertEqual(checked, len(_FORBIDDEN_CONTINUE_EXAMPLES))
+        empty = "      - name: bad\n        continue-on-error:\n"
+        self.assertTrue(step_continue_on_error(empty))
+
+    def test_continue_on_error_allowed_spellings(self) -> None:
+        self.assertEqual(
+            _ALLOWED_CONTINUE_EXAMPLES,
+            (
+                "false",
+                "False",
+                "FALSE",
+                '"false"',
+                "'false'",
+                '"False"',
+                "'False'",
+                '"FALSE"',
+                "'FALSE'",
+            ),
+        )
+        checked = 0
+        for value in _ALLOWED_CONTINUE_EXAMPLES:
             step = f"      - name: ok\n        continue-on-error: {value}  # kept\n"
             self.assertFalse(step_continue_on_error(step), value)
+            checked += 1
+        self.assertEqual(checked, 9)
 
+    def test_job_level_continue_on_error_is_not_a_step(self) -> None:
         job_only = (
             "name: sample\n"
             "jobs:\n"
@@ -1312,35 +1696,64 @@ class WorkflowPolicyTest(unittest.TestCase):
             "    continue-on-error: true\n"
             "    steps:\n"
             "      - name: clean\n"
-            "        run: echo continue-on-error: true\n"
+            '        run: "echo continue-on-error: true"\n'
             "        # continue-on-error: true\n"
             "      - name: input\n"
             "        uses: example/action@v1\n"
             "        with:\n"
             "          continue-on-error: true\n"
+            "        env: |\n"
+            "          continue-on-error: true\n"
         )
         seen = iter_workflow_steps(job_only)
         self.assertEqual([step_name for _job, step_name, _step in seen], ["clean", "input"])
+        self.assertEqual(len(seen), parsed_step_count(job_only))
         for _job, _step_name, step in seen:
             self.assertFalse(step_continue_on_error(step))
-        for _job, _step_name, step in iter_workflow_steps(job_only):
-            self.assertFalse(step_continue_on_error(step))
 
+    def test_inverting_forbidden_value_fails(self) -> None:
         source = inspect.getsource(step_continue_on_error_forbidden)
         mutated = source.replace(
-            "return value not in _FALSE_CONTINUE",
-            "return not (value not in _FALSE_CONTINUE)",
+            "return str(value) not in _PLAIN_FALSE",
+            "return not (str(value) not in _PLAIN_FALSE)",
             1,
         )
         self.assertNotEqual(source, mutated)
-        namespace = {"_FALSE_CONTINUE": _FALSE_CONTINUE}
+        self.assertIn("return str(value) not in _PLAIN_FALSE", source)
+        namespace = {
+            "_PLAIN_FALSE": _PLAIN_FALSE,
+            "_ACCEPTED_SCALAR_STYLES": _ACCEPTED_SCALAR_STYLES,
+        }
         exec(mutated, namespace)  # noqa: S102
         broken = namespace["step_continue_on_error_forbidden"]
         self.assertTrue(step_continue_on_error_forbidden("true"))
         self.assertFalse(step_continue_on_error_forbidden(None))
+        self.assertFalse(step_continue_on_error_forbidden("false"))
         self.assertFalse(broken(None))
+        self.assertTrue(broken("false"))
         with self.assertRaises(AssertionError):
             self.assertTrue(broken("true"))
+
+    def test_mutation_crate_uploads_when_mutants_fail(self) -> None:
+        text = mutation_testing_text()
+        pairs = (
+            ("mutants-ecs", "mutants-core"),
+            ("mutants-core", "mutants-ai"),
+            ("mutants-behavior", "mutants-nav"),
+            ("mutants-nav", "mutants-summary"),
+        )
+        for job_id, nxt in pairs:
+            job = text.split(f"  {job_id}:\n", 1)[1].split(f"\n  {nxt}:\n", 1)[0]
+            upload = job_step_block(job, "Upload mutation results")
+            self.assertIn("if: always()", upload, job_id)
+            self.assertNotIn("continue-on-error", upload, job_id)
+            crate = f"astraweave-{job_id.removeprefix('mutants-')}"
+            run = job_step_block(job, f"Run mutation testing on {crate}")
+            self.assertNotIn("if: always()", run, job_id)
+        ecs = text.split("  mutants-ecs:\n", 1)[1].split("\n  mutants-core:\n", 1)[0]
+        report = job_step_block(ecs, "Generate mutation report")
+        self.assertIn("if: always()", report)
+        self.assertNotIn("continue-on-error", report)
 
 
 if __name__ == "__main__":

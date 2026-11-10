@@ -116,7 +116,11 @@ jobs:
         run: bash scripts/ci/player_facing_names.sh
 
       - name: Workflow policy
-        run: python3 scripts/ci/test_workflow_policy.py
+        run: |
+          python3 -c 'import yaml; raise SystemExit(0 if getattr(yaml, "__version__", "") == "6.0.1" else 1)' \
+            || python3 -m pip install --disable-pip-version-check --break-system-packages \
+              --require-hashes -r scripts/ci/requirements-workflow-policy.txt
+          python3 scripts/ci/test_workflow_policy.py
 
       - name: Rust CI setup
         if: needs.changes.outputs.docs_only != 'true'

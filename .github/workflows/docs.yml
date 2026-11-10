@@ -146,11 +146,15 @@ jobs:
           status=0
           # docs/book/api is generated rustdoc. Its links point at dependency
           # docs.rs pages. The book pages are the check.
+          # mdbook's edit-url-template links every page at GitHub's editor.
+          # Crawling those editor URLs returns HTTP 429. They are not content
+          # links. Every other link in the book is still checked.
           "$tmp/lychee-bin" "docs/book/**/*.html" \
             --exclude-path docs/book/api \
             --exclude localhost \
             --exclude 127.0.0.1 \
             --exclude "file://" \
+            --exclude '^https://github.com/lazyxeon/AstraWeave/edit/' \
             --format markdown \
             --output link-report.md || status=$?
           if [ -f link-report.md ]; then
