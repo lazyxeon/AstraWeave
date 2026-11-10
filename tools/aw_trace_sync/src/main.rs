@@ -2471,16 +2471,148 @@ assert.strictEqual(locText('small', null), 'small');
     #[test]
     fn the_dialogue_file_row_matches_llm_dialogue_rs() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let src =
-            std::fs::read_to_string(root.join("astraweave-dialogue/src/llm_dialogue.rs")).unwrap();
-        let lines = src.lines().count();
         let doc = std::fs::read_to_string(root.join("docs/architecture/ai_pipeline.md")).unwrap();
+        let table = doc
+            .split("#### 13.4.4 Files involved")
+            .nth(1)
+            .expect("dialogue file table")
+            .split("**Dependencies")
+            .next()
+            .unwrap();
+        let rows = [
+            ("| `lib.rs` |", "astraweave-dialogue/src/lib.rs"),
+            ("| `runner.rs` |", "astraweave-dialogue/src/runner.rs"),
+            (
+                "| `toml_loader.rs` |",
+                "astraweave-dialogue/src/toml_loader.rs",
+            ),
+            (
+                "| `llm_dialogue.rs` |",
+                "astraweave-dialogue/src/llm_dialogue.rs",
+            ),
+            (
+                "| `tests/dialogue.rs` |",
+                "astraweave-dialogue/tests/dialogue.rs",
+            ),
+            (
+                "| `tests/mutation_resistant_comprehensive_tests.rs` |",
+                "astraweave-dialogue/tests/mutation_resistant_comprehensive_tests.rs",
+            ),
+            (
+                "| `benches/dialogue_bench.rs` |",
+                "astraweave-dialogue/benches/dialogue_bench.rs",
+            ),
+        ];
+        let mut sum = 0usize;
+        let mut src_lines = 0usize;
+        for (prefix, path) in rows {
+            let lines = std::fs::read_to_string(root.join(path))
+                .unwrap()
+                .lines()
+                .count();
+            let row = table
+                .lines()
+                .find(|line| line.starts_with(prefix))
+                .unwrap_or_else(|| panic!("missing {prefix}"));
+            assert_eq!(table_loc(row), lines, "{row}");
+            sum += lines;
+            if path.contains("/src/") {
+                src_lines += lines;
+            }
+        }
+        let totals = table
+            .lines()
+            .find(|line| line.starts_with("| **Totals** |"))
+            .expect("dialogue totals row");
+        assert_eq!(table_loc(totals), sum, "{totals}");
+
+        let llm = std::fs::read_to_string(root.join("astraweave-dialogue/src/llm_dialogue.rs"))
+            .unwrap()
+            .lines()
+            .count();
+        let llm_g = grouped(llm);
+        let src_g = grouped(src_lines);
+        assert!(doc.contains(&format!("`LlmDialogueSystem` ({llm_g} lines, dormant)")));
+        assert!(doc.contains(&format!(
+            "{llm_g} lines, about half of the {src_g} under `src/`"
+        )));
+        assert!(doc.contains(&format!("The entire {llm_g}-line `llm_dialogue.rs`")));
+        assert!(doc.contains(&format!("the {llm_g}-line LLM-enhanced layer")));
+        assert!(!doc.contains("2941"), "stale llm_dialogue.rs size");
+        assert!(
+            !doc.contains("60% of the crate by LoC"),
+            "stale share of src/"
+        );
+    }
+
+    #[test]
+    fn the_fluids_figures_match_the_crate() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let lib_lines = std::fs::read_to_string(root.join("astraweave-fluids/src/lib.rs"))
+            .unwrap()
+            .lines()
+            .count();
+        let kernels = std::fs::read_to_string(root.join("astraweave-fluids/shaders/fluid.wgsl"))
+            .unwrap()
+            .lines()
+            .filter(|line| line.contains("@compute"))
+            .count();
+        let doc = std::fs::read_to_string(root.join("docs/architecture/fluids.md")).unwrap();
         let row = doc
             .lines()
-            .find(|line| line.starts_with("| `llm_dialogue.rs` |"))
-            .expect("llm_dialogue.rs row");
-        let stated = row.split('|').nth(2).unwrap().trim();
-        assert_eq!(stated, lines.to_string(), "{row}");
+            .find(|line| line.starts_with("| `astraweave-fluids/src/lib.rs` |"))
+            .expect("fluids lib.rs row");
+        assert_eq!(table_loc(row), lib_lines, "{row}");
+        let vocab = doc
+            .lines()
+            .find(|line| line.contains("| **`FluidSystem`** |"))
+            .expect("FluidSystem vocabulary row");
+        assert!(
+            vocab.contains(&format!("Holds {kernels} compute pipelines")),
+            "{vocab}"
+        );
+        assert!(!vocab.contains("8 compute pipelines"), "{vocab}");
+        let status = doc
+            .lines()
+            .find(|line| line.starts_with("| **Status** |"))
+            .expect("fluids status row");
+        assert!(status.contains("`examples/fluids_demo`"), "{status}");
+        assert!(status.contains("`examples/weaving_playground`"), "{status}");
+        assert!(
+            !status.contains("fluids_demo` only"),
+            "status still names one consumer"
+        );
+        for example in ["examples/fluids_demo", "examples/weaving_playground"] {
+            let manifest = std::fs::read_to_string(root.join(example).join("Cargo.toml")).unwrap();
+            assert!(
+                manifest.contains("astraweave-fluids"),
+                "{example} does not depend on astraweave-fluids"
+            );
+        }
+    }
+
+    fn table_loc(row: &str) -> usize {
+        let cell = row
+            .split('|')
+            .nth(2)
+            .unwrap()
+            .trim()
+            .trim_matches('*')
+            .trim();
+        let token = cell.split_whitespace().next().unwrap().replace(',', "");
+        token.parse().expect(row)
+    }
+
+    fn grouped(n: usize) -> String {
+        let raw = n.to_string();
+        let mut out = String::new();
+        for (i, ch) in raw.chars().rev().enumerate() {
+            if i > 0 && i % 3 == 0 {
+                out.push(',');
+            }
+            out.push(ch);
+        }
+        out.chars().rev().collect()
     }
 
     #[test]
