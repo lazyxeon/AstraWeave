@@ -603,6 +603,14 @@ fn loc_band(lines: usize) -> &'static str {
 
 fn src_rs_lines(root: &Path, manifest: &str) -> usize {
     let dir = root.join(manifest).parent().unwrap_or(root).join("src");
+    // `read_dir` follows a directory symlink. A `src` that is itself a link
+    // is not this crate's tree, so the count stays 0.
+    if std::fs::symlink_metadata(&dir)
+        .map(|meta| meta.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        return 0;
+    }
     fn walk(dir: &Path, total: &mut usize) {
         let Ok(rd) = std::fs::read_dir(dir) else {
             return;
@@ -910,6 +918,11 @@ fn anchor_tag_ids(md: &str) -> Vec<String> {
 
 fn is_anchor_tag_start(s: &str, i: usize) -> bool {
     let bytes = s.as_bytes();
+    // An anchor counts only at column 0. That excludes a tag in inline code
+    // and a tag indented as a code block. Fences are already gone.
+    if !is_line_start(bytes, i) {
+        return false;
+    }
     let rest = &bytes[i..];
     let open = if rest.starts_with(b"<a") || rest.starts_with(b"<A") {
         2
@@ -953,20 +966,56 @@ fn quoted_attr(tag: &str, name: &str) -> Vec<String> {
 
 /// Drop fenced code blocks and HTML comments. What remains is the markup and
 /// headings GitHub will render.
+#[derive(Clone, Copy)]
+struct FenceOpen {
+    ch: u8,
+    len: usize,
+    indent: usize,
+}
+
+/// A fence opener or closer: up to three leading spaces, then at least three
+/// `` ` `` or `~`. GitHub treats an indented fence as code, including one
+/// nested under a list item.
+fn fence_marker(line: &str) -> Option<FenceOpen> {
+    let bytes = line.as_bytes();
+    let mut indent = 0;
+    while indent < bytes.len() && indent < 4 && bytes[indent] == b' ' {
+        indent += 1;
+    }
+    if indent > 3 || indent >= bytes.len() {
+        return None;
+    }
+    let ch = bytes[indent];
+    if ch != b'`' && ch != b'~' {
+        return None;
+    }
+    let mut len = 0;
+    while indent + len < bytes.len() && bytes[indent + len] == ch {
+        len += 1;
+    }
+    if len < 3 {
+        return None;
+    }
+    Some(FenceOpen { ch, len, indent })
+}
+
 fn visible_markdown(md: &str) -> String {
     let bytes = md.as_bytes();
     let mut out = String::with_capacity(md.len());
     let mut i = 0;
-    let mut fence: Option<u8> = None;
+    let mut fence: Option<FenceOpen> = None;
     while i < bytes.len() {
-        if let Some(ch) = fence {
-            let marker = [ch, ch, ch];
-            if is_line_start(bytes, i) && bytes[i..].starts_with(&marker) {
-                i = line_end(bytes, i);
-                fence = None;
-            } else {
-                i += 1;
+        if let Some(open) = fence {
+            if is_line_start(bytes, i) {
+                if let Some(close) = fence_marker(&md[i..]) {
+                    if close.ch == open.ch && close.len >= open.len && close.indent <= open.indent {
+                        i = line_end(bytes, i);
+                        fence = None;
+                        continue;
+                    }
+                }
             }
+            i += 1;
             continue;
         }
         if bytes[i..].starts_with(b"<!--") {
@@ -978,13 +1027,8 @@ fn visible_markdown(md: &str) -> String {
             continue;
         }
         if is_line_start(bytes, i) {
-            if bytes[i..].starts_with(b"```") {
-                fence = Some(b'`');
-                i = line_end(bytes, i);
-                continue;
-            }
-            if bytes[i..].starts_with(b"~~~") {
-                fence = Some(b'~');
+            if let Some(open) = fence_marker(&md[i..]) {
+                fence = Some(open);
                 i = line_end(bytes, i);
                 continue;
             }
@@ -1173,8 +1217,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn line_count_skips_symlinks() {
+    fn assert_line_count_skips_symlinks(
+        link_dir: fn(&Path, &Path) -> std::io::Result<()>,
+        link_file: fn(&Path, &Path) -> std::io::Result<()>,
+    ) {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("demo").join("src");
         std::fs::create_dir_all(&src).unwrap();
@@ -1182,8 +1228,40 @@ mod tests {
         let outside = dir.path().join("outside");
         std::fs::create_dir_all(&outside).unwrap();
         std::fs::write(outside.join("extra.rs"), "fn extra() {}\nfn more() {}\n").unwrap();
-        std::os::unix::fs::symlink(&outside, src.join("linked")).unwrap();
-        std::os::unix::fs::symlink(outside.join("extra.rs"), src.join("linked.rs")).unwrap();
+        if link_dir(&outside, &src.join("linked")).is_err() {
+            return;
+        }
+        if link_file(&outside.join("extra.rs"), &src.join("linked.rs")).is_err() {
+            return;
+        }
         assert_eq!(src_rs_lines(dir.path(), "demo/Cargo.toml"), 1);
+
+        let real_src = dir.path().join("real_src");
+        std::fs::create_dir_all(&real_src).unwrap();
+        std::fs::write(real_src.join("extra.rs"), "fn extra() {}\nfn more() {}\n").unwrap();
+        let linked_crate = dir.path().join("linked_crate");
+        std::fs::create_dir_all(&linked_crate).unwrap();
+        if link_dir(&real_src, &linked_crate.join("src")).is_err() {
+            return;
+        }
+        assert_eq!(src_rs_lines(dir.path(), "linked_crate/Cargo.toml"), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn line_count_skips_symlinks() {
+        assert_line_count_skips_symlinks(
+            |target, link| std::os::unix::fs::symlink(target, link),
+            |target, link| std::os::unix::fs::symlink(target, link),
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn line_count_skips_symlinks() {
+        assert_line_count_skips_symlinks(
+            |target, link| std::os::windows::fs::symlink_dir(target, link),
+            |target, link| std::os::windows::fs::symlink_file(target, link),
+        );
     }
 }

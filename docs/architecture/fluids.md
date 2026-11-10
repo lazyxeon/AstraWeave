@@ -20,7 +20,7 @@ last_verified_commit: 604d35d1
 | Field | Value |
 |---|---|
 | **System name** | Fluids (GPU PBD particle simulation + SSFR rendering + W.3+-deferred visual-effects layer + editor) — **post-W.1**: voxel-water sim, research/experimental SPH inventory, and `simd_ops` removed (§0.5) |
-| **Primary crates** | `astraweave-fluids` (19 source files / 7 WGSL shaders / ~24.2K src LoC — down from 34 src / 8 shaders / ~80.7K at F.3.S) |
+| **Primary crates** | `astraweave-fluids` (19 source files / 7 WGSL shaders / 24,509 lines under `src/` — down from 34 src / 8 shaders / ~80.7K at F.3.S) |
 | **Document version** | 2.9 |
 | **Last verified against commit** | `604d35d1` (v2.9: src line count and the two example consumers). Prior `1640f16b` (parent of the file-map test-count correction; that parent still says `(7)` on the `gpu_execution_tests.rs` row, and its stamp `e15d7dfa` is not an ancestor after the rebase onto `0213d1cf`). Prior `e15d7dfa` (parent of the rebase restamp; that parent already counts `gpu_execution_tests.rs` at 1,434, and its stamp `8f56554b` is not an ancestor after the rebase onto `07306de0`, and `e06b4f11` is not an ancestor after the rebase onto `99382af7`). Prior `8f56554b` (parent of the `gpu_execution_tests.rs` line-count correction; that parent still says 568). Prior `868ce83d` (parent of the GPU-skip record; that parent still returns from `try_create_test_device` with no `SKIP(gpu)` line). Prior `69422eb1` (parent of the review-gap follow-up; that parent still applies a cyclic neighbor list `particle_count` times, sets `sdf_empty_ready` before the caller submits, and drops `PollError::Timeout` in `run_step`). Prior `3855715e` (parent of the software-adapter GPU-test fix; that parent still rebuilds the empty SDF every step, walks neighbor chains without a cap, and binds accent depth read-only). Prior `4be1ca876` (`fluid_baseline_50k` flat sample; prior inventory anchor remains `7c29b8182`) |
 | **Last verified date** | 2026-11-09 (v2.9: src line count and the two example consumers). Prior 2026-10-18. |
@@ -994,11 +994,11 @@ Per README:
 2. **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` (`lib.rs`) and `WaterEffectsManager` (`water_effects.rs`) remain. The 2026-05-12 list of five coexisting solver surfaces is historical.
 3. **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`, and the crate root does not re-export one. `lib.rs:186` is `pub half_extents: [f32; 4]` on `DynamicObject`. The 2026-05-12 casing collision is historical.
 4. **Quality enums.** At `604d35d1`, `QualityPreset` (`editor.rs`), `WaterQualityPreset` (`water_effects.rs`), and `QualityTier` (`optimization.rs`) remain and are not interchangeable. `ResearchQualityTier` is gone with the research solver.
-5. **GPU-first architecture.** `FluidSystem::new` takes `&wgpu::Device`. Compute pipelines are constructed once; per-frame work is a single compute pass over 8 kernels.
+5. **GPU-first architecture.** `FluidSystem::new` takes `&wgpu::Device`. `lib.rs:790-796` builds 7 compute pipelines (`clear_grid`, `build_grid`, `predict`, `compute_lambda`, `compute_delta_pos`, `integrate`, `mix_dye`). `fluid.wgsl` has those 7 `@compute` entry points.
 6. **Superseded by W.1 (verified at `604d35d1`).** `volume_grid.rs` and `building.rs` are gone, and `WaterVolumeGrid` is not in this crate. The kept particle path is `FluidSystem`. The 2026-05-12 voxel-grid paragraph is historical.
 7. **`#![forbid(unsafe_code)]` is NOT declared at lib.rs:1.** Sibling engine crates do declare it. Verified 2026-05-12: only 2 unsafe occurrences crate-wide — bytemuck Pod/Zeroable impls at `debug_viz.rs:479-480`. No `unsafe { ... }` blocks.
 8. **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is gone. Before that deletion it was 39,554 lines of iterator-style batch ops, not manual SIMD intrinsics.
-9. **`editor.rs` is the second-largest file at 5,823 LoC.** Comprehensive editor integration with undo/redo, validation, batch operations, color-blind palettes. Verified 2026-05-12: NOT consumed by `tools/aw_editor` — forward-design only.
+9. **`editor.rs` is the largest file at 5,823 lines.** `lib.rs` is second, at 4,198. Comprehensive editor integration with undo/redo, validation, batch operations, color-blind palettes. Verified 2026-05-12: NOT consumed by `tools/aw_editor` — forward-design only.
 10. **WGSL shaders live in `astraweave-fluids/shaders/`** (7 files at `604d35d1`). `shaders/fluid.wgsl` is 649 lines and is the central compute shader.
 11. **`WaterEffectsManager` is the visual-effects coordinator** behind `WaterQualityPreset`. The 7 visual subsystems (caustics/foam/god rays/reflections/underwater/underwater_particles/waterfall) are independently constructable but typically used via this coordinator.
 12. **Cargo features at `604d35d1`:** `default = []`. `serde` is an unconditional dependency. `parallel = ["dep:rayon"]` is still declared and gates nothing after W.1 removed `simd_ops.rs`.
@@ -1008,7 +1008,7 @@ Per README:
 - `astraweave-fluids/src/lib.rs` — `FluidSystem` (PBD GPU pipeline), `Particle`/`SimParams`/`SecondaryParticle` GPU types
 - `astraweave-fluids/src/water_effects.rs` — `WaterEffectsManager` visual coordinator
 - `astraweave-fluids/src/volume_grid.rs` and `building.rs` — **gone in W.1**. Do not treat them as files to edit.
-- `astraweave-fluids/shaders/fluid.wgsl` — 8-kernel PBD compute shader
+- `astraweave-fluids/shaders/fluid.wgsl` — 7-kernel PBD compute shader (`clear_grid`, `build_grid`, `predict`, `compute_lambda`, `compute_delta_pos`, `integrate`, `mix_dye`)
 - `astraweave-fluids/src/renderer.rs` — SSFR rendering pipeline
 - `examples/fluids_demo/src/main.rs` and `examples/weaving_playground` — the two consumers; `fluids_demo` is the canonical PBD usage pattern
 
@@ -1016,7 +1016,7 @@ Per README:
 
 - `astraweave-fluids/src/simd_ops.rs` — **gone in W.1** (it was 39,554 lines). Do not restore it as a current edit target.
 - `astraweave-fluids/src/research.rs`, `pcisph_system.rs`, and `unified_solver.rs` — **gone in W.1**. Do not treat the 2026-05-12 research inventory as files that still exist.
-- `astraweave-fluids/src/editor.rs` (5,823 LoC) — comprehensive editor surface with extensive re-exports; modifications cascade through `lib.rs:100-153` re-exports
+- `astraweave-fluids/src/editor.rs` (5,823 lines, the largest file) — comprehensive editor surface with extensive re-exports; modifications cascade through the `pub use editor` block at `lib.rs:78-131`
 - `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` — audit doc; this trace is anchored to it
 
 **Common mistakes when changing this system:**

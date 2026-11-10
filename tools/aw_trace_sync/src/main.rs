@@ -1859,6 +1859,71 @@ mod tests {
     }
 
     #[test]
+    fn an_inline_code_anchor_tag_does_not_resolve() {
+        let body = format!(
+            "`<a id=\"8-invariants\"></a>`\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn an_indented_fence_anchor_tag_does_not_resolve() {
+        let body = format!(
+            "- item\n  ```\n<a id=\"8-invariants\"></a>\n  ```\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn an_indented_code_block_anchor_tag_does_not_resolve() {
+        let body = format!(
+            "    <a id=\"8-invariants\"></a>\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_tilde_fence_anchor_tag_does_not_resolve() {
+        let body = format!(
+            "~~~\n<a id=\"8-invariants\"></a>\n~~~\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_heading_inside_a_fence_does_not_resolve() {
+        let body = format!(
+            "```\n## 8. Invariants\n```\n{}",
+            headings_without_invariants()
+        );
+        let problems = anchor_problems_for(&body, page_links_all_five());
+        assert!(
+            problems.iter().any(|p| p.contains("#8-invariants")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
     fn a_commented_anchor_tag_does_not_resolve() {
         let body = format!(
             "<!-- <a id=\"8-invariants\"></a> -->\n{}",
@@ -1935,27 +2000,67 @@ mod tests {
 
     #[test]
     fn trace_id_and_filename_must_be_plain_identifiers() {
-        let raw = "bad\"id<x>";
-        let mut both = ydoc("water", "astraweave-water", "[astraweave-water]");
-        both.fm.as_mut().unwrap().trace_id = raw.into();
-        both.stem = raw.into();
         let crates = vec!["astraweave-water".to_string()];
-        let problems = validate(&[both], &crates);
-        assert!(
-            problems.iter().any(|m| m.contains("trace_id must match")),
-            "{problems:?}"
-        );
-        assert!(
-            problems.iter().any(|m| m.contains("file name must match")),
-            "{problems:?}"
-        );
+        let reject = |raw: &str| {
+            let mut both = ydoc("water", "astraweave-water", "[astraweave-water]");
+            both.fm.as_mut().unwrap().trace_id = raw.into();
+            both.stem = raw.into();
+            let problems = validate(&[both], &crates);
+            assert!(
+                problems.iter().any(|m| m.contains("trace_id must match")),
+                "{raw:?} {problems:?}"
+            );
+            assert!(
+                problems.iter().any(|m| m.contains("file name must match")),
+                "{raw:?} {problems:?}"
+            );
 
-        let mut file_only = ydoc("water", "astraweave-water", "[astraweave-water]");
-        file_only.stem = raw.into();
-        let problems = validate(&[file_only], &crates);
+            let mut file_only = ydoc("water", "astraweave-water", "[astraweave-water]");
+            file_only.stem = raw.into();
+            let problems = validate(&[file_only], &crates);
+            assert!(
+                problems.iter().any(|m| m.contains("file name must match")),
+                "{raw:?} {problems:?}"
+            );
+
+            let mut id_only = ydoc("water", "astraweave-water", "[astraweave-water]");
+            id_only.fm.as_mut().unwrap().trace_id = raw.into();
+            let problems = validate(&[id_only], &crates);
+            assert!(
+                problems.iter().any(|m| m.contains("trace_id must match")),
+                "{raw:?} {problems:?}"
+            );
+        };
+        for raw in [
+            "bad\"id<x>",
+            "Bad",
+            "bad-id",
+            "bad.id",
+            "bad/id",
+            "bad id",
+            "",
+        ] {
+            reject(raw);
+        }
+
+        let ok = ydoc("ai_pipeline2", "astraweave-water", "[astraweave-water]");
+        let problems = validate(&[ok], &crates);
         assert!(
-            problems.iter().any(|m| m.contains("file name must match")),
+            problems.iter().all(|m| !m.contains("must match")),
             "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn workspace_map_does_not_assign_inner_html() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/architecture/workspace_map.html");
+        let html = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("read {}: {err}", path.display());
+        });
+        assert!(
+            !html.contains("innerHTML"),
+            "workspace_map.html assigns innerHTML"
         );
     }
 
