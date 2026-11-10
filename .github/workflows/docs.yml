@@ -78,8 +78,10 @@ jobs:
 
       - name: Copy workspace architecture map
         run: |
-          mkdir -p docs/book/architecture
+          mkdir -p docs/book/architecture/vendor/licenses
           cp docs/architecture/workspace_map.html docs/book/architecture/index.html
+          cp docs/architecture/vendor/*.js docs/book/architecture/vendor/
+          cp docs/architecture/vendor/licenses/* docs/book/architecture/vendor/licenses/
           echo "Workspace architecture map copied; URL slug /architecture/"
 
       - name: Install system dependencies (for cargo doc)
