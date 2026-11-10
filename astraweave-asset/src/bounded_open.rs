@@ -1,13 +1,16 @@
 //! Size-bounded read from a directory handle.
 //!
-//! The caller-supplied root is resolved once. On Unix each URI component is
-//! then opened from the parent directory handle with `O_NOFOLLOW`. On Windows
-//! the resolved root is opened without reparse-point semantics, each URI
-//! component is reopened by path and any reparse point is rejected, and the
-//! file's final path must stay under the root's final path. Those two paths
-//! compare as exact UTF-16 units. A caller-supplied model file is resolved
-//! once before its leaf is opened. URI components are not. File type and
-//! size come from the opened handle, and the read stops at the caller's byte cap.
+//! The caller-supplied root is resolved once. Each component of that absolute
+//! path is then opened from the filesystem root and is not followed. On Unix
+//! each URI component is opened from that directory handle with `O_NOFOLLOW`.
+//! On Windows each canonical component is opened with reparse-point semantics
+//! and rejected when it is a reparse point; its final path must stay under the
+//! previous component. URI components are reopened by path the same way, and
+//! the file's final path must stay under the root's. Those paths compare as
+//! exact UTF-16 units. A caller-supplied model file is resolved once before
+//! its leaf is opened. URI components are not. A file with more than one link
+//! is refused. File type and size come from the opened handle, and the read
+//! stops at the caller's byte cap.
 
 use anyhow::{bail, Context, Result};
 use std::fs::File;
@@ -58,7 +61,7 @@ pub(crate) fn read_under(
     let meta = file
         .metadata()
         .with_context(|| format!("stat {}", subject(noun, display)))?;
-    if !regular_file(&meta) {
+    if !regular_file(&meta) || link_count(&meta) > 1 {
         bail!("{} is not a regular file", subject(noun, display));
     }
     if meta.len() > max_bytes {
@@ -109,6 +112,30 @@ fn reparse_point(_meta: &std::fs::Metadata) -> bool {
     false
 }
 
+fn link_count(meta: &std::fs::Metadata) -> u64 {
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::MetadataExt::nlink(meta)
+    }
+    #[cfg(windows)]
+    {
+        u64::from(std::os::windows::fs::MetadataExt::number_of_links(meta))
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_RESOLVE: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+fn after_resolve() {
+    #[cfg(test)]
+    if let Some(hook) = AFTER_RESOLVE.with(|cell| cell.borrow_mut().take()) {
+        hook();
+    }
+}
+
 fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
     let mut names = Vec::new();
     for component in relative.components() {
@@ -134,16 +161,16 @@ fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
 
 #[cfg(unix)]
 fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
-    use rustix::fs::{openat, Mode, OFlags, CWD};
+    use rustix::fs::{openat, Mode, OFlags};
 
-    // The root is resolved once, then opened as a directory. URI components
-    // keep NOFOLLOW so a link under the root is not followed.
-    let root_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    // The root is resolved once. Each component of that absolute path is
+    // opened from `/` and is not followed. URI components keep NOFOLLOW.
     let directory = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
     let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let names = relative_names(relative)?;
     let resolved = std::fs::canonicalize(root)?;
-    let mut dir = opened(openat(CWD, &resolved, root_flags, Mode::empty()))?;
+    after_resolve();
+    let mut dir = open_canonical(&resolved, directory)?;
     for (index, name) in names.iter().enumerate() {
         let last = index + 1 == names.len();
         let flags = if last { file_flags } else { directory };
@@ -164,6 +191,39 @@ fn opened(result: rustix::io::Result<rustix::fd::OwnedFd>) -> std::io::Result<ru
     }
 }
 
+#[cfg(unix)]
+fn open_canonical(
+    absolute: &Path,
+    flags: rustix::fs::OFlags,
+) -> std::io::Result<rustix::fd::OwnedFd> {
+    use rustix::fs::{openat, Mode, OFlags, CWD};
+
+    let mut components = absolute.components();
+    if !matches!(components.next(), Some(Component::RootDir)) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    }
+    let root_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
+    let mut dir = opened(openat(CWD, "/", root_flags, Mode::empty()))?;
+    for component in components {
+        match component {
+            Component::Normal(name) => {
+                dir = opened(openat(&dir, name, flags, Mode::empty()))?;
+            }
+            Component::CurDir => {}
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "not a regular file",
+                ));
+            }
+        }
+    }
+    Ok(dir)
+}
+
 #[cfg(all(windows, test))]
 thread_local! {
     static FILE_FINAL_OVERRIDE: std::cell::Cell<Option<std::path::PathBuf>> =
@@ -171,7 +231,7 @@ thread_local! {
 }
 
 #[cfg(windows)]
-fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
+fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
 
     const FILE_SHARE_READ: u32 = 0x0000_0001;
@@ -179,37 +239,72 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 
-    fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
-        let mut flags = FILE_FLAG_BACKUP_SEMANTICS;
-        if reparse {
-            flags |= FILE_FLAG_OPEN_REPARSE_POINT;
-        }
-        std::fs::OpenOptions::new()
-            .read(true)
-            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-            .custom_flags(flags)
-            .open(path)
+    let mut flags = FILE_FLAG_BACKUP_SEMANTICS;
+    if reparse {
+        flags |= FILE_FLAG_OPEN_REPARSE_POINT;
     }
+    std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(flags)
+        .open(path)
+}
 
-    fn ensure_directory(file: &File) -> std::io::Result<()> {
-        let meta = file.metadata()?;
-        if reparse_point(&meta) || !meta.is_dir() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "not a regular file",
-            ));
-        }
-        Ok(())
+#[cfg(windows)]
+fn ensure_directory(file: &File) -> std::io::Result<()> {
+    let meta = file.metadata()?;
+    if reparse_point(&meta) || !meta.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
     }
+    Ok(())
+}
 
+#[cfg(windows)]
+fn open_resolved_directory(resolved: &Path) -> std::io::Result<(std::path::PathBuf, Vec<File>)> {
+    let mut cursor = std::path::PathBuf::new();
+    let mut parent_final = None;
+    let mut held = Vec::new();
+    for component in resolved.components() {
+        let open_this = matches!(component, Component::RootDir | Component::Normal(_));
+        cursor.push(component.as_os_str());
+        if !open_this {
+            continue;
+        }
+        let file = open_path(&cursor, true)?;
+        ensure_directory(&file)?;
+        let component_final = final_path(&file)?;
+        if let Some(parent) = &parent_final {
+            if !path_is_under(parent, &component_final) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "not a regular file",
+                ));
+            }
+        }
+        parent_final = Some(component_final);
+        held.push(file);
+    }
+    match parent_final {
+        Some(root_final) => Ok((root_final, held)),
+        None => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        )),
+    }
+}
+
+#[cfg(windows)]
+fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
     let names = relative_names(relative)?;
-    // Resolve the caller-supplied root once, then open that directory by
-    // handle without reparse-point semantics. URI components below keep it.
+    // Resolve the caller-supplied root once. Each component of that absolute
+    // path is opened with reparse-point semantics and must not be a reparse
+    // point. Its final path must stay under the previous component.
     let resolved = std::fs::canonicalize(root)?;
-    let root_file = open_path(&resolved, false)?;
-    ensure_directory(&root_file)?;
-    let root_final = final_path(&root_file)?;
-    let mut held = vec![root_file];
+    after_resolve();
+    let (root_final, mut held) = open_resolved_directory(&resolved)?;
 
     let mut cursor = resolved;
     for (index, name) in names.iter().enumerate() {
@@ -841,5 +936,100 @@ mod tests {
         assert_eq!(bytes, b"gltf");
         let container = crate::gltf_loader::read_gltf_container(&link).expect("container");
         assert_eq!(container, b"gltf");
+    }
+
+    struct ClearResolveHook;
+    impl Drop for ClearResolveHook {
+        fn drop(&mut self) {
+            AFTER_RESOLVE.with(|cell| {
+                cell.borrow_mut().take();
+            });
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolved_directory_replaced_before_open_is_refused() {
+        let _guard = ClearResolveHook;
+        let parent = tempfile::tempdir().expect("parent");
+        let jail = parent.path().join("jail");
+        std::fs::create_dir(&jail).expect("jail");
+        std::fs::write(jail.join("box.bin"), b"box!").expect("bin");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&outside).expect("outside");
+        std::fs::write(outside.join("box.bin"), b"out!").expect("out");
+        let jail_hook = jail.clone();
+        let outside_hook = outside.clone();
+        let parked = parent.path().join("parked");
+        AFTER_RESOLVE.with(|cell| {
+            *cell.borrow_mut() = Some(Box::new(move || {
+                std::fs::rename(&jail_hook, &parked).expect("park");
+                std::os::unix::fs::symlink(&outside_hook, &jail_hook).expect("swap");
+            }));
+        });
+        let err = read_under(&jail, Path::new("box.bin"), 64, "", Path::new("box.bin"))
+            .expect_err("replaced directory");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolved_directory_replaced_before_open_is_refused() {
+        let _guard = ClearResolveHook;
+        let parent = tempfile::tempdir().expect("parent");
+        let jail = parent.path().join("jail");
+        std::fs::create_dir(&jail).expect("jail");
+        std::fs::write(jail.join("box.bin"), b"box!").expect("bin");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&outside).expect("outside");
+        std::fs::write(outside.join("box.bin"), b"out!").expect("out");
+        let jail_hook = jail.clone();
+        let outside_hook = outside.clone();
+        let parked = parent.path().join("parked");
+        AFTER_RESOLVE.with(|cell| {
+            *cell.borrow_mut() = Some(Box::new(move || {
+                std::fs::rename(&jail_hook, &parked).expect("park");
+                junction(&jail_hook, &outside_hook);
+            }));
+        });
+        let err = read_under(&jail, Path::new("box.bin"), 64, "", Path::new("box.bin"))
+            .expect_err("replaced directory");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hard_linked_file_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("box.bin");
+        std::fs::write(&file, b"box!").expect("bin");
+        std::fs::hard_link(&file, dir.path().join("link.bin")).expect("link");
+        let err = read_under(
+            dir.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect_err("link count");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hard_linked_file_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("box.bin");
+        std::fs::write(&file, b"box!").expect("bin");
+        std::fs::hard_link(&file, dir.path().join("link.bin")).expect("link");
+        let err = read_under(
+            dir.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect_err("link count");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
     }
 }
