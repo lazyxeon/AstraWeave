@@ -17,7 +17,7 @@ Task 5 implements **automated CI validation** for PBR materials and pipeline com
 - ✅ **Path Filtering**: Only runs when materials or validators change
 - ✅ **Multi-Material Validation**:
   - Individual: grassland, mountain, desert demos
-  - Recursive: All materials in `assets/materials/`
+  - Directory walk: every supported file under `assets/materials/` (no `--recursive` flag)
 - ✅ **JSON Output**: Machine-readable validation reports
 - ✅ **Result Parsing**: `jq` extracts pass/fail status, error counts
 - ✅ **GitHub Step Summary**: Color-coded table (✅/❌/⚠️)
@@ -66,9 +66,9 @@ Task 5 implements **automated CI validation** for PBR materials and pipeline com
 - **Output**: GitHub Step Summary with test status
 
 #### **Job 3: Validate WGSL Shaders**
-- **Checks**: Shader file syntax (basic)
-- **Lists**: All `.wgsl` files with line counts
-- **Optional**: `wgsl-analyzer` (continues if missing)
+- **Checks**: each `.wgsl` file under `astraweave-render/shaders`, `astraweave-render/src/shaders`, `astraweave-fluids/shaders`, and `assets/shaders` is non-empty. It does not parse WGSL.
+- **Lists**: those files with line counts
+- **Not installed**: `wgsl-analyzer`
 
 ---
 
@@ -126,15 +126,15 @@ on:
   run: |
     cargo run -p aw_asset_cli --release -- validate \
       assets/materials/terrain/grassland_demo.toml \
-      --format json \
-      --output validation-grassland.json
+      --format json > validation-grassland.json
 ```
 
 **Result Parsing** (bash + jq):
 ```bash
-passed=$(jq -r '.results[0].passed // false' validation-grassland.json)
-error_count=$(jq -r '.results[0].errors | length' validation-grassland.json)
-warning_count=$(jq -r '.results[0].warnings | length' validation-grassland.json)
+# JSON is a top-level array, not an object with a results field.
+passed=$(jq -r '.[0].passed // false' validation-grassland.json)
+error_count=$(jq -r '.[0].errors | length' validation-grassland.json)
+warning_count=$(jq -r '.[0].warnings | length' validation-grassland.json)
 ```
 
 **GitHub Step Summary**:
@@ -199,7 +199,7 @@ strategy:
 |-----------|----------|
 | Single material | 100-200ms |
 | 3 demo materials | 300-600ms |
-| 10 materials (recursive) | 1-2s |
+| 10 materials (directory walk) | 1-2s |
 
 ### Total CI Time
 | Scenario | Duration |
@@ -224,7 +224,6 @@ cargo run -p aw_asset_cli --release -- validate `
 # Validate all materials
 cargo run -p aw_asset_cli --release -- validate `
   assets/materials/ `
-  --recursive `
   --format json
 
 # Strict mode (warnings → errors)
@@ -318,7 +317,7 @@ git config core.autocrlf input
 ### Issue: JSON Parsing Errors
 **Solution**: Add error handling
 ```bash
-passed=$(jq -r '.results[0].passed // false' validation.json 2>/dev/null || echo "false")
+passed=$(jq -r '.[0].passed // false' validation.json 2>/dev/null || echo "false")
 ```
 
 ---

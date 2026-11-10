@@ -119,7 +119,7 @@ A high mutation score proves test suite effectiveness.
 - **Flags**: `--timeout-multiplier 3` for complex crates
 
 ### Success Criteria
-- [x] 80%+ mutation score on P0 crates *(CI will validate)*
+- [ ] 80%+ mutation score on P0 crates. Not met. ecs job `129623992106` on run `42753998469` tested 575 mutants: 329 caught, 163 missed, about 66.9% caught / (caught + missed). A miss fails that job. The target is not lowered.
 - [x] 70%+ mutation score on P1 crates *(CI will validate)*
 - [ ] Surviving mutants documented for review
 

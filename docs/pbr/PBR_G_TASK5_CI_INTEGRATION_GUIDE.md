@@ -26,14 +26,14 @@ Automated material validation and PBR pipeline testing in GitHub Actions CI. Thi
    - `grassland_demo.toml`
    - `mountain_demo.toml`
    - `desert_demo.toml`
-   - All materials (recursive scan)
+   - every supported file under `assets/materials/` (directory walk; no `--recursive` flag)
 3. **Generates** JSON validation reports
 4. **Uploads** reports as artifacts (30-day retention)
 5. **Fails PR** if any validation errors found
 
 **Key Features**:
 - ✅ Caches Cargo dependencies for fast builds
-- ✅ Continues on individual failures (all materials tested)
+- ✅ A failed validate step fails the job (`set -euo pipefail`)
 - ✅ Parses JSON results with `jq`
 - ✅ Color-coded summary (✅/❌/⚠️)
 - ✅ GitHub Step Summary with table
@@ -76,9 +76,9 @@ Automated material validation and PBR pipeline testing in GitHub Actions CI. Thi
 - **Output**: Test summary in GitHub Step Summary
 
 #### **Job 3: Validate WGSL Shaders**
-- **Checks**: Shader file syntax (basic validation)
-- **Lists**: All `.wgsl` files with line counts
-- **Optional**: `wgsl-analyzer` (continues if not installed)
+- **Checks**: each `.wgsl` file under `astraweave-render/shaders`, `astraweave-render/src/shaders`, `astraweave-fluids/shaders`, and `assets/shaders` is non-empty. It does not parse WGSL.
+- **Lists**: those files with line counts
+- **Not installed**: `wgsl-analyzer`
 
 ---
 
@@ -133,8 +133,8 @@ git push origin main
 # Validate specific material
 cargo run -p aw_asset_cli --release -- validate assets/materials/terrain/grassland_demo.toml --format json
 
-# Validate all materials (recursive)
-cargo run -p aw_asset_cli --release -- validate assets/materials/ --recursive --format json
+# Validate every supported file under the directory. There is no --recursive flag.
+cargo run -p aw_asset_cli --release -- validate assets/materials/ --format json
 
 # Strict mode (treat warnings as errors)
 cargo run -p aw_asset_cli --release -- validate assets/materials/ --strict
@@ -268,7 +268,7 @@ sudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
 |-----------|----------|
 | Single material | 100-200ms |
 | 3 demo materials | 300-600ms |
-| Recursive scan (10 materials) | 1-2s |
+| Directory walk (10 materials) | 1-2s |
 
 ---
 
@@ -281,9 +281,7 @@ Edit `material-validation.yml`:
   run: |
     cargo run -p aw_asset_cli --release -- validate \
       assets/materials/biome/ \
-      --format json \
-      --output validation-biome.json \
-      --recursive
+      --format json > validation-biome.json
 ```
 
 ### Strict Mode (Treat Warnings as Errors)

@@ -11,6 +11,8 @@
 
 AstraWeave has completed mutation testing on **59 library crates** covering **~771K LOC** — the **entire library crate inventory**. **Phase 1 (Safety-Critical) is 100% complete**, **Phase 2 (Simulation & AI) is 100% complete**, **Phase 3/4 (Supporting Systems) is 100% complete**, and **Phase 5 (Tools & Macros) is 100% complete**. All 4 crates containing `unsafe` code in Tier 1 have been verified. 3 library crates have 0 tests (noted as excluded). 1 crate (`astraweave-stress-test`) excluded due to broken baseline tests. 67 binary/demo/example crates are out of scope for mutation testing.
 
+The `astraweave-ecs` percentages below are this audit's 2026-03-13 figures from cargo-mutants 26.2.0 (raw and adjusted kill rates). They are not the nightly workflow score. That workflow uses caught / (caught + missed). Job `129623992106` on run `42753998469` measured 329 caught and 163 missed (about 66.9%) on that basis, and a miss fails the ecs job.
+
 ### Current Mutation Testing Coverage
 
 | Crate | LOC | Kill Rate (Raw) | Kill Rate (Adj) | Scope | Status |
@@ -21,7 +23,7 @@ AstraWeave has completed mutation testing on **59 library crates** covering **~7
 | `astraweave-physics` | 45,216 | **98.0%** | **98.0%** | Full + spatial hash | ✅ Complete |
 | `astraweave-terrain` | 43,500 | **100%** | **100%** | Targeted (voxel mesh, LOD) | ✅ Complete |
 | `astraweave-ai` | 38,932 | **99.7%** | **100%** | Full crate (GOAP + AI core, 29 files) | ✅ Complete |
-| `astraweave-ecs` | 21,454 | **97.56%** | **97.60%** | Full crate (excl. Kani+counting_alloc) | ✅ Complete |
+| `astraweave-ecs` | 21,454 | **97.56%** (2026-03-13 audit, raw) | **97.60%** (adjusted, same audit) | Full crate (excl. Kani+counting_alloc) | ✅ Complete |
 | `astraweave-core` | 18,705 | **98.62%** | **99.53%** | Full crate (excl. Kani) | ✅ Complete |
 | `astraweave-math` | 4,363 | **92.2%** | **100%** | Full crate (excl. Kani) | ✅ Complete |
 | `astraweave-sdk` | 2,536 | **96.3%** | **100%** | Full crate (excl. Kani) | ✅ Complete |
@@ -128,7 +130,9 @@ Each untested crate is scored using a composite risk metric:
 
 These crates contain `unsafe` code, SIMD, or are foundational to engine determinism. **Failure here = undefined behavior, data races, or silent numerical corruption.**
 
-### 1. `astraweave-ecs` — ✅ COMPLETED (97.56% raw / 97.60% adjusted)
+### 1. `astraweave-ecs` — audit figure dated 2026-03-13 (cargo-mutants 26.2.0): 97.56% raw / 97.60% adjusted
+
+That pair is this audit's raw and adjusted kill rate, not the nightly workflow score. The workflow uses caught / (caught + missed). Job `129623992106` on run `42753998469` measured 329 caught and 163 missed (about 66.9%) on that basis. A miss fails the job.
 
 | Metric | Value |
 |--------|-------|
@@ -2347,7 +2351,7 @@ Target: `astraweave-ecs`, `astraweave-math`, `astraweave-core` (remaining), `ast
 
 | Crate | Unsafe | Kill Rate (Adj) | Status |
 |-------|--------|-----------------|--------|
-| `astraweave-ecs` | 187 | **97.60%** | ✅ Complete |
+| `astraweave-ecs` | 187 | **97.60%** (2026-03-13 audit, adjusted; not the nightly caught/(caught+missed) score) | ✅ Complete |
 | `astraweave-math` | 22 | **100%** | ✅ Complete |
 | `astraweave-core` | 30 | **99.53%** | ✅ Complete |
 | `astraweave-sdk` | 22 | **100%** | ✅ Complete |

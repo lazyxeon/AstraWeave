@@ -32,7 +32,7 @@ Criterion writes under `target/criterion/` for the package you benched (reports 
 
 Workflow `.github/workflows/benchmark-dashboard.yml` (schedule `0 2 * * *`, `workflow_dispatch`, and pushes that touch that workflow) runs the subset listed in its "Run Benchmarks" step, then `pwsh -File scripts/export_benchmark_jsonl.ps1`, and publishes to `dashboard/benchmark_dashboard`.
 
-The docs build copies that page into this book:
+The docs build copies `docs/archive/benchmark_dashboard/` into this book. That archive is an older standalone page. It is not the page the nightly job publishes from `tools/benchmark-dashboard`.
 
 [Benchmark dashboard](../dashboard/benchmark_dashboard/index.html)
 

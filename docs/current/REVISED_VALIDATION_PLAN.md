@@ -12,7 +12,7 @@ Before implementing this plan, understand these practical limitations:
 
 1. **ASan + GPU Drivers Don't Mix**: AddressSanitizer produces false positives from GPU driver allocations. The render crate **cannot get ASan coverage** — rely on wgpu validation instead. Run ASan tests with `--no-default-features` to disable GPU features.
 
-2. **ThreadSanitizer is Advisory, Not Must-Pass**: TSan with async Rust (Tokio) is noisy. Expect to accumulate suppressions over time. Budget 2-4 hours for tuning, and accept that TSan failures may be warnings rather than blockers.
+2. **ThreadSanitizer fails the Sanitizers workflow.** `.github/workflows/sanitizers.yml` no longer names that job advisory. The summary job fails when `thread-sanitizer` fails. The job runs on the nightly schedule, or on `workflow_dispatch` with `force_full_suite`. It does not run on pull requests. A race or a suppression miss is a failed workflow.
 
 3. **contracts Crate Has Rough Edges**: Version 0.6 struggles with complex generic types. Works well for math crate (quaternions, matrices), but may hit limitations with AI planning types. **Test on a single function before broad adoption.**
 
@@ -273,15 +273,9 @@ jobs:
 - `astraweave-coordination` - Agent coordination
 - `astraweave-net` - Network protocol handling
 
-**⚠️ Critical Caveat: TSan is ADVISORY, not MUST-PASS**
+**The Sanitizers workflow fails when this job fails.** The job name is `ThreadSanitizer`. The old advisory label is gone. `sanitizer-summary` sets a failed workflow when `needs.thread-sanitizer.result` is `failure`. The job runs on the nightly schedule, or on `workflow_dispatch` with `force_full_suite`. It does not run on pull requests.
 
-TSan with async Rust is inherently noisy. Expect:
-- False positives from Tokio internals
-- False positives from crossbeam/parking_lot
-- Suppressions list that grows over time
-- 2-4 hours of tuning before it's useful
-
-**Recommendation**: Treat TSan as a bug-finding tool, not a gate. Run it, investigate real issues, but don't block releases on TSan failures until suppressions are mature.
+TSan with async Rust can still report races in Tokio, crossbeam, or parking_lot. Those belong in `scripts/tsan_suppressions.txt` when they are not engine bugs. A red job is not a warning.
 
 **Setup**:
 ```bash
@@ -659,4 +653,5 @@ export WGPU_GPU_BASED_VALIDATION=1
 **Author**: GitHub Copilot (AI-generated research synthesis)
 
 **Changelog**:
+- The ThreadSanitizer job is no longer described as advisory. `sanitizer-summary` fails the workflow when that job fails.
 - v2.1: Added caveats section, fixed ASan+GPU warning, TSan advisory status, contracts maturity warning, realistic proptest estimates, wgpu API compatibility note, added Phase 7 (Determinism Testing)
