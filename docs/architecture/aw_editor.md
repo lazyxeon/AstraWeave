@@ -37,7 +37,7 @@ Headless click tests (2026-10-17, doc 1.21): `tests/ui_automation_smoke.rs` and 
 ## 1. Executive Summary
 
 **What this system does:**
-A full-featured GUI editor for AstraWeave game content: levels (`LevelDoc` TOML), scenes (`SceneData` RON), materials, terrain, biome painting, foliage scatter, behavior graphs, dialogue trees, quests, animations, navigation meshes, and ~30 other authoring domains — each surfaced as a panel inside an `egui_dock`-based docked layout (`tools/aw_editor/src/dock_layout.rs:1-966`, `tools/aw_editor/src/dock_panels.rs:1-626`). The editor also runs games it has authored: there are two binaries (`aw_editor` GUI + `aw_game_runtime` standalone runner — both windowed via winit+wgpu) and a Play-in-Editor (`PiE`) mode that swaps the live `EditorRuntime` between `Editing`, `Playing`, `Paused`, and `SteppingOneFrame` states (`tools/aw_editor/src/runtime.rs:18-25`).
+A full-featured GUI editor for AstraWeave game content: levels (`LevelDoc` TOML), scenes (`SceneData` RON), materials, terrain, biome painting, foliage scatter, behavior graphs, dialogue trees, quests, animations, navigation meshes, and ~30 other authoring domains — each surfaced as a panel inside an `egui_dock`-based docked layout (`tools/aw_editor/src/dock_layout.rs:1-966`, `tools/aw_editor/src/dock_panels.rs:1-628`). The editor also runs games it has authored: there are two binaries (`aw_editor` GUI + `aw_game_runtime` standalone runner — both windowed via winit+wgpu) and a Play-in-Editor (`PiE`) mode that swaps the live `EditorRuntime` between `Editing`, `Playing`, `Paused`, and `SteppingOneFrame` states (`tools/aw_editor/src/runtime.rs:18-25`).
 
 **Why it exists:**
 Per `tools/aw_editor/README.md:1-3`: "A non-programmer friendly GUI tool for creating and editing levels, encounters, and boss fights in AstraWeave." The scope has expanded substantially since that line was written — the README still describes only the level-editing surface, but the actual crate spans visual editing, asset authoring, blueprint design, build management, plugin hosting, performance profiling, and game runtime hosting. The aspirational scope is documented at `tools/aw_editor/EDITOR_ROADMAP_TO_WORLD_CLASS.md` and `tools/aw_editor/INTEGRATION_ROADMAP.md`.
@@ -97,7 +97,7 @@ The editor is an `eframe`/`egui` application driven by a single per-frame update
     │   - Confirm dialogs for destructive ops (new scene, open scene, quit)
     │
     ▼
-[Dock layout rendering]                                (dock_layout.rs:1-966, dock_panels.rs:1-626)
+[Dock layout rendering]                                (dock_layout.rs:1-966, dock_panels.rs:1-628)
     │
     │ if use_docking { DockArea::new(&mut dock_state).show(ctx, &mut tab_viewer) }
     │ else            { /* legacy non-docked floating panels — preserved for fallback */ }
@@ -183,7 +183,7 @@ The editor is an `eframe`/`egui` application driven by a single per-frame update
 - The function contains the legacy `if let (Some(world), Some(viewport))` gate that the Multi-Tool Architecture campaign Sub-phase 3 H5-diagnostic identified at `main.rs:3867` as the root cause of one defect class (since fixed in commit `8f4668599`).
 
 #### Stage 3: Docking system (`egui_dock` integration)
-**Files:** `dock_layout.rs:1-966` (DockLayout + LayoutPreset), `dock_panels.rs:1-626` (panel registration), `tab_viewer/mod.rs:1-8397` (TabViewer impl).
+**Files:** `dock_layout.rs:1-966` (DockLayout + LayoutPreset), `dock_panels.rs:1-628` (panel registration), `tab_viewer/mod.rs:1-8397` (TabViewer impl).
 **Role:** Persistent dock state across frames; per-panel `.ui()` dispatch; layout presets (default, full, minimal, etc.).
 **Notes:**
 - The `EditorTabViewer` struct (`tab_viewer/mod.rs`) owns most panel state. It is borrowed mutably during the dock render call, then drained for `PanelEvent`s afterward.

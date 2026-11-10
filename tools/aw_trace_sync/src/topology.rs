@@ -946,11 +946,9 @@ fn heading_slugs(md: &str) -> BTreeSet<String> {
                     buf.push_str(&s);
                 }
             }
-            Event::SoftBreak | Event::HardBreak => {
-                if let Some(buf) = text.as_mut() {
-                    buf.push(' ');
-                }
-            }
+            // Soft and hard breaks fall through here. GitHub's slugger drops
+            // the line break; inserting a space would turn it into a hyphen,
+            // so `8 Invari` / `ants` would miss `8-invariants`.
             _ => {}
         }
     }
@@ -961,123 +959,288 @@ fn explicit_ids(md: &str) -> BTreeSet<String> {
     anchor_tag_ids(md).into_iter().collect()
 }
 
-/// Ids from `<a id="...">` and `<a name="...">` that the GFM parser renders.
+/// Ids from `<a id>` and `<a name>` that the GFM parser renders.
+///
 /// Code fences, indented code, and code spans are not events here. An anchor
-/// indented 1–3 spaces, or sitting mid-line, still counts. The attribute name
-/// is a whole token preceded by whitespace, so `data-id` does not count.
-/// HTML comments are not markup.
+/// indented 1–3 spaces, or sitting mid-line, still counts. The tag name is the
+/// whole token, so `<abbr` is not `<a`, and `data-id` is not `id`.
+///
+/// Comment state, bogus-comment state (`<![CDATA[` and `<?`), and raw-text
+/// state (`script`, `style`, `textarea`) carry across the per-line HTML events.
+/// An id inside another attribute's quoted value is not an element.
 fn anchor_tag_ids(md: &str) -> Vec<String> {
     let mut ids = Vec::new();
-    let mut in_comment = false;
+    let mut scan = AnchorScan::default();
     for event in Parser::new_ext(md, gfm_options()) {
         let chunk = match event {
             Event::Html(html) | Event::InlineHtml(html) => html,
             _ => continue,
         };
-        let visible = html_outside_comments(&chunk, &mut in_comment);
-        ids.extend(anchor_ids_in_html(&visible));
+        scan.feed(&chunk, &mut ids);
     }
     ids
 }
 
-fn html_outside_comments(chunk: &str, in_comment: &mut bool) -> String {
-    let mut out = String::new();
-    let bytes = chunk.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if *in_comment {
-            if let Some(rel) = chunk[i..].find("-->") {
-                i += rel + 3;
-                *in_comment = false;
-            } else {
-                break;
+#[derive(Default)]
+struct AnchorScan {
+    comment: bool,
+    bogus: bool,
+    raw: Option<String>,
+    /// Unfinished `<...` so a start tag can span HTML events.
+    pending: String,
+}
+
+impl AnchorScan {
+    fn feed(&mut self, input: &str, ids: &mut Vec<String>) {
+        let mut buf = std::mem::take(&mut self.pending);
+        buf.push_str(input);
+        let bytes = buf.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if !buf.is_char_boundary(i) {
+                i += 1;
+                continue;
             }
-            continue;
+            if self.comment {
+                if let Some(rel) = buf[i..].find("-->") {
+                    i += rel + 3;
+                    self.comment = false;
+                    continue;
+                }
+                // The comment never closes in this chunk. Drop the rest.
+                return;
+            }
+            if self.bogus {
+                if let Some(rel) = buf[i..].find('>') {
+                    i += rel + 1;
+                    self.bogus = false;
+                    continue;
+                }
+                return;
+            }
+            if let Some(name) = self.raw.clone() {
+                if let Some(end) = raw_end(&buf[i..], &name) {
+                    i += end;
+                    self.raw = None;
+                    continue;
+                }
+                self.pending = raw_tail(&buf[i..], &name);
+                return;
+            }
+            if bytes[i] != b'<' {
+                i += 1;
+                continue;
+            }
+            let rest = &buf[i + 1..];
+            if rest.starts_with("!--") {
+                self.comment = true;
+                i += 4;
+                continue;
+            }
+            if rest.starts_with('!') || rest.starts_with('?') {
+                self.bogus = true;
+                i += 2;
+                continue;
+            }
+            if rest.starts_with('/') {
+                if let Some(rel) = rest.find('>') {
+                    i += 1 + rel + 1;
+                    continue;
+                }
+                self.pending = buf[i..].to_string();
+                return;
+            }
+            match parse_start_tag(rest) {
+                StartTag::Done(tag) => {
+                    ids.extend(tag.ids);
+                    if is_raw_text(&tag.name) {
+                        self.raw = Some(tag.name.to_ascii_lowercase());
+                    }
+                    i += 1 + tag.consumed;
+                }
+                StartTag::NeedMore => {
+                    self.pending = buf[i..].to_string();
+                    return;
+                }
+                StartTag::NotTag => i += 1,
+            }
         }
-        if chunk[i..].starts_with("<!--") {
-            *in_comment = true;
-            i += 4;
-            continue;
-        }
-        let ch = chunk[i..].chars().next().unwrap();
-        out.push(ch);
-        i += ch.len_utf8();
     }
-    out
 }
 
-fn anchor_ids_in_html(html: &str) -> Vec<String> {
-    let bytes = html.as_bytes();
-    let mut ids = Vec::new();
-    let mut i = 0;
-    while i + 2 < bytes.len() {
-        if !html.is_char_boundary(i) {
-            i += 1;
-            continue;
-        }
-        if is_anchor_tag_start(html, i) {
-            let tag_end = html[i..].find('>').map(|rel| i + rel).unwrap_or(html.len());
-            let tag = &html[i..tag_end];
-            ids.extend(quoted_attr(tag, "id"));
-            ids.extend(quoted_attr(tag, "name"));
-            i = tag_end;
-            continue;
-        }
-        i += 1;
-    }
-    ids
-}
-
-fn is_anchor_tag_start(s: &str, i: usize) -> bool {
-    let rest = &s.as_bytes()[i..];
-    let open = if rest.starts_with(b"<a") || rest.starts_with(b"<A") {
-        2
-    } else {
-        return false;
-    };
+fn is_raw_text(name: &str) -> bool {
     matches!(
-        rest.get(open).copied(),
-        Some(b' ' | b'\t' | b'\n' | b'\r' | b'>' | b'/')
+        name.to_ascii_lowercase().as_str(),
+        "script" | "style" | "textarea"
     )
 }
 
-fn quoted_attr(tag: &str, name: &str) -> Vec<String> {
-    let bytes = tag.as_bytes();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if !tag.is_char_boundary(i) {
+fn is_name_start(b: u8) -> bool {
+    b.is_ascii_alphabetic()
+}
+
+fn is_name_char(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'-' || b == b':' || b == b'_'
+}
+
+struct DoneTag {
+    name: String,
+    ids: Vec<String>,
+    /// Bytes consumed from the slice that begins just after `<`, including `>`.
+    consumed: usize,
+}
+
+enum StartTag {
+    Done(DoneTag),
+    NeedMore,
+    NotTag,
+}
+
+/// `s` begins just after `<`. Attribute values honor quotes, so a `>` or a
+/// nested `<a` inside a quoted value does not end the tag or open another.
+fn parse_start_tag(s: &str) -> StartTag {
+    let b = s.as_bytes();
+    if b.is_empty() {
+        return StartTag::NeedMore;
+    }
+    if !is_name_start(b[0]) {
+        return StartTag::NotTag;
+    }
+    let mut i = 1;
+    while i < b.len() && is_name_char(b[i]) {
+        i += 1;
+    }
+    if i >= b.len() {
+        return StartTag::NeedMore;
+    }
+    let name = s[..i].to_string();
+    let anchor = name.eq_ignore_ascii_case("a");
+    let mut ids = Vec::new();
+    loop {
+        if i >= b.len() {
+            return StartTag::NeedMore;
+        }
+        if b[i] == b'>' {
+            return StartTag::Done(DoneTag {
+                name,
+                ids,
+                consumed: i + 1,
+            });
+        }
+        if b[i] == b'/' {
             i += 1;
             continue;
         }
-        if bytes[i].is_ascii_whitespace() {
-            let rest = &tag[i + 1..];
-            let name_bytes = name.as_bytes();
-            if rest.as_bytes().starts_with(name_bytes)
-                && rest.as_bytes().get(name.len()) == Some(&b'=')
-                && rest.as_bytes().get(name.len() + 1) == Some(&b'"')
-            {
-                let vstart = i + 1 + name.len() + 2;
-                if let Some(rel) = tag[vstart..].find('"') {
-                    out.push(tag[vstart..vstart + rel].to_string());
-                    i = vstart + rel;
-                    continue;
-                }
-            }
+        if b[i].is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        if !is_name_start(b[i]) {
+            i += 1;
+            continue;
+        }
+        let attr_at = i;
+        i += 1;
+        while i < b.len() && is_name_char(b[i]) {
+            i += 1;
+        }
+        if i >= b.len() {
+            return StartTag::NeedMore;
+        }
+        let attr = &s[attr_at..i];
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= b.len() {
+            return StartTag::NeedMore;
+        }
+        if b[i] != b'=' {
+            continue;
         }
         i += 1;
+        while i < b.len() && b[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= b.len() {
+            return StartTag::NeedMore;
+        }
+        let value = if b[i] == b'"' || b[i] == b'\'' {
+            let quote = b[i];
+            i += 1;
+            let start = i;
+            while i < b.len() && b[i] != quote {
+                i += 1;
+            }
+            if i >= b.len() {
+                return StartTag::NeedMore;
+            }
+            let value = s[start..i].to_string();
+            i += 1;
+            value
+        } else {
+            let start = i;
+            while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'>' {
+                i += 1;
+            }
+            s[start..i].to_string()
+        };
+        if anchor && (attr.eq_ignore_ascii_case("id") || attr.eq_ignore_ascii_case("name")) {
+            ids.push(value);
+        }
     }
-    out
 }
 
-/// GitHub heading slug: lowercase, drop punctuation, keep underscores, spaces
-/// become hyphens. Hyphens are not collapsed, so `Map / Residue` becomes
-/// `map--residue`.
+fn raw_end(s: &str, name: &str) -> Option<usize> {
+    let lower = s.to_ascii_lowercase();
+    let needle = format!("</{name}");
+    let bytes = lower.as_bytes();
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(&needle) {
+        let at = from + rel;
+        let after = at + needle.len();
+        if after >= bytes.len() {
+            return None;
+        }
+        let c = bytes[after];
+        if c == b'>' || c == b'/' || c.is_ascii_whitespace() {
+            if let Some(gt) = lower[after..].find('>') {
+                return Some(after + gt + 1);
+            }
+            return None;
+        }
+        from = at + 1;
+    }
+    None
+}
+
+/// Suffix that may be the start of `</name`, so the end tag can span events.
+fn raw_tail(s: &str, name: &str) -> String {
+    let needle = format!("</{name}");
+    let lower = s.to_ascii_lowercase();
+    let max = needle.len().min(lower.len());
+    let mut start = lower.len() - max;
+    while start < lower.len() && !lower.is_char_boundary(start) {
+        start += 1;
+    }
+    for i in start..lower.len() {
+        if needle.starts_with(&lower[i..]) {
+            return s[i..].to_string();
+        }
+    }
+    String::new()
+}
+
+/// GitHub heading slug. Unicode-lowercase first, keep letters, numbers, and
+/// `_`, turn spaces into hyphens, and drop everything else — including line
+/// breaks, so a break does not become a hyphen. Hyphens are not collapsed and
+/// the string is not trimmed, so `Map / Residue` becomes `map--residue` and a
+/// leading space becomes a leading hyphen.
 pub fn github_slug(heading: &str) -> String {
-    let mut out = String::new();
-    for c in heading.trim().chars() {
-        if c.is_ascii_alphanumeric() || c == '_' {
-            out.push(c.to_ascii_lowercase());
+    let heading = heading.to_lowercase();
+    let mut out = String::with_capacity(heading.len());
+    for c in heading.chars() {
+        if c.is_alphanumeric() || c == '_' {
+            out.push(c);
         } else if c == ' ' || c == '-' {
             out.push('-');
         }
@@ -1222,6 +1385,83 @@ mod tests {
         assert_eq!(
             github_slug("11. Open Questions / Parked Decisions"),
             "11-open-questions--parked-decisions"
+        );
+    }
+
+    #[test]
+    fn github_slug_matches_github_unicode_and_line_breaks() {
+        assert_eq!(github_slug("Café Été"), "café-été");
+        assert_eq!(github_slug("Über Café"), "über-café");
+        assert_eq!(github_slug("Hello\nWorld"), "helloworld");
+        assert_eq!(github_slug("Hello\r\nWorld"), "helloworld");
+        assert_eq!(github_slug(" a"), "-a");
+        assert_eq!(github_slug("a "), "a-");
+        assert_eq!(github_slug("Hello 🌍 World"), "hello--world");
+        assert!(heading_slugs("## Café Été\n").contains("café-été"));
+        assert!(heading_slugs("Café Été\n--------\n").contains("café-été"));
+        assert!(heading_slugs("8 Invari\nants\n-------------\n").contains("8-invariants"));
+        assert!(!heading_slugs("8 Invari\nants\n-------------\n").contains("8-invari-ants"));
+    }
+
+    fn anchor_ids_in_chunks(chunks: &[&str]) -> Vec<String> {
+        let mut scan = AnchorScan::default();
+        let mut ids = Vec::new();
+        for chunk in chunks {
+            scan.feed(chunk, &mut ids);
+        }
+        ids
+    }
+
+    #[test]
+    fn comment_state_carries_across_html_chunks() {
+        assert!(
+            anchor_ids_in_chunks(&["<!--\n", "<a id=\"8-invariants\"></a>\n", "-->\n"]).is_empty(),
+            "a comment reset between lines"
+        );
+        assert!(
+            anchor_ids_in_chunks(&["<!-- <a id=\"8-invariants\"></a>\n"]).is_empty(),
+            "an unclosed comment revealed the anchor"
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!-- note -->\n", "<a id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn raw_text_bogus_comments_and_attribute_values_are_not_anchors() {
+        for tag in ["script", "style", "textarea"] {
+            let one = format!("<{tag}><a id=\"8-invariants\"></a></{tag}>");
+            assert!(
+                anchor_ids_in_chunks(&[&one]).is_empty(),
+                "{tag} counted an anchor"
+            );
+            let split = format!("<{tag}>\n");
+            let end = format!("</{tag}>\n");
+            assert!(
+                anchor_ids_in_chunks(&[&split, "<a id=\"8-invariants\"></a>\n", &end]).is_empty(),
+                "split {tag} counted an anchor"
+            );
+        }
+        assert!(anchor_ids_in_chunks(&[
+            "<![CDATA[ <a id=\"8-invariants\"></a> ]]>",
+            "<? <a id=\"8-invariants\"></a> ?>"
+        ])
+        .is_empty());
+        assert!(anchor_ids_in_chunks(&[
+            "<span title=\"<a id=&quot;8-invariants&quot;></a>\"></span>",
+            "<div title='<a id=\"8-invariants\"></a>'></div>",
+            "<a title=\"<a id=&quot;8-invariants&quot;>\"></a>",
+            "<abbr id=\"8-invariants\">x</abbr>"
+        ])
+        .is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&["<a title=\"id=&quot;nope&quot;\" id=\"8-invariants\"></a>"]),
+            vec!["8-invariants".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<A ID='8-invariants'></A>"]),
+            vec!["8-invariants".to_string()]
         );
     }
 

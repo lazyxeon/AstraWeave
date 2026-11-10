@@ -2163,6 +2163,104 @@ mod tests {
     }
 
     #[test]
+    fn a_comment_that_spans_lines_hides_the_anchor() {
+        let hidden = format!(
+            "<!--\n<a id=\"8-invariants\"></a>\n-->\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            !section_anchor_resolves(&hidden),
+            "a multi-line comment counted the anchor"
+        );
+        let unclosed = format!(
+            "<!-- <a id=\"8-invariants\"></a>\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            !section_anchor_resolves(&unclosed),
+            "an unclosed comment counted the anchor"
+        );
+        let after = format!(
+            "<!-- note -->\n<a id=\"8-invariants\"></a>\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            section_anchor_resolves(&after),
+            "a closed comment ate the next anchor"
+        );
+    }
+
+    #[test]
+    fn an_anchor_inside_raw_text_or_a_bogus_comment_does_not_resolve() {
+        for tag in ["script", "style", "textarea"] {
+            let one = format!(
+                "<{tag}><a id=\"8-invariants\"></a></{tag}>\n{}",
+                headings_without_invariants()
+            );
+            assert!(!section_anchor_resolves(&one), "{tag}");
+            let split = format!(
+                "<{tag}>\n<a id=\"8-invariants\"></a>\n</{tag}>\n{}",
+                headings_without_invariants()
+            );
+            assert!(!section_anchor_resolves(&split), "split {tag}");
+        }
+        for body in [
+            "<![CDATA[ <a id=\"8-invariants\"></a> ]]>\n",
+            "<? <a id=\"8-invariants\"></a> ?>\n",
+            "<span title=\"<a id=&quot;8-invariants&quot;></a>\"></span>\n",
+            "<div title='<a id=\"8-invariants\"></a>'></div>\n",
+            "<abbr id=\"8-invariants\">x</abbr>\n",
+            "<a title=\"<a id=&quot;8-invariants&quot;>\"></a>\n",
+        ] {
+            let body = format!("{body}{}", headings_without_invariants());
+            assert!(!section_anchor_resolves(&body), "{body}");
+        }
+        let real = format!(
+            "<a title=\"id=&quot;nope&quot;\" id=\"8-invariants\"></a>\n{}",
+            headings_without_invariants()
+        );
+        assert!(section_anchor_resolves(&real));
+    }
+
+    #[test]
+    fn an_html_block_anchor_and_a_setext_heading_resolve() {
+        let block = format!(
+            "<div>\n<a id=\"8-invariants\"></a>\n</div>\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            section_anchor_resolves(&block),
+            "an anchor in an HTML block was dropped"
+        );
+        let setext = format!(
+            "8 Invariants\n-------------\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            section_anchor_resolves(&setext),
+            "a setext heading was dropped"
+        );
+        let h1 = format!(
+            "8 Invariants\n=============\n{}",
+            headings_without_invariants()
+        );
+        assert!(!section_anchor_resolves(&h1), "a setext h1 counted as h2");
+        let broken = format!(
+            "8 Invari\nants\n-------------\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            section_anchor_resolves(&broken),
+            "a line break inside the heading became a hyphen"
+        );
+        let code = format!("## 8. `Invariants`\n{}", headings_without_invariants());
+        assert!(
+            section_anchor_resolves(&code),
+            "a code span was dropped from the heading"
+        );
+    }
+
+    #[test]
     fn an_attribute_that_only_ends_in_id_does_not_resolve() {
         let body = format!(
             "<a data-id=\"8-invariants\"></a>\n{}",
@@ -2285,18 +2383,187 @@ mod tests {
         })
     }
 
+    /// HTML-parsing and string-evaluating DOM APIs. The page's helpers are held
+    /// to the allowlist exercised by `map_color_risk_status_and_loc_guards_hold`:
+    /// text nodes, `textContent`, and `createElement` of `strong` / `em` / `code`
+    /// / `span`. Anything below is rejected, including a sink name built by
+    /// concatenating string literals (`'inner'+'HT'+'ML'`).
     fn html_parsing_sink(src: &str) -> Option<&'static str> {
-        if src.contains("HTML") {
-            return Some("HTML");
+        let folded = fold_string_concats(src);
+        for name in ["innerHTML", "outerHTML", "insertAdjacentHTML"] {
+            if folded.contains(name) {
+                return Some(name);
+            }
         }
-        if src.contains("document.write") {
+        if contains_ident(&folded, "createContextualFragment") {
+            return Some("createContextualFragment");
+        }
+        if contains_ident(&folded, "DOMParser") && folded.contains("text/html") {
+            return Some("DOMParser");
+        }
+        if contains_ident(&folded, "srcdoc") {
+            return Some("srcdoc");
+        }
+        if string_timer(&folded) {
+            return Some("string timer");
+        }
+        if folded.contains("document.write") {
             return Some("document.write");
         }
-        if call_with_paren(src, "eval") {
+        if call_with_paren(&folded, "eval") {
             return Some("eval");
         }
-        if call_with_paren(src, "Function") {
+        if call_with_paren(&folded, "Function") {
             return Some("Function");
+        }
+        None
+    }
+
+    fn contains_ident(src: &str, name: &str) -> bool {
+        let bytes = src.as_bytes();
+        let mut i = 0;
+        while i + name.len() <= bytes.len() {
+            if !src.is_char_boundary(i) {
+                i += 1;
+                continue;
+            }
+            if src[i..].starts_with(name) {
+                let prev_ok = i == 0 || !is_js_ident(bytes[i - 1]);
+                let after = i + name.len();
+                let next_ok = after >= bytes.len() || !is_js_ident(bytes[after]);
+                if prev_ok && next_ok {
+                    return true;
+                }
+            }
+            i += 1;
+        }
+        false
+    }
+
+    fn is_js_ident(b: u8) -> bool {
+        b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
+    }
+
+    fn string_timer(src: &str) -> bool {
+        for name in ["setTimeout", "setInterval"] {
+            let bytes = src.as_bytes();
+            let mut i = 0;
+            while i + name.len() <= bytes.len() {
+                if !src.is_char_boundary(i) {
+                    i += 1;
+                    continue;
+                }
+                if src[i..].starts_with(name) {
+                    let prev_ok = i == 0 || !is_js_ident(bytes[i - 1]);
+                    if prev_ok && call_opens_with_string(&src[i + name.len()..]) {
+                        return true;
+                    }
+                }
+                i += 1;
+            }
+        }
+        false
+    }
+
+    fn call_opens_with_string(src: &str) -> bool {
+        let rest = src.trim_start();
+        let Some(rest) = rest.strip_prefix('(') else {
+            return false;
+        };
+        matches!(
+            rest.trim_start().as_bytes().first(),
+            Some(b'\'' | b'"' | b'`')
+        )
+    }
+
+    /// Join adjacent quoted literals (`'inner'+'HT'+'ML'` → `'innerHTML'`) so a
+    /// split sink name is visible to the scan. A template with `${` is left whole.
+    fn fold_string_concats(src: &str) -> String {
+        let bytes = src.as_bytes();
+        let mut out = String::with_capacity(src.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            if !src.is_char_boundary(i) {
+                i += 1;
+                continue;
+            }
+            if matches!(bytes[i], b'\'' | b'"' | b'`') {
+                if let Some((joined, end)) = concat_literals(src, i) {
+                    out.push('\'');
+                    out.push_str(&joined);
+                    out.push('\'');
+                    i = end;
+                    continue;
+                }
+                if let Some(end) = skip_literal(src, i) {
+                    out.push_str(&src[i..end]);
+                    i = end;
+                    continue;
+                }
+            }
+            let ch = src[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+        out
+    }
+
+    fn concat_literals(src: &str, start: usize) -> Option<(String, usize)> {
+        let (mut piece, mut i) = read_literal(src, start)?;
+        let mut joined = piece;
+        let mut parts = 1;
+        loop {
+            let rest = src[i..].trim_start();
+            let skipped = src[i..].len() - rest.len();
+            if !rest.starts_with('+') {
+                break;
+            }
+            let after_plus = rest[1..].trim_start();
+            let plus_span = skipped + 1 + (rest[1..].len() - after_plus.len());
+            let next_at = i + plus_span;
+            if next_at >= src.len() || !matches!(src.as_bytes()[next_at], b'\'' | b'"' | b'`') {
+                break;
+            }
+            (piece, i) = read_literal(src, next_at)?;
+            joined.push_str(&piece);
+            parts += 1;
+        }
+        if parts < 2 {
+            return None;
+        }
+        Some((joined, i))
+    }
+
+    fn skip_literal(src: &str, start: usize) -> Option<usize> {
+        read_literal(src, start).map(|(_, end)| end)
+    }
+
+    fn read_literal(src: &str, start: usize) -> Option<(String, usize)> {
+        let bytes = src.as_bytes();
+        let quote = bytes.get(start).copied()?;
+        if !matches!(quote, b'\'' | b'"' | b'`') {
+            return None;
+        }
+        let mut i = start + 1;
+        let mut value = String::new();
+        while i < bytes.len() {
+            if quote == b'`' && bytes[i] == b'$' && bytes.get(i + 1) == Some(&b'{') {
+                return None;
+            }
+            if bytes[i] == b'\\' {
+                if i + 1 >= bytes.len() {
+                    return None;
+                }
+                value.push(bytes[i + 1] as char);
+                i += 2;
+                continue;
+            }
+            if bytes[i] == quote {
+                return Some((value, i + 1));
+            }
+            let ch = src[i..].chars().next()?;
+            value.push(ch);
+            i += ch.len_utf8();
         }
         None
     }
@@ -2347,6 +2614,15 @@ mod tests {
             "node[\"outerHTML\"] += x",
             "node['inner'+'HTML'] = x",
             "node['outer'+'HTML'] += x",
+            "node['inner'+'HT'+'ML'] = x",
+            "node['inner' + 'HT' + 'ML'] = x",
+            "range.createContextualFragment(x)",
+            "new DOMParser().parseFromString(x, 'text/html')",
+            "iframe.srcdoc = x",
+            "node.setAttribute('srcdoc', x)",
+            "setTimeout('alert(1)')",
+            "setTimeout(\"alert(1)\", 10)",
+            "window.setInterval(`alert(1)`)",
             "document.write(x)",
             "document.writeln(x)",
             "eval(x)",
@@ -2365,45 +2641,107 @@ mod tests {
             "node.appendChild(document.createTextNode(String(kid)))",
             "function safeColor(value) { return ''; }",
             "evaluation(x)",
+            "setTimeout(() => {}, 10)",
+            "setTimeout(function () {}, 1)",
+            "setTimeout(tryRestore, 100)",
+            "setInterval(tick, 50)",
+            "new DOMParser().parseFromString(x, 'text/xml')",
+            "srcdocs(x)",
         ];
         for sample in safe {
             assert!(html_parsing_sink(sample).is_none(), "{sample} was a sink");
         }
     }
 
-    fn map_guard_source(html: &str) -> String {
-        let start = html
-            .find("function textOf(")
-            .expect("workspace_map.html has no textOf");
-        let rel = html[start..]
-            .find("function locText(")
-            .expect("workspace_map.html has no locText");
-        let loc = start + rel;
-        let brace = html[loc..].find('{').expect("locText has no body") + loc;
+    fn matching_brace(html: &str, open: usize) -> usize {
         let bytes = html.as_bytes();
         let mut depth = 0;
-        let mut i = brace;
+        let mut i = open;
         while i < bytes.len() {
             match bytes[i] {
                 b'{' => depth += 1,
                 b'}' => {
                     depth -= 1;
                     if depth == 0 {
-                        return html[start..=i].to_string();
+                        return i;
                     }
                 }
                 _ => {}
             }
             i += 1;
         }
-        panic!("locText body did not end");
+        panic!("brace at {open} did not close");
+    }
+
+    /// `el` through `appendMarkup`, the helpers the page uses to build text.
+    fn map_guard_source(html: &str) -> String {
+        let start = html
+            .find("function el(tag, props, kids)")
+            .expect("workspace_map.html has no el");
+        let rel = html[start..]
+            .find("function appendMarkup(")
+            .expect("workspace_map.html has no appendMarkup");
+        let fn_at = start + rel;
+        let brace = html[fn_at..].find('{').expect("appendMarkup has no body") + fn_at;
+        let end = matching_brace(html, brace);
+        html[start..=end].to_string()
     }
 
     #[test]
     fn map_color_risk_status_and_loc_guards_hold() {
         let source = map_guard_source(&workspace_map_html());
         let mut script = String::from(
-            "function el(tag, props, kids) {\n  return { tag: tag, props: props || {}, kids: kids || [] };\n}\n",
+            r#"
+const HTML_PARSE = new Set(['innerHTML', 'outerHTML', 'insertAdjacentHTML', 'srcdoc']);
+function reject(name) { throw new Error('html parse: ' + name); }
+function makeNode(tag) {
+  const node = {
+    tagName: String(tag).toUpperCase(),
+    className: '',
+    id: '',
+    title: '',
+    textContent: '',
+    disabled: false,
+    children: [],
+    attrs: {},
+    style: {},
+    setAttribute(key, value) {
+      const name = String(key).toLowerCase();
+      if (HTML_PARSE.has(name) || name.startsWith('on')) reject(name);
+      this.attrs[name] = String(value);
+    },
+    appendChild(kid) { this.children.push(kid); return kid; },
+    replaceChildren() { this.children.length = 0; },
+    insertAdjacentHTML() { reject('insertAdjacentHTML'); },
+  };
+  for (const prop of ['innerHTML', 'outerHTML']) {
+    Object.defineProperty(node, prop, {
+      configurable: true,
+      set() { reject(prop); },
+      get() { return ''; },
+    });
+  }
+  const style = node.style;
+  node.style = new Proxy(style, {
+    set(obj, key, value) {
+      const name = String(key);
+      if (name === 'cssText' || HTML_PARSE.has(name)) reject(name);
+      obj[name] = String(value);
+      return true;
+    },
+  });
+  return node;
+}
+const ALLOWED_TAGS = new Set(['span', 'strong', 'em', 'code', 'div']);
+const document = {
+  createElement(tag) {
+    const name = String(tag).toLowerCase();
+    if (!ALLOWED_TAGS.has(name)) reject('createElement(' + name + ')');
+    return makeNode(tag);
+  },
+  createTextNode(text) { return { nodeType: 3, text: String(text) }; },
+};
+"#,
         );
         script.push_str(&source);
         script.push_str(
@@ -2417,20 +2755,20 @@ for (const bad of ['red', 'rgb(0,0,0)', '#gggggg', '#fff;color:red', '#ff', ' #f
   assert.strictEqual(safeColor(bad), '', 'safeColor accepted ' + bad);
 }
 for (const risk of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
-  const cls = riskPill(risk).props.className;
+  const cls = riskPill(risk).className;
   assert.ok(cls.split(/\s+/).includes(risk), cls);
   assert.ok(cls.startsWith('risk-pill'), cls);
 }
-for (const risk of ['critical', 'LOW;x', '<img>', 'HIGH HIGH', '']) {
-  const cls = riskPill(risk).props.className;
+for (const risk of ['critical', 'LOW;x', '<img>', 'HIGH HIGH', '', 'constructor', '__proto__', 'toString']) {
+  const cls = riskPill(risk).className;
   assert.strictEqual(cls, 'risk-pill', risk + ' -> ' + cls);
 }
 for (const status of ['active', 'dormant', 'partial']) {
-  const cls = statusPill(status).props.className;
+  const cls = statusPill(status).className;
   assert.ok(cls.split(/\s+/).includes(status), cls);
 }
-for (const status of ['ACTIVE', 'active x', '<svg>', 'dormant;']) {
-  const cls = statusPill(status).props.className;
+for (const status of ['ACTIVE', 'active x', '<svg>', 'dormant;', 'constructor', '__proto__']) {
+  const cls = statusPill(status).className;
   assert.strictEqual(cls, 'status-pill', status + ' -> ' + cls);
 }
 const shown = locText('medium', 2231);
@@ -2443,6 +2781,31 @@ assert.strictEqual(locText('medium', 'nope'), 'medium');
 assert.strictEqual(locText('medium', '1e309'), 'medium');
 assert.strictEqual(locText('medium', 0), 'medium');
 assert.strictEqual(locText('small', null), 'small');
+assert.strictEqual(dotSpan('dot', '#abc').style.background, '#abc');
+assert.strictEqual(dotSpan('dot', 'red', '#fff').style.background, '#fff');
+assert.strictEqual(dotSpan('dot', 'red').style.background, undefined);
+assert.strictEqual(dotSpan('dot', 'expression(alert(1))', '#fff;color:red').style.background, undefined);
+const host = document.createElement('div');
+appendKids(host, ['a', document.createTextNode('b'), null, false]);
+assert.strictEqual(host.children.length, 2);
+const parent = document.createElement('div');
+appendMarkup(parent, 'Hello <strong>go</strong> <script>alert(1)</script> <em>e</em> <code>c</code>');
+appendMarkup(parent, '<constructor>no</constructor><__proto__>no</__proto__>');
+function tagsOf(node, out) {
+  if (node.tagName) out.push(node.tagName.toLowerCase());
+  for (const kid of node.children || []) tagsOf(kid, out);
+}
+const tags = [];
+tagsOf(parent, tags);
+assert.deepStrictEqual(tags.filter(tag => tag !== 'div'), ['strong', 'em', 'code']);
+const texts = [];
+function textsOf(node) {
+  if (node.nodeType === 3) texts.push(node.text);
+  for (const kid of node.children || []) textsOf(kid);
+}
+textsOf(parent);
+assert.ok(texts.some(text => text.includes('<script>')), texts.join('|'));
+assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
 "#,
         );
         let output = std::process::Command::new("node")
@@ -2543,6 +2906,109 @@ assert.strictEqual(locText('small', null), 'small');
             !doc.contains("60% of the crate by LoC"),
             "stale share of src/"
         );
+
+        let mut test_sum = 0usize;
+        for (prefix, path) in rows {
+            let text = std::fs::read_to_string(root.join(path)).unwrap();
+            let tests = test_attr_count(&text);
+            let row = table
+                .lines()
+                .find(|line| line.starts_with(prefix))
+                .unwrap_or_else(|| panic!("missing {prefix}"));
+            assert_eq!(table_cell(row, 3), tests, "{row}");
+            test_sum += tests;
+        }
+        assert_eq!(table_cell(totals, 3), test_sum, "{totals}");
+        assert_eq!(
+            test_attr_count(
+                &std::fs::read_to_string(root.join("astraweave-dialogue/src/llm_dialogue.rs"))
+                    .unwrap()
+            ),
+            6
+        );
+        assert_eq!(
+            test_attr_count(
+                &std::fs::read_to_string(root.join("astraweave-dialogue/src/toml_loader.rs"))
+                    .unwrap()
+            ),
+            10
+        );
+
+        let lib_lines = std::fs::read_to_string(root.join("astraweave-dialogue/src/lib.rs"))
+            .unwrap()
+            .lines()
+            .count();
+        let toml_text =
+            std::fs::read_to_string(root.join("astraweave-dialogue/src/toml_loader.rs")).unwrap();
+        let toml_lines = toml_text.lines().count();
+        let toml_tests = test_attr_count(&toml_text);
+        let bench_lines =
+            std::fs::read_to_string(root.join("astraweave-dialogue/benches/dialogue_bench.rs"))
+                .unwrap()
+                .lines()
+                .count();
+        let section_five = |prefix: &str| {
+            doc.lines()
+                .find(|line| line.starts_with(prefix))
+                .unwrap_or_else(|| panic!("missing {prefix}"))
+                .to_string()
+        };
+        let lib_row = section_five("| `astraweave-dialogue/src/lib.rs`");
+        assert!(
+            lib_row.contains(&format!("({} LoC)", grouped(lib_lines))),
+            "{lib_row}"
+        );
+        let toml_row = section_five("| `astraweave-dialogue/src/toml_loader.rs`");
+        assert!(
+            toml_row.contains(&format!("({} LoC)", grouped(toml_lines))),
+            "{toml_row}"
+        );
+        assert!(
+            toml_row.contains(&format!("{toml_tests} inline tests")),
+            "{toml_row}"
+        );
+        let bench_row = section_five("| `astraweave-dialogue/benches/dialogue_bench.rs`");
+        assert!(
+            bench_row.contains(&format!("({} LoC)", grouped(bench_lines))),
+            "{bench_row}"
+        );
+
+        let llm_src =
+            std::fs::read_to_string(root.join("astraweave-dialogue/src/llm_dialogue.rs")).unwrap();
+        let struct_at = llm_src
+            .lines()
+            .position(|line| line.contains("pub struct LlmDialogueSystem"))
+            .expect("LlmDialogueSystem")
+            + 1;
+        let struct_end = struct_at
+            + llm_src
+                .lines()
+                .skip(struct_at - 1)
+                .position(|line| line.trim() == "}")
+                .expect("struct end");
+        let cite = format!("llm_dialogue.rs:{struct_at}-{struct_end}");
+        assert!(doc.contains(&cite), "missing {cite}");
+        assert!(!doc.contains("llm_dialogue.rs:31-49"), "stale struct cite");
+        let llm_tests = test_attr_count(&llm_src);
+        assert!(doc.contains(&format!("The {llm_tests} inline tests exercise the system")));
+        let dormancy = doc
+            .lines()
+            .find(|line| line.contains("plus tokio"))
+            .expect("dependency sentence");
+        assert!(
+            dormancy.contains("tokio + async-trait + regex"),
+            "{dormancy}"
+        );
+        assert!(!dormancy.contains("regex + rand"), "stale rand dependency");
+        assert!(dormancy.contains(&format!(
+            "{llm_tests} inline tests exercise it in isolation"
+        )));
+        let cargo = std::fs::read_to_string(root.join("astraweave-dialogue/Cargo.toml")).unwrap();
+        assert!(cargo.contains("tokio"));
+        assert!(cargo.contains("async-trait"));
+        assert!(cargo.contains("regex"));
+        assert!(!cargo.lines().any(|line| line.contains("rand")));
+        assert!(doc.contains(&format!("Dialogue (§13.4) had {test_sum} tests")));
     }
 
     #[test]
@@ -2572,6 +3038,68 @@ assert.strictEqual(locText('small', null), 'small');
             "{vocab}"
         );
         assert!(!vocab.contains("8 compute pipelines"), "{vocab}");
+        let lib = std::fs::read_to_string(root.join("astraweave-fluids/src/lib.rs")).unwrap();
+        let struct_at = lib
+            .lines()
+            .position(|line| line.contains("pub struct FluidSystem"))
+            .expect("FluidSystem")
+            + 1;
+        let struct_end = struct_at
+            + lib
+                .lines()
+                .skip(struct_at - 1)
+                .position(|line| line == "}")
+                .expect("struct end");
+        let new_at = lib
+            .lines()
+            .position(|line| {
+                line.contains("pub fn new(device: &wgpu::Device, particle_count: u32)")
+            })
+            .expect("FluidSystem::new")
+            + 1;
+        assert!(
+            vocab.contains(&format!("lib.rs:{struct_at}-{struct_end}")),
+            "{vocab}"
+        );
+        assert!(vocab.contains(&format!("`:{new_at}`")), "{vocab}");
+        assert!(!vocab.contains("lib.rs:250-415"), "{vocab}");
+        let wgsl_lines = std::fs::read_to_string(root.join("astraweave-fluids/shaders/fluid.wgsl"))
+            .unwrap()
+            .lines()
+            .count();
+        let flow = doc
+            .split("### 2.1 ")
+            .nth(1)
+            .expect("§2.1")
+            .split("### 2.2 ")
+            .next()
+            .unwrap();
+        assert!(
+            flow.contains(&format!("lib.rs:{new_at}")),
+            "§2.1 does not cite new"
+        );
+        assert!(
+            flow.contains(&format!("{wgsl_lines} LoC")),
+            "§2.1 shader size"
+        );
+        assert!(
+            flow.contains(&format!("{kernels} compute pipelines"))
+                || flow.contains(&format!("dispatch all {kernels} pipelines")),
+            "{flow}"
+        );
+        assert!(flow.contains("Seven compute pipelines"), "{flow}");
+        for stale in [
+            "8-stage",
+            "Eight compute",
+            "8 compute",
+            "dispatch all 8",
+            "481 LoC",
+            "secondary spawn",
+            "lib.rs:362",
+        ] {
+            assert!(!flow.contains(stale), "§2.1 still says {stale}");
+        }
+        assert!(!doc.contains("lib.rs:362"), "constructor cite is still 362");
         let status = doc
             .lines()
             .find(|line| line.starts_with("| **Status** |"))
@@ -2589,6 +3117,43 @@ assert.strictEqual(locText('small', null), 'small');
                 "{example} does not depend on astraweave-fluids"
             );
         }
+    }
+
+    fn test_attr_count(text: &str) -> usize {
+        text.lines()
+            .filter(|line| {
+                let line = line.trim();
+                line == "#[test]" || line == "#[tokio::test]"
+            })
+            .count()
+    }
+
+    fn table_cell(row: &str, index: usize) -> usize {
+        let cell = row
+            .split('|')
+            .nth(index)
+            .unwrap()
+            .trim()
+            .trim_matches('*')
+            .trim();
+        let token = cell.split_whitespace().next().unwrap().replace(',', "");
+        token.parse().unwrap_or_else(|_| panic!("{row}"))
+    }
+
+    #[test]
+    fn the_editor_dock_range_matches_the_file() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let lines = std::fs::read_to_string(root.join("tools/aw_editor/src/dock_panels.rs"))
+            .unwrap()
+            .lines()
+            .count();
+        let doc = std::fs::read_to_string(root.join("docs/architecture/aw_editor.md")).unwrap();
+        let cite = format!("dock_panels.rs:1-{lines}");
+        assert!(doc.contains(&cite), "missing {cite}");
+        assert!(
+            !doc.contains("dock_panels.rs:1-626"),
+            "stale dock_panels range"
+        );
     }
 
     fn table_loc(row: &str) -> usize {
