@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -42,41 +42,6 @@ jobs:
           name: coverage-xml
           path: tools/astraweave-assets/coverage/cobertura.xml
           retention-days: 30
-      
-      - name: Generate HTML report
-        if: always()
-        run: |
-          cd tools/astraweave-assets
-          cargo tarpaulin --out Html --output-dir coverage-html --exclude-files 'src/main.rs' --exclude-files 'tests/*'
-      
-      - name: Upload HTML coverage report
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage-report
-          path: tools/astraweave-assets/coverage-html
-          retention-days: 30
-      
-      - name: Coverage summary
-        if: always()
-        run: |
-          cd tools/astraweave-assets
-          echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -f coverage/cobertura.xml ]; then
-            COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf "%.1f", $1*100}')
-            echo "**Overall Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Target: 80%+ (Production Ready)" >> $GITHUB_STEP_SUMMARY
-            
-            if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
-              echo "✅ **Status:** PASS (meets target)" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "⚠️ **Status:** Below target (needs improvement)" >> $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "⚠️ Coverage data not generated" >> $GITHUB_STEP_SUMMARY
-          fi
 
   codecov:
     name: Codecov upload
@@ -104,3 +69,61 @@ jobs:
           version: v11.3.2
           fail_ci_if_error: true
           use_oidc: true
+
+  coverage-html:
+    name: HTML coverage report
+    needs: coverage
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --version 0.35.2 --locked
+
+      - name: Download coverage XML
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: coverage-xml
+          path: tools/astraweave-assets/coverage
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          cd tools/astraweave-assets
+          cargo tarpaulin --out Html --output-dir coverage-html --exclude-files 'src/main.rs' --exclude-files 'tests/*'
+
+      - name: Upload HTML coverage report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-report
+          path: tools/astraweave-assets/coverage-html
+          retention-days: 30
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          cd tools/astraweave-assets
+          echo "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/cobertura.xml ]; then
+            COVERAGE=$(grep -oP 'line-rate="\K[0-9.]+' coverage/cobertura.xml | head -1 | awk '{printf "%.1f", $1*100}')
+            echo "**Overall Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Target: 80%+ (Production Ready)" >> $GITHUB_STEP_SUMMARY
+
+            if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+              echo "✅ **Status:** PASS (meets target)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ **Status:** Below target (needs improvement)" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⚠️ Coverage data not generated" >> $GITHUB_STEP_SUMMARY
+          fi

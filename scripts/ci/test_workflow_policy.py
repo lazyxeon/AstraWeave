@@ -7,7 +7,6 @@ wrapper. It does not dispatch a workflow.
 
 from __future__ import annotations
 
-import inspect
 import json
 import os
 import re
@@ -539,7 +538,8 @@ CODECOV_PERMS_MSG = (
     "codecov upload job permissions must be contents: read and id-token: write"
 )
 DOWNLOAD_WITH_MSG = "download-artifact with: allows only name and path"
-COVERAGE_ARTIFACT_SHA_MSG = "coverage workflow artifact actions must use a commit SHA"
+DOWNLOAD_STEP_MSG = "download-artifact step keys must be name, uses, and with"
+COVERAGE_ARTIFACT_SHA_MSG = "coverage workflow actions must use a commit SHA"
 UPLOAD_JOB_KEYS_MSG = (
     "codecov upload job keys must be name, needs, permissions, runs-on, "
     "timeout-minutes, and steps"
@@ -558,6 +558,7 @@ _UPLOAD_JOB_KEYS = frozenset(
     {"name", "needs", "permissions", "runs-on", "timeout-minutes", "steps"}
 )
 _DOWNLOAD_WITH_KEYS = frozenset({"name", "path"})
+_DOWNLOAD_STEP_KEYS = frozenset({"name", "uses", "with"})
 _UPLOAD_PERMISSIONS = {"contents": "read", "id-token": "write"}
 _CODECOV_WITH_KEYS = frozenset(
     {
@@ -574,6 +575,7 @@ _CODECOV_EVENTS = frozenset({"push", "schedule", "workflow_dispatch"})
 _LEAST_PRIVILEGE_WORKFLOWS = frozenset({"kani.yml", "editor-ci.yml"})
 _MISSING = object()
 KANI_VERSION_MSG = "kani step must set kani-version to an exact X.Y.Z"
+KANI_ARGS_MSG = "kani args must not read github.event.inputs"
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
 _COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
@@ -672,9 +674,32 @@ def _codecov_continue_scope(text: str) -> set[str] | None:
     return scope
 
 
-def _continue_true_line(node: dict) -> int | None:
+def _literal_false(mapping: object, key: str) -> bool:
+    """True for a boolean false or the string false in any case.
+
+    The raw scalar must be the word false, plain or quoted. An expression,
+    a number, null, and any other spelling are not a literal false.
+    """
+    actual, _value = _ci_item(mapping, key)
+    if actual is None:
+        return False
+    found = getattr(mapping, "scalar_style", {}).get(actual)
+    if not isinstance(found, tuple) or len(found) != 2:
+        return False
+    style, raw = found
+    if style not in {None, "'", '"'} or not isinstance(raw, str):
+        return False
+    return raw.casefold() == "false"
+
+
+def _continue_on_error_line(node: dict) -> int | None:
+    """Line of a present continue-on-error that is not a literal false.
+
+    An absent key is allowed. Every other value fails closed, including an
+    expression the runner would evaluate later.
+    """
     actual, _value = _ci_item(node, "continue-on-error")
-    if actual is None or not _runner_bool_true(node, "continue-on-error"):
+    if actual is None or _literal_false(node, "continue-on-error"):
         return None
     return int(getattr(node, "key_lines", {}).get(actual, getattr(node, "yaml_line", 1)))
 
@@ -683,8 +708,10 @@ def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[s
     """A Codecov job, and a job that job needs, must not continue on error.
 
     The parsed job key and every parsed step in those jobs are in scope,
-    including a quoted key and a flow mapping. The value must be one the
-    runner treats as true. Other jobs are not in scope.
+    including a quoted key and a flow mapping. The key may be absent, or
+    the raw scalar may be the word false in any case: a plain boolean or a
+    quoted string. Any other value is a violation, including every
+    `${{ }}` expression. Other jobs are not in scope.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -702,7 +729,7 @@ def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[s
     for job_id, job in jobs.items():
         if str(job_id) not in scope or not isinstance(job, dict):
             continue
-        job_line = _continue_true_line(job)
+        job_line = _continue_on_error_line(job)
         if job_line is not None:
             violations.append(f"{prefix}{job_line}: {CODECOV_CONTINUE_MSG}")
         steps = job.get("steps")
@@ -711,7 +738,7 @@ def codecov_continue_on_error_violations(text: str, *, path: str = "") -> list[s
         for step in steps:
             if not isinstance(step, dict):
                 continue
-            step_line = _continue_true_line(step)
+            step_line = _continue_on_error_line(step)
             if step_line is not None:
                 violations.append(f"{prefix}{step_line}: {CODECOV_CONTINUE_MSG}")
     return violations
@@ -804,17 +831,32 @@ def codecov_token_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
-def _download_with_violations(job: dict) -> list[int]:
+def _download_steps(job: dict):
     steps = job.get("steps")
     if not isinstance(steps, list):
-        return []
-    lines: list[int] = []
+        return
     for step in steps:
-        if not isinstance(step, dict) or not _is_named_action(step, "actions/download-artifact"):
-            continue
+        if isinstance(step, dict) and _is_named_action(step, "actions/download-artifact"):
+            yield step
+
+
+def _download_with_violations(job: dict) -> list[int]:
+    lines: list[int] = []
+    for step in _download_steps(job):
         keys = _with_key_names(step)
         if keys is None or not keys <= _DOWNLOAD_WITH_KEYS:
             lines.append(_step_line(step))
+    return lines
+
+
+def _download_step_key_violations(job: dict) -> list[int]:
+    """Step keys outside {name, uses, with}, including env and id."""
+    lines: list[int] = []
+    for step in _download_steps(job):
+        for key in step:
+            if not isinstance(key, str) or key.casefold() not in _DOWNLOAD_STEP_KEYS:
+                lines.append(_step_line(step))
+                break
     return lines
 
 
@@ -825,9 +867,10 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     permission value write, fail, including a flow mapping or a quoted key.
     The upload job's keys are exactly name, needs, permissions, runs-on,
     timeout-minutes, and steps. Its steps are actions/download-artifact, with
-    only name and path, plus the SHA-pinned Codecov action. Its permissions
-    are exactly contents: read and id-token: write. This check does not apply
-    to other workflow file names.
+    only name and path, plus the SHA-pinned Codecov action. That download
+    step's keys are only name, uses, and with. Its permissions are exactly
+    contents: read and id-token: write. This check does not apply to other
+    workflow file names.
     """
     if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
         return []
@@ -878,6 +921,8 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
             violations.append(f"{prefix}{job_line}: {UPLOAD_JOB_KEYS_MSG}")
         for step_line in _download_with_violations(job) if has_codecov else []:
             violations.append(f"{prefix}{step_line}: {DOWNLOAD_WITH_MSG}")
+        for step_line in _download_step_key_violations(job) if has_codecov else []:
+            violations.append(f"{prefix}{step_line}: {DOWNLOAD_STEP_MSG}")
         if upload_only and not _exact_upload_permissions(job_perms):
             violations.append(f"{prefix}{perm_line}: {CODECOV_PERMS_MSG}")
         if has_codecov and not upload_only:
@@ -937,6 +982,24 @@ def kani_version_violations(text: str, *, path: str = "") -> list[str]:
             isinstance(version, str) and _EXACT_XYZ_RE.fullmatch(version)
         ):
             violations.append(f"{prefix}{line_no}: {KANI_VERSION_MSG}")
+    return violations
+
+
+def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
+    """Read args from each Kani step's with: mapping."""
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if doc is None:
+        return []
+    violations: list[str] = []
+    for _job_id, _job, step in _iter_steps(doc):
+        if not _is_named_action(step, "model-checking/kani-github-action"):
+            continue
+        _key, args = _ci_item(_mapping(step.get("with")), "args")
+        if isinstance(args, str) and "github.event.inputs" in args:
+            violations.append(f"{prefix}{_step_line(step)}: {KANI_ARGS_MSG}")
     return violations
 
 
@@ -1020,38 +1083,6 @@ def summary_checkout_step_line(text: str) -> str:
         if "uses: actions/checkout@" in line:
             return line
     raise AssertionError("mutants-summary missing checkout step")
-
-
-def _exec_action_ref_violation_from_source(source: str):
-    namespace: dict[str, object] = {
-        "re": re,
-        "ACTION_MAJOR_FLOORS": ACTION_MAJOR_FLOORS,
-        "UNPINNED_BRANCH_REFS": UNPINNED_BRANCH_REFS,
-        "UNPINNED_REF_MSG": UNPINNED_REF_MSG,
-        "NON_SHA_TAG_MSG": NON_SHA_TAG_MSG,
-        "BELOW_FLOOR_MSG": BELOW_FLOOR_MSG,
-    }
-    exec(compile(source, "<action_ref_violation>", "exec"), namespace)
-    fn = namespace.get("action_ref_violation")
-    if not callable(fn):
-        raise RuntimeError("action_ref_violation missing after exec")
-    return fn
-
-
-def _broken_action_ref_violation(old: str, new: str):
-    source = inspect.getsource(action_ref_violation).replace(old, new, 1)
-    return _exec_action_ref_violation_from_source(source)
-
-
-def _broken_policy_fn(fn, old: str, new: str):
-    source = inspect.getsource(fn).replace(old, new, 1)
-    namespace = dict(globals())
-    namespace["__builtins__"] = __builtins__
-    exec(compile(source, f"<{fn.__name__}>", "exec"), namespace)
-    broken = namespace.get(fn.__name__)
-    if not callable(broken):
-        raise RuntimeError(f"{fn.__name__} missing after exec")
-    return broken
 
 
 def workflow_texts() -> dict[str, str]:
@@ -1139,7 +1170,11 @@ def has_pull_request(text: str) -> bool:
 
 
 def coverage_artifact_pin_violations(text: str, *, path: str = "") -> list[str]:
-    """upload-artifact and download-artifact use commit SHAs in codecov workflows."""
+    """Every non-local uses: in the two codecov workflows is a commit SHA.
+
+    A local `./` action has no ref. A major tag, including
+    `actions/checkout@v7`, fails. Other workflow file names are not in scope.
+    """
     if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
         return []
     prefix = f"{path}: " if path else ""
@@ -1148,9 +1183,9 @@ def coverage_artifact_pin_violations(text: str, *, path: str = "") -> list[str]:
         return [f"{prefix}1: {err}"]
     violations: list[str] = []
     for line_no, uses in found:
-        action = _action_name(uses)
-        if action not in ("actions/upload-artifact", "actions/download-artifact"):
+        if uses.startswith("./"):
             continue
+        action = _action_name(uses)
         ref = uses.rsplit("@", 1)[1] if "@" in uses else ""
         if _SHA_REF_RE.fullmatch(ref) is None:
             violations.append(
@@ -1896,11 +1931,6 @@ class WorkflowPolicyTest(unittest.TestCase):
         without_checkout = text.replace(f"{checkout_line}\n\n", "", 1)
         with self.assertRaises(AssertionError):
             assert_mutation_summary_checks_out_before_scoring(without_checkout)
-        source = inspect.getsource(assert_mutation_summary_checks_out_before_scoring)
-        self.assertIn("if checkout > scoring:", source)
-        stripped = source.replace("if checkout > scoring:", "if False and checkout > scoring:", 1)
-        with self.assertRaises(AssertionError):
-            self.assertIn("if checkout > scoring:", stripped)
         reordered = without_checkout.replace(
             'Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"',
             f'Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"\n\n      {checkout_line.strip()}',
@@ -1934,6 +1964,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(coverage_permission_violations(text, path=rel))
             codecov.extend(least_privilege_permission_violations(text, path=rel))
             codecov.extend(kani_version_violations(text, path=rel))
+            codecov.extend(kani_dispatch_args_violations(text, path=rel))
             codecov.extend(llvm_cov_pin_violations(text, path=rel))
         self.assertEqual(violations, [])
         self.assertEqual(codecov, [])
@@ -1953,6 +1984,31 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(violations)
         self.assertIn("actions/upload-artifact@v7", violations[0])
         self.assertIn(COVERAGE_ARTIFACT_SHA_MSG, violations[0])
+        checkout = text.replace(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+            "actions/checkout@v7",
+            1,
+        )
+        self.assertNotEqual(checkout, text)
+        checkout_violations = coverage_artifact_pin_violations(checkout, path="coverage.yml")
+        self.assertTrue(checkout_violations)
+        self.assertIn("actions/checkout@v7", checkout_violations[0])
+        self.assertIn(COVERAGE_ARTIFACT_SHA_MSG, checkout_violations[0])
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(coverage_artifact_pin_violations(editor, path="aw-editor-tests.yml"), [])
+        editor_mutant = editor.replace(
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+            "actions/checkout@v7",
+            1,
+        )
+        self.assertNotEqual(editor_mutant, editor)
+        editor_violations = coverage_artifact_pin_violations(
+            editor_mutant, path="aw-editor-tests.yml"
+        )
+        self.assertTrue(editor_violations)
+        self.assertIn("actions/checkout@v7", editor_violations[0])
+        local = "uses: ./.github/actions/rust-ci-setup\n"
+        self.assertEqual(coverage_artifact_pin_violations(local, path="coverage.yml"), [])
 
     def test_codecov_action_v7_tag_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -2068,6 +2124,243 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov_continue_on_error_violations(editor_mutant, path="aw-editor-tests.yml"),
             [f"aw-editor-tests.yml: {editor_line}: {CODECOV_CONTINUE_MSG}"],
         )
+
+    def _assert_continue_violation(self, text: str, needle: str, *, path: str = "coverage.yml") -> None:
+        matches = [
+            number
+            for number, line in enumerate(text.splitlines(), start=1)
+            if needle in line
+        ]
+        self.assertEqual(len(matches), 1, needle)
+        self.assertEqual(
+            codecov_continue_on_error_violations(text, path=path),
+            [f"{path}: {matches[0]}: {CODECOV_CONTINUE_MSG}"],
+        )
+
+    def test_codecov_continue_on_error_expression_is_rejected(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        job_mutant = text.replace(
+            "    timeout-minutes: 45\n",
+            "    timeout-minutes: 45\n    continue-on-error: ${{ true }}\n",
+            1,
+        )
+        self.assertNotEqual(job_mutant, text)
+        self._assert_continue_violation(job_mutant, "continue-on-error: ${{ true }}")
+        step_mutant = text.replace(
+            "        uses: codecov/codecov-action@",
+            "        continue-on-error: ${{ 1 == 1 }}\n        uses: codecov/codecov-action@",
+            1,
+        )
+        self.assertNotEqual(step_mutant, text)
+        self._assert_continue_violation(step_mutant, "continue-on-error: ${{ 1 == 1 }}")
+        quoted_key = text.replace(
+            "    timeout-minutes: 10\n",
+            '    timeout-minutes: 10\n    "continue-on-error": "${{ true }}"\n',
+            1,
+        )
+        self.assertNotEqual(quoted_key, text)
+        self._assert_continue_violation(quoted_key, '"continue-on-error": "${{ true }}"')
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        outside = editor.replace(
+            "    continue-on-error: true\n",
+            "    continue-on-error: ${{ true }}\n",
+            1,
+        )
+        self.assertNotEqual(outside, editor)
+        self.assertEqual(
+            codecov_continue_on_error_violations(outside, path="aw-editor-tests.yml"),
+            [],
+        )
+        for spelling in (
+            "false",
+            "False",
+            "FALSE",
+            '"false"',
+            '"FALSE"',
+            "'False'",
+            '"FaLsE"',
+        ):
+            allowed = text.replace(
+                "    timeout-minutes: 45\n",
+                f"    timeout-minutes: 45\n    continue-on-error: {spelling}\n",
+                1,
+            )
+            self.assertEqual(
+                codecov_continue_on_error_violations(allowed, path="coverage.yml"),
+                [],
+                spelling,
+            )
+            step_allowed = text.replace(
+                "        uses: codecov/codecov-action@",
+                f"        continue-on-error: {spelling}\n        uses: codecov/codecov-action@",
+                1,
+            )
+            self.assertEqual(
+                codecov_continue_on_error_violations(step_allowed, path="coverage.yml"),
+                [],
+                spelling,
+            )
+        quoted_false = text.replace(
+            "    timeout-minutes: 45\n",
+            '    timeout-minutes: 45\n    "Continue-On-Error": "false"\n',
+            1,
+        )
+        self.assertEqual(
+            codecov_continue_on_error_violations(quoted_false, path="coverage.yml"),
+            [],
+        )
+        flow_step = """
+name: codecov
+on: [push, schedule, workflow_dispatch]
+permissions: {}
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo x
+  codecov:
+    needs: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - {name: up, uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5, "continue-on-error": "${{ true }}"}
+"""
+        self._assert_continue_violation(flow_step, '"continue-on-error": "${{ true }}"')
+        flow_job = """
+name: codecov
+on: [push, schedule, workflow_dispatch]
+permissions: {}
+jobs:
+  coverage: {runs-on: ubuntu-latest, "continue-on-error": "${{ true }}", steps: [{run: echo x}]}
+  codecov:
+    needs: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - {name: up, uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5}
+"""
+        self._assert_continue_violation(flow_job, '"continue-on-error": "${{ true }}"')
+        flow_false = flow_step.replace(
+            '"continue-on-error": "${{ true }}"',
+            'continue-on-error: "FALSE"',
+            1,
+        )
+        self.assertEqual(codecov_continue_on_error_violations(flow_false, path="coverage.yml"), [])
+        flow_job_false = flow_job.replace(
+            '"continue-on-error": "${{ true }}"',
+            "continue-on-error: false",
+            1,
+        )
+        self.assertEqual(
+            codecov_continue_on_error_violations(flow_job_false, path="coverage.yml"),
+            [],
+        )
+
+    def test_codecov_continue_on_error_fail_closed_mutant(self) -> None:
+        """A value that is not a literal false is a violation.
+
+        `yes`, `on`, `off`, `no`, null, and `${{ false }}` are not the word
+        false. `_runner_bool_true` does not treat them as true. This test
+        fails if those values are allowed again.
+        """
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        cases = (
+            (
+                text.replace(
+                    "    timeout-minutes: 45\n",
+                    "    timeout-minutes: 45\n    continue-on-error: yes\n",
+                    1,
+                ),
+                "continue-on-error: yes",
+                "coverage",
+                False,
+            ),
+            (
+                text.replace(
+                    "        uses: codecov/codecov-action@",
+                    "        continue-on-error: ${{ false }}\n        uses: codecov/codecov-action@",
+                    1,
+                ),
+                "continue-on-error: ${{ false }}",
+                "codecov",
+                True,
+            ),
+            (
+                text.replace(
+                    "    timeout-minutes: 10\n",
+                    '    timeout-minutes: 10\n    "continue-on-error": on\n',
+                    1,
+                ),
+                '"continue-on-error": on',
+                "codecov",
+                False,
+            ),
+            (
+                text.replace(
+                    "    timeout-minutes: 45\n",
+                    "    timeout-minutes: 45\n    continue-on-error:\n",
+                    1,
+                ),
+                "continue-on-error:",
+                "coverage",
+                False,
+            ),
+            (
+                text.replace(
+                    "        uses: codecov/codecov-action@",
+                    "        continue-on-error: null\n        uses: codecov/codecov-action@",
+                    1,
+                ),
+                "continue-on-error: null",
+                "codecov",
+                True,
+            ),
+        )
+        flow_job = """
+name: codecov
+on: [push, schedule, workflow_dispatch]
+permissions: {}
+jobs:
+  coverage: {runs-on: ubuntu-latest, continue-on-error: off, steps: [{run: echo x}]}
+  codecov:
+    needs: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5
+"""
+        flow_step = """
+name: codecov
+on: [push, schedule, workflow_dispatch]
+permissions: {}
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo x
+  codecov:
+    needs: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - {uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5, "continue-on-error": no}
+"""
+        cases = (
+            *cases,
+            (flow_job, "continue-on-error: off", "coverage", False),
+            (flow_step, '"continue-on-error": no', "codecov", True),
+        )
+        for mutant, needle, job_id, on_step in cases:
+            self.assertNotEqual(mutant, text, needle)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, needle)
+            self.assertIsInstance(doc, dict)
+            job = doc["jobs"][job_id]
+            node = job
+            if on_step:
+                node = next(
+                    step
+                    for step in job["steps"]
+                    if isinstance(step, dict) and _has_ci_key(step, "continue-on-error")
+                )
+            self.assertFalse(_runner_bool_true(node, "continue-on-error"), needle)
+            self._assert_continue_violation(mutant, needle)
 
     def test_quoted_uses_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -2362,8 +2655,15 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("actions/not-a-real-action@main", unknown[0])
         self.assertIn(THIRD_PARTY_SHA_MSG, unknown[0])
         self.assertEqual(
-            workflow_action_pin_violations("uses: actions/checkout@v7\n", path="coverage.yml"),
+            workflow_action_pin_violations("uses: actions/checkout@v7\n", path="ci.yml"),
             [],
+        )
+        self.assertIn(
+            COVERAGE_ARTIFACT_SHA_MSG,
+            coverage_artifact_pin_violations(
+                "uses: actions/checkout@v7\n",
+                path="coverage.yml",
+            )[0],
         )
         self.assertEqual(
             third_party_action_pin_violations("uses: actions/checkout@v6\n", path="coverage.yml"),
@@ -2453,6 +2753,32 @@ class WorkflowPolicyTest(unittest.TestCase):
                 name,
             )
 
+    def test_upload_permissions_same_size_swap_is_rejected(self) -> None:
+        """A same-size permission swap fails the exact check.
+
+        A check that returns true for any mapping of the same length accepts
+        these. The test fails if that check is forced to pass.
+        """
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        self.assertTrue(_exact_upload_permissions({"contents": "read", "id-token": "write"}))
+        for wrong in (
+            {"actions": "read", "id-token": "write"},
+            {"contents": "read", "id-token": "read"},
+            {"contents": "write", "id-token": "write"},
+        ):
+            self.assertEqual(len(wrong), len(_UPLOAD_PERMISSIONS), wrong)
+            self.assertFalse(_exact_upload_permissions(wrong), wrong)
+        block = "      contents: read\n      id-token: write\n"
+        for replacement in (
+            "      actions: read\n      id-token: write\n",
+            "      contents: read\n      id-token: read\n",
+            "      contents: write\n      id-token: write\n",
+        ):
+            mutant = text.replace(block, replacement, 1)
+            self.assertNotEqual(mutant, text, replacement)
+            messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
+            self.assertIn(CODECOV_PERMS_MSG, messages, replacement)
+
     def test_kani_timeout_input_is_a_number(self) -> None:
         text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
         doc, err = load_workflow_yaml(text)
@@ -2463,11 +2789,36 @@ class WorkflowPolicyTest(unittest.TestCase):
         timeout = trigger["workflow_dispatch"]["inputs"]["timeout"]
         self.assertEqual(timeout.get("type"), "number")
         self.assertEqual(timeout.get("default"), 300)
-        for line in text.splitlines():
-            if "args:" in line:
-                self.assertNotIn("github.event.inputs", line)
+        self.assertEqual(kani_dispatch_args_violations(text, path="kani.yml"), [])
+        args_values: list[str] = []
+        for _job_id, _job, step in _iter_steps(doc):
+            if not _is_named_action(step, "model-checking/kani-github-action"):
+                continue
+            _key, args = _ci_item(_mapping(step.get("with")), "args")
+            self.assertIsInstance(args, str)
+            self.assertNotIn("github.event.inputs", args)
+            args_values.append(args)
+        self.assertEqual(len(args_values), 4)
+        self.assertTrue(all("steps.timeout.outputs.value" in value for value in args_values))
         self.assertEqual(text.count("60|120|300|600|900"), 4)
-        self.assertEqual(text.count("steps.timeout.outputs.value"), 4)
+        folded = text.replace(
+            "          args: --package astraweave-ecs -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}\n",
+            "          args: >-\n"
+            "            --package astraweave-ecs -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}\n"
+            "            ${{ github.event.inputs.timeout }}\n",
+            1,
+        )
+        self.assertNotEqual(folded, text)
+        self.assertTrue(
+            all(
+                "github.event.inputs" not in line
+                for line in folded.splitlines()
+                if line.strip().startswith("args:")
+            )
+        )
+        folded_violations = kani_dispatch_args_violations(folded, path="kani.yml")
+        self.assertEqual(len(folded_violations), 1)
+        self.assertIn(KANI_ARGS_MSG, folded_violations[0])
 
     def test_codecov_token_secrets_and_with_placement_mutants_are_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -2863,50 +3214,41 @@ jobs:
                 block,
             )
 
-    def test_codecov_upload_job_download_with_survives_source_mutant(self) -> None:
+    def test_codecov_download_step_keys_are_name_uses_and_with(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
-        mutant = text.replace(
-            "          path: tools/astraweave-assets/coverage\n",
-            "          path: tools/astraweave-assets/coverage\n          github-token: cross\n",
-            1,
+        self.assertNotIn(DOWNLOAD_STEP_MSG, " ".join(coverage_permission_violations(text, path="coverage.yml")))
+        anchor = (
+            "      - name: Download coverage XML\n"
+            "        uses: actions/download-artifact@"
         )
-        messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
-        self.assertIn(DOWNLOAD_WITH_MSG, messages)
-        broken = _broken_policy_fn(
-            coverage_permission_violations,
-            "for step_line in _download_with_violations(job) if has_codecov else []:",
-            "for step_line in [] if has_codecov else []:",
-        )
-        self.assertNotIn(DOWNLOAD_WITH_MSG, " ".join(broken(mutant, path="coverage.yml")))
+        for extra in (
+            "        env:\n          EXTRA: \"1\"\n",
+            "        id: xml\n",
+            '        "env": {EXTRA: "1"}\n',
+        ):
+            mutant = text.replace(anchor, "      - name: Download coverage XML\n" + extra + "        uses: actions/download-artifact@", 1)
+            self.assertNotEqual(mutant, text, extra)
+            messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
+            self.assertIn(DOWNLOAD_STEP_MSG, messages, extra)
 
-    def test_codecov_upload_job_key_allowlist_survives_source_mutant(self) -> None:
+    def test_codecov_upload_job_key_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         mutant = text.replace(
             "    timeout-minutes: 10\n",
             "    timeout-minutes: 10\n    container: alpine\n",
             1,
         )
+        self.assertNotEqual(mutant, text)
         messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
         self.assertIn(UPLOAD_JOB_KEYS_MSG, messages)
-        broken = _broken_policy_fn(
-            coverage_permission_violations,
-            "if has_codecov and set(job) != _UPLOAD_JOB_KEYS:",
-            "if False and has_codecov and set(job) != _UPLOAD_JOB_KEYS:",
-        )
-        self.assertNotIn(UPLOAD_JOB_KEYS_MSG, " ".join(broken(mutant, path="coverage.yml")))
 
-    def test_codecov_trusted_on_events_survive_source_mutant(self) -> None:
+    def test_codecov_untrusted_on_event_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         start = text.index("\non:\n")
         end = text.index("\nconcurrency:", start)
         mutant = text[:start] + "\non:\n  pull_request_target:\n" + text[end:]
+        self.assertNotEqual(mutant, text)
         self.assertTrue(codecov_trigger_violations(mutant, path="coverage.yml"))
-        broken = _broken_policy_fn(
-            codecov_trigger_violations,
-            'return [f"{prefix}{line}: {CODECOV_EVENT_MSG}"]',
-            "return []",
-        )
-        self.assertEqual(broken(mutant, path="coverage.yml"), [])
 
     def test_policy_actions_matches_expected_set(self) -> None:
         self.assertEqual(set(POLICY_ACTIONS), EXPECTED_POLICY_ACTIONS)
@@ -2927,42 +3269,24 @@ jobs:
             self.assertIsNone(action_ref_violation(action, at_floor), action)
 
     def test_action_ref_rejects_unpinned_branch(self) -> None:
-        self.assertIn(UNPINNED_REF_MSG, action_ref_violation("actions/checkout", "main") or "")
-        source = inspect.getsource(action_ref_violation)
-        self.assertIn("UNPINNED_BRANCH_REFS", source)
-        stripped = source.replace("or ref in UNPINNED_BRANCH_REFS", "", 1)
-        with self.assertRaises(AssertionError):
-            self.assertIn("UNPINNED_BRANCH_REFS", stripped)
+        violations = workflow_action_pin_violations("uses: actions/checkout@main\n")
+        self.assertTrue(violations)
+        self.assertIn(UNPINNED_REF_MSG, violations[0])
 
     def test_action_ref_rejects_non_sha_semver_tag(self) -> None:
-        self.assertIn(NON_SHA_TAG_MSG, action_ref_violation("actions/upload-artifact", "v4.3.0") or "")
-        source = inspect.getsource(action_ref_violation)
-        self.assertIn("NON_SHA_TAG_MSG", source)
-        stripped = source.replace('return f"{action}@{ref} {NON_SHA_TAG_MSG}"', "", 1)
-        with self.assertRaises(AssertionError):
-            self.assertIn("NON_SHA_TAG_MSG", stripped)
-        broken_fn = _broken_action_ref_violation(
-            'return f"{action}@{ref} {NON_SHA_TAG_MSG}"',
-            "return None",
-        )
-        self.assertIsNone(broken_fn("actions/upload-artifact", "v4.3.0"))
+        violations = workflow_action_pin_violations("uses: actions/upload-artifact@v4.3.0\n")
+        self.assertTrue(violations)
+        self.assertIn(NON_SHA_TAG_MSG, violations[0])
 
     def test_action_ref_rejects_major_below_floor(self) -> None:
-        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v4") or "")
-        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v5") or "")
-        self.assertIn(BELOW_FLOOR_MSG, action_ref_violation("actions/checkout", "v6") or "")
+        for ref in ("v4", "v5", "v6"):
+            violations = workflow_action_pin_violations(f"uses: actions/checkout@{ref}\n")
+            self.assertTrue(violations, ref)
+            self.assertIn(BELOW_FLOOR_MSG, violations[0], ref)
         for action, below in BELOW_FLOOR_MAJOR_TAG_BY_ACTION.items():
-            self.assertIn(BELOW_FLOOR_MSG, action_ref_violation(action, below) or "", action)
-        source = inspect.getsource(action_ref_violation)
-        self.assertIn("if int(major.group(1)) < floor:", source)
-        stripped = source.replace("if int(major.group(1)) < floor:", "if False and int(major.group(1)) < floor:", 1)
-        with self.assertRaises(AssertionError):
-            self.assertIn("if int(major.group(1)) < floor:", stripped)
-        broken_fn = _broken_action_ref_violation(
-            "if int(major.group(1)) < floor:",
-            "if False and int(major.group(1)) < floor:",
-        )
-        self.assertIsNone(broken_fn("actions/checkout", "v4"))
+            violations = workflow_action_pin_violations(f"uses: {action}@{below}\n")
+            self.assertTrue(violations, action)
+            self.assertIn(BELOW_FLOOR_MSG, violations[0], action)
 
     def test_action_ref_accepts_sha_and_major_tags(self) -> None:
         self.assertIsNone(
@@ -2983,21 +3307,9 @@ jobs:
             "0" * 39 + "g",
         )
         for ref in bad_refs:
-            msg = action_ref_violation("actions/checkout", ref)
-            self.assertIsNotNone(msg, ref)
-            self.assertIn(NON_SHA_TAG_MSG, msg or "")
-        broken_plus = _broken_action_ref_violation(
-            r're.fullmatch(r"[0-9a-f]{40}", ref)',
-            r're.fullmatch(r"[0-9a-f]+", ref)',
-        )
-        self.assertIsNone(broken_plus("actions/checkout", "a" * 39))
-        self.assertIsNotNone(action_ref_violation("actions/checkout", "a" * 39))
-        broken_dot = _broken_action_ref_violation(
-            r're.fullmatch(r"[0-9a-f]{40}", ref)',
-            r're.fullmatch(r".{40}", ref)',
-        )
-        self.assertIsNone(broken_dot("actions/checkout", "G" * 40))
-        self.assertIsNotNone(action_ref_violation("actions/checkout", "G" * 40))
+            violations = workflow_action_pin_violations(f"uses: actions/checkout@{ref}\n")
+            self.assertTrue(violations, ref)
+            self.assertIn(NON_SHA_TAG_MSG, violations[0], ref)
 
     def test_mutation_ai_scoring_uses_strict_eval(self) -> None:
         text = mutation_testing_text()
