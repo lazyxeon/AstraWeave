@@ -3945,6 +3945,54 @@ jobs:
             " ".join(coverage_permission_violations(between, path="aw-editor-tests.yml")),
         )
 
+    def test_coverage_producer_job_keys_reject_needs(self) -> None:
+        """The coverage job's keys exclude needs in both workflows.
+
+        needs: pre is the relay producer. A key compare that drops needs,
+        or a check that only rejects if:, accepts that job. env,
+        continue-on-error, and container are outside the same allowlist.
+        The report upload stays the last step, so the failure is the key.
+        """
+        workflows = {
+            "coverage.yml": "  coverage:\n    name: Generate Code Coverage\n",
+            "aw-editor-tests.yml": "  coverage:\n    name: Test Coverage\n",
+        }
+        extras = {
+            "needs": "    needs: pre\n",
+            "env": '    env:\n      EXTRA: "1"\n',
+            "continue-on-error": "    continue-on-error: true\n",
+            "container": '    container: "ubuntu:24.04"\n',
+        }
+        for path, anchor in workflows.items():
+            text = (WORKFLOWS / path).read_text(encoding="utf-8")
+            self.assertEqual(text.count(anchor), 1, path)
+            self.assertNotIn(
+                COVERAGE_JOB_END_MSG,
+                " ".join(coverage_permission_violations(text, path=path)),
+                path,
+            )
+            for name, extra in extras.items():
+                mutant = text.replace(
+                    anchor,
+                    "  coverage:\n" + extra + anchor[len("  coverage:\n") :],
+                    1,
+                )
+                self.assertNotEqual(mutant, text, f"{path}:{name}")
+                doc, err = load_workflow_yaml(mutant)
+                self.assertIsNone(err, f"{path}:{name}")
+                job = doc["jobs"]["coverage"]
+                self.assertIn(name, job, f"{path}:{name}")
+                last = job["steps"][-1]
+                self.assertTrue(
+                    _is_named_action(last, "actions/upload-artifact"),
+                    f"{path}:{name}",
+                )
+                self.assertIn(
+                    COVERAGE_JOB_END_MSG,
+                    " ".join(coverage_permission_violations(mutant, path=path)),
+                    f"{path}:{name}",
+                )
+
     def test_kani_with_inputs_are_allowlisted(self) -> None:
         """command, working-directory, and repeated with: keys are checked.
 
