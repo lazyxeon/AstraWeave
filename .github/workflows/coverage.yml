@@ -18,7 +18,6 @@ jobs:
     name: Generate Code Coverage
     permissions:
       contents: read
-      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -36,17 +35,13 @@ jobs:
         run: |
           cd tools/astraweave-assets
           cargo tarpaulin --out Xml --output-dir coverage --exclude-files 'src/main.rs' --exclude-files 'tests/*'
-      
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+
+      - name: Upload coverage XML
+        uses: actions/upload-artifact@v7
         with:
-          files: ./tools/astraweave-assets/coverage/cobertura.xml
-          disable_search: true
-          flags: astraweave-assets
-          name: astraweave-assets-coverage
-          version: v11.3.2
-          fail_ci_if_error: true
-          use_oidc: true
+          name: coverage-xml
+          path: tools/astraweave-assets/coverage/cobertura.xml
+          retention-days: 30
       
       - name: Generate HTML report
         if: always()
@@ -82,3 +77,31 @@ jobs:
           else
             echo "⚠️ Coverage data not generated" >> $GITHUB_STEP_SUMMARY
           fi
+
+  codecov:
+    name: Codecov upload
+    needs: coverage
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Download coverage XML
+        uses: actions/download-artifact@v8
+        with:
+          name: coverage-xml
+          path: tools/astraweave-assets/coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          files: ./tools/astraweave-assets/coverage/cobertura.xml
+          disable_search: true
+          flags: astraweave-assets
+          name: astraweave-assets-coverage
+          version: v11.3.2
+          fail_ci_if_error: true
+          use_oidc: true

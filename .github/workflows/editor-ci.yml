@@ -23,9 +23,13 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+permissions: {}
+
 jobs:
   editor-ci:
     name: editor-ci
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # Skip if editor has known compilation issues

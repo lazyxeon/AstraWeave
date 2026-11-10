@@ -105,7 +105,6 @@ jobs:
     name: Test Coverage
     permissions:
       contents: read
-      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
     
@@ -129,10 +128,32 @@ jobs:
     - name: Generate Coverage Report
       run: |
         cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
-      
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v7
+      with:
+        name: aw-editor-lcov
+        path: lcov.info
+        retention-days: 30
+
+  codecov:
+    name: Codecov upload
+    needs: coverage
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+    - name: Download coverage report
+      uses: actions/download-artifact@v8
+      with:
+        name: aw-editor-lcov
+        path: .
+
     - name: Upload Coverage to Codecov
       uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-      if: success()
       with:
         files: ./lcov.info
         disable_search: true

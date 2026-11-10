@@ -23,9 +23,12 @@ on:
         required: false
         default: 'astraweave-ecs,astraweave-math,astraweave-sdk,astraweave-core'
       timeout:
-        description: 'Timeout per harness in seconds'
+        description: 'Timeout per harness in seconds (60, 120, 300, 600, or 900)'
         required: false
-        default: '300'
+        type: number
+        default: 300
+
+permissions: {}
 
 env:
   CARGO_TERM_COLOR: always
@@ -34,17 +37,37 @@ env:
 jobs:
   kani-ecs:
     name: Kani - astraweave-ecs
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
-      
+
+      - name: Resolve harness timeout
+        id: timeout
+        env:
+          KANI_TIMEOUT_INPUT: ${{ github.event.inputs.timeout }}
+        run: |
+          raw="${KANI_TIMEOUT_INPUT:-300}"
+          if [ "$raw" = "null" ]; then
+            raw=300
+          fi
+          case "$raw" in
+            60|120|300|600|900) ;;
+            *)
+              echo "harness timeout must be 60, 120, 300, 600, or 900" >&2
+              exit 1
+              ;;
+          esac
+          echo "value=$raw" >> "$GITHUB_OUTPUT"
+
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
           kani-version: 0.68.0
           working-directory: .
-          args: --package astraweave-ecs -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
+          args: --package astraweave-ecs -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}
       
       - name: Upload Kani Report
         uses: actions/upload-artifact@v7
@@ -56,17 +79,37 @@ jobs:
 
   kani-math:
     name: Kani - astraweave-math
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      
+
+      - name: Resolve harness timeout
+        id: timeout
+        env:
+          KANI_TIMEOUT_INPUT: ${{ github.event.inputs.timeout }}
+        run: |
+          raw="${KANI_TIMEOUT_INPUT:-300}"
+          if [ "$raw" = "null" ]; then
+            raw=300
+          fi
+          case "$raw" in
+            60|120|300|600|900) ;;
+            *)
+              echo "harness timeout must be 60, 120, 300, 600, or 900" >&2
+              exit 1
+              ;;
+          esac
+          echo "value=$raw" >> "$GITHUB_OUTPUT"
+
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
           kani-version: 0.68.0
           working-directory: .
-          args: --package astraweave-math -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
+          args: --package astraweave-math -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}
       
       - name: Upload Kani Report
         uses: actions/upload-artifact@v7
@@ -78,17 +121,37 @@ jobs:
 
   kani-sdk:
     name: Kani - astraweave-sdk
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-      
+
+      - name: Resolve harness timeout
+        id: timeout
+        env:
+          KANI_TIMEOUT_INPUT: ${{ github.event.inputs.timeout }}
+        run: |
+          raw="${KANI_TIMEOUT_INPUT:-300}"
+          if [ "$raw" = "null" ]; then
+            raw=300
+          fi
+          case "$raw" in
+            60|120|300|600|900) ;;
+            *)
+              echo "harness timeout must be 60, 120, 300, 600, or 900" >&2
+              exit 1
+              ;;
+          esac
+          echo "value=$raw" >> "$GITHUB_OUTPUT"
+
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
           kani-version: 0.68.0
           working-directory: .
-          args: --package astraweave-sdk -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
+          args: --package astraweave-sdk -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}
       
       - name: Upload Kani Report
         uses: actions/upload-artifact@v7
@@ -100,17 +163,37 @@ jobs:
 
   kani-core:
     name: Kani - astraweave-core
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-      
+
+      - name: Resolve harness timeout
+        id: timeout
+        env:
+          KANI_TIMEOUT_INPUT: ${{ github.event.inputs.timeout }}
+        run: |
+          raw="${KANI_TIMEOUT_INPUT:-300}"
+          if [ "$raw" = "null" ]; then
+            raw=300
+          fi
+          case "$raw" in
+            60|120|300|600|900) ;;
+            *)
+              echo "harness timeout must be 60, 120, 300, 600, or 900" >&2
+              exit 1
+              ;;
+          esac
+          echo "value=$raw" >> "$GITHUB_OUTPUT"
+
       - name: Kani Verification
         uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
           kani-version: 0.68.0
           working-directory: .
-          args: --package astraweave-core -Z unstable-options --harness-timeout ${{ github.event.inputs.timeout || '300' }}
+          args: --package astraweave-core -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}
       
       - name: Upload Kani Report
         uses: actions/upload-artifact@v7
@@ -122,6 +205,8 @@ jobs:
 
   summary:
     name: Kani Summary
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [kani-ecs, kani-math, kani-sdk, kani-core]
