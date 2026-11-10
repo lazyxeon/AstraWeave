@@ -933,13 +933,13 @@ pub mod gltf_loader {
 
     /// Read a glTF container without letting `st_size` choose the allocation.
     /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
-    /// with `gltf_external::load_jailed_gltf`, which reads buffers and images
-    /// through `bounded_open::read_under`, instead of `Gltf::open` and `gltf::import`.
+    /// with `gltf_external::load_jailed_gltf`, which reads each URI from the
+    /// directory opened once for that load, instead of `Gltf::open` and `gltf::import`.
     ///
-    /// The model directory is resolved once. On Unix each component is opened
-    /// from that handle. On Windows each URI component is reopened by path.
-    /// The model file itself is resolved once before that leaf open, so a
-    /// symlink at the file loads. URI components are not resolved that way.
+    /// The model directory is opened once per load and that handle is used for
+    /// every URI read. The model file is resolved once, and its parent is
+    /// opened from that path without resolving the parent again. A symlink at
+    /// the file loads. URI components are not resolved that way.
     pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
         let bytes = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
         reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;
@@ -1136,14 +1136,10 @@ pub mod gltf_loader {
                 let bytes = if uri.starts_with("data:") {
                     crate::gltf_external::decode_embedded_uri(uri)?
                 } else {
-                    crate::gltf_external::jail_gltf_uri(base, uri)?;
-                    let relative = uri.split('?').next().unwrap_or(uri);
-                    crate::bounded_open::read_under(
+                    crate::gltf_external::read_opened_uri(
                         base,
-                        std::path::Path::new(relative),
+                        uri,
                         crate::image_limits::MAX_IMAGE_ALLOC,
-                        "",
-                        std::path::Path::new(relative),
                     )
                     .with_context(|| format!("Read image uri {uri}"))?
                 };

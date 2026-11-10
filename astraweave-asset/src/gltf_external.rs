@@ -1,12 +1,13 @@
 //! Jailed glTF buffer and image loads.
 //!
 //! Callers use [`load_jailed_gltf`] instead of `import_buffers` / `import_images`.
-//! A file URI is opened from the model directory one component at a time.
+//! The model directory is opened once per load, and every file URI is read
+//! from that handle, one component at a time.
 //! Buffer and image URI bytes share one total, and the URI count is capped.
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine as _;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// External buffer and image URIs, including `data:` URIs.
 pub const MAX_EXTERNAL_URIS: usize = 64;
@@ -23,6 +24,24 @@ pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
     if uri.starts_with("data:") {
         return Ok(None);
     }
+    let relative = relative_file_uri(uri)?;
+    let path = astraweave_security::path::safe_under(base, &relative)
+        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
+    Ok(Some(path))
+}
+
+/// Read a jailed file without resolving any component.
+///
+/// The parent is opened component by component from the filesystem root.
+/// A link in a parent directory is refused, and a link at the file is refused.
+/// The model file uses `read_path`, which resolves the caller-supplied path once.
+///
+/// The read stops at `max_bytes`. The allocation follows the bytes read.
+pub fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
+    crate::bounded_open::read_unresolved(path, max_bytes, "")
+}
+
+pub(crate) fn relative_file_uri(uri: &str) -> Result<PathBuf> {
     if uri.contains(':') || uri.contains('%') || uri.contains('\\') || uri.contains('\0') {
         bail!("path traversal rejected: gltf uri is not a relative file");
     }
@@ -30,20 +49,16 @@ pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
     if path_part.is_empty() {
         bail!("path traversal rejected: gltf uri is not a relative file");
     }
-    let path = astraweave_security::path::safe_under(base, Path::new(path_part))
-        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-    Ok(Some(path))
-}
-
-/// Read a jailed file via `bounded_open::read_unresolved`.
-///
-/// Unix opens each component from a directory handle. Windows reopens each
-/// component by path. A symlink at the file is not followed. The model file
-/// uses `read_path`, which resolves the caller-supplied path once.
-///
-/// The read stops at `max_bytes`. The allocation follows the bytes read.
-pub fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
-    crate::bounded_open::read_unresolved(path, max_bytes, "")
+    let path = PathBuf::from(path_part);
+    if path.components().any(|component| {
+        matches!(
+            component,
+            Component::ParentDir | Component::RootDir | Component::Prefix(_)
+        )
+    }) {
+        bail!("path traversal rejected: gltf uri is not a relative file");
+    }
+    Ok(path)
 }
 
 /// Refuse a document with more external buffer and image URIs than
@@ -84,14 +99,38 @@ pub fn load_jailed_gltf(
     crate::gltf_loader::reject_short_glb_header(bytes)?;
     let gltf::Gltf { document, blob } = gltf::Gltf::from_slice(bytes).context("parse gltf")?;
     reject_external_uri_count(&document)?;
+    let root = open_model_dir(base)?;
     let mut budget = Budget {
         cap: max_external_bytes,
         spent: 0,
     };
     let mut blob = blob;
-    let buffers = read_buffers(&document, base, &mut blob, &mut budget)?;
-    let images = read_images(&document, base, &buffers, &mut budget)?;
+    let buffers = read_buffers(&document, &root, &mut blob, &mut budget)?;
+    let images = read_images(&document, &root, &buffers, &mut budget)?;
     Ok((document, buffers, images))
+}
+
+fn open_model_dir(base: &Path) -> Result<crate::bounded_open::OpenedRoot> {
+    match crate::bounded_open::OpenedRoot::open(base) {
+        Ok(root) => Ok(root),
+        Err(err)
+            if err.kind() == std::io::ErrorKind::InvalidInput
+                && err.to_string().contains("not a regular file") =>
+        {
+            bail!("{} is not a regular file", base.display())
+        }
+        Err(err) => Err(err).with_context(|| format!("open {}", base.display())),
+    }
+}
+
+/// Read one relative file URI from `base`, opening that directory once.
+pub(crate) fn read_opened_uri(base: &Path, uri: &str, max_bytes: u64) -> Result<Vec<u8>> {
+    let root = open_model_dir(base)?;
+    let mut budget = Budget {
+        cap: max_bytes,
+        spent: 0,
+    };
+    uri_bytes(&root, uri, &mut budget)
 }
 
 pub(crate) fn decode_embedded_uri(uri: &str) -> Result<Vec<u8>> {
@@ -121,27 +160,21 @@ impl Budget {
     }
 }
 
-fn uri_bytes(base: &Path, uri: &str, budget: &mut Budget) -> Result<Vec<u8>> {
-    match jail_gltf_uri(base, uri)? {
-        None => {
-            let encoded = data_uri_encoded(uri)?;
-            let decoded_len = decoded_base64_len(encoded)?;
-            budget.charge(decoded_len)?;
-            decode_data_uri(uri)
-        }
-        Some(_) => {
-            let relative = uri.split('?').next().unwrap_or(uri);
-            let bytes = crate::bounded_open::read_under(
-                base,
-                Path::new(relative),
-                budget.remaining(),
-                "",
-                Path::new(relative),
-            )?;
-            budget.charge(bytes.len() as u64)?;
-            Ok(bytes)
-        }
+fn uri_bytes(
+    root: &crate::bounded_open::OpenedRoot,
+    uri: &str,
+    budget: &mut Budget,
+) -> Result<Vec<u8>> {
+    if uri.starts_with("data:") {
+        let encoded = data_uri_encoded(uri)?;
+        let decoded_len = decoded_base64_len(encoded)?;
+        budget.charge(decoded_len)?;
+        return decode_data_uri(uri);
     }
+    let relative = relative_file_uri(uri)?;
+    let bytes = root.read(&relative, budget.remaining(), "", &relative)?;
+    budget.charge(bytes.len() as u64)?;
+    Ok(bytes)
 }
 
 fn data_uri_encoded(uri: &str) -> Result<&str> {
@@ -184,7 +217,7 @@ fn decode_data_uri(uri: &str) -> Result<Vec<u8>> {
 
 fn read_buffers(
     document: &gltf::Document,
-    base: &Path,
+    root: &crate::bounded_open::OpenedRoot,
     blob: &mut Option<Vec<u8>>,
     budget: &mut Budget,
 ) -> Result<Vec<gltf::buffer::Data>> {
@@ -194,7 +227,7 @@ fn read_buffers(
             gltf::buffer::Source::Bin => {
                 blob.take().context("GLB buffer is missing its BIN chunk")?
             }
-            gltf::buffer::Source::Uri(uri) => uri_bytes(base, uri, budget)?,
+            gltf::buffer::Source::Uri(uri) => uri_bytes(root, uri, budget)?,
         };
         // Compare the bytes on hand before the 4-byte pad. A buffer one to
         // three bytes short would otherwise grow to `byteLength` and pass.
@@ -216,14 +249,14 @@ fn read_buffers(
 
 fn read_images(
     document: &gltf::Document,
-    base: &Path,
+    root: &crate::bounded_open::OpenedRoot,
     buffers: &[gltf::buffer::Data],
     budget: &mut Budget,
 ) -> Result<Vec<gltf::image::Data>> {
     let mut images = Vec::new();
     for image in document.images() {
         let encoded = match image.source() {
-            gltf::image::Source::Uri { uri, .. } => uri_bytes(base, uri, budget)?,
+            gltf::image::Source::Uri { uri, .. } => uri_bytes(root, uri, budget)?,
             gltf::image::Source::View { view, .. } => {
                 let data = buffers
                     .get(view.buffer().index())
@@ -536,5 +569,56 @@ mod tests {
         let other_err = crate::gltf_loader::load_first_mesh_and_material(other.path(), gltf)
             .expect_err("missing sibling");
         assert!(!other_err.to_string().contains("No meshes"), "{other_err}");
+    }
+
+    #[test]
+    fn nested_relative_uri_loads() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).expect("sub");
+        std::fs::write(sub.join("box.bin"), b"nest").expect("bin");
+        let gltf =
+            br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"sub/box.bin","byteLength":4}]}"#;
+        let (_doc, buffers, _) = load_jailed_gltf(dir.path(), gltf, 64).expect("nested");
+        assert_eq!(&buffers[0].0[..4], b"nest");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn uri_parent_directory_link_is_not_followed() {
+        let dir = tempfile::tempdir().expect("dir");
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("loot.bin"), b"loot").expect("loot");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("sub")).expect("link");
+        let path = dir.path().join("sub").join("loot.bin");
+        let err = read_jailed_file(&path, 64).expect_err("parent link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+
+        let gltf =
+            br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"sub/loot.bin","byteLength":4}]}"#;
+        let err = load_jailed_gltf(dir.path(), gltf, 64).expect_err("load parent link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_replaced_between_jail_and_read_is_refused() {
+        let parent = tempfile::tempdir().expect("parent");
+        let jail = parent.path().join("jail");
+        std::fs::create_dir(&jail).expect("jail");
+        std::fs::write(jail.join("box.bin"), b"good").expect("good");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&outside).expect("outside");
+        std::fs::write(outside.join("box.bin"), b"evil").expect("evil");
+
+        let checked = jail_gltf_uri(&jail, "box.bin")
+            .expect("jail")
+            .expect("file");
+        let parked = parent.path().join("parked");
+        std::fs::rename(&jail, &parked).expect("park");
+        std::os::unix::fs::symlink(&outside, &jail).expect("swap");
+
+        let err = read_jailed_file(&checked, 64).expect_err("replaced directory");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
     }
 }

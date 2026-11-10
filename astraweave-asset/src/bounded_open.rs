@@ -1,47 +1,108 @@
 //! Size-bounded read from a directory handle.
 //!
-//! The caller-supplied root is resolved once. Each component of that absolute
-//! path is then opened from the filesystem root and is not followed. On Unix
-//! each URI component is opened from that directory handle with `O_NOFOLLOW`.
-//! On Windows each canonical component is opened with reparse-point semantics
-//! and rejected when it is a reparse point; its final path must stay under the
-//! previous component. URI components are reopened by path the same way, and
-//! the file's final path must stay under the root's. Those paths compare as
-//! exact UTF-16 units. A caller-supplied model file is resolved once before
-//! its leaf is opened. URI components are not. A file with more than one link
-//! is refused. File type and size come from the opened handle, and the read
+//! The caller-supplied model directory is opened once per load, and that
+//! handle is used for every URI read. On Unix the handle is a directory file
+//! descriptor and each URI component is opened from it with `O_NOFOLLOW`. On
+//! Windows the handle is the directory-handle chain plus the final path. Each
+//! URI component is reopened from that final path. A cloud-file reparse tag is
+//! allowed. A symlink, a junction, and a mount point are refused. The file's
+//! final path must stay under the root's. Those paths compare as exact UTF-16
+//! units.
+//!
+//! A caller-supplied model file is resolved once. Its parent is then opened
+//! with that component walk and is not resolved again. URI components are not
+//! resolved. A file with more than one link is refused, and the error names
+//! the file. File type and size come from the opened handle, and the read
 //! stops at the caller's byte cap.
 
 use anyhow::{bail, Context, Result};
 use std::fs::File;
 use std::io::Read;
+#[cfg(windows)]
+use std::path::PathBuf;
 use std::path::{Component, Path};
 
+/// A model directory opened once for every URI read in that load.
+pub(crate) struct OpenedRoot {
+    #[cfg(unix)]
+    dir: rustix::fd::OwnedFd,
+    #[cfg(windows)]
+    root_final: PathBuf,
+    #[cfg(windows)]
+    _held: Vec<File>,
+}
+
+impl OpenedRoot {
+    /// Resolve `root` once, then open that absolute path without following it.
+    pub(crate) fn open(root: &Path) -> std::io::Result<Self> {
+        let resolved = std::fs::canonicalize(root)?;
+        after_resolve();
+        Self::open_resolved(&resolved)
+    }
+
+    pub(crate) fn read(
+        &self,
+        relative: &Path,
+        max_bytes: u64,
+        noun: &str,
+        display: &Path,
+    ) -> Result<Vec<u8>> {
+        read_opened(self, relative, max_bytes, noun, display)
+    }
+}
+
 pub(crate) fn read_path(path: &Path, max_bytes: u64, noun: &str) -> Result<Vec<u8>> {
-    // Resolve the caller-supplied file once, then open that leaf. A symlink
-    // at the file itself loads. `canonicalize` uses `O_PATH` here, so a FIFO
-    // returns without a blocking read; the leaf open still rejects it.
+    // Resolve the caller-supplied file once. `canonicalize` does not open the
+    // leaf, so a FIFO returns without a blocking read. The parent is opened
+    // from that resolved path and is not resolved again.
     let resolved =
         std::fs::canonicalize(path).with_context(|| format!("open {}", subject(noun, path)))?;
-    open_leaf(&resolved, max_bytes, noun, path)
-}
-
-/// Open `path` without resolving a symlink at the file.
-pub(crate) fn read_unresolved(path: &Path, max_bytes: u64, noun: &str) -> Result<Vec<u8>> {
-    open_leaf(path, max_bytes, noun, path)
-}
-
-fn open_leaf(path: &Path, max_bytes: u64, noun: &str, display: &Path) -> Result<Vec<u8>> {
-    let parent = match path.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => Path::new("."),
+    after_resolve();
+    let parent = directory_of(&resolved);
+    let name = resolved
+        .file_name()
+        .with_context(|| format!("open {}", subject(noun, path)))?;
+    let root = match OpenedRoot::open_resolved(parent) {
+        Ok(root) => root,
+        Err(err) if not_regular_open(&err) => {
+            bail!("{} is not a regular file", subject(noun, path));
+        }
+        Err(err) => {
+            return Err(err).with_context(|| format!("open {}", subject(noun, path)));
+        }
     };
+    root.read(Path::new(name), max_bytes, noun, path)
+}
+
+/// Open `path` without resolving any component.
+///
+/// The parent is opened component by component. A link in a parent directory
+/// is refused, and a link at the file is refused.
+pub(crate) fn read_unresolved(path: &Path, max_bytes: u64, noun: &str) -> Result<Vec<u8>> {
+    let parent = directory_of(path);
     let name = path
         .file_name()
-        .with_context(|| format!("open {}", subject(noun, display)))?;
-    read_under(parent, Path::new(name), max_bytes, noun, display)
+        .with_context(|| format!("open {}", subject(noun, path)))?;
+    let root = match OpenedRoot::open_resolved(parent) {
+        Ok(root) => root,
+        Err(err) if not_regular_open(&err) => {
+            bail!("{} is not a regular file", subject(noun, path));
+        }
+        Err(err) => {
+            return Err(err).with_context(|| format!("open {}", subject(noun, path)));
+        }
+    };
+    root.read(Path::new(name), max_bytes, noun, path)
 }
 
+fn directory_of(path: &Path) -> &Path {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    }
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn read_under(
     root: &Path,
     relative: &Path,
@@ -49,7 +110,26 @@ pub(crate) fn read_under(
     noun: &str,
     display: &Path,
 ) -> Result<Vec<u8>> {
-    let mut file = match open_under(root, relative) {
+    let opened = match OpenedRoot::open(root) {
+        Ok(opened) => opened,
+        Err(err) if not_regular_open(&err) => {
+            bail!("{} is not a regular file", subject(noun, display));
+        }
+        Err(err) => {
+            return Err(err).with_context(|| format!("open {}", subject(noun, display)));
+        }
+    };
+    opened.read(relative, max_bytes, noun, display)
+}
+
+fn read_opened(
+    root: &OpenedRoot,
+    relative: &Path,
+    max_bytes: u64,
+    noun: &str,
+    display: &Path,
+) -> Result<Vec<u8>> {
+    let mut file = match open_relative(root, relative) {
         Ok(file) => file,
         Err(err) if not_regular_open(&err) => {
             bail!("{} is not a regular file", subject(noun, display));
@@ -61,8 +141,12 @@ pub(crate) fn read_under(
     let meta = file
         .metadata()
         .with_context(|| format!("stat {}", subject(noun, display)))?;
-    if !regular_file(&meta) || link_count(&meta) > 1 {
+    if !regular_file(&file, &meta) {
         bail!("{} is not a regular file", subject(noun, display));
+    }
+    let links = link_count(&file).with_context(|| format!("stat {}", subject(noun, display)))?;
+    if links > 1 {
+        bail!("{} has more than one link", subject(noun, display));
     }
     if meta.len() > max_bytes {
         bail!(
@@ -93,33 +177,64 @@ fn not_regular_open(err: &std::io::Error) -> bool {
     err.kind() == std::io::ErrorKind::InvalidInput && err.to_string().contains("not a regular file")
 }
 
-fn regular_file(meta: &std::fs::Metadata) -> bool {
-    if reparse_point(meta) {
+fn regular_file(file: &File, meta: &std::fs::Metadata) -> bool {
+    if reparse_point(file, meta) {
         return false;
     }
     meta.is_file()
 }
 
-#[cfg(windows)]
-fn reparse_point(meta: &std::fs::Metadata) -> bool {
-    use std::os::windows::fs::MetadataExt;
+/// `IO_REPARSE_TAG_CLOUD` through `IO_REPARSE_TAG_CLOUD_F`.
+///
+/// A symlink, a junction, and a mount point use other tags and stay refused.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn cloud_file_reparse_tag(tag: u32) -> bool {
+    const CLOUD: u32 = 0x9000_001A;
+    const VARIANT: u32 = 0x0000_F000;
+    tag & !VARIANT == CLOUD
+}
+
+/// A reparse point is refused unless its tag is a cloud-file placeholder.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn reparse_is_refused(attributes: u32, tag: u32) -> bool {
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
-    meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+        return false;
+    }
+    !cloud_file_reparse_tag(tag)
+}
+
+#[cfg(windows)]
+fn reparse_point(file: &File, meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    #[cfg(test)]
+    if meta.is_dir() && FORCE_DIRECTORY_REPARSE.with(|cell| cell.replace(false)) {
+        return true;
+    }
+    let attributes = meta.file_attributes();
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    if attributes & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+        return false;
+    }
+    match windows_reparse_tag(file) {
+        Ok(tag) => reparse_is_refused(attributes, tag),
+        Err(_) => true,
+    }
 }
 
 #[cfg(not(windows))]
-fn reparse_point(_meta: &std::fs::Metadata) -> bool {
+fn reparse_point(_file: &File, _meta: &std::fs::Metadata) -> bool {
     false
 }
 
-fn link_count(meta: &std::fs::Metadata) -> u64 {
+fn link_count(file: &File) -> std::io::Result<u64> {
     #[cfg(unix)]
     {
-        std::os::unix::fs::MetadataExt::nlink(meta)
+        Ok(std::os::unix::fs::MetadataExt::nlink(&file.metadata()?))
     }
     #[cfg(windows)]
     {
-        u64::from(std::os::windows::fs::MetadataExt::number_of_links(meta))
+        windows_link_count(file)
     }
 }
 
@@ -160,17 +275,24 @@ fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
 }
 
 #[cfg(unix)]
-fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
+impl OpenedRoot {
+    fn open_resolved(absolute: &Path) -> std::io::Result<Self> {
+        use rustix::fs::OFlags;
+        let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+        Ok(Self {
+            dir: open_canonical(absolute, flags)?,
+        })
+    }
+}
+
+#[cfg(unix)]
+fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     use rustix::fs::{openat, Mode, OFlags};
 
-    // The root is resolved once. Each component of that absolute path is
-    // opened from `/` and is not followed. URI components keep NOFOLLOW.
     let directory = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
     let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let names = relative_names(relative)?;
-    let resolved = std::fs::canonicalize(root)?;
-    after_resolve();
-    let mut dir = open_canonical(&resolved, directory)?;
+    let mut dir = root.dir.try_clone()?;
     for (index, name) in names.iter().enumerate() {
         let last = index + 1 == names.len();
         let flags = if last { file_flags } else { directory };
@@ -226,8 +348,10 @@ fn open_canonical(
 
 #[cfg(all(windows, test))]
 thread_local! {
-    static FILE_FINAL_OVERRIDE: std::cell::Cell<Option<std::path::PathBuf>> =
-        std::cell::Cell::new(None);
+    static FILE_FINAL_OVERRIDE: std::cell::Cell<Option<PathBuf>> = const { std::cell::Cell::new(None) };
+    static COMPONENT_FINAL_OVERRIDE: std::cell::Cell<Option<PathBuf>> =
+        const { std::cell::Cell::new(None) };
+    static FORCE_DIRECTORY_REPARSE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 #[cfg(windows)]
@@ -253,7 +377,7 @@ fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
 #[cfg(windows)]
 fn ensure_directory(file: &File) -> std::io::Result<()> {
     let meta = file.metadata()?;
-    if reparse_point(&meta) || !meta.is_dir() {
+    if reparse_point(file, &meta) || !meta.is_dir() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "not a regular file",
@@ -263,9 +387,20 @@ fn ensure_directory(file: &File) -> std::io::Result<()> {
 }
 
 #[cfg(windows)]
-fn open_resolved_directory(resolved: &Path) -> std::io::Result<(std::path::PathBuf, Vec<File>)> {
-    let mut cursor = std::path::PathBuf::new();
-    let mut parent_final = None;
+impl OpenedRoot {
+    fn open_resolved(absolute: &Path) -> std::io::Result<Self> {
+        let (root_final, held) = open_resolved_directory(absolute)?;
+        Ok(Self {
+            root_final,
+            _held: held,
+        })
+    }
+}
+
+#[cfg(windows)]
+fn open_resolved_directory(resolved: &Path) -> std::io::Result<(PathBuf, Vec<File>)> {
+    let mut cursor = PathBuf::new();
+    let mut parent_final: Option<PathBuf> = None;
     let mut held = Vec::new();
     for component in resolved.components() {
         let open_this = matches!(component, Component::RootDir | Component::Normal(_));
@@ -276,6 +411,14 @@ fn open_resolved_directory(resolved: &Path) -> std::io::Result<(std::path::PathB
         let file = open_path(&cursor, true)?;
         ensure_directory(&file)?;
         let component_final = final_path(&file)?;
+        #[cfg(test)]
+        let component_final = if parent_final.is_some() {
+            COMPONENT_FINAL_OVERRIDE
+                .with(|cell| cell.take())
+                .unwrap_or(component_final)
+        } else {
+            component_final
+        };
         if let Some(parent) = &parent_final {
             if !path_is_under(parent, &component_final) {
                 return Err(std::io::Error::new(
@@ -297,31 +440,26 @@ fn open_resolved_directory(resolved: &Path) -> std::io::Result<(std::path::PathB
 }
 
 #[cfg(windows)]
-fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
+fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     let names = relative_names(relative)?;
-    // Resolve the caller-supplied root once. Each component of that absolute
-    // path is opened with reparse-point semantics and must not be a reparse
-    // point. Its final path must stay under the previous component.
-    let resolved = std::fs::canonicalize(root)?;
-    after_resolve();
-    let (root_final, mut held) = open_resolved_directory(&resolved)?;
-
-    let mut cursor = resolved;
+    let mut cursor = root.root_final.clone();
+    let mut held = Vec::new();
     for (index, name) in names.iter().enumerate() {
         cursor.push(name);
-        let file = open_path(&cursor, true)?;
         let last = index + 1 == names.len();
         if !last {
+            let file = open_path(&cursor, true)?;
             ensure_directory(&file)?;
             held.push(file);
             continue;
         }
-        let mut file_final = final_path(&file)?;
+        let file = open_leaf_file(&cursor)?;
+        let file_final = final_path(&file)?;
         #[cfg(test)]
-        if let Some(overridden) = FILE_FINAL_OVERRIDE.with(|cell| cell.take()) {
-            file_final = overridden;
-        }
-        if !path_is_under(&root_final, &file_final) {
+        let file_final = FILE_FINAL_OVERRIDE
+            .with(|cell| cell.take())
+            .unwrap_or(file_final);
+        if !path_is_under(&root.root_final, &file_final) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "not a regular file",
@@ -334,6 +472,26 @@ fn open_under(root: &Path, relative: &Path) -> std::io::Result<File> {
         std::io::ErrorKind::InvalidInput,
         "empty relative path",
     ))
+}
+
+#[cfg(windows)]
+fn open_leaf_file(path: &Path) -> std::io::Result<File> {
+    let file = open_path(path, true)?;
+    let meta = file.metadata()?;
+    if cloud_placeholder(&file, &meta)? {
+        return open_path(path, false);
+    }
+    Ok(file)
+}
+
+#[cfg(windows)]
+fn cloud_placeholder(file: &File, meta: &std::fs::Metadata) -> std::io::Result<bool> {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT == 0 {
+        return Ok(false);
+    }
+    Ok(cloud_file_reparse_tag(windows_reparse_tag(file)?))
 }
 
 #[cfg(windows)]
@@ -361,7 +519,8 @@ fn final_path(file: &File) -> std::io::Result<std::path::PathBuf> {
     let mut buf = vec![0u16; 512];
     let mut grew = false;
     loop {
-        // The handle is open and the buffer length is the capacity passed in.
+        // SAFETY: `handle` is the live file handle. `buf` is writable for
+        // `buf.len()` UTF-16 units, and that length is the size passed in.
         let n = unsafe {
             GetFinalPathNameByHandleW(handle, buf.as_mut_ptr(), buf.len() as u32, VOLUME_NAME_DOS)
         };
@@ -382,6 +541,111 @@ fn final_path(file: &File) -> std::io::Result<std::path::PathBuf> {
         buf.resize(n, 0);
         grew = true;
     }
+}
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "GetFileInformationByHandle has no safe wrapper in this crate"
+)]
+fn windows_link_count(file: &File) -> std::io::Result<u64> {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+
+    #[repr(C)]
+    struct ByHandleFileInformation {
+        file_attributes: u32,
+        creation_low: u32,
+        creation_high: u32,
+        last_access_low: u32,
+        last_access_high: u32,
+        last_write_low: u32,
+        last_write_high: u32,
+        volume_serial_number: u32,
+        file_size_high: u32,
+        file_size_low: u32,
+        number_of_links: u32,
+        file_index_high: u32,
+        file_index_low: u32,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileInformationByHandle(
+            file: *mut c_void,
+            information: *mut ByHandleFileInformation,
+        ) -> i32;
+    }
+
+    let mut info = ByHandleFileInformation {
+        file_attributes: 0,
+        creation_low: 0,
+        creation_high: 0,
+        last_access_low: 0,
+        last_access_high: 0,
+        last_write_low: 0,
+        last_write_high: 0,
+        volume_serial_number: 0,
+        file_size_high: 0,
+        file_size_low: 0,
+        number_of_links: 0,
+        file_index_high: 0,
+        file_index_low: 0,
+    };
+    // SAFETY: `file` is the live handle. `info` is writable for one
+    // `ByHandleFileInformation`, and the call writes that struct.
+    let ok = unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(u64::from(info.number_of_links))
+}
+
+#[cfg(windows)]
+#[allow(
+    unsafe_code,
+    reason = "GetFileInformationByHandleEx has no safe wrapper in this crate"
+)]
+fn windows_reparse_tag(file: &File) -> std::io::Result<u32> {
+    use std::ffi::c_void;
+    use std::os::windows::io::AsRawHandle;
+
+    #[repr(C)]
+    struct FileAttributeTagInfo {
+        file_attributes: u32,
+        reparse_tag: u32,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetFileInformationByHandleEx(
+            file: *mut c_void,
+            class: i32,
+            info: *mut c_void,
+            size: u32,
+        ) -> i32;
+    }
+
+    // `FileAttributeTagInfo` in `FILE_INFO_BY_HANDLE_CLASS`.
+    const FILE_ATTRIBUTE_TAG_INFO: i32 = 9;
+    let mut info = FileAttributeTagInfo {
+        file_attributes: 0,
+        reparse_tag: 0,
+    };
+    // SAFETY: `file` is the live handle. `info` is writable for one
+    // `FileAttributeTagInfo`, and that size is the size passed in.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FILE_ATTRIBUTE_TAG_INFO,
+            &mut info as *mut FileAttributeTagInfo as *mut c_void,
+            std::mem::size_of::<FileAttributeTagInfo>() as u32,
+        )
+    };
+    if ok == 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(info.reparse_tag)
 }
 
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -1012,7 +1276,22 @@ mod tests {
             Path::new("box.bin"),
         )
         .expect_err("link count");
-        assert!(err.to_string().contains("not a regular file"), "{err}");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("box.bin"), "{msg}");
+        assert!(msg.contains("more than one link"), "{msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hard_linked_model_file_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let model = dir.path().join("model.gltf");
+        std::fs::write(&model, b"gltf").expect("write");
+        std::fs::hard_link(&model, dir.path().join("other.gltf")).expect("link");
+        let err = read_path(&model, 64, "").expect_err("links");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("model.gltf"), "{msg}");
+        assert!(msg.contains("more than one link"), "{msg}");
     }
 
     #[cfg(windows)]
@@ -1030,6 +1309,159 @@ mod tests {
             Path::new("box.bin"),
         )
         .expect_err("link count");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("box.bin"), "{msg}");
+        assert!(msg.contains("more than one link"), "{msg}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn hard_linked_model_file_is_rejected() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let model = dir.path().join("model.gltf");
+        std::fs::write(&model, b"gltf").expect("write");
+        std::fs::hard_link(&model, dir.path().join("other.gltf")).expect("link");
+        let err = read_path(&model, 64, "").expect_err("links");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("model.gltf"), "{msg}");
+        assert!(msg.contains("more than one link"), "{msg}");
+    }
+
+    #[test]
+    fn final_path_parser_refuses_closed_forms() {
+        let with_nul = utf16(r"\\?\C:\jail\a.bin")
+            .into_iter()
+            .map(|unit| if unit == u16::from(b'j') { 0 } else { unit })
+            .collect::<Vec<_>>();
+        assert!(windows_final_components(&with_nul).is_none());
+
+        assert!(windows_final_components(&utf16(r"\\?\1:\jail\a.bin")).is_none());
+        assert!(windows_final_components(&utf16(r"1:\jail\a.bin")).is_none());
+
+        for path in [
+            r"\\?\UNC\.\share\jail\a.bin",
+            r"\\?\UNC\..\share\jail\a.bin",
+            r"\\?\UNC\server\.\jail\a.bin",
+            r"\\?\UNC\server\..\jail\a.bin",
+            r"\\.\share\jail\a.bin",
+            r"\\server\..\jail\a.bin",
+        ] {
+            assert!(windows_final_components(&utf16(path)).is_none(), "{path}");
+        }
+
+        let mixed = utf16(r"\/?\C:\jail\a.bin");
+        assert!(windows_final_components(&mixed).is_none());
+        assert!(!windows_final_path_is_under_units(
+            &utf16(r"\\?\C:\jail"),
+            &mixed
+        ));
+        let other_mixed = utf16(r"/\?\C:\jail\a.bin");
+        assert!(windows_final_components(&other_mixed).is_none());
+    }
+
+    #[test]
+    fn cloud_file_reparse_tags_stay_and_link_tags_do_not() {
+        const REPARSE: u32 = 0x0000_0400;
+        const SYMLINK: u32 = 0xA000_000C;
+        const MOUNT_POINT: u32 = 0xA000_0003;
+        assert!(!reparse_is_refused(REPARSE, 0x9000_001A));
+        assert!(!reparse_is_refused(REPARSE, 0x9000_F01A));
+        assert!(reparse_is_refused(REPARSE, SYMLINK));
+        assert!(reparse_is_refused(REPARSE, MOUNT_POINT));
+        assert!(reparse_is_refused(REPARSE, 0x8000_0015));
+        assert!(!reparse_is_refused(0, SYMLINK));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn model_parent_replaced_before_open_is_refused() {
+        let _guard = ClearResolveHook;
+        let parent = tempfile::tempdir().expect("parent");
+        let jail = parent.path().join("jail");
+        std::fs::create_dir(&jail).expect("jail");
+        let model = jail.join("model.gltf");
+        std::fs::write(&model, b"gltf").expect("write");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&outside).expect("outside");
+        std::fs::write(outside.join("model.gltf"), b"evil").expect("evil");
+        let jail_hook = jail.clone();
+        let outside_hook = outside.clone();
+        let parked = parent.path().join("parked");
+        AFTER_RESOLVE.with(|cell| {
+            *cell.borrow_mut() = Some(Box::new(move || {
+                std::fs::rename(&jail_hook, &parked).expect("park");
+                std::os::unix::fs::symlink(&outside_hook, &jail_hook).expect("swap");
+            }));
+        });
+        let err = read_path(&model, 64, "").expect_err("replaced parent");
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolved_component_reparse_is_refused_on_its_own() {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                super::FORCE_DIRECTORY_REPARSE.with(|cell| cell.set(false));
+            }
+        }
+        let _guard = Clear;
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::write(root.path().join("box.bin"), b"box!").expect("bin");
+        super::FORCE_DIRECTORY_REPARSE.with(|cell| cell.set(true));
+        let err = read_under(
+            root.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect_err("directory reparse");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+        let bytes = read_under(
+            root.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect("real directory");
+        assert_eq!(bytes, b"box!");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn resolved_component_final_path_is_refused_on_its_own() {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                super::COMPONENT_FINAL_OVERRIDE.with(|cell| cell.take());
+            }
+        }
+        let _guard = Clear;
+        let root = tempfile::tempdir().expect("tempdir");
+        std::fs::write(root.path().join("box.bin"), b"box!").expect("bin");
+        super::COMPONENT_FINAL_OVERRIDE.with(|cell| {
+            cell.set(Some(std::path::PathBuf::from(r"\\?\D:\outside\jail")));
+        });
+        let err = read_under(
+            root.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect_err("component final path");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+        let bytes = read_under(
+            root.path(),
+            Path::new("box.bin"),
+            64,
+            "",
+            Path::new("box.bin"),
+        )
+        .expect("real final path");
+        assert_eq!(bytes, b"box!");
     }
 }
