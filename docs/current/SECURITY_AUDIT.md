@@ -230,7 +230,7 @@ Searched the LLM, quest, dialogue, memory, and coordination crates for `Command:
 
 ### What exists
 
-`astraweave-asset` forbids `unsafe_code` on non-Windows targets. On Windows the crate denies `unsafe_code`. `bounded_open::final_path` calls `GetFinalPathNameByHandleW` for the opened file and the resolved root. Those paths are compared as exact UTF-16 components. Default features include `gltf`.
+`astraweave-asset` forbids `unsafe_code` on non-Windows targets. On Windows the crate denies `unsafe_code`. `bounded_open::final_path` calls `GetFinalPathNameByHandleW` for each opened component. Those paths are compared as exact UTF-16 units. A file with more than one link is refused. Default features include `gltf`.
 
 The JSON glTF loaders take an explicit base directory and read file URIs with `gltf_external::load_jailed_gltf`. A `data:` URI stays in memory. `jail_gltf_uri` rejects `:`, `%`, `\`, and NUL, then `safe_under` against that base. Buffer and image URI bytes share the caller's cap, and more than 64 URIs is an error. `decode_gltf_image` uses `decode_limited_image`. There is no extension allowlist.
 
@@ -242,7 +242,7 @@ Cell streaming: `load_cell_from_ron` reads the whole file and `ron::from_str`s i
 
 Pack Guard is `tools/xtask/src/fetch_assets.rs`. `is_safe_relative` (`:1473-1486`) rejects empty paths, absolute paths, `..`, roots, and prefixes. `unpack_zip` (`:1627`) rejects more than 10_000 entries (`MAX_PACK_ENTRIES` at `:1624`, check `:1630-1635`) and a declared uncompressed total above 512 MiB (`MAX_PACK_UNCOMPRESSED_BYTES` at `:1625`, check `:1647-1651`). Traversal still bails at `:1644-1646`. After `std::io::copy` a member that wrote more than its declared size is rejected (`:1662-1664`). This runs in the asset fetch tool, not in the frame loop. Tests in `tools/xtask/tests/fetch_assets.rs` already cover the traversal reject.
 
-`safe_under` (`astraweave-security/src/path.rs`) is the jail for glTF file URIs (the caller-supplied base, which `mesh_gltf` and `visual_3d` set to the model file's parent), `load_asset` (the assets root), and editor scene serialization, texture gen, and the demo builder. The caller-supplied directory is resolved once. On Unix each URI component is then opened from the directory handle with `O_NOFOLLOW`. On Windows the resolved root is opened without reparse-point semantics. Each URI component is reopened by path from that root and any reparse point is rejected. The root and directory handles stay open until the file is opened. The file's final path must be under the root's final path. Do not write a third path checker. `is_safe_relative` stays the zip-member check; it does not look at the filesystem.
+`safe_under` (`astraweave-security/src/path.rs`) is the jail for glTF file URIs (the caller-supplied base, which `mesh_gltf` and `visual_3d` set to the model file's parent), `load_asset` (the assets root), and editor scene serialization, texture gen, and the demo builder. The caller-supplied directory is resolved once. On Unix each component of that absolute path is opened from `/` with `O_DIRECTORY` and `O_NOFOLLOW`, then each URI component is opened from that directory handle. On Windows each component of that absolute path is opened with reparse-point semantics, a reparse point is rejected, and that component's final path must stay under the previous component. Each URI component is reopened by path from that root and any reparse point is rejected. The root and directory handles stay open until the file is opened. The file's final path must be under the root's final path. A file with more than one link is refused. Do not write a third path checker. `is_safe_relative` stays the zip-member check; it does not look at the filesystem.
 
 Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around the `read_to_string` + `serde_json::from_str` helpers, and `regional_archetype_mask.rs:243-244`) also take a caller path with no size cap. They are the same class of hole as cell RON. PR #215 is the terrain streamer and should pick up the same jail rather than grow a new one.
 
@@ -254,7 +254,7 @@ Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around th
 
 ### Unsafe on this path
 
-On Windows, `GetFinalPathNameByHandleW` is the `unsafe` call in `astraweave-asset` (`bounded_open.rs:245-290`). Final-path components compare as exact UTF-16 units. The opened file stays under the resolved root. `meshopt` is C++ and is why the asset test binary links `libstdc++`. That is a build dependency, not an `unsafe` block on the loader path.
+On Windows, `GetFinalPathNameByHandleW` is the `unsafe` call in `astraweave-asset` (`bounded_open.rs:340-385`). Final-path components compare as exact UTF-16 units. The opened file stays under the resolved root. A file with more than one link is refused. `meshopt` is C++ and is why the asset test binary links `libstdc++`. That is a build dependency, not an `unsafe` block on the loader path.
 
 ---
 
