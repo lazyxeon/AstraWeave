@@ -50,7 +50,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 
 These path-filtered workflows are not in the required set because a filter would skip them and leave a check pending: trace sync, doc-truth lint, docs, and Miri job `miri-ecs-hotpath` (`miri.yml`; paths `astraweave-ecs/src/blob_vec.rs`, `sparse_set.rs`, and `archetype.rs`). That Miri job is not required. `net-tests.yml` still triggers on every pull request; its job is scope-conditional (`--scope net`), not path-filtered (see below). Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
-`PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub treats a skipped required check as missing, which blocks the merge. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
+`PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub counts a job skipped by its `if:` as passing, so a required heavy job would pass on any skip, including after a failed archive build. A skipped matrix job reports only its unexpanded name, so the per-partition names would never report. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
 
 ### Main, nightly, workflow_dispatch
 
@@ -220,6 +220,7 @@ On the `pull_request` rule, replace `parameters` with the live object and `requi
   "require_extra_approval_for_unattributed_changes": true,
   "require_last_push_approval": true,
   "required_approving_review_count": 2,
+  "required_review_thread_resolution": true,
   "required_reviewers": []
 }
 ```
@@ -238,7 +239,7 @@ Require:
 - `pack-managed paths untracked + ignore surfaces current`
 - `OpenSSF Scorecard Analysis`
 
-Do not require the individual `Test (ubuntu, N/3)`, `Test (windows, N/3)`, or `Gate` names as branch-protection checks. On a docs-only pull request the archive and partition jobs are skipped, and a skipped required check blocks the merge. `Gate (fmt, clippy, check)` still runs (player-facing name check and workflow policy); only its `Rust CI setup` step is conditional (`.github/workflows/ci.yml:122`). `PR Rust checks` is the rollup.
+Do not require the individual `Test (ubuntu, N/3)`, `Test (windows, N/3)`, or `Gate` names as branch-protection checks. On a docs-only pull request the archive and partition jobs are skipped by their job `if:`. GitHub counts a skipped required check as passing, so requiring them would not catch a failed archive build: the partitions behind it are skipped too. A skipped matrix job also reports only its unexpanded name, such as `Test (ubuntu, ${{ matrix.partition }}/3)`, so `Test (ubuntu, 1/3)` would never report and would leave every pull request pending. `Gate (fmt, clippy, check)` still runs (player-facing name check and workflow policy); only its `Rust CI setup` step is conditional (`.github/workflows/ci.yml:122`). `PR Rust checks` is the rollup.
 
 Do not require `Test (ubuntu, build archive)`, `Test (windows, build archive)`, or either platform's `Test (*, N/3)` jobs individually. The rollup fails if an archive build fails or any partition fails. Do not require scope- or path-gated jobs individually: `net-tests` (every pull request; job skipped when scope is cold), trace sync, doc-truth, docs, Miri `miri-ecs-hotpath`. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
