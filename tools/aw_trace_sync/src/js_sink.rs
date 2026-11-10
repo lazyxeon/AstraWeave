@@ -482,7 +482,14 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
     let mate = match_brackets(&tokens);
     let stringish = stringish_names(&tokens);
     let mut i = 0;
+    let mut spins = 0usize;
+    let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i < tokens.len() {
+        spins += 1;
+        if spins > cap {
+            out.insert("scan failed closed".to_string());
+            break;
+        }
         match &tokens[i] {
             Tok::Error => {
                 out.insert("scan failed closed".to_string());
@@ -877,7 +884,13 @@ fn url_value_allowed(tokens: &[Tok], paren: usize) -> bool {
 fn safe_url_names(tokens: &[Tok]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     let mut i = 0;
+    let mut spins = 0usize;
+    let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i + 3 < tokens.len() {
+        spins += 1;
+        if spins > cap {
+            break;
+        }
         if matches!(&tokens[i], Tok::Ident(kw) if matches!(kw.as_str(), "const" | "let" | "var")) {
             if let (Tok::Ident(name), Some(Tok::Assign), Some(Tok::Str(value) | Tok::Tpl(value))) =
                 (&tokens[i + 1], tokens.get(i + 2), tokens.get(i + 3))
@@ -910,7 +923,13 @@ fn safe_url_literal(value: &str) -> bool {
 fn inside_function(tokens: &[Tok], at: usize, name: &str) -> bool {
     let mut depth = 0i32;
     let mut i = at;
+    let mut spins = 0usize;
+    let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i > 0 {
+        spins += 1;
+        if spins > cap {
+            return false;
+        }
         i -= 1;
         match &tokens[i] {
             Tok::RBrace => depth += 1,
@@ -935,7 +954,13 @@ fn brace_is_function(tokens: &[Tok], brace: usize, name: &str) -> bool {
     }
     let mut i = brace - 1;
     let mut depth = 0i32;
+    let mut spins = 0usize;
+    let cap = tokens.len().saturating_mul(4).saturating_add(8);
     loop {
+        spins += 1;
+        if spins > cap {
+            return false;
+        }
         match &tokens[i] {
             Tok::RParen => depth += 1,
             Tok::LParen => {
@@ -1384,7 +1409,13 @@ fn prev_is_keyword(tokens: &[Tok], i: usize) -> bool {
 fn stringish_names(tokens: &[Tok]) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
     let mut i = 0;
+    let mut spins = 0usize;
+    let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i + 2 < tokens.len() {
+        spins += 1;
+        if spins > cap {
+            break;
+        }
         if let Tok::Ident(kw) = &tokens[i] {
             if matches!(kw.as_str(), "const" | "let" | "var") {
                 if let Tok::Ident(name) = &tokens[i + 1] {
