@@ -259,14 +259,25 @@ fn validate_model_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
     let json = model_json(path, bytes)?;
     let mut uris = Vec::new();
     collect_uris(&json, &mut uris);
-    if uris.len() > 64 {
+    if uris.len() > astraweave_asset::gltf_external::MAX_EXTERNAL_URIS {
         bail!("model {} has too many external uris", path.display());
     }
     let parent = path.parent().context("model has no directory")?;
+    let mut external_bytes = 0u64;
     for uri in uris {
         check_relative_uri(&uri)?;
         let sibling = parent.join(&uri);
-        regular_file(&sibling, MAX_MODEL_BYTES).with_context(|| format!("external uri {uri}"))?;
+        let meta = regular_file(&sibling, MAX_MODEL_BYTES)
+            .with_context(|| format!("external uri {uri}"))?;
+        external_bytes = external_bytes
+            .checked_add(meta.len())
+            .context("external byte total")?;
+        if external_bytes > MAX_MODEL_BYTES {
+            bail!(
+                "model {} external bytes exceed {MAX_MODEL_BYTES}",
+                path.display()
+            );
+        }
         // `symlink_metadata` on the final path does not see a symlink directory
         // above it. The canonical path has to stay inside the model directory.
         confine_existing(parent, &sibling).with_context(|| format!("external uri {uri}"))?;
@@ -696,6 +707,30 @@ mod tests {
         assert_eq!(images.len(), 1);
         assert_eq!((images[0].width, images[0].height), (1, 1));
         assert_eq!(&images[0].pixels[..4], &[9, 8, 7, 6]);
+    }
+
+    #[test]
+    fn external_reads_respect_total_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hero.gltf");
+        let big = 20 * 1024 * 1024;
+        for name in ["a.bin", "b.bin"] {
+            let file = fs::File::create(dir.path().join(name)).unwrap();
+            file.set_len(big).unwrap();
+        }
+        fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [
+                    {"uri": "a.bin", "byteLength": 4},
+                    {"uri": "b.bin", "byteLength": 4}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let err = validate_model_file(&path).unwrap_err();
+        assert!(err.to_string().contains("exceed"), "{err}");
     }
 
     /// Props import goes through `import_validated_model`. A FIFO must fail

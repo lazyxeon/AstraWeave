@@ -269,8 +269,12 @@ impl App {
 
         if self.load_mesh && !self.mesh_loaded {
             use astraweave_asset::gltf_loader as gl;
-            if let Ok(bytes) = std::fs::read("assets/demo_plane.gltf") {
-                if let Ok((mesh, mat)) = gl::load_first_mesh_and_material(&bytes) {
+            let model_path = std::path::Path::new("assets/demo_plane.gltf");
+            let model_base = model_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new("."));
+            if let Ok(bytes) = std::fs::read(model_path) {
+                if let Ok((mesh, mat)) = gl::load_first_mesh_and_material(model_base, &bytes) {
                     // Use full vertex data (positions, normals, tangents, uvs)
                     let gpu_mesh = renderer.create_mesh_from_full_arrays(
                         &mesh.positions,
@@ -360,10 +364,11 @@ impl App {
         // Load a skinned glTF (first skinned node) and an optional idle clip
         if self.load_skinned_gltf && !self.skinned_gltf_loaded {
             use astraweave_asset::gltf_loader as gl;
-            let path = "assets/skinned_demo.gltf"; // expected to be placed by user in assets/
+            let path = std::path::Path::new("assets/skinned_demo.gltf");
+            let model_base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
             if let Ok(bytes) = std::fs::read(path) {
                 if let Ok((mesh, _skeleton, animations, mat_opt)) =
-                    gl::load_skinned_mesh_complete(&bytes)
+                    gl::load_skinned_mesh_complete(model_base, &bytes)
                 {
                     // Convert to renderer format
                     let verts: Vec<SkinnedVertex> = mesh
@@ -420,10 +425,10 @@ impl App {
                     }
                     self.skinned_gltf_loaded = true;
                 } else {
-                    eprintln!("Failed to parse skinned glTF: {path}");
+                    eprintln!("Failed to parse skinned glTF: {}", path.display());
                 }
             } else {
-                eprintln!("Missing {path}");
+                eprintln!("Missing {}", path.display());
             }
         }
 

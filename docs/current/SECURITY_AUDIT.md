@@ -232,7 +232,7 @@ Searched the LLM, quest, dialogue, memory, and coordination crates for `Command:
 
 `astraweave-asset` is `#![forbid(unsafe_code)]`. Default features include `gltf`.
 
-`gltf_loader::load_uri_bytes` (`astraweave-asset/src/lib.rs:826-842`) accepts a `data:` base64 URI in memory. A file URI goes through `safe_under` against the process current directory, and the error text is `path traversal rejected` (`:837-838`), before `std::fs::read` (`:839`). `load_from_gltf_json` calls that for every buffer URI (`:775`). `decode_image_from_gltf` (`:844`) calls `safe_under` again for a non-data image URI (`:864-866`). There is no extension allowlist.
+The JSON glTF loaders take an explicit base directory and read file URIs with `gltf_external::load_jailed_gltf`. A `data:` URI stays in memory. `jail_gltf_uri` rejects `:`, `%`, `\`, and NUL, then `safe_under` against that base. Buffer and image URI bytes share the caller's cap, and more than 64 URIs is an error. `decode_gltf_image` uses `decode_limited_image`. There is no extension allowlist.
 
 `mesh_gltf::load_gltf` (`astraweave-render/src/mesh_gltf.rs:47-50`) calls `reject_escaping_gltf_uris` (`:30-49`) before `gltf::import`. The editor calls it from `tools/aw_editor/src/viewport/engine_adapter.rs:1345` (and `:1496`, `:2891`). A mesh the editor opens is a hostile file.
 
@@ -242,13 +242,13 @@ Cell streaming: `load_cell_from_ron` reads the whole file and `ron::from_str`s i
 
 Pack Guard is `tools/xtask/src/fetch_assets.rs`. `is_safe_relative` (`:1473-1486`) rejects empty paths, absolute paths, `..`, roots, and prefixes. `unpack_zip` (`:1627`) rejects more than 10_000 entries (`MAX_PACK_ENTRIES` at `:1624`, check `:1630-1635`) and a declared uncompressed total above 512 MiB (`MAX_PACK_UNCOMPRESSED_BYTES` at `:1625`, check `:1647-1651`). Traversal still bails at `:1644-1646`. After `std::io::copy` a member that wrote more than its declared size is rejected (`:1662-1664`). This runs in the asset fetch tool, not in the frame loop. Tests in `tools/xtask/tests/fetch_assets.rs` already cover the traversal reject.
 
-`safe_under` (`astraweave-security/src/path.rs`) is the jail for `load_uri_bytes` and `decode_image_from_gltf` (base `std::env::current_dir()`), `load_asset` (the assets root), and `mesh_gltf` (the glTF file's parent), and for editor scene serialization, texture gen, and the demo builder. Do not write a third path checker. `is_safe_relative` stays the zip-member check; it does not look at the filesystem.
+`safe_under` (`astraweave-security/src/path.rs`) is the jail for glTF file URIs (the caller-supplied base, which `mesh_gltf` and `visual_3d` set to the model file's parent), `load_asset` (the assets root), and editor scene serialization, texture gen, and the demo builder. The file read opens that directory and then the relative name from the directory handle. Do not write a third path checker. `is_safe_relative` stays the zip-member check; it does not look at the filesystem.
 
 Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around the `read_to_string` + `serde_json::from_str` helpers, and `regional_archetype_mask.rs:243-244`) also take a caller path with no size cap. They are the same class of hole as cell RON. PR #215 is the terrain streamer and should pick up the same jail rather than grow a new one.
 
 ### Findings
 
-**SEC-ASSET-1.** Both proofs reject `../` before the read. `load_uri_bytes` calls `safe_under` and maps the error to `path traversal rejected` (`astraweave-asset/src/lib.rs:837-838`). `load_asset` does the same (`cell_loader.rs:224-225`).
+**SEC-ASSET-1.** Both proofs reject `../` before the read. glTF file URIs go through `jail_gltf_uri` and `safe_under` on the caller-supplied base. `load_asset` maps a jail failure to `path traversal rejected` (`cell_loader.rs:224-225`).
 
 **SEC-ASSET-2.** `unpack_zip` caps entries at 10_000 and declared uncompressed bytes at 512 MiB (`tools/xtask/src/fetch_assets.rs:1624-1625`, `:1630-1635`, `:1647-1651`). `load_persona_zip` uses the same 10_000 and 512 MiB budgets (`astraweave-persona/src/lib.rs:52-53`, `:59-74`) and stops `persona_manifest.toml` at 1 MiB (`:54`, `:80-88`). Image decode uses `decode_limited_image`: 64 MiB and a 4096 edge (`astraweave-asset/src/image_limits.rs:10-12`).
 
@@ -351,7 +351,7 @@ Each fix rejects input. None of them reorder fields, bump `SAVE_SCHEMA_VERSION`,
 
 ### Assets
 
-1. Resolve glTF buffer and image URIs with `safe_under` against the glTF file's directory. `data:` URIs stay in memory and get a byte cap (proposal: 16 MiB decoded). On main `load_uri_bytes` calls `safe_under` against `std::env::current_dir()` (`astraweave-asset/src/lib.rs:836-838`). `decode_image_from_gltf` uses that same current-directory base (`:863-866`). `mesh_gltf::reject_escaping_gltf_uris` calls `safe_under` against the glTF file's parent (`astraweave-render/src/mesh_gltf.rs:31`, `:19-25`). The `data:` byte cap in that sentence is not the landed image cap.
+1. Resolve glTF buffer and image URIs with `safe_under` against the glTF file's directory. `data:` URIs stay in memory and get a byte cap (proposal: 16 MiB decoded). On main the JSON loaders take that directory and call `load_jailed_gltf`. Buffer and image URI bytes share the caller's cap (256 MiB on the editor and cook paths, 32 MiB on the runtime). `mesh_gltf::reject_escaping_gltf_uris` jails against the glTF file's parent and refuses more than 64 URIs. The `data:` byte cap in that sentence is not the landed image cap. The landed image decode cap is 64 MiB and a 4096 edge.
 2. `load_asset` refuses a path that is not `safe_under(assets_root, relative)`. On main that refuse is `cell_loader.rs:224-225`.
 3. `unpack_zip` and `load_persona_zip` stop after a total uncompressed budget (proposal: 512 MiB) and an entry cap (proposal: 10_000). Traversal behavior stays `is_safe_relative`. On main those are the landed numbers: `MAX_PACK_ENTRIES` and `MAX_PACK_UNCOMPRESSED_BYTES` (`tools/xtask/src/fetch_assets.rs:1624-1625`) and `MAX_PERSONA_ZIP_ENTRIES` and `MAX_PERSONA_UNCOMPRESSED_BYTES` (`astraweave-persona/src/lib.rs:52-53`). The persona manifest stops at 1 MiB (`:54`).
 4. Set `image::Limits` explicitly: `max_alloc` 64 MiB, and a width and height cap (proposal: 8192) on the glTF image decode. Editor loads of the current CC0 packs must be measured first; if a pack image is larger, raise the constant above that image rather than decoding it unbounded. On main `decode_limited_image` uses 64 MiB and a 4096 edge (`astraweave-asset/src/image_limits.rs:10-12`).

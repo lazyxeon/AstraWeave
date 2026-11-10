@@ -48,7 +48,7 @@ mod gltf_tests {
     fn test_load_missing_buffer_gltf() {
         let path = fixture_path("missing_buffer.gltf");
         let bytes = fs::read(&path).expect("Failed to read missing_buffer.gltf");
-        let result = load_first_mesh_and_material(&bytes);
+        let result = load_first_mesh_and_material(std::path::Path::new("."), &bytes);
         assert!(result.is_err(), "GLTF with missing buffer should fail");
     }
 
@@ -74,7 +74,8 @@ mod gltf_tests {
     fn test_validate_mesh_vertex_counts() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Just validate consistency, not specific counts
         assert!(!mesh.positions.is_empty(), "Mesh should have vertices");
@@ -100,7 +101,8 @@ mod gltf_tests {
     fn test_validate_mesh_index_counts() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         assert!(!mesh.indices.is_empty(), "Mesh should have indices");
         assert_eq!(
@@ -115,7 +117,8 @@ mod gltf_tests {
     fn test_validate_uv_coordinates() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for (i, uv) in mesh.texcoords.iter().enumerate() {
             // Allow slight overflow for tiling textures, but ensure reasonable range
@@ -143,7 +146,7 @@ mod gltf_tests {
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
         // This tests error handling - the demo_plane.gltf might have issues
-        match load_first_mesh_and_material(&bytes) {
+        match load_first_mesh_and_material(std::path::Path::new("."), &bytes) {
             Ok((mesh, _)) => {
                 for (i, normal) in mesh.normals.iter().enumerate() {
                     // Validate normals are at least finite
@@ -179,7 +182,8 @@ mod gltf_tests {
     fn test_validate_indices_within_bounds() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         let vertex_count = mesh.positions.len() as u32;
         for (i, &index) in mesh.indices.iter().enumerate() {
@@ -198,7 +202,8 @@ mod gltf_tests {
     fn test_validate_material_base_color() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (_, material) = load_first_mesh_and_material(&bytes).expect("Failed to load material");
+        let (_, material) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load material");
 
         assert_eq!(
             material.base_color_factor,
@@ -212,7 +217,8 @@ mod gltf_tests {
     fn test_validate_material_pbr_factors() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (_, material) = load_first_mesh_and_material(&bytes).expect("Failed to load material");
+        let (_, material) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load material");
 
         // Just validate they're in valid range [0,1]
         assert!(
@@ -248,7 +254,8 @@ mod gltf_tests {
     fn test_validate_positions_valid_floats() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for pos in &mesh.positions {
             assert!(pos[0].is_finite(), "Position X should be finite");
@@ -262,7 +269,8 @@ mod gltf_tests {
     fn test_validate_tangent_w_component() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for tangent in &mesh.tangents {
             assert!(
@@ -282,7 +290,7 @@ mod gltf_tests {
             return;
         }
         let bytes = fs::read(&path).expect("Failed to read bed.glb");
-        let result = load_first_mesh_and_material(&bytes);
+        let result = load_first_mesh_and_material(std::path::Path::new("."), &bytes);
         match result {
             Ok((mesh, _mat)) => {
                 assert!(
@@ -306,7 +314,8 @@ mod gltf_tests {
     fn test_validate_triangle_winding() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Check that indices form valid triangles
         assert_eq!(
@@ -376,7 +385,8 @@ mod gltf_tests {
     fn test_validate_mesh_bounds() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Calculate bounding box
         let mut min = [f32::MAX; 3];

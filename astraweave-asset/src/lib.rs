@@ -300,7 +300,6 @@ pub mod blend_import {
 #[cfg(feature = "gltf")]
 pub mod gltf_loader {
     use anyhow::{anyhow, bail, Context, Result};
-    use base64::Engine as _;
     use gltf::Gltf;
 
     /// Minimal glTF loader prototype: validates header and detects JSON vs BIN format.
@@ -576,11 +575,15 @@ pub mod gltf_loader {
 
     /// Load first mesh and minimal PBR material (baseColor factor/texture, metallic/roughness) from either GLB or GLTF JSON bytes.
     /// Supports GLB embedded BIN and GLTF JSON with data: URIs for buffers/images.
-    pub fn load_first_mesh_and_material(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
+    /// `base` is the directory file URIs are read from.
+    pub fn load_first_mesh_and_material(
+        base: &std::path::Path,
+        bytes: &[u8],
+    ) -> Result<(MeshData, MaterialData)> {
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            load_from_glb(bytes)
+            load_from_glb(base, bytes)
         } else {
-            load_from_gltf_json(bytes)
+            load_from_gltf_json(base, bytes)
         }
     }
 
@@ -598,8 +601,8 @@ pub mod gltf_loader {
             let mut bytes = b"glTF".to_vec();
             bytes.extend_from_slice(&2u32.to_le_bytes());
             bytes.extend_from_slice(&8u32.to_le_bytes());
-            let err =
-                load_first_mesh_and_material(&bytes).expect_err("short header must not panic");
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+                .expect_err("short header must not panic");
             assert_short_header(err);
         }
 
@@ -617,7 +620,7 @@ pub mod gltf_loader {
             bytes.extend_from_slice(&(inner.len() as u32).to_le_bytes());
             bytes.extend_from_slice(b"JSON");
             bytes.extend_from_slice(&inner);
-            let err = load_first_mesh_and_material(&bytes)
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
                 .expect_err("json chunk short header must not panic");
             assert_short_header(err);
         }
@@ -632,8 +635,8 @@ pub mod gltf_loader {
             bytes.extend_from_slice(&2u32.to_le_bytes());
             bytes.extend_from_slice(b"JSON");
             bytes.extend_from_slice(b"{}");
-            let err =
-                load_first_mesh_and_material(&bytes).expect_err("padded header must not panic");
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+                .expect_err("padded header must not panic");
             assert_short_header(err);
 
             let dir = tempfile::tempdir().expect("tempdir");
@@ -654,7 +657,7 @@ pub mod gltf_loader {
             bytes.extend_from_slice(b"JSON");
             bytes.extend_from_slice(b"{}");
             assert_eq!(bytes.len(), 22);
-            let err = load_first_mesh_and_material(&bytes)
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
                 .expect_err("oversized declared length must not allocate");
             let msg = err.to_string();
             assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
@@ -789,7 +792,7 @@ pub mod gltf_loader {
         mut decode_image: F,
     ) -> Result<MaterialData>
     where
-        F: FnMut(gltf::image::Source) -> Result<ImageData>,
+        F: FnMut(&gltf::Image<'_>) -> Result<ImageData>,
     {
         let mut mat = MaterialData::default();
         let pbr = mat_g.pbr_metallic_roughness();
@@ -799,21 +802,21 @@ pub mod gltf_loader {
         mat.metallic_factor = pbr.metallic_factor();
         mat.roughness_factor = pbr.roughness_factor();
         if let Some(tex) = pbr.base_color_texture() {
-            mat.base_color_texture = Some(decode_image(tex.texture().source().source())?);
+            mat.base_color_texture = Some(decode_image(&tex.texture().source())?);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
-            mat.metallic_roughness_texture = Some(decode_image(tex.texture().source().source())?);
+            mat.metallic_roughness_texture = Some(decode_image(&tex.texture().source())?);
         }
 
         // Normal map
         if let Some(n) = mat_g.normal_texture() {
-            mat.normal_texture = Some(decode_image(n.texture().source().source())?);
+            mat.normal_texture = Some(decode_image(&n.texture().source())?);
         }
 
         // Emissive
         mat.emissive_factor = mat_g.emissive_factor();
         if let Some(tex) = mat_g.emissive_texture() {
-            mat.emissive_texture = Some(decode_image(tex.texture().source().source())?);
+            mat.emissive_texture = Some(decode_image(&tex.texture().source())?);
         }
         // KHR_materials_emissive_strength
         if let Some(strength) = mat_g.emissive_strength() {
@@ -823,7 +826,7 @@ pub mod gltf_loader {
         // Occlusion
         if let Some(occ) = mat_g.occlusion_texture() {
             mat.occlusion_strength = occ.strength();
-            mat.occlusion_texture = Some(decode_image(occ.texture().source().source())?);
+            mat.occlusion_texture = Some(decode_image(&occ.texture().source())?);
         }
 
         // Alpha mode
@@ -932,36 +935,10 @@ pub mod gltf_loader {
     /// with `gltf_external::load_jailed_gltf`, which reads buffers and images
     /// through `read_jailed_file`, instead of `Gltf::open` and `gltf::import`.
     ///
-    /// `metadata().is_file()` runs before `File::open`. Opening a FIFO blocks
-    /// until another process connects, so the regular-file check has to happen
-    /// on the stat result.
+    /// The parent directory is opened, then the file name is opened from that
+    /// handle. A FIFO is not a regular file, so the read never blocks on it.
     pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
-        let meta = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
-        if !meta.is_file() {
-            bail!("GLB {} is not a regular file", path.display());
-        }
-        if meta.len() > MAX_GLB_CONTAINER_BYTES {
-            bail!(
-                "GLB {} is {} bytes; limit is {MAX_GLB_CONTAINER_BYTES}",
-                path.display(),
-                meta.len()
-            );
-        }
-        let mut file =
-            std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-        let mut bytes = Vec::new();
-        {
-            use std::io::Read;
-            Read::take(&mut file, MAX_GLB_CONTAINER_BYTES + 1)
-                .read_to_end(&mut bytes)
-                .with_context(|| format!("read {}", path.display()))?;
-        }
-        if bytes.len() as u64 > MAX_GLB_CONTAINER_BYTES {
-            bail!(
-                "GLB {} exceeds {MAX_GLB_CONTAINER_BYTES} bytes",
-                path.display()
-            );
-        }
+        let bytes = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
         reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;
         Ok(bytes)
     }
@@ -982,7 +959,7 @@ pub mod gltf_loader {
         Gltf::from_slice(bytes).context(parse_context)
     }
 
-    fn load_from_glb(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
+    fn load_from_glb(base: &std::path::Path, bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
         use gltf::buffer::Data as BufferData;
         let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
@@ -1033,8 +1010,8 @@ pub mod gltf_loader {
 
         let mat = {
             let mat_g = prim.material();
-            extract_extended_material(&mat_g, |source| {
-                decode_image_from_gltf(source, Some(&buffers))
+            extract_extended_material(&mat_g, |image| {
+                decode_image_from_gltf(base, image.source(), Some(&buffers))
             })?
         };
 
@@ -1050,17 +1027,11 @@ pub mod gltf_loader {
         ))
     }
 
-    fn load_from_gltf_json(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
-        let doc = read_gltf(bytes, "Parse .gltf JSON")?;
-
-        // Build buffer sources that may include data: URIs
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        for b in doc.buffers() {
-            match b.source() {
-                gltf::buffer::Source::Bin => bail!(".gltf JSON should not have BIN source"),
-                gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-            }
-        }
+    fn load_from_gltf_json(
+        base: &std::path::Path,
+        bytes: &[u8],
+    ) -> Result<(MeshData, MaterialData)> {
+        let (doc, buffers, images) = load_json_parts(base, bytes)?;
 
         let mesh = doc.meshes().next().ok_or_else(|| anyhow!("No meshes"))?;
         let prim = mesh
@@ -1094,8 +1065,10 @@ pub mod gltf_loader {
         };
 
         let prim_mat = prim.material();
-        let mat =
-            extract_extended_material(&prim_mat, |source| decode_image_from_gltf(source, None))?;
+        let mat = extract_extended_material(&prim_mat, |image| {
+            let loaded = images.get(image.index()).context("gltf image index")?;
+            rgba_from_gltf_image(loaded)
+        })?;
 
         Ok((
             MeshData {
@@ -1109,27 +1082,33 @@ pub mod gltf_loader {
         ))
     }
 
-    fn load_uri_bytes(uri: &str) -> Result<Vec<u8>> {
-        if let Some(rest) = uri.strip_prefix("data:") {
-            // data:[<mediatype>][;base64],<data>
-            let parts: Vec<&str> = rest.split(',').collect();
-            if parts.len() != 2 {
-                bail!("Invalid data URI")
-            }
-            let data = base64::engine::general_purpose::STANDARD.decode(parts[1])?;
-            Ok(data)
-        } else {
-            let base = std::env::current_dir().context("asset jail base")?;
-            let path = astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
-                .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-            let bytes = std::fs::read(&path).with_context(|| format!("Read uri {uri}"))?;
-            Ok(bytes)
+    /// JSON glTF buffers and images, with the same caps as [`crate::gltf_external::load_jailed_gltf`].
+    fn load_json_parts(
+        base: &std::path::Path,
+        bytes: &[u8],
+    ) -> Result<(gltf::Document, Vec<Vec<u8>>, Vec<gltf::image::Data>)> {
+        let (document, buffers, images) =
+            crate::gltf_external::load_jailed_gltf(base, bytes, MAX_GLB_CONTAINER_BYTES)?;
+        let buffers = buffers.into_iter().map(|data| data.0).collect();
+        Ok((document, buffers, images))
+    }
+
+    fn image_from_loaded(
+        base: &std::path::Path,
+        image: gltf::Image<'_>,
+        buffers: &[gltf::buffer::Data],
+        loaded: &[gltf::image::Data],
+    ) -> Result<ImageData> {
+        if let Some(data) = loaded.get(image.index()) {
+            return rgba_from_gltf_image(data);
         }
+        decode_image_from_gltf(base, image.source(), Some(buffers))
     }
 
     fn decode_image_from_gltf(
+        base: &std::path::Path,
         source: gltf::image::Source,
-        buffers: Option<&Vec<gltf::buffer::Data>>,
+        buffers: Option<&[gltf::buffer::Data]>,
     ) -> Result<ImageData> {
         match source {
             gltf::image::Source::View { view, mime_type: _ } => {
@@ -1144,18 +1123,120 @@ pub mod gltf_loader {
             }
             gltf::image::Source::Uri { uri, .. } => {
                 let bytes = if uri.starts_with("data:") {
-                    load_uri_bytes(uri)?
+                    crate::gltf_external::decode_embedded_uri(uri)?
                 } else {
-                    let base = std::env::current_dir().context("asset jail base")?;
-                    let path =
-                        astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
-                            .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-                    crate::read_limited_image_bytes(&path)
-                        .with_context(|| format!("Read image uri {uri}"))?
+                    crate::gltf_external::jail_gltf_uri(base, uri)?;
+                    let relative = uri.split('?').next().unwrap_or(uri);
+                    crate::bounded_open::read_under(
+                        base,
+                        std::path::Path::new(relative),
+                        crate::image_limits::MAX_IMAGE_ALLOC,
+                        "",
+                        std::path::Path::new(relative),
+                    )
+                    .with_context(|| format!("Read image uri {uri}"))?
                 };
                 decode_image_bytes(&bytes)
             }
         }
+    }
+
+    fn rgba_from_gltf_image(image: &gltf::image::Data) -> Result<ImageData> {
+        let rgba8 = match image.format {
+            gltf::image::Format::R8G8B8A8 => image.pixels.clone(),
+            gltf::image::Format::R8G8B8 => {
+                let mut rgba = Vec::with_capacity(image.pixels.len() / 3 * 4);
+                for chunk in image.pixels.chunks_exact(3) {
+                    rgba.extend_from_slice(chunk);
+                    rgba.push(255);
+                }
+                rgba
+            }
+            gltf::image::Format::R8 => image
+                .pixels
+                .iter()
+                .flat_map(|&gray| [gray, gray, gray, 255])
+                .collect(),
+            gltf::image::Format::R8G8 => image
+                .pixels
+                .chunks_exact(2)
+                .flat_map(|la| [la[0], la[0], la[0], la[1]])
+                .collect(),
+            gltf::image::Format::R16 => gray16_rgba(&image.pixels, 1),
+            gltf::image::Format::R16G16 => gray16_rgba(&image.pixels, 2),
+            gltf::image::Format::R16G16B16 => samples16_rgba(&image.pixels, 3)?,
+            gltf::image::Format::R16G16B16A16 => samples16_rgba(&image.pixels, 4)?,
+            gltf::image::Format::R32G32B32FLOAT => samples32_rgba(&image.pixels, 3)?,
+            gltf::image::Format::R32G32B32A32FLOAT => samples32_rgba(&image.pixels, 4)?,
+        };
+        Ok(ImageData {
+            width: image.width,
+            height: image.height,
+            rgba8,
+        })
+    }
+
+    fn u16_byte(bytes: &[u8]) -> u8 {
+        let value = u16::from_le_bytes([bytes[0], bytes[1]]);
+        (value >> 8) as u8
+    }
+
+    fn gray16_rgba(pixels: &[u8], channels: usize) -> Vec<u8> {
+        let width = channels * 2;
+        let mut rgba = Vec::with_capacity(pixels.len() / width * 4);
+        for chunk in pixels.chunks_exact(width) {
+            let gray = u16_byte(chunk);
+            let alpha = if channels == 2 {
+                u16_byte(&chunk[2..])
+            } else {
+                255
+            };
+            rgba.extend_from_slice(&[gray, gray, gray, alpha]);
+        }
+        rgba
+    }
+
+    fn samples16_rgba(pixels: &[u8], channels: usize) -> Result<Vec<u8>> {
+        let width = channels * 2;
+        if pixels.len() % width != 0 {
+            bail!("gltf image byte length is not a whole pixel");
+        }
+        let mut rgba = Vec::with_capacity(pixels.len() / width * 4);
+        for chunk in pixels.chunks_exact(width) {
+            let sample = |index: usize| u16_byte(&chunk[index * 2..]);
+            let alpha = if channels == 4 { sample(3) } else { 255 };
+            rgba.extend_from_slice(&[sample(0), sample(1), sample(2), alpha]);
+        }
+        Ok(rgba)
+    }
+
+    fn samples32_rgba(pixels: &[u8], channels: usize) -> Result<Vec<u8>> {
+        let width = channels * 4;
+        if pixels.len() % width != 0 {
+            bail!("gltf image byte length is not a whole pixel");
+        }
+        let mut rgba = Vec::with_capacity(pixels.len() / width * 4);
+        for chunk in pixels.chunks_exact(width) {
+            let sample = |index: usize| {
+                let start = index * 4;
+                let value = f32::from_le_bytes([
+                    chunk[start],
+                    chunk[start + 1],
+                    chunk[start + 2],
+                    chunk[start + 3],
+                ]);
+                if value <= 0.0 {
+                    0
+                } else if value >= 1.0 {
+                    255
+                } else {
+                    (value * 255.0).round() as u8
+                }
+            };
+            let alpha = if channels == 4 { sample(3) } else { 255 };
+            rgba.extend_from_slice(&[sample(0), sample(1), sample(2), alpha]);
+        }
+        Ok(rgba)
     }
 
     fn decode_image_bytes(bytes: &[u8]) -> Result<ImageData> {
@@ -1292,7 +1373,7 @@ pub mod gltf_loader {
     }
 
     /// Load skeleton from glTF/GLB with inverse bind matrices and hierarchy
-    pub fn load_skeleton(bytes: &[u8]) -> Result<Skeleton> {
+    pub fn load_skeleton(base: &std::path::Path, bytes: &[u8]) -> Result<Skeleton> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             // GLB path
             let glb = read_glb(bytes)?;
@@ -1323,12 +1404,8 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
+            let (_document, loaded, _images) = load_json_parts(base, bytes)?;
+            buffers = loaded;
         }
 
         // Build joint hierarchy
@@ -1441,7 +1518,11 @@ pub mod gltf_loader {
     }
 
     /// Load all animation clips from glTF/GLB
-    pub fn load_animations(bytes: &[u8], _skeleton: &Skeleton) -> Result<Vec<AnimationClip>> {
+    pub fn load_animations(
+        base: &std::path::Path,
+        bytes: &[u8],
+        _skeleton: &Skeleton,
+    ) -> Result<Vec<AnimationClip>> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             let glb = read_glb(bytes)?;
             let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
@@ -1464,12 +1545,8 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
+            let (_document, loaded, _images) = load_json_parts(base, bytes)?;
+            buffers = loaded;
         }
 
         // Build node-to-joint mapping for this skeleton
@@ -1627,6 +1704,7 @@ pub mod gltf_loader {
     /// Load first skinned mesh primitive (positions, normals, JOINTS_0, WEIGHTS_0) with complete skeleton and animations.
     /// Returns: (mesh data, skeleton, animation clips, optional material)
     pub fn load_skinned_mesh_complete(
+        base: &std::path::Path,
         bytes: &[u8],
     ) -> Result<(
         SkinnedMeshData,
@@ -1635,10 +1713,10 @@ pub mod gltf_loader {
         Option<MaterialData>,
     )> {
         // Load skeleton first
-        let skeleton = load_skeleton(bytes)?;
+        let skeleton = load_skeleton(base, bytes)?;
 
         // Load animations
-        let animations = load_animations(bytes, &skeleton)?;
+        let animations = load_animations(base, bytes, &skeleton)?;
 
         // Load mesh data (positions, normals, tangents, joints, weights, indices, material)
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
@@ -1653,6 +1731,7 @@ pub mod gltf_loader {
 
         // Gather buffer data (support GLB BIN or .gltf data: URIs)
         let mut buffers: Vec<Vec<u8>> = Vec::new();
+        let mut loaded_images = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
@@ -1665,12 +1744,9 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
+            let (_document, loaded, images) = load_json_parts(base, bytes)?;
+            buffers = loaded;
+            loaded_images = images;
         }
 
         // Find first node with mesh and skin
@@ -1786,24 +1862,25 @@ pub mod gltf_loader {
         let buffers_data: Vec<gltf::buffer::Data> =
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
-            let img = decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
-                .unwrap_or_else(|_| ImageData {
-                    width: 1,
-                    height: 1,
-                    rgba8: vec![255, 255, 255, 255],
-                });
+            let img =
+                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
+                    .unwrap_or_else(|_| ImageData {
+                        width: 1,
+                        height: 1,
+                        rgba8: vec![255, 255, 255, 255],
+                    });
             mat.base_color_texture = Some(img);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
             if let Ok(img) =
-                decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
+                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
             {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
             if let Ok(img) =
-                decode_image_from_gltf(n.texture().source().source(), Some(&buffers_data))
+                image_from_loaded(base, n.texture().source(), &buffers_data, &loaded_images)
             {
                 mat.normal_texture = Some(img);
             }
@@ -1826,6 +1903,7 @@ pub mod gltf_loader {
     /// Deprecated: Use load_skinned_mesh_complete for full skeleton and animation support.
     #[deprecated(note = "Use load_skinned_mesh_complete for full skeleton support")]
     pub fn load_first_skinned_mesh_and_idle(
+        base: &std::path::Path,
         bytes: &[u8],
     ) -> Result<(SkinnedMeshData, Option<AnimationClip>, Option<MaterialData>)> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
@@ -1840,6 +1918,7 @@ pub mod gltf_loader {
 
         // Gather buffer data (support GLB BIN or .gltf data: URIs)
         let mut buffers: Vec<Vec<u8>> = Vec::new();
+        let mut loaded_images = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
@@ -1852,12 +1931,9 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
+            let (_document, loaded, images) = load_json_parts(base, bytes)?;
+            buffers = loaded;
+            loaded_images = images;
         }
 
         // Find first node with mesh and skin
@@ -2062,24 +2138,25 @@ pub mod gltf_loader {
         let buffers_data: Vec<gltf::buffer::Data> =
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
-            let img = decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
-                .unwrap_or_else(|_| ImageData {
-                    width: 1,
-                    height: 1,
-                    rgba8: vec![255, 255, 255, 255],
-                });
+            let img =
+                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
+                    .unwrap_or_else(|_| ImageData {
+                        width: 1,
+                        height: 1,
+                        rgba8: vec![255, 255, 255, 255],
+                    });
             mat.base_color_texture = Some(img);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
             if let Ok(img) =
-                decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
+                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
             {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
             if let Ok(img) =
-                decode_image_from_gltf(n.texture().source().source(), Some(&buffers_data))
+                image_from_loaded(base, n.texture().source(), &buffers_data, &loaded_images)
             {
                 mat.normal_texture = Some(img);
             }
@@ -2157,6 +2234,9 @@ pub mod gltf_loader {
         }
     }
 }
+
+#[cfg(feature = "gltf")]
+pub(crate) mod bounded_open;
 
 #[cfg(feature = "gltf")]
 pub mod gltf_external;

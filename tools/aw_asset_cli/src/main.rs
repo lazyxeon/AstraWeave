@@ -387,6 +387,7 @@ fn read_jailed_gltf(path: &Path) -> Result<Vec<u8>> {
             jail_gltf_uri(base, uri)?;
         }
     }
+    astraweave_asset::gltf_external::reject_external_uri_count(&doc)?;
     Ok(bytes)
 }
 

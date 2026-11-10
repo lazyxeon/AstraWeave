@@ -1,14 +1,15 @@
 //! Jailed glTF buffer and image loads.
 //!
-//! gltf 1.4.1 `Scheme::read` percent-decodes a relative URI and, when a base
-//! directory is set, opens a `file:` URI with `read_to_end`. That allocates
-//! `st_size + 1` and ignores the base. Callers use [`load_jailed_gltf`]
-//! instead of `import_buffers` / `import_images`.
+//! Callers use [`load_jailed_gltf`] instead of `import_buffers` / `import_images`.
+//! A file URI is opened from the model directory one component at a time.
+//! Buffer and image URI bytes share one total, and the URI count is capped.
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine as _;
-use std::io::Read;
 use std::path::{Path, PathBuf};
+
+/// External buffer and image URIs, including `data:` URIs.
+pub const MAX_EXTERNAL_URIS: usize = 64;
 
 /// `Ok(None)` is a `data:` URI, which stays in memory.
 /// `Ok(Some(path))` is a relative file [`astraweave_security::path::safe_under`]
@@ -34,36 +35,39 @@ pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
-/// Read a jailed file. `metadata().is_file()` runs before `File::open`, then
-/// the read stops at `max_bytes`. The allocation follows the bytes read, not
-/// `st_size + 1`.
+/// Read a jailed file from its parent directory handle.
+///
+/// The read stops at `max_bytes`. The allocation follows the bytes read.
 pub fn read_jailed_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>> {
-    let meta = std::fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
-    if !meta.is_file() {
-        bail!("{} is not a regular file", path.display());
+    crate::bounded_open::read_path(path, max_bytes, "")
+}
+
+/// Refuse a document with more external buffer and image URIs than
+/// [`MAX_EXTERNAL_URIS`].
+pub fn reject_external_uri_count(document: &gltf::Document) -> Result<()> {
+    if external_uri_count(document) > MAX_EXTERNAL_URIS {
+        bail!("too many external uris");
     }
-    if meta.len() > max_bytes {
-        bail!(
-            "{} is {} bytes; limit is {max_bytes}",
-            path.display(),
-            meta.len()
-        );
-    }
-    let mut file = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
-    let mut bytes = Vec::new();
-    Read::take(&mut file, max_bytes + 1)
-        .read_to_end(&mut bytes)
-        .with_context(|| format!("read {}", path.display()))?;
-    if bytes.len() as u64 > max_bytes {
-        bail!("{} exceeds {max_bytes} bytes", path.display());
-    }
-    Ok(bytes)
+    Ok(())
+}
+
+fn external_uri_count(document: &gltf::Document) -> usize {
+    let buffers = document
+        .buffers()
+        .filter(|buffer| matches!(buffer.source(), gltf::buffer::Source::Uri(_)))
+        .count();
+    let images = document
+        .images()
+        .filter(|image| matches!(image.source(), gltf::image::Source::Uri { .. }))
+        .count();
+    buffers + images
 }
 
 /// Parse `bytes`, then load buffers and images from `base`.
 ///
-/// A `data:` URI is decoded in memory. A file URI goes through [`jail_gltf_uri`]
-/// and [`read_jailed_file`] with `max_external_bytes`.
+/// A `data:` URI is decoded in memory. A file URI is read from `base`.
+/// Every URI's bytes count toward `max_external_bytes`, and the URI count
+/// stops at [`MAX_EXTERNAL_URIS`].
 pub fn load_jailed_gltf(
     base: &Path,
     bytes: &[u8],
@@ -73,17 +77,65 @@ pub fn load_jailed_gltf(
     Vec<gltf::buffer::Data>,
     Vec<gltf::image::Data>,
 )> {
+    crate::gltf_loader::reject_short_glb_header(bytes)?;
     let gltf::Gltf { document, blob } = gltf::Gltf::from_slice(bytes).context("parse gltf")?;
+    reject_external_uri_count(&document)?;
+    let mut budget = Budget {
+        cap: max_external_bytes,
+        spent: 0,
+    };
     let mut blob = blob;
-    let buffers = read_buffers(&document, base, &mut blob, max_external_bytes)?;
-    let images = read_images(&document, base, &buffers, max_external_bytes)?;
+    let buffers = read_buffers(&document, base, &mut blob, &mut budget)?;
+    let images = read_images(&document, base, &buffers, &mut budget)?;
     Ok((document, buffers, images))
 }
 
-fn uri_bytes(base: &Path, uri: &str, max_bytes: u64) -> Result<Vec<u8>> {
+pub(crate) fn decode_embedded_uri(uri: &str) -> Result<Vec<u8>> {
+    decode_data_uri(uri)
+}
+
+struct Budget {
+    cap: u64,
+    spent: u64,
+}
+
+impl Budget {
+    fn remaining(&self) -> u64 {
+        self.cap.saturating_sub(self.spent)
+    }
+
+    fn charge(&mut self, nbytes: u64) -> Result<()> {
+        let next = self
+            .spent
+            .checked_add(nbytes)
+            .context("external byte total")?;
+        if next > self.cap {
+            bail!("external bytes exceed {}", self.cap);
+        }
+        self.spent = next;
+        Ok(())
+    }
+}
+
+fn uri_bytes(base: &Path, uri: &str, budget: &mut Budget) -> Result<Vec<u8>> {
     match jail_gltf_uri(base, uri)? {
-        None => decode_data_uri(uri),
-        Some(path) => read_jailed_file(&path, max_bytes),
+        None => {
+            let bytes = decode_data_uri(uri)?;
+            budget.charge(bytes.len() as u64)?;
+            Ok(bytes)
+        }
+        Some(_) => {
+            let relative = uri.split('?').next().unwrap_or(uri);
+            let bytes = crate::bounded_open::read_under(
+                base,
+                Path::new(relative),
+                budget.remaining(),
+                "",
+                Path::new(relative),
+            )?;
+            budget.charge(bytes.len() as u64)?;
+            Ok(bytes)
+        }
     }
 }
 
@@ -107,7 +159,7 @@ fn read_buffers(
     document: &gltf::Document,
     base: &Path,
     blob: &mut Option<Vec<u8>>,
-    max_external_bytes: u64,
+    budget: &mut Budget,
 ) -> Result<Vec<gltf::buffer::Data>> {
     let mut buffers = Vec::new();
     for buffer in document.buffers() {
@@ -115,16 +167,8 @@ fn read_buffers(
             gltf::buffer::Source::Bin => {
                 blob.take().context("GLB buffer is missing its BIN chunk")?
             }
-            gltf::buffer::Source::Uri(uri) => uri_bytes(base, uri, max_external_bytes)?,
+            gltf::buffer::Source::Uri(uri) => uri_bytes(base, uri, budget)?,
         };
-        if data.len() < buffer.length() {
-            bail!(
-                "buffer {} is {} bytes; glTF byteLength is {}",
-                buffer.index(),
-                data.len(),
-                buffer.length()
-            );
-        }
         while data.len() % 4 != 0 {
             data.push(0);
         }
@@ -137,12 +181,12 @@ fn read_images(
     document: &gltf::Document,
     base: &Path,
     buffers: &[gltf::buffer::Data],
-    max_external_bytes: u64,
+    budget: &mut Budget,
 ) -> Result<Vec<gltf::image::Data>> {
     let mut images = Vec::new();
     for image in document.images() {
         let encoded = match image.source() {
-            gltf::image::Source::Uri { uri, .. } => uri_bytes(base, uri, max_external_bytes)?,
+            gltf::image::Source::Uri { uri, .. } => uri_bytes(base, uri, budget)?,
             gltf::image::Source::View { view, .. } => {
                 let data = buffers
                     .get(view.buffer().index())
@@ -163,7 +207,7 @@ fn read_images(
 }
 
 fn decode_gltf_image(bytes: &[u8]) -> Result<gltf::image::Data> {
-    let image = image::load_from_memory(bytes).context("decode gltf image")?;
+    let image = crate::decode_limited_image(bytes).context("decode gltf image")?;
     let format = match image.color() {
         image::ColorType::L8 => gltf::image::Format::R8,
         image::ColorType::La8 => gltf::image::Format::R8G8,
@@ -255,15 +299,108 @@ mod tests {
         assert!(err.to_string().contains("limit is 3"), "{err}");
     }
 
+    #[test]
+    fn external_reads_respect_total_budget() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.bin"), b"aaaa").expect("a");
+        std::fs::write(dir.path().join("b.bin"), b"bbbb").expect("b");
+        let gltf = br#"{
+            "asset": {"version": "2.0"},
+            "buffers": [
+                {"uri": "a.bin", "byteLength": 4},
+                {"uri": "b.bin", "byteLength": 4}
+            ]
+        }"#;
+        let (_doc, buffers, _) = load_jailed_gltf(dir.path(), gltf, 8).expect("within total");
+        assert_eq!(buffers.len(), 2);
+        let err = load_jailed_gltf(dir.path(), gltf, 6).expect_err("over total");
+        let msg = err.to_string();
+        assert!(msg.contains("limit is") || msg.contains("exceed"), "{msg}");
+    }
+
+    #[test]
+    fn external_reads_respect_uri_count() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut buffers = Vec::new();
+        for index in 0..MAX_EXTERNAL_URIS {
+            let name = format!("b{index}.bin");
+            std::fs::write(dir.path().join(&name), b"x").expect("bin");
+            buffers.push(serde_json::json!({ "uri": name, "byteLength": 1 }));
+        }
+        let within = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "buffers": buffers,
+        });
+        let bytes = serde_json::to_vec(&within).expect("json");
+        let (_doc, loaded, _) = load_jailed_gltf(dir.path(), &bytes, 1024).expect("uri count");
+        assert_eq!(loaded.len(), MAX_EXTERNAL_URIS);
+
+        let name = "extra.bin";
+        std::fs::write(dir.path().join(name), b"x").expect("extra");
+        buffers.push(serde_json::json!({ "uri": name, "byteLength": 1 }));
+        let over = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "buffers": buffers,
+        });
+        let bytes = serde_json::to_vec(&over).expect("json");
+        let err = load_jailed_gltf(dir.path(), &bytes, 1024).expect_err("uri count");
+        assert!(err.to_string().contains("too many"), "{err}");
+    }
+
+    #[test]
+    fn external_reads_respect_image_limits() {
+        let image = image::RgbImage::from_pixel(5_000, 1, image::Rgb([0, 0, 0]));
+        let mut png = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("png");
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("wide.png"), &png).expect("write");
+        let gltf = br#"{
+            "asset": {"version": "2.0"},
+            "images": [{"uri": "wide.png"}]
+        }"#;
+        let err = load_jailed_gltf(dir.path(), gltf, 1024 * 1024).expect_err("wide");
+        let msg = format!("{err:#}").to_lowercase();
+        assert!(
+            msg.contains("limit") || msg.contains("dimension") || msg.contains("4096"),
+            "{msg}"
+        );
+    }
+
     #[cfg(target_os = "linux")]
     #[test]
     fn post_read_check_catches_understated_procfs_size() {
-        let proc_cmdline = std::path::Path::new("/proc/self/cmdline");
-        let err = read_jailed_file(proc_cmdline, 8).expect_err("post-read cap");
+        let proc_cmdline =
+            std::path::PathBuf::from(format!("/proc/{}/cmdline", std::process::id()));
+        let err = read_jailed_file(&proc_cmdline, 8).expect_err("post-read cap");
+        assert!(err.to_string().contains("exceeds 8 bytes"), "{err}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_reads_reject_a_non_regular_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pipe = dir.path().join("pipe.bin");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success(), "mkfifo");
+        let started = std::time::Instant::now();
+        let err = read_jailed_file(&pipe, 64).expect_err("pipe");
         assert!(
-            err.to_string().contains("exceeds 8 bytes"),
-            "{err}"
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "read_jailed_file blocked"
         );
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+
+        let real = dir.path().join("real.bin");
+        std::fs::write(&real, b"real").expect("real");
+        let link = dir.path().join("link.bin");
+        std::os::unix::fs::symlink(&real, &link).expect("link");
+        let err = read_jailed_file(&link, 64).expect_err("link");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
     }
 
     #[cfg(unix)]
@@ -279,5 +416,27 @@ mod tests {
             msg.contains("traversal") || msg.contains("escapes") || msg.contains("rejected"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn json_external_reads_use_the_given_base() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let other = tempfile::tempdir().expect("other");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        let gltf = br#"{
+            "asset": {"version": "2.0"},
+            "buffers": [{"uri": "box.bin", "byteLength": 4}]
+        }"#;
+        let (_doc, buffers, _) = load_jailed_gltf(dir.path(), gltf, 64).expect("base");
+        assert_eq!(&buffers[0].0[..], b"box!");
+        let err = load_jailed_gltf(other.path(), gltf, 64).expect_err("other base");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("box.bin") || msg.contains("open"), "{msg}");
+        let mesh_err = crate::gltf_loader::load_first_mesh_and_material(dir.path(), gltf)
+            .expect_err("no mesh");
+        assert!(mesh_err.to_string().contains("No meshes"), "{mesh_err}");
+        let other_err = crate::gltf_loader::load_first_mesh_and_material(other.path(), gltf)
+            .expect_err("missing sibling");
+        assert!(!other_err.to_string().contains("No meshes"), "{other_err}");
     }
 }

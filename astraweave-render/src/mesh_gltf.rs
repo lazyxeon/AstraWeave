@@ -39,13 +39,14 @@ fn reject_escaping_gltf_uris(path: &std::path::Path, bytes: &[u8]) -> Result<()>
             jail_gltf_uri(base, uri)?;
         }
     }
+    astraweave_asset::gltf_external::reject_external_uri_count(&doc)?;
     Ok(())
 }
 
 /// Parse `bytes`, then load buffers and images from `path`'s directory.
-/// A file URI is jailed and read with `is_file()` before `File::open`, capped
-/// at `MAX_GLB_CONTAINER_BYTES`. `gltf::import_slice` refuses those relative
-/// URIs, and `import_buffers` would read them with an uncapped `read_to_end`.
+/// A file URI is jailed and read from that directory. Buffer and image bytes
+/// share `MAX_GLB_CONTAINER_BYTES`, and the URI count is capped.
+/// `gltf::import_slice` refuses those relative URIs.
 #[cfg(feature = "gltf-assets")]
 fn import_with_model_directory(
     path: &std::path::Path,
