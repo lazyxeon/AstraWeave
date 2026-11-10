@@ -667,8 +667,8 @@ KANI_ARGS_MSG = "kani args must match the approved package line"
 KANI_WITH_MSG = (
     "kani step with: keys must be kani-version, working-directory, args, or command"
 )
-KANI_COMMAND_MSG = "kani command must be absent or cargo-kani"
-KANI_WORKDIR_MSG = "kani working-directory must be absent or ."
+KANI_COMMAND_MSG = "kani command must be cargo-kani"
+KANI_WORKDIR_MSG = "kani working-directory must be ."
 KANI_DUP_MSG = "kani step with: must not repeat an input"
 KANI_TIMEOUT_MSG = "kani timeout step must write only the validated timeout"
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
@@ -1288,18 +1288,16 @@ def _kani_with_keys_ok(body: object) -> bool:
         if not isinstance(key, str) or key.casefold() not in _KANI_WITH_KEYS:
             return False
         folded.add(key.casefold())
-    return "kani-version" in folded and "args" in folded
+    return folded == _KANI_WITH_KEYS
 
 
-def _kani_optional_exact(body: object, key: str, expected: str) -> bool:
-    """Absent, or one match whose value is exactly expected.
+def _kani_required_exact(body: object, key: str, expected: str) -> bool:
+    """One match whose value is exactly expected.
 
-    A second case-variant is not exact, even when `_ci_item` would return
-    the first value.
+    Absence is not the action default. A second case-variant is not exact,
+    even when `_ci_item` would return the first value.
     """
     matches = _ci_matches(body, key)
-    if not matches:
-        return True
     return len(matches) == 1 and matches[0][1] == expected
 
 
@@ -1308,10 +1306,10 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
 
     args is `--package <crate> -Z unstable-options --harness-timeout
     ${{ steps.timeout.outputs.value }}`. The only expression is
-    steps.timeout.outputs.value. command is absent or exactly cargo-kani.
-    working-directory is absent or the literal `.`. Keys are kani-version,
-    working-directory, args, and command. A repeated key fails, including
-    a case-variant where `_ci_item` would return the first match.
+    steps.timeout.outputs.value. command is exactly cargo-kani.
+    working-directory is the literal `.`. Keys are kani-version, command,
+    working-directory, and args. A repeated key fails, including a
+    case-variant where `_ci_item` would return the first match.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -1330,9 +1328,9 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
         else:
             if not _kani_with_keys_ok(body):
                 violations.append(f"{prefix}{line_no}: {KANI_WITH_MSG}")
-            if not _kani_optional_exact(body, "command", _KANI_COMMAND):
+            if not _kani_required_exact(body, "command", _KANI_COMMAND):
                 violations.append(f"{prefix}{line_no}: {KANI_COMMAND_MSG}")
-            if not _kani_optional_exact(body, "working-directory", _KANI_WORKDIR):
+            if not _kani_required_exact(body, "working-directory", _KANI_WORKDIR):
                 violations.append(f"{prefix}{line_no}: {KANI_WORKDIR_MSG}")
             matches = _ci_matches(body, "args")
             args = matches[0][1] if len(matches) == 1 else None
@@ -3956,41 +3954,28 @@ jobs:
         text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
         self.assertEqual(kani_dispatch_args_violations(text, path="kani.yml"), [])
         anchor = (
+            "          command: cargo-kani\n"
             "          working-directory: .\n"
             "          args: --package astraweave-math -Z unstable-options "
             "--harness-timeout ${{ steps.timeout.outputs.value }}\n"
         )
         self.assertEqual(text.count(anchor), 1)
         approved = _approved_kani_args("kani-math")
-        absent = text.replace(anchor, anchor.replace("          working-directory: .\n", "", 1), 1)
-        self.assertNotEqual(absent, text)
-        self.assertEqual(kani_dispatch_args_violations(absent, path="kani.yml"), [])
-        commanded = text.replace(
-            anchor,
-            anchor.replace(
-                "          working-directory: .\n",
-                "          command: cargo-kani\n          working-directory: .\n",
-                1,
-            ),
-            1,
-        )
-        self.assertEqual(kani_dispatch_args_violations(commanded, path="kani.yml"), [])
         shapes = {
             "command-inject": (
-                anchor.replace(
-                    "          working-directory: .\n",
-                    "          command: cargo-kani; echo injected\n          working-directory: .\n",
-                    1,
-                ),
+                anchor.replace("command: cargo-kani", "command: cargo-kani; echo injected", 1),
                 KANI_COMMAND_MSG,
             ),
             "command-inputs": (
                 anchor.replace(
-                    "          working-directory: .\n",
-                    "          command: cargo-kani ${{ inputs.crates }}\n"
-                    "          working-directory: .\n",
+                    "command: cargo-kani",
+                    "command: cargo-kani ${{ inputs.crates }}",
                     1,
                 ),
+                KANI_COMMAND_MSG,
+            ),
+            "command-absent": (
+                anchor.replace("          command: cargo-kani\n", "", 1),
                 KANI_COMMAND_MSG,
             ),
             "workdir-inject": (
@@ -4003,6 +3988,10 @@ jobs:
                     "working-directory: ${{ inputs.crates }}",
                     1,
                 ),
+                KANI_WORKDIR_MSG,
+            ),
+            "workdir-absent": (
+                anchor.replace("          working-directory: .\n", "", 1),
                 KANI_WORKDIR_MSG,
             ),
             "extra-key": (
@@ -4019,7 +4008,7 @@ jobs:
             self.assertNotEqual(mutant, text, name)
             violations = kani_dispatch_args_violations(mutant, path="kani.yml")
             self.assertTrue(violations, name)
-            self.assertIn(message, violations[0], name)
+            self.assertIn(message, " ".join(violations), name)
         case_variant = text.replace(
             anchor,
             anchor + "          Args: --package astraweave-math ${{ inputs.crates }}\n",
