@@ -18,9 +18,10 @@
 //! `runtime`, never `workspace-dep`.
 
 use anyhow::{Context, Result};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Component, Path};
 
 use crate::{domain_id, FrontMatter, TraceDoc};
 
@@ -343,7 +344,8 @@ fn sync_counts(data: &mut Value, graph: &Graph) {
         .entry("metadata")
         .or_insert_with(|| Value::Object(Map::new()));
     if let Some(meta) = meta.as_object_mut() {
-        meta.insert("cargoNodeCount".into(), json_u(members));
+        meta.remove("cargoNodeCount");
+        meta.insert("cargoMemberCount".into(), json_u(members));
         meta.insert("exampleCount".into(), json_u(examples));
         meta.insert("renderedNodeCount".into(), json_u(nodes));
         meta.insert("renderedEdgeCount".into(), json_u(edges));
@@ -603,6 +605,12 @@ fn loc_band(lines: usize) -> &'static str {
 
 fn src_rs_lines(root: &Path, manifest: &str) -> usize {
     let dir = root.join(manifest).parent().unwrap_or(root).join("src");
+    // `lstat` on `src` does not see a symlink in a parent, and `read_dir`
+    // would follow it. Refuse a linked parent, and refuse a tree that
+    // canonicalizes outside the repo root.
+    if !src_tree_stays_in_repo(root, &dir) {
+        return 0;
+    }
     // `read_dir` follows a directory symlink. A `src` that is itself a link
     // is not this crate's tree, so the count stays 0.
     if std::fs::symlink_metadata(&dir)
@@ -637,6 +645,43 @@ fn src_rs_lines(root: &Path, manifest: &str) -> usize {
     let mut total = 0;
     walk(&dir, &mut total);
     total
+}
+
+/// False when any path component of `dir` under `root` is a symlink, or when
+/// `dir` canonicalizes outside `root`. A missing `src` is outside.
+fn src_tree_stays_in_repo(root: &Path, dir: &Path) -> bool {
+    if let Ok(rel) = dir.strip_prefix(root) {
+        if path_has_symlink(root, rel) {
+            return false;
+        }
+    }
+    match (std::fs::canonicalize(root), std::fs::canonicalize(dir)) {
+        (Ok(root_abs), Ok(dir_abs)) => dir_abs.starts_with(&root_abs),
+        _ => false,
+    }
+}
+
+fn path_has_symlink(root: &Path, rel: &Path) -> bool {
+    let mut acc = root.to_path_buf();
+    for component in rel.components() {
+        match component {
+            Component::Normal(name) => {
+                acc.push(name);
+                if std::fs::symlink_metadata(&acc)
+                    .map(|meta| meta.file_type().is_symlink())
+                    .unwrap_or(false)
+                {
+                    return true;
+                }
+            }
+            Component::ParentDir => {
+                acc.pop();
+            }
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir => return true,
+        }
+    }
+    false
 }
 
 fn domain_labels(data: &Value) -> BTreeMap<String, String> {
@@ -871,13 +916,42 @@ fn html_links_anchor(html: &str, anchor: &str) -> bool {
     false
 }
 
+/// Tables, strikethrough, task lists, and the GFM blockquote tags. Fences
+/// and code spans are CommonMark and stay on without these flags.
+fn gfm_options() -> Options {
+    Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_GFM
+}
+
 fn heading_slugs(md: &str) -> BTreeSet<String> {
-    let visible = visible_markdown(md);
     let mut out = BTreeSet::new();
-    for line in visible.lines() {
-        let line = line.trim();
-        if let Some(rest) = line.strip_prefix("## ") {
-            out.insert(github_slug(rest));
+    let mut text: Option<String> = None;
+    for event in Parser::new_ext(md, gfm_options()) {
+        match event {
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                ..
+            }) => {
+                text = Some(String::new());
+            }
+            Event::End(TagEnd::Heading(HeadingLevel::H2)) => {
+                if let Some(heading) = text.take() {
+                    out.insert(github_slug(&heading));
+                }
+            }
+            Event::Text(s) | Event::Code(s) => {
+                if let Some(buf) = text.as_mut() {
+                    buf.push_str(&s);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some(buf) = text.as_mut() {
+                    buf.push(' ');
+                }
+            }
+            _ => {}
         }
     }
     out
@@ -887,25 +961,63 @@ fn explicit_ids(md: &str) -> BTreeSet<String> {
     anchor_tag_ids(md).into_iter().collect()
 }
 
-/// Ids from `<a id="...">` and `<a name="...">` only. The attribute name is a
-/// whole token preceded by whitespace, so `data-id` does not count. Fenced
-/// code and HTML comments are not markup.
+/// Ids from `<a id="...">` and `<a name="...">` that the GFM parser renders.
+/// Code fences, indented code, and code spans are not events here. An anchor
+/// indented 1–3 spaces, or sitting mid-line, still counts. The attribute name
+/// is a whole token preceded by whitespace, so `data-id` does not count.
+/// HTML comments are not markup.
 fn anchor_tag_ids(md: &str) -> Vec<String> {
-    let visible = visible_markdown(md);
-    let bytes = visible.as_bytes();
+    let mut ids = Vec::new();
+    let mut in_comment = false;
+    for event in Parser::new_ext(md, gfm_options()) {
+        let chunk = match event {
+            Event::Html(html) | Event::InlineHtml(html) => html,
+            _ => continue,
+        };
+        let visible = html_outside_comments(&chunk, &mut in_comment);
+        ids.extend(anchor_ids_in_html(&visible));
+    }
+    ids
+}
+
+fn html_outside_comments(chunk: &str, in_comment: &mut bool) -> String {
+    let mut out = String::new();
+    let bytes = chunk.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if *in_comment {
+            if let Some(rel) = chunk[i..].find("-->") {
+                i += rel + 3;
+                *in_comment = false;
+            } else {
+                break;
+            }
+            continue;
+        }
+        if chunk[i..].starts_with("<!--") {
+            *in_comment = true;
+            i += 4;
+            continue;
+        }
+        let ch = chunk[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn anchor_ids_in_html(html: &str) -> Vec<String> {
+    let bytes = html.as_bytes();
     let mut ids = Vec::new();
     let mut i = 0;
     while i + 2 < bytes.len() {
-        if !visible.is_char_boundary(i) {
+        if !html.is_char_boundary(i) {
             i += 1;
             continue;
         }
-        if is_anchor_tag_start(&visible, i) {
-            let tag_end = visible[i..]
-                .find('>')
-                .map(|rel| i + rel)
-                .unwrap_or(visible.len());
-            let tag = &visible[i..tag_end];
+        if is_anchor_tag_start(html, i) {
+            let tag_end = html[i..].find('>').map(|rel| i + rel).unwrap_or(html.len());
+            let tag = &html[i..tag_end];
             ids.extend(quoted_attr(tag, "id"));
             ids.extend(quoted_attr(tag, "name"));
             i = tag_end;
@@ -917,13 +1029,7 @@ fn anchor_tag_ids(md: &str) -> Vec<String> {
 }
 
 fn is_anchor_tag_start(s: &str, i: usize) -> bool {
-    let bytes = s.as_bytes();
-    // An anchor counts only at column 0. That excludes a tag in inline code
-    // and a tag indented as a code block. Fences are already gone.
-    if !is_line_start(bytes, i) {
-        return false;
-    }
-    let rest = &bytes[i..];
+    let rest = &s.as_bytes()[i..];
     let open = if rest.starts_with(b"<a") || rest.starts_with(b"<A") {
         2
     } else {
@@ -962,93 +1068,6 @@ fn quoted_attr(tag: &str, name: &str) -> Vec<String> {
         i += 1;
     }
     out
-}
-
-/// Drop fenced code blocks and HTML comments. What remains is the markup and
-/// headings GitHub will render.
-#[derive(Clone, Copy)]
-struct FenceOpen {
-    ch: u8,
-    len: usize,
-    indent: usize,
-}
-
-/// A fence opener or closer: up to three leading spaces, then at least three
-/// `` ` `` or `~`. GitHub treats an indented fence as code, including one
-/// nested under a list item.
-fn fence_marker(line: &str) -> Option<FenceOpen> {
-    let bytes = line.as_bytes();
-    let mut indent = 0;
-    while indent < bytes.len() && indent < 4 && bytes[indent] == b' ' {
-        indent += 1;
-    }
-    if indent > 3 || indent >= bytes.len() {
-        return None;
-    }
-    let ch = bytes[indent];
-    if ch != b'`' && ch != b'~' {
-        return None;
-    }
-    let mut len = 0;
-    while indent + len < bytes.len() && bytes[indent + len] == ch {
-        len += 1;
-    }
-    if len < 3 {
-        return None;
-    }
-    Some(FenceOpen { ch, len, indent })
-}
-
-fn visible_markdown(md: &str) -> String {
-    let bytes = md.as_bytes();
-    let mut out = String::with_capacity(md.len());
-    let mut i = 0;
-    let mut fence: Option<FenceOpen> = None;
-    while i < bytes.len() {
-        if let Some(open) = fence {
-            if is_line_start(bytes, i) {
-                if let Some(close) = fence_marker(&md[i..]) {
-                    if close.ch == open.ch && close.len >= open.len && close.indent <= open.indent {
-                        i = line_end(bytes, i);
-                        fence = None;
-                        continue;
-                    }
-                }
-            }
-            i += 1;
-            continue;
-        }
-        if bytes[i..].starts_with(b"<!--") {
-            if let Some(rel) = md[i + 4..].find("-->") {
-                i = i + 4 + rel + 3;
-            } else {
-                break;
-            }
-            continue;
-        }
-        if is_line_start(bytes, i) {
-            if let Some(open) = fence_marker(&md[i..]) {
-                fence = Some(open);
-                i = line_end(bytes, i);
-                continue;
-            }
-        }
-        let ch = md[i..].chars().next().unwrap();
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
-}
-
-fn is_line_start(bytes: &[u8], i: usize) -> bool {
-    i == 0 || bytes[i - 1] == b'\n'
-}
-
-fn line_end(bytes: &[u8], i: usize) -> usize {
-    match bytes[i..].iter().position(|b| *b == b'\n') {
-        Some(rel) => i + rel + 1,
-        None => bytes.len(),
-    }
 }
 
 /// GitHub heading slug: lowercase, drop punctuation, keep underscores, spaces
@@ -1245,6 +1264,115 @@ mod tests {
             return;
         }
         assert_eq!(src_rs_lines(dir.path(), "linked_crate/Cargo.toml"), 0);
+
+        // The target is inside the repo, so a canonical-path check alone would
+        // still walk it. The parent of `src` is the link.
+        let real = dir.path().join("real_crate");
+        std::fs::create_dir_all(real.join("src")).unwrap();
+        std::fs::write(
+            real.join("src").join("lib.rs"),
+            "fn one() {}\nfn two() {}\n",
+        )
+        .unwrap();
+        let alias = dir.path().join("alias_crate");
+        if link_dir(&real, &alias).is_err() {
+            return;
+        }
+        assert_eq!(src_rs_lines(dir.path(), "alias_crate/Cargo.toml"), 0);
+
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(outside.path().join("src")).unwrap();
+        std::fs::write(
+            outside.path().join("src").join("lib.rs"),
+            "fn one() {}\nfn two() {}\n",
+        )
+        .unwrap();
+        let escaped = dir.path().join("escaped_crate");
+        if link_dir(outside.path(), &escaped).is_err() {
+            return;
+        }
+        assert_eq!(src_rs_lines(dir.path(), "escaped_crate/Cargo.toml"), 0);
+    }
+
+    #[test]
+    fn line_count_rejects_src_resolved_outside_the_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("repo");
+        std::fs::create_dir_all(root.join("demo").join("src")).unwrap();
+        std::fs::write(
+            root.join("demo").join("src").join("lib.rs"),
+            "fn real() {}\n",
+        )
+        .unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(outside.join("src")).unwrap();
+        std::fs::write(
+            outside.join("src").join("lib.rs"),
+            "fn one() {}\nfn two() {}\n",
+        )
+        .unwrap();
+        assert_eq!(src_rs_lines(&root, "demo/Cargo.toml"), 1);
+        assert_eq!(src_rs_lines(&root, "../outside/Cargo.toml"), 0);
+    }
+
+    #[test]
+    fn cargo_member_count_is_not_labeled_as_a_node_count() {
+        let mut data = serde_json::json!({
+            "nodes": [{"id": "a"}, {"id": "b"}],
+            "edges": [{"source": "a", "target": "b"}],
+            "metadata": {"cargoNodeCount": 99, "version": "v2.3"}
+        });
+        let graph = Graph {
+            packages: vec![
+                Pkg {
+                    name: "a".into(),
+                    is_example: false,
+                    manifest: "a/Cargo.toml".into(),
+                },
+                Pkg {
+                    name: "b".into(),
+                    is_example: false,
+                    manifest: "b/Cargo.toml".into(),
+                },
+                Pkg {
+                    name: "ex".into(),
+                    is_example: true,
+                    manifest: "examples/ex/Cargo.toml".into(),
+                },
+            ],
+            deps: BTreeMap::new(),
+        };
+        sync_counts(&mut data, &graph);
+        let meta = data.get("metadata").unwrap();
+        assert_eq!(
+            meta.get("cargoMemberCount").and_then(|v| v.as_u64()),
+            Some(3)
+        );
+        assert!(meta.get("cargoNodeCount").is_none());
+        assert_eq!(
+            meta.get("renderedNodeCount").and_then(|v| v.as_u64()),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn the_map_stores_cargo_member_count() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/architecture/workspace_map.html");
+        let html = std::fs::read_to_string(&path).unwrap();
+        assert!(html.contains("\"cargoMemberCount\":"));
+        assert!(!html.contains("cargoNodeCount"));
+    }
+
+    #[test]
+    fn the_anchor_parser_enables_gfm_options() {
+        let opts = gfm_options();
+        assert!(opts.contains(Options::ENABLE_TABLES));
+        assert!(opts.contains(Options::ENABLE_STRIKETHROUGH));
+        assert!(opts.contains(Options::ENABLE_TASKLISTS));
+        assert!(opts.contains(Options::ENABLE_GFM));
+        assert!(!opts.contains(Options::ENABLE_HEADING_ATTRIBUTES));
+        assert!(!opts.contains(Options::ENABLE_SMART_PUNCTUATION));
     }
 
     #[cfg(unix)]

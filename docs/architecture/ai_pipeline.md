@@ -1570,7 +1570,7 @@ All listed in parent §5 enrichment above. Summary:
 | `lib.rs` | 1397 | 78 | `DialogueNode`/`DialogueResponse`/`DialogueGraph` + impls/builders/predicates/validation |
 | `runner.rs` | 370 | 8 | `DialogueRunner` state machine + `DialogueEvent`/`RunnerState` |
 | `toml_loader.rs` | 266 | 7 | TOML → `LoadedDialogue` |
-| `llm_dialogue.rs` | 2941 | 75 | `LlmDialogueSystem` and all config types (dormant) |
+| `llm_dialogue.rs` | 2231 | 75 | `LlmDialogueSystem` and all config types (dormant) |
 | `tests/dialogue.rs` | 38 | 2 | Validation smoke tests |
 | `tests/mutation_resistant_comprehensive_tests.rs` | 1329 | 127 | Mutation-killing tests across all four source files |
 | `benches/dialogue_bench.rs` | 589 | 0 | Criterion bench |

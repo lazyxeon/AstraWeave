@@ -1845,6 +1845,11 @@ mod tests {
         "## 5. Active File Map\n## 6. Conflict Map\n## 7. Decision Log\n## 11. Open Questions\n"
     }
 
+    fn section_anchor_resolves(body: &str) -> bool {
+        let problems = anchor_problems_for(body, page_links_all_five());
+        !problems.iter().any(|p| p.contains("#8-invariants"))
+    }
+
     #[test]
     fn a_fenced_anchor_tag_does_not_resolve() {
         let body = format!(
@@ -1872,16 +1877,237 @@ mod tests {
     }
 
     #[test]
-    fn an_indented_fence_anchor_tag_does_not_resolve() {
+    fn a_column_zero_anchor_after_a_list_fence_resolves() {
         let body = format!(
             "- item\n  ```\n<a id=\"8-invariants\"></a>\n  ```\n{}",
             headings_without_invariants()
         );
-        let problems = anchor_problems_for(&body, page_links_all_five());
         assert!(
-            problems.iter().any(|p| p.contains("#8-invariants")),
-            "{problems:?}"
+            section_anchor_resolves(&body),
+            "list fence hid a column-0 anchor"
         );
+    }
+
+    #[test]
+    fn a_column_zero_heading_after_a_list_fence_resolves() {
+        let body = format!(
+            "- item\n  ```\n## 8. Invariants\n  ```\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            section_anchor_resolves(&body),
+            "list fence hid a column-0 heading"
+        );
+    }
+
+    #[test]
+    fn an_anchor_indented_one_to_three_spaces_resolves() {
+        for indent in [" ", "  ", "   "] {
+            let body = format!(
+                "{indent}<a id=\"8-invariants\"></a>\n{}",
+                headings_without_invariants()
+            );
+            assert!(
+                section_anchor_resolves(&body),
+                "indent {indent:?} hid the anchor"
+            );
+        }
+    }
+
+    #[test]
+    fn an_anchor_in_the_middle_of_a_line_resolves() {
+        let body = format!(
+            "see <a id=\"8-invariants\"></a> in the sentence\n{}",
+            headings_without_invariants()
+        );
+        assert!(section_anchor_resolves(&body));
+    }
+
+    #[test]
+    fn a_heading_inside_a_blockquote_resolves() {
+        let body = format!("> ## 8. Invariants\n{}", headings_without_invariants());
+        assert!(section_anchor_resolves(&body));
+    }
+
+    #[test]
+    fn a_heading_indented_four_spaces_does_not_resolve() {
+        let body = format!("    ## 8. Invariants\n{}", headings_without_invariants());
+        assert!(
+            !section_anchor_resolves(&body),
+            "indented code was counted as a heading"
+        );
+    }
+
+    #[test]
+    fn a_fence_closer_with_trailing_text_does_not_close() {
+        let body = format!(
+            "```\n```text\n<a id=\"8-invariants\"></a>\n## 8. Invariants\n```\n{}",
+            headings_without_invariants()
+        );
+        assert!(!section_anchor_resolves(&body), "```text closed the fence");
+    }
+
+    #[test]
+    fn a_code_span_continues_onto_the_next_line() {
+        let body = format!(
+            "`\n<a id=\"8-invariants\"></a>\n`\n{}",
+            headings_without_invariants()
+        );
+        assert!(
+            !section_anchor_resolves(&body),
+            "a code span stopped at the line break"
+        );
+    }
+
+    #[test]
+    fn fence_and_code_span_edges() {
+        let hidden = [
+            (
+                "unclosed fence",
+                format!(
+                    "```\n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "tilde does not close a backtick fence",
+                format!(
+                    "```\n~~~\n<a id=\"8-invariants\"></a>\n```\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "shorter run does not close",
+                format!(
+                    "````\n<a id=\"8-invariants\"></a>\n```\n## 8. Invariants\n````\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "four-space closer does not close",
+                format!(
+                    "```\n    ```\n<a id=\"8-invariants\"></a>\n```\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "info string still opens",
+                format!(
+                    "```rust\n<a id=\"8-invariants\"></a>\n```\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "tilde info string may contain backticks",
+                format!(
+                    "~~~rust`\n<a id=\"8-invariants\"></a>\n~~~\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "shorter code span does not close",
+                format!(
+                    "``\n`\n<a id=\"8-invariants\"></a>\n``\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "longer code span does not close",
+                format!(
+                    "`\n``\n<a id=\"8-invariants\"></a>\n`\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "heading inside a table cell",
+                format!(
+                    "| x |\n| --- |\n| ## 8. Invariants |\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+        ];
+        for (name, body) in hidden {
+            assert!(
+                !section_anchor_resolves(&body),
+                "{name} counted #8-invariants"
+            );
+        }
+
+        let shown = [
+            (
+                "closed fence leaves a later anchor",
+                format!(
+                    "```\nnot an anchor\n```\n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "longer closer ends a shorter fence",
+                format!(
+                    "```\nhidden\n````\n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "closer indented more than its opener",
+                format!(
+                    "```\nhidden\n   ```\n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "four-space marker does not open a fence",
+                format!(
+                    "    ```\n<a id=\"8-invariants\"></a>\n    ```\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "two tildes do not open a fence",
+                format!(
+                    "~~\n<a id=\"8-invariants\"></a>\n~~\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "two backticks do not open a fence",
+                format!(
+                    "``\n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "unclosed code span stays literal",
+                format!(
+                    "`\n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "blank line ends a code span",
+                format!(
+                    "`start\n\n<a id=\"8-invariants\"></a>\n`\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "trailing spaces still close a fence",
+                format!(
+                    "```\nhidden\n```   \n<a id=\"8-invariants\"></a>\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+            (
+                "backtick in the info string does not open",
+                format!(
+                    "```rust`\n<a id=\"8-invariants\"></a>\n```\n{}",
+                    headings_without_invariants()
+                ),
+            ),
+        ];
+        for (name, body) in shown {
+            assert!(section_anchor_resolves(&body), "{name} hid #8-invariants");
+        }
     }
 
     #[test]
@@ -2051,17 +2277,210 @@ mod tests {
         );
     }
 
-    #[test]
-    fn workspace_map_does_not_assign_inner_html() {
+    fn workspace_map_html() -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../docs/architecture/workspace_map.html");
-        let html = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+        std::fs::read_to_string(&path).unwrap_or_else(|err| {
             panic!("read {}: {err}", path.display());
-        });
+        })
+    }
+
+    fn html_parsing_sink(src: &str) -> Option<&'static str> {
+        if src.contains("HTML") {
+            return Some("HTML");
+        }
+        if src.contains("document.write") {
+            return Some("document.write");
+        }
+        if call_with_paren(src, "eval") {
+            return Some("eval");
+        }
+        if call_with_paren(src, "Function") {
+            return Some("Function");
+        }
+        None
+    }
+
+    fn call_with_paren(src: &str, name: &str) -> bool {
+        let bytes = src.as_bytes();
+        let mut i = 0;
+        while i + name.len() <= bytes.len() {
+            if !src.is_char_boundary(i) {
+                i += 1;
+                continue;
+            }
+            if src[i..].starts_with(name) {
+                let mut j = i + name.len();
+                while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+                    j += 1;
+                }
+                if j < bytes.len() && bytes[j] == b'(' {
+                    return true;
+                }
+            }
+            i += 1;
+        }
+        false
+    }
+
+    #[test]
+    fn workspace_map_has_no_html_parsing_sink() {
+        let html = workspace_map_html();
         assert!(
-            !html.contains("innerHTML"),
-            "workspace_map.html assigns innerHTML"
+            html_parsing_sink(&html).is_none(),
+            "workspace_map.html parses HTML: {:?}",
+            html_parsing_sink(&html)
         );
+    }
+
+    #[test]
+    fn html_parsing_sink_rejects_every_assignment_form() {
+        let sinks = [
+            "node.innerHTML = x",
+            "node.innerHTML=x",
+            "node.innerHTML += x",
+            "node.innerHTML+=x",
+            "node.outerHTML = x",
+            "node.outerHTML += x",
+            "node.insertAdjacentHTML('beforeend', x)",
+            "node['innerHTML'] = x",
+            "node[\"outerHTML\"] += x",
+            "node['inner'+'HTML'] = x",
+            "node['outer'+'HTML'] += x",
+            "document.write(x)",
+            "document.writeln(x)",
+            "eval(x)",
+            "eval (x)",
+            "new Function('return 1')",
+            "Function (x)",
+        ];
+        for sample in sinks {
+            assert!(
+                html_parsing_sink(sample).is_some(),
+                "{sample} was not a sink"
+            );
+        }
+        let safe = [
+            "node.textContent = String(props.text)",
+            "node.appendChild(document.createTextNode(String(kid)))",
+            "function safeColor(value) { return ''; }",
+            "evaluation(x)",
+        ];
+        for sample in safe {
+            assert!(html_parsing_sink(sample).is_none(), "{sample} was a sink");
+        }
+    }
+
+    fn map_guard_source(html: &str) -> String {
+        let start = html
+            .find("function textOf(")
+            .expect("workspace_map.html has no textOf");
+        let rel = html[start..]
+            .find("function locText(")
+            .expect("workspace_map.html has no locText");
+        let loc = start + rel;
+        let brace = html[loc..].find('{').expect("locText has no body") + loc;
+        let bytes = html.as_bytes();
+        let mut depth = 0;
+        let mut i = brace;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return html[start..=i].to_string();
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        panic!("locText body did not end");
+    }
+
+    #[test]
+    fn map_color_risk_status_and_loc_guards_hold() {
+        let source = map_guard_source(&workspace_map_html());
+        let mut script = String::from(
+            "function el(tag, props, kids) {\n  return { tag: tag, props: props || {}, kids: kids || [] };\n}\n",
+        );
+        script.push_str(&source);
+        script.push_str(
+            r#"
+const assert = require('node:assert');
+assert.strictEqual(safeColor('#abc'), '#abc');
+assert.strictEqual(safeColor('#abcd'), '#abcd');
+assert.strictEqual(safeColor('#abcdef'), '#abcdef');
+assert.strictEqual(safeColor('#ABCDEFff'), '#ABCDEFff');
+for (const bad of ['red', 'rgb(0,0,0)', '#gggggg', '#fff;color:red', '#ff', ' #fff', '#fff ', '', null, 12]) {
+  assert.strictEqual(safeColor(bad), '', 'safeColor accepted ' + bad);
+}
+for (const risk of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
+  const cls = riskPill(risk).props.className;
+  assert.ok(cls.split(/\s+/).includes(risk), cls);
+  assert.ok(cls.startsWith('risk-pill'), cls);
+}
+for (const risk of ['critical', 'LOW;x', '<img>', 'HIGH HIGH', '']) {
+  const cls = riskPill(risk).props.className;
+  assert.strictEqual(cls, 'risk-pill', risk + ' -> ' + cls);
+}
+for (const status of ['active', 'dormant', 'partial']) {
+  const cls = statusPill(status).props.className;
+  assert.ok(cls.split(/\s+/).includes(status), cls);
+}
+for (const status of ['ACTIVE', 'active x', '<svg>', 'dormant;']) {
+  const cls = statusPill(status).props.className;
+  assert.strictEqual(cls, 'status-pill', status + ' -> ' + cls);
+}
+const shown = locText('medium', 2231);
+assert.ok(shown.startsWith('medium (~'), shown);
+assert.notStrictEqual(shown, 'medium');
+assert.strictEqual(locText('medium', Infinity), 'medium');
+assert.strictEqual(locText('medium', -Infinity), 'medium');
+assert.strictEqual(locText('medium', NaN), 'medium');
+assert.strictEqual(locText('medium', 'nope'), 'medium');
+assert.strictEqual(locText('medium', '1e309'), 'medium');
+assert.strictEqual(locText('medium', 0), 'medium');
+assert.strictEqual(locText('small', null), 'small');
+"#,
+        );
+        let output = std::process::Command::new("node")
+            .arg("-")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap_or_else(|err| panic!("spawn node: {err}"));
+        use std::io::Write;
+        let mut child = output;
+        child
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(script.as_bytes())
+            .unwrap();
+        let finished = child.wait_with_output().unwrap();
+        assert!(
+            finished.status.success(),
+            "map guards failed\n{}",
+            String::from_utf8_lossy(&finished.stderr)
+        );
+    }
+
+    #[test]
+    fn the_dialogue_file_row_matches_llm_dialogue_rs() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let src =
+            std::fs::read_to_string(root.join("astraweave-dialogue/src/llm_dialogue.rs")).unwrap();
+        let lines = src.lines().count();
+        let doc = std::fs::read_to_string(root.join("docs/architecture/ai_pipeline.md")).unwrap();
+        let row = doc
+            .lines()
+            .find(|line| line.starts_with("| `llm_dialogue.rs` |"))
+            .expect("llm_dialogue.rs row");
+        let stated = row.split('|').nth(2).unwrap().trim();
+        assert_eq!(stated, lines.to_string(), "{row}");
     }
 
     #[test]

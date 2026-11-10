@@ -2060,6 +2060,7 @@ dependencies = [
  "anyhow",
  "cargo_metadata",
  "clap",
+ "pulldown-cmark",
  "serde",
  "serde_json",
  "tempfile",
