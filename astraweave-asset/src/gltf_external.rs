@@ -1,8 +1,9 @@
 //! Jailed glTF buffer and image loads.
 //!
 //! Callers use [`load_jailed_gltf`] instead of `import_buffers` / `import_images`.
-//! The model directory is opened once per load, and every file URI is read
-//! from that handle, one component at a time.
+//! One load opens the model directory once, and that handle is used for the
+//! container read, every sibling URI, and every image URI. Each URI component
+//! is read from that handle.
 //! Buffer and image URI bytes share one total, and the URI count is capped.
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -13,13 +14,12 @@ use std::path::{Component, Path, PathBuf};
 pub const MAX_EXTERNAL_URIS: usize = 64;
 
 /// `Ok(None)` is a `data:` URI, which stays in memory.
-/// `Ok(Some(path))` is a relative file [`astraweave_security::path::safe_under`]
-/// accepted under `base`.
+/// `Ok(Some(path))` is a relative file name under `base`.
 ///
-/// Any other URI that contains `:`, `%`, `\`, or NUL is rejected before the
-/// path check. `safe_under` rejects an absolute path and a `..` component.
-/// `\` is rejected on every platform so a backslash does not become a
-/// separator on Windows only.
+/// The component check rejects `:`, `%`, `\`, NUL, an empty path, and a parent,
+/// root, or prefix component. The URI read uses the model directory handle.
+/// `safe_under` is not that read. `\` is rejected on every platform so a
+/// backslash does not become a separator on Windows only.
 pub fn jail_gltf_uri(base: &Path, uri: &str) -> Result<Option<PathBuf>> {
     if uri.starts_with("data:") {
         return Ok(None);
@@ -82,67 +82,47 @@ fn external_uri_count(document: &gltf::Document) -> usize {
     buffers + images
 }
 
-/// Parse `bytes`, then load buffers and images from `base`.
+/// The model directory opened once for a load.
 ///
-/// A `data:` URI is decoded in memory. A file URI is read from `base`.
-/// Every URI's bytes count toward `max_external_bytes`, and the URI count
-/// stops at [`MAX_EXTERNAL_URIS`].
-pub fn load_jailed_gltf(
-    base: &Path,
-    bytes: &[u8],
-    max_external_bytes: u64,
-) -> Result<(
-    gltf::Document,
-    Vec<gltf::buffer::Data>,
-    Vec<gltf::image::Data>,
-)> {
-    crate::gltf_loader::reject_short_glb_header(bytes)?;
-    let gltf::Gltf { document, blob } = gltf::Gltf::from_slice(bytes).context("parse gltf")?;
-    reject_external_uri_count(&document)?;
-    let root = open_model_dir(base)?;
-    let mut budget = Budget {
-        cap: max_external_bytes,
-        spent: 0,
-    };
-    let mut blob = blob;
-    let buffers = read_buffers(&document, &root, &mut blob, &mut budget)?;
-    let images = read_images(&document, &root, &buffers, &mut budget)?;
-    Ok((document, buffers, images))
+/// One load opens the model directory once, and that handle is used for the
+/// container read, every sibling URI, and every image URI.
+#[derive(Debug)]
+pub struct ModelRoot {
+    inner: crate::bounded_open::OpenedRoot,
 }
 
-fn open_model_dir(base: &Path) -> Result<crate::bounded_open::OpenedRoot> {
-    match crate::bounded_open::OpenedRoot::open(base) {
-        Ok(root) => Ok(root),
-        Err(err)
-            if err.kind() == std::io::ErrorKind::InvalidInput
-                && err.to_string().contains("not a regular file") =>
-        {
-            bail!("{} is not a regular file", base.display())
-        }
-        Err(err) => Err(err).with_context(|| format!("open {}", base.display())),
+impl ModelRoot {
+    pub(crate) fn from_opened(inner: crate::bounded_open::OpenedRoot) -> Self {
+        Self { inner }
+    }
+
+    /// Open `base`. An empty path is the current directory.
+    pub fn open(base: &Path) -> Result<Self> {
+        open_model_dir(base).map(Self::from_opened)
+    }
+
+    pub(crate) fn read(
+        &self,
+        relative: &Path,
+        max_bytes: u64,
+        noun: &str,
+        display: &Path,
+    ) -> Result<Vec<u8>> {
+        self.inner.read(relative, max_bytes, noun, display)
     }
 }
 
-/// Read one relative file URI from `base`, opening that directory once.
-pub(crate) fn read_opened_uri(base: &Path, uri: &str, max_bytes: u64) -> Result<Vec<u8>> {
-    let root = open_model_dir(base)?;
-    let mut budget = Budget {
-        cap: max_bytes,
-        spent: 0,
-    };
-    uri_bytes(&root, uri, &mut budget)
-}
-
-pub(crate) fn decode_embedded_uri(uri: &str) -> Result<Vec<u8>> {
-    decode_data_uri(uri)
-}
-
-struct Budget {
+/// Shared byte total for every buffer and image URI in one load.
+pub(crate) struct ExternalBudget {
     cap: u64,
     spent: u64,
 }
 
-impl Budget {
+impl ExternalBudget {
+    pub(crate) fn new(cap: u64) -> Self {
+        Self { cap, spent: 0 }
+    }
+
     fn remaining(&self) -> u64 {
         self.cap.saturating_sub(self.spent)
     }
@@ -160,10 +140,102 @@ impl Budget {
     }
 }
 
-fn uri_bytes(
-    root: &crate::bounded_open::OpenedRoot,
+/// Parse `bytes`, then load buffers and images from `base`.
+///
+/// An empty `base` is the current directory. A `data:` URI is decoded in
+/// memory. A file URI is read from the directory handle. Every URI's bytes
+/// count toward `max_external_bytes`, and the URI count stops at
+/// [`MAX_EXTERNAL_URIS`].
+pub fn load_jailed_gltf(
+    base: &Path,
+    bytes: &[u8],
+    max_external_bytes: u64,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    let root = ModelRoot::open(base)?;
+    load_jailed_gltf_with_root(&root, bytes, max_external_bytes)
+}
+
+/// Parse `bytes` and read every sibling from `root`.
+///
+/// One load opens the model directory once, and that handle is used for the
+/// container read, every sibling URI, and every image URI. This function does
+/// not open the directory again.
+pub fn load_jailed_gltf_with_root(
+    root: &ModelRoot,
+    bytes: &[u8],
+    max_external_bytes: u64,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    let mut budget = ExternalBudget::new(max_external_bytes);
+    load_with_budget(root, bytes, &mut budget)
+}
+
+pub(crate) fn load_with_budget(
+    root: &ModelRoot,
+    bytes: &[u8],
+    budget: &mut ExternalBudget,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    crate::gltf_loader::reject_short_glb_header(bytes)?;
+    let gltf::Gltf { document, blob } = gltf::Gltf::from_slice(bytes).context("parse gltf")?;
+    reject_external_uri_count(&document)?;
+    let mut blob = blob;
+    let buffers = read_buffers(&document, root, &mut blob, budget)?;
+    let images = read_images(&document, root, &buffers, budget)?;
+    Ok((document, buffers, images))
+}
+
+fn model_base(base: &Path) -> &Path {
+    if base.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        base
+    }
+}
+
+fn open_model_dir(base: &Path) -> Result<crate::bounded_open::OpenedRoot> {
+    let base = model_base(base);
+    match crate::bounded_open::OpenedRoot::open(base) {
+        Ok(root) => Ok(root),
+        Err(err)
+            if err.kind() == std::io::ErrorKind::InvalidInput
+                && err.to_string().contains("not a regular file") =>
+        {
+            bail!("{} is not a regular file", base.display())
+        }
+        Err(err) => Err(err).with_context(|| format!("open {}", base.display())),
+    }
+}
+
+/// Read one URI from `root`, charging `budget`.
+///
+/// `file_cap` limits one image file read. The read uses the smaller of that
+/// cap and the budget still remaining. A `data:` URI charges its decoded
+/// length before the bytes are decoded.
+pub(crate) fn read_charged_uri(
+    root: &ModelRoot,
     uri: &str,
-    budget: &mut Budget,
+    budget: &mut ExternalBudget,
+    file_cap: Option<u64>,
+) -> Result<Vec<u8>> {
+    uri_bytes(root, uri, budget, file_cap)
+}
+
+fn uri_bytes(
+    root: &ModelRoot,
+    uri: &str,
+    budget: &mut ExternalBudget,
+    file_cap: Option<u64>,
 ) -> Result<Vec<u8>> {
     if uri.starts_with("data:") {
         let encoded = data_uri_encoded(uri)?;
@@ -172,7 +244,11 @@ fn uri_bytes(
         return decode_data_uri(uri);
     }
     let relative = relative_file_uri(uri)?;
-    let bytes = root.read(&relative, budget.remaining(), "", &relative)?;
+    let limit = match file_cap {
+        Some(cap) => budget.remaining().min(cap),
+        None => budget.remaining(),
+    };
+    let bytes = root.read(&relative, limit, "", &relative)?;
     budget.charge(bytes.len() as u64)?;
     Ok(bytes)
 }
@@ -217,9 +293,9 @@ fn decode_data_uri(uri: &str) -> Result<Vec<u8>> {
 
 fn read_buffers(
     document: &gltf::Document,
-    root: &crate::bounded_open::OpenedRoot,
+    root: &ModelRoot,
     blob: &mut Option<Vec<u8>>,
-    budget: &mut Budget,
+    budget: &mut ExternalBudget,
 ) -> Result<Vec<gltf::buffer::Data>> {
     let mut buffers = Vec::new();
     for buffer in document.buffers() {
@@ -227,7 +303,7 @@ fn read_buffers(
             gltf::buffer::Source::Bin => {
                 blob.take().context("GLB buffer is missing its BIN chunk")?
             }
-            gltf::buffer::Source::Uri(uri) => uri_bytes(root, uri, budget)?,
+            gltf::buffer::Source::Uri(uri) => uri_bytes(root, uri, budget, None)?,
         };
         // Compare the bytes on hand before the 4-byte pad. A buffer one to
         // three bytes short would otherwise grow to `byteLength` and pass.
@@ -249,14 +325,19 @@ fn read_buffers(
 
 fn read_images(
     document: &gltf::Document,
-    root: &crate::bounded_open::OpenedRoot,
+    root: &ModelRoot,
     buffers: &[gltf::buffer::Data],
-    budget: &mut Budget,
+    budget: &mut ExternalBudget,
 ) -> Result<Vec<gltf::image::Data>> {
     let mut images = Vec::new();
     for image in document.images() {
         let encoded = match image.source() {
-            gltf::image::Source::Uri { uri, .. } => uri_bytes(root, uri, budget)?,
+            gltf::image::Source::Uri { uri, .. } => uri_bytes(
+                root,
+                uri,
+                budget,
+                Some(crate::image_limits::MAX_IMAGE_ALLOC),
+            )?,
             gltf::image::Source::View { view, .. } => {
                 let data = buffers
                     .get(view.buffer().index())
@@ -620,5 +701,160 @@ mod tests {
 
         let err = read_jailed_file(&checked, 64).expect_err("replaced directory");
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    fn one_pixel_png() -> Vec<u8> {
+        let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]));
+        let mut png = Vec::new();
+        image
+            .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+            .expect("png");
+        png
+    }
+
+    #[test]
+    fn empty_base_reads_a_bare_file_name() {
+        let name = format!(
+            "aw-empty-base-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        );
+        struct Guard(std::path::PathBuf);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let _guard = Guard(std::path::PathBuf::from(&name));
+        std::fs::write(&name, b"bare").expect("write");
+        let gltf = format!(
+            r#"{{"asset":{{"version":"2.0"}},"buffers":[{{"uri":"{name}","byteLength":4}}]}}"#
+        );
+        let base = std::path::Path::new("model.gltf").parent().expect("parent");
+        assert!(base.as_os_str().is_empty());
+        let (_doc, buffers, _) = load_jailed_gltf(base, gltf.as_bytes(), 4).expect("empty base");
+        assert_eq!(&buffers[0].0[..], b"bare");
+    }
+
+    #[test]
+    fn buffer_and_image_share_one_byte_budget() {
+        let png = one_pixel_png();
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        std::fs::write(dir.path().join("pixel.png"), &png).expect("png");
+        let gltf = br#"{
+            "asset": {"version": "2.0"},
+            "buffers": [{"uri": "box.bin", "byteLength": 4}],
+            "images": [{"uri": "pixel.png"}]
+        }"#;
+        let total = 4 + png.len() as u64;
+        let (_doc, buffers, images) =
+            load_jailed_gltf(dir.path(), gltf, total).expect("exact total");
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert_eq!(images.len(), 1);
+        let err = load_jailed_gltf(dir.path(), gltf, total - 1).expect_err("one past");
+        let msg = err.to_string();
+        assert!(msg.contains("limit") || msg.contains("exceed"), "{msg}");
+    }
+
+    #[test]
+    fn image_uris_count_toward_the_uri_cap() {
+        let png = one_pixel_png();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut images = Vec::new();
+        for index in 0..MAX_EXTERNAL_URIS {
+            let name = format!("i{index}.png");
+            std::fs::write(dir.path().join(&name), &png).expect("png");
+            images.push(serde_json::json!({ "uri": name }));
+        }
+        let within = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "images": images,
+        });
+        let bytes = serde_json::to_vec(&within).expect("json");
+        let cap = png.len() as u64 * MAX_EXTERNAL_URIS as u64;
+        let (_doc, _, loaded) = load_jailed_gltf(dir.path(), &bytes, cap).expect("64 images");
+        assert_eq!(loaded.len(), MAX_EXTERNAL_URIS);
+
+        let name = "extra.png";
+        std::fs::write(dir.path().join(name), &png).expect("extra");
+        images.push(serde_json::json!({ "uri": name }));
+        let over = serde_json::json!({
+            "asset": { "version": "2.0" },
+            "images": images,
+        });
+        let bytes = serde_json::to_vec(&over).expect("json");
+        let err = load_jailed_gltf(dir.path(), &bytes, cap + png.len() as u64).expect_err("65");
+        assert!(err.to_string().contains("too many"), "{err}");
+    }
+
+    struct ClearRootHook;
+    impl Drop for ClearRootHook {
+        fn drop(&mut self) {
+            crate::bounded_open::reset_root_opens();
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn one_directory_handle_serves_the_container_and_its_siblings() {
+        let _guard = ClearRootHook;
+        crate::bounded_open::reset_root_opens();
+        let parent = tempfile::tempdir().expect("parent");
+        let jail = parent.path().join("jail");
+        std::fs::create_dir(&jail).expect("jail");
+        let png = one_pixel_png();
+        let model_json = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"box.bin","byteLength":4}],"images":[{"uri":"pixel.png"}]}"#;
+        std::fs::write(jail.join("model.gltf"), model_json).expect("model");
+        std::fs::write(jail.join("box.bin"), b"box!").expect("bin");
+        std::fs::write(jail.join("pixel.png"), &png).expect("png");
+        let outside = parent.path().join("outside");
+        std::fs::create_dir(&outside).expect("outside");
+        std::fs::write(outside.join("model.gltf"), b"other").expect("other model");
+        std::fs::write(outside.join("box.bin"), b"xxxx").expect("other bin");
+        std::fs::write(outside.join("pixel.png"), &png).expect("other png");
+        let jail_hook = jail.clone();
+        let outside_hook = outside.clone();
+        let parked = parent.path().join("parked");
+        crate::bounded_open::after_root_open(Box::new(move || {
+            std::fs::rename(&jail_hook, &parked).expect("park");
+            std::os::unix::fs::symlink(&outside_hook, &jail_hook).expect("swap");
+        }));
+        let (bytes, root) =
+            crate::gltf_loader::read_gltf_container_with_root(&jail.join("model.gltf"))
+                .expect("container");
+        assert!(bytes.starts_with(b"{"));
+        let (_doc, buffers, images) =
+            load_jailed_gltf_with_root(&root, &bytes, crate::gltf_loader::MAX_GLB_CONTAINER_BYTES)
+                .expect("siblings");
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].width, 1);
+        assert_eq!(crate::bounded_open::root_open_count(), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn one_directory_open_reads_the_container_and_its_siblings() {
+        let _guard = ClearRootHook;
+        crate::bounded_open::reset_root_opens();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let png = one_pixel_png();
+        let model_json = br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"box.bin","byteLength":4}],"images":[{"uri":"pixel.png"}]}"#;
+        std::fs::write(dir.path().join("model.gltf"), model_json).expect("model");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        std::fs::write(dir.path().join("pixel.png"), &png).expect("png");
+        let (bytes, root) =
+            crate::gltf_loader::read_gltf_container_with_root(&dir.path().join("model.gltf"))
+                .expect("container");
+        let (_doc, buffers, images) =
+            load_jailed_gltf_with_root(&root, &bytes, crate::gltf_loader::MAX_GLB_CONTAINER_BYTES)
+                .expect("siblings");
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert_eq!(images.len(), 1);
+        assert_eq!(crate::bounded_open::root_open_count(), 1);
     }
 }

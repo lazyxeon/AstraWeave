@@ -30,8 +30,15 @@ fn pipeline(dir: &Path) -> PathBuf {
     cfg
 }
 
+fn asset_cli() -> PathBuf {
+    if let Some(path) = std::env::var_os("NEXTEST_BIN_EXE_aw_asset_cli") {
+        return PathBuf::from(path);
+    }
+    PathBuf::from(env!("CARGO_BIN_EXE_aw_asset_cli"))
+}
+
 fn run_cook(cfg: &Path) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_aw_asset_cli"))
+    Command::new(asset_cli())
         .arg("cook")
         .arg(cfg)
         .output()

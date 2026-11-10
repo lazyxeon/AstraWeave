@@ -784,6 +784,118 @@ pub mod gltf_loader {
             let mut fit_reader = OneByteReader { data: &fit, pos: 0 };
             reject_glb_reader(&mut fit_reader, 12).expect("declared length equals the prefix");
         }
+
+        fn minimal_glb(json: &str) -> Vec<u8> {
+            let mut padded = json.as_bytes().to_vec();
+            while padded.len() % 4 != 0 {
+                padded.push(b' ');
+            }
+            let total = (12 + 8 + padded.len()) as u32;
+            let mut out = Vec::new();
+            out.extend_from_slice(b"glTF");
+            out.extend_from_slice(&2u32.to_le_bytes());
+            out.extend_from_slice(&total.to_le_bytes());
+            out.extend_from_slice(&(padded.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"JSON");
+            out.extend_from_slice(&padded);
+            out
+        }
+
+        #[test]
+        fn glb_image_uri_count_stops_at_the_cap() {
+            let mut uris = Vec::new();
+            for index in 0..64 {
+                uris.push(format!(r#"{{"uri":"i{index}.png"}}"#));
+            }
+            let within = format!(
+                r#"{{"asset":{{"version":"2.0"}},"images":[{}]}}"#,
+                uris.join(",")
+            );
+            let err = load_from_glb(std::path::Path::new("."), &minimal_glb(&within))
+                .expect_err("64 image uris");
+            assert!(!err.to_string().contains("too many"), "{err}");
+            uris.push(r#"{"uri":"extra.png"}"#.to_string());
+            let over = format!(
+                r#"{{"asset":{{"version":"2.0"}},"images":[{}]}}"#,
+                uris.join(",")
+            );
+            let err =
+                load_from_glb(std::path::Path::new("."), &minimal_glb(&over)).expect_err("65");
+            assert!(err.to_string().contains("too many"), "{err}");
+        }
+
+        fn one_pixel_png() -> Vec<u8> {
+            let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]));
+            let mut png = Vec::new();
+            image
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .expect("png");
+            png
+        }
+
+        fn decode_two_images(
+            dir: &std::path::Path,
+        ) -> (
+            crate::gltf_external::ModelRoot,
+            crate::gltf_external::ExternalBudget,
+        ) {
+            let png = one_pixel_png();
+            std::fs::write(dir.join("a.png"), &png).expect("a");
+            std::fs::write(dir.join("b.png"), &png).expect("b");
+            let (root, mut budget) = open_model_budget(dir).expect("open");
+            let json = br#"{"asset":{"version":"2.0"},"images":[{"uri":"a.png"},{"uri":"b.png"}]}"#;
+            let gltf::Gltf { document, .. } = gltf::Gltf::from_slice(json).expect("parse");
+            let images: Vec<_> = document.images().collect();
+            let first =
+                decode_image_from_gltf(&root, images[0].source(), None, &mut budget).expect("a");
+            let second =
+                decode_image_from_gltf(&root, images[1].source(), None, &mut budget).expect("b");
+            assert_eq!(first.width, 1);
+            assert_eq!(second.width, 1);
+            assert_eq!(first.rgba8, [9, 8, 7, 6]);
+            assert_eq!(second.rgba8, [9, 8, 7, 6]);
+            (root, budget)
+        }
+
+        struct ClearRoot;
+        impl Drop for ClearRoot {
+            fn drop(&mut self) {
+                crate::bounded_open::reset_root_opens();
+            }
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn image_reads_share_the_directory_handle() {
+            let _guard = ClearRoot;
+            crate::bounded_open::reset_root_opens();
+            let parent = tempfile::tempdir().expect("parent");
+            let jail = parent.path().join("jail");
+            std::fs::create_dir(&jail).expect("jail");
+            let outside = parent.path().join("outside");
+            std::fs::create_dir(&outside).expect("outside");
+            std::fs::write(outside.join("a.png"), b"not-a-png").expect("other a");
+            std::fs::write(outside.join("b.png"), b"not-a-png").expect("other b");
+            let jail_hook = jail.clone();
+            let outside_hook = outside.clone();
+            let parked = parent.path().join("parked");
+            crate::bounded_open::after_root_open(Box::new(move || {
+                std::fs::rename(&jail_hook, &parked).expect("park");
+                std::os::unix::fs::symlink(&outside_hook, &jail_hook).expect("swap");
+            }));
+            let (_root, _budget) = decode_two_images(&jail);
+            assert_eq!(crate::bounded_open::root_open_count(), 1);
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn image_reads_use_one_directory_open() {
+            let _guard = ClearRoot;
+            crate::bounded_open::reset_root_opens();
+            let dir = tempfile::tempdir().expect("tempdir");
+            let (_root, _budget) = decode_two_images(dir.path());
+            assert_eq!(crate::bounded_open::root_open_count(), 1);
+        }
     }
 
     /// Extract extended PBR material properties from a glTF material.
@@ -933,17 +1045,42 @@ pub mod gltf_loader {
 
     /// Read a glTF container without letting `st_size` choose the allocation.
     /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
-    /// with `gltf_external::load_jailed_gltf`, which reads each URI from the
-    /// directory opened once for that load, instead of `Gltf::open` and `gltf::import`.
+    /// with `gltf_external::load_jailed_gltf_with_root`, which reads each URI
+    /// from the directory handle returned here, instead of `Gltf::open` and
+    /// `gltf::import`.
     ///
-    /// The model directory is opened once per load and that handle is used for
-    /// every URI read. The model file is resolved once, and its parent is
-    /// opened from that path without resolving the parent again. A symlink at
-    /// the file loads. URI components are not resolved that way.
+    /// One load opens the model directory once, and that handle is used for the
+    /// container read, every sibling URI, and every image URI. The model file
+    /// is resolved once, and its parent is opened from that path without
+    /// resolving the parent again. A symlink at the file loads. URI components
+    /// are not resolved that way. A hard-linked model is deliberately refused.
     pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
-        let bytes = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
+        Ok(read_gltf_container_with_root(path)?.0)
+    }
+
+    /// [`read_gltf_container`] plus the directory handle from that open.
+    ///
+    /// One load opens the model directory once, and that handle is used for the
+    /// container read, every sibling URI, and every image URI.
+    pub fn read_gltf_container_with_root(
+        path: &std::path::Path,
+    ) -> Result<(Vec<u8>, crate::gltf_external::ModelRoot)> {
+        let (bytes, opened) = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
         reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;
-        Ok(bytes)
+        Ok((bytes, crate::gltf_external::ModelRoot::from_opened(opened)))
+    }
+
+    /// Read a model file through [`crate::bounded_open::read_path`].
+    ///
+    /// The returned handle is the directory opened for that read. One load
+    /// opens the model directory once, and that handle is used for the
+    /// container read, every sibling URI, and every image URI.
+    pub fn read_model_file(
+        path: &std::path::Path,
+        max_bytes: u64,
+    ) -> Result<(Vec<u8>, crate::gltf_external::ModelRoot)> {
+        let (bytes, opened) = crate::bounded_open::read_path(path, max_bytes, "model")?;
+        Ok((bytes, crate::gltf_external::ModelRoot::from_opened(opened)))
     }
 
     /// Same check as [`reject_short_glb_header`] on the bytes
@@ -967,6 +1104,7 @@ pub mod gltf_loader {
         let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
         let doc = read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?;
+        crate::gltf_external::reject_external_uri_count(&doc)?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
 
         // Buffers
@@ -1011,10 +1149,11 @@ pub mod gltf_loader {
             gltf::mesh::util::ReadIndices::U8(_) => bail!("u8 indices unsupported"),
         };
 
+        let (root, mut budget) = open_model_budget(base)?;
         let mat = {
             let mat_g = prim.material();
             extract_extended_material(&mat_g, |image| {
-                decode_image_from_gltf(base, image.source(), Some(&buffers))
+                decode_image_from_gltf(&root, image.source(), Some(&buffers), &mut budget)
             })?
         };
 
@@ -1034,7 +1173,8 @@ pub mod gltf_loader {
         base: &std::path::Path,
         bytes: &[u8],
     ) -> Result<(MeshData, MaterialData)> {
-        let (doc, buffers, images) = load_json_parts(base, bytes)?;
+        let (root, mut budget) = open_model_budget(base)?;
+        let (doc, buffers, images) = load_json_parts(&root, bytes, &mut budget)?;
 
         let mesh = doc.meshes().next().ok_or_else(|| anyhow!("No meshes"))?;
         let prim = mesh
@@ -1085,33 +1225,51 @@ pub mod gltf_loader {
         ))
     }
 
-    /// JSON glTF buffers and images, with the same caps as [`crate::gltf_external::load_jailed_gltf`].
-    fn load_json_parts(
+    fn open_model_budget(
         base: &std::path::Path,
+    ) -> Result<(
+        crate::gltf_external::ModelRoot,
+        crate::gltf_external::ExternalBudget,
+    )> {
+        Ok((
+            crate::gltf_external::ModelRoot::open(base)?,
+            crate::gltf_external::ExternalBudget::new(MAX_GLB_CONTAINER_BYTES),
+        ))
+    }
+
+    /// JSON glTF buffers and images, with the same caps as [`crate::gltf_external::load_jailed_gltf`].
+    ///
+    /// `root` is the directory already opened for this load. This function does
+    /// not open it again.
+    fn load_json_parts(
+        root: &crate::gltf_external::ModelRoot,
         bytes: &[u8],
+        budget: &mut crate::gltf_external::ExternalBudget,
     ) -> Result<(gltf::Document, Vec<Vec<u8>>, Vec<gltf::image::Data>)> {
         let (document, buffers, images) =
-            crate::gltf_external::load_jailed_gltf(base, bytes, MAX_GLB_CONTAINER_BYTES)?;
+            crate::gltf_external::load_with_budget(root, bytes, budget)?;
         let buffers = buffers.into_iter().map(|data| data.0).collect();
         Ok((document, buffers, images))
     }
 
     fn image_from_loaded(
-        base: &std::path::Path,
+        root: &crate::gltf_external::ModelRoot,
         image: gltf::Image<'_>,
         buffers: &[gltf::buffer::Data],
         loaded: &[gltf::image::Data],
+        budget: &mut crate::gltf_external::ExternalBudget,
     ) -> Result<ImageData> {
         if let Some(data) = loaded.get(image.index()) {
             return rgba_from_gltf_image(data);
         }
-        decode_image_from_gltf(base, image.source(), Some(buffers))
+        decode_image_from_gltf(root, image.source(), Some(buffers), budget)
     }
 
     fn decode_image_from_gltf(
-        base: &std::path::Path,
+        root: &crate::gltf_external::ModelRoot,
         source: gltf::image::Source,
         buffers: Option<&[gltf::buffer::Data]>,
+        budget: &mut crate::gltf_external::ExternalBudget,
     ) -> Result<ImageData> {
         match source {
             gltf::image::Source::View { view, mime_type: _ } => {
@@ -1133,16 +1291,13 @@ pub mod gltf_loader {
                 decode_image_bytes(bytes)
             }
             gltf::image::Source::Uri { uri, .. } => {
-                let bytes = if uri.starts_with("data:") {
-                    crate::gltf_external::decode_embedded_uri(uri)?
-                } else {
-                    crate::gltf_external::read_opened_uri(
-                        base,
-                        uri,
-                        crate::image_limits::MAX_IMAGE_ALLOC,
-                    )
-                    .with_context(|| format!("Read image uri {uri}"))?
-                };
+                let bytes = crate::gltf_external::read_charged_uri(
+                    root,
+                    uri,
+                    budget,
+                    Some(crate::image_limits::MAX_IMAGE_ALLOC),
+                )
+                .with_context(|| format!("Read image uri {uri}"))?;
                 decode_image_bytes(&bytes)
             }
         }
@@ -1411,7 +1566,8 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            let (_document, loaded, _images) = load_json_parts(base, bytes)?;
+            let (root, mut budget) = open_model_budget(base)?;
+            let (_document, loaded, _images) = load_json_parts(&root, bytes, &mut budget)?;
             buffers = loaded;
         }
 
@@ -1552,7 +1708,8 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            let (_document, loaded, _images) = load_json_parts(base, bytes)?;
+            let (root, mut budget) = open_model_budget(base)?;
+            let (_document, loaded, _images) = load_json_parts(&root, bytes, &mut budget)?;
             buffers = loaded;
         }
 
@@ -1736,7 +1893,10 @@ pub mod gltf_loader {
             read_gltf(bytes, "Parse .gltf JSON")?
         };
 
-        // Gather buffer data (support GLB BIN or .gltf data: URIs)
+        // Gather buffer data (support GLB BIN or .gltf data: URIs).
+        // One load opens the model directory once, and that handle is used for
+        // the container read, every sibling URI, and every image URI.
+        let (root, mut budget) = open_model_budget(base)?;
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         let mut loaded_images = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
@@ -1751,7 +1911,7 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            let (_document, loaded, images) = load_json_parts(base, bytes)?;
+            let (_document, loaded, images) = load_json_parts(&root, bytes, &mut budget)?;
             buffers = loaded;
             loaded_images = images;
         }
@@ -1869,26 +2029,39 @@ pub mod gltf_loader {
         let buffers_data: Vec<gltf::buffer::Data> =
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
-            let img =
-                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
-                    .unwrap_or_else(|_| ImageData {
-                        width: 1,
-                        height: 1,
-                        rgba8: vec![255, 255, 255, 255],
-                    });
+            let img = image_from_loaded(
+                &root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            )
+            .unwrap_or_else(|_| ImageData {
+                width: 1,
+                height: 1,
+                rgba8: vec![255, 255, 255, 255],
+            });
             mat.base_color_texture = Some(img);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
-            if let Ok(img) =
-                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
-            {
+            if let Ok(img) = image_from_loaded(
+                &root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            ) {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
-            if let Ok(img) =
-                image_from_loaded(base, n.texture().source(), &buffers_data, &loaded_images)
-            {
+            if let Ok(img) = image_from_loaded(
+                &root,
+                n.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            ) {
                 mat.normal_texture = Some(img);
             }
         }
@@ -1923,7 +2096,10 @@ pub mod gltf_loader {
             read_gltf(bytes, "Parse .gltf JSON")?
         };
 
-        // Gather buffer data (support GLB BIN or .gltf data: URIs)
+        // Gather buffer data (support GLB BIN or .gltf data: URIs).
+        // One load opens the model directory once, and that handle is used for
+        // the container read, every sibling URI, and every image URI.
+        let (root, mut budget) = open_model_budget(base)?;
         let mut buffers: Vec<Vec<u8>> = Vec::new();
         let mut loaded_images = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
@@ -1938,7 +2114,7 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            let (_document, loaded, images) = load_json_parts(base, bytes)?;
+            let (_document, loaded, images) = load_json_parts(&root, bytes, &mut budget)?;
             buffers = loaded;
             loaded_images = images;
         }
@@ -2145,26 +2321,39 @@ pub mod gltf_loader {
         let buffers_data: Vec<gltf::buffer::Data> =
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
-            let img =
-                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
-                    .unwrap_or_else(|_| ImageData {
-                        width: 1,
-                        height: 1,
-                        rgba8: vec![255, 255, 255, 255],
-                    });
+            let img = image_from_loaded(
+                &root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            )
+            .unwrap_or_else(|_| ImageData {
+                width: 1,
+                height: 1,
+                rgba8: vec![255, 255, 255, 255],
+            });
             mat.base_color_texture = Some(img);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
-            if let Ok(img) =
-                image_from_loaded(base, tex.texture().source(), &buffers_data, &loaded_images)
-            {
+            if let Ok(img) = image_from_loaded(
+                &root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            ) {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
-            if let Ok(img) =
-                image_from_loaded(base, n.texture().source(), &buffers_data, &loaded_images)
-            {
+            if let Ok(img) = image_from_loaded(
+                &root,
+                n.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            ) {
                 mat.normal_texture = Some(img);
             }
         }

@@ -373,8 +373,8 @@ fn jail_gltf_uri(base: &Path, uri: &str) -> Result<()> {
     astraweave_asset::gltf_external::jail_gltf_uri(base, uri).map(|_| ())
 }
 
-fn read_jailed_gltf(path: &Path) -> Result<Vec<u8>> {
-    let bytes = astraweave_asset::gltf_loader::read_gltf_container(path)?;
+fn read_jailed_gltf(path: &Path) -> Result<(Vec<u8>, astraweave_asset::gltf_external::ModelRoot)> {
+    let (bytes, root) = astraweave_asset::gltf_loader::read_gltf_container_with_root(path)?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = gltf::Gltf::from_slice(&bytes)?;
     for buffer in doc.buffers() {
@@ -388,7 +388,7 @@ fn read_jailed_gltf(path: &Path) -> Result<Vec<u8>> {
         }
     }
     astraweave_asset::gltf_external::reject_external_uri_count(&doc)?;
-    Ok(bytes)
+    Ok((bytes, root))
 }
 
 fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
@@ -407,13 +407,15 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
     if src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("gltf".into())
         || src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("glb".into())
     {
-        let bytes = read_jailed_gltf(src)?;
-        let base = src.parent().unwrap_or_else(|| Path::new("."));
-        let (_document, _buffers, _images) = astraweave_asset::gltf_external::load_jailed_gltf(
-            base,
-            &bytes,
-            astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
-        )?;
+        let (bytes, root) = read_jailed_gltf(src)?;
+        // One load opens the model directory once, and that handle is used for
+        // the container read, every sibling URI, and every image URI.
+        let (_document, _buffers, _images) =
+            astraweave_asset::gltf_external::load_jailed_gltf_with_root(
+                &root,
+                &bytes,
+                astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+            )?;
         // Minimal example: just copy the glTF for now; swap to a meshbin writer later
         fs::copy(src, &out)?;
         if compress {

@@ -4,7 +4,7 @@
 //! lives under `target/`, so that case falls back to the repo assets.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
@@ -216,17 +216,12 @@ pub fn import_model(
     import_validated_model(&path)
 }
 
-fn read_model_bytes(path: &Path) -> Result<Vec<u8>> {
-    regular_file(path, MAX_MODEL_BYTES)?;
-    let mut file = fs::File::open(path).with_context(|| format!("read {}", path.display()))?;
-    let mut bytes = Vec::new();
-    std::io::Read::take(&mut file, MAX_MODEL_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .with_context(|| format!("read {}", path.display()))?;
-    if bytes.len() as u64 > MAX_MODEL_BYTES {
-        bail!("model {} exceeds {MAX_MODEL_BYTES} bytes", path.display());
-    }
-    Ok(bytes)
+/// The bytes and directory handle come from `read_model_file`, which calls
+/// `bounded_open::read_path`. One load opens the model directory once, and
+/// that handle is used for the container read, every sibling URI, and every
+/// image URI. A hard-linked model is deliberately refused.
+fn read_model_bytes(path: &Path) -> Result<(Vec<u8>, astraweave_asset::gltf_external::ModelRoot)> {
+    astraweave_asset::gltf_loader::read_model_file(path, MAX_MODEL_BYTES)
 }
 
 fn import_validated_model(
@@ -236,22 +231,20 @@ fn import_validated_model(
     Vec<gltf::buffer::Data>,
     Vec<gltf::image::Data>,
 )> {
-    let bytes = read_model_bytes(path)?;
+    let (bytes, root) = read_model_bytes(path)?;
     validate_model_bytes(path, &bytes)?;
     // Parse the bytes just read. `gltf::import` would open the path again and
     // `Glb::from_reader` would allocate `declared - 12` from that second file.
     astraweave_asset::gltf_loader::reject_short_glb_header(&bytes)?;
-    // `import_slice` has no base directory. `import_buffers` reads a file URI
-    // with gltf `read_to_end` (`st_size + 1`, no cap). `load_jailed_gltf`
-    // reads the sibling through `bounded_open::read_under`. File type and size
-    // come from the opened handle. `Glb::from_reader` stays off this path.
-    let base = path.parent().context("model has no directory")?;
-    astraweave_asset::gltf_external::load_jailed_gltf(base, &bytes, MAX_MODEL_BYTES)
+    // One load opens the model directory once, and that handle is used for the
+    // container read, every sibling URI, and every image URI. File type and
+    // size come from the opened handle. `Glb::from_reader` stays off this path.
+    astraweave_asset::gltf_external::load_jailed_gltf_with_root(&root, &bytes, MAX_MODEL_BYTES)
         .with_context(|| format!("import {}", path.display()))
 }
 
 pub fn validate_model_file(path: &Path) -> Result<()> {
-    let bytes = read_model_bytes(path)?;
+    let (bytes, _root) = read_model_bytes(path)?;
     validate_model_bytes(path, &bytes)
 }
 
@@ -739,8 +732,33 @@ mod tests {
         assert!(err.to_string().contains("exceed"), "{err}");
     }
 
-    /// Props import goes through `import_validated_model`. A FIFO must fail
-    /// the stat check. `File::open` on a FIFO blocks until a peer connects.
+    #[test]
+    fn hard_linked_model_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(&path, b"{}").unwrap();
+        fs::hard_link(&path, dir.path().join("other.gltf")).unwrap();
+        let err = read_model_bytes(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("hero.gltf"), "{msg}");
+        assert!(msg.contains("more than one link"), "{msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_model_file_is_read_once() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.gltf");
+        fs::write(&real, b"{}").unwrap();
+        let link = dir.path().join("hero.gltf");
+        symlink(&real, &link).unwrap();
+        let (bytes, _root) = read_model_bytes(&link).unwrap();
+        assert_eq!(bytes, b"{}");
+    }
+
+    /// Props import goes through `import_validated_model`. A FIFO is refused
+    /// without waiting for a peer.
     #[cfg(unix)]
     #[test]
     fn prop_import_rejects_a_fifo_before_open() {

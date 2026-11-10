@@ -21,8 +21,10 @@ fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
 }
 
 #[cfg(feature = "gltf-assets")]
-fn gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
-    astraweave_asset::gltf_loader::read_gltf_container(path)
+fn gltf_container(
+    path: &std::path::Path,
+) -> Result<(Vec<u8>, astraweave_asset::gltf_external::ModelRoot)> {
+    astraweave_asset::gltf_loader::read_gltf_container_with_root(path)
 }
 
 #[cfg(feature = "gltf-assets")]
@@ -43,33 +45,18 @@ fn reject_escaping_gltf_uris(path: &std::path::Path, bytes: &[u8]) -> Result<()>
     Ok(())
 }
 
-/// Parse `bytes`, then load buffers and images from `path`'s directory.
-/// A file URI is jailed and read from that directory. Buffer and image bytes
-/// share `MAX_GLB_CONTAINER_BYTES`, and the URI count is capped.
-/// `gltf::import_slice` refuses those relative URIs.
-#[cfg(feature = "gltf-assets")]
-fn import_with_model_directory(
-    path: &std::path::Path,
-    bytes: &[u8],
-) -> Result<(
-    gltf::Document,
-    Vec<gltf::buffer::Data>,
-    Vec<gltf::image::Data>,
-)> {
-    let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    astraweave_asset::gltf_external::load_jailed_gltf(
-        base,
-        bytes,
-        astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
-    )
-}
-
 #[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
-    let bytes = gltf_container(path)?;
+    let (bytes, root) = gltf_container(path)?;
     reject_escaping_gltf_uris(path, &bytes)?;
-    let (doc, buffers, images) = import_with_model_directory(path, &bytes)?;
+    // One load opens the model directory once, and that handle is used for the
+    // container read, every sibling URI, and every image URI.
+    let (doc, buffers, images) = astraweave_asset::gltf_external::load_jailed_gltf_with_root(
+        &root,
+        &bytes,
+        astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+    )?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
         for prim in mesh.primitives() {
@@ -252,8 +239,15 @@ mod jail_tests {
             slice_err.to_string().contains("external reference"),
             "{slice_err}"
         );
-        let (_doc, buffers, images) =
-            import_with_model_directory(&path, &bytes).expect("sibling uris");
+        let (read, root) =
+            astraweave_asset::gltf_loader::read_gltf_container_with_root(&path).expect("container");
+        assert_eq!(read, bytes);
+        let (_doc, buffers, images) = astraweave_asset::gltf_external::load_jailed_gltf_with_root(
+            &root,
+            &read,
+            astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+        )
+        .expect("sibling uris");
         assert_eq!(buffers.len(), 1);
         assert_eq!(&buffers[0].0[..], b"box!");
         assert_eq!(images.len(), 2);
