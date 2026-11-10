@@ -40,6 +40,8 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
 
     - name: Rust CI setup
       uses: ./.github/actions/rust-ci-setup
@@ -111,6 +113,8 @@ jobs:
     steps:
     - name: Checkout Repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        persist-credentials: false
       
     - name: Install Rust Toolchain
       uses: dtolnay/rust-toolchain@599c45df1a24c1c63ae1129a7e59f46654b8fb66 # 1.89.0

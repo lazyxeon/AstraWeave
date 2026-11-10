@@ -171,6 +171,7 @@ class _MarkedDict(dict):
         self.yaml_line = line
         self.key_lines: dict[object, int] = {}
         self.scalar_style: dict[object, tuple[str | None, str]] = {}
+        self.duplicate_keys: list[object] = []
 
 
 class _MarkedList(list):
@@ -187,6 +188,8 @@ def _construct_marked_map(loader: yaml.SafeLoader, node: yaml.Node) -> _MarkedDi
     for key_node, value_node in node.value:
         key = loader.construct_object(key_node, deep=True)
         value = loader.construct_object(value_node, deep=True)
+        if key in mapping:
+            mapping.duplicate_keys.append(key)
         mapping[key] = value
         mapping.key_lines[key] = key_node.start_mark.line + 1
         if isinstance(value_node, yaml.ScalarNode):
@@ -305,7 +308,11 @@ _PLAIN_TRUE = frozenset({"true", "True", "TRUE"})
 
 
 def _ci_item(mapping: object, key: str) -> tuple[object, object]:
-    """Case-insensitive lookup. Action input names are not case-sensitive."""
+    """Case-insensitive lookup. Action input names are not case-sensitive.
+
+    This returns the first match. Callers that accept an action input must
+    reject a repeated key instead of keeping that first value.
+    """
     if not isinstance(mapping, dict):
         return None, None
     folded = key.casefold()
@@ -313,6 +320,34 @@ def _ci_item(mapping: object, key: str) -> tuple[object, object]:
         if isinstance(candidate, str) and candidate.casefold() == folded:
             return candidate, value
     return None, None
+
+
+def _ci_matches(mapping: object, key: str) -> list[tuple[object, object]]:
+    if not isinstance(mapping, dict):
+        return []
+    folded = key.casefold()
+    return [
+        (candidate, value)
+        for candidate, value in mapping.items()
+        if isinstance(candidate, str) and candidate.casefold() == folded
+    ]
+
+
+def _mapping_has_duplicate(mapping: object) -> bool:
+    """True when a key is repeated, including a case-variant the dict keeps."""
+    if not isinstance(mapping, dict):
+        return False
+    if getattr(mapping, "duplicate_keys", None):
+        return True
+    seen: set[str] = set()
+    for key in mapping:
+        if not isinstance(key, str):
+            return True
+        folded = key.casefold()
+        if folded in seen:
+            return True
+        seen.add(folded)
+    return False
 
 
 def _runner_bool_true(mapping: object, key: str) -> bool:
@@ -544,6 +579,7 @@ DOWNLOAD_STEP_MSG = "download-artifact step keys must be name, uses, and with"
 CODECOV_STEP_KEYS_MSG = "codecov step keys must be name, uses, and with"
 UPLOAD_NEEDS_MSG = "codecov upload job needs must be exactly coverage"
 COVERAGE_JOB_END_MSG = "coverage job must end at the report upload-artifact step"
+CHECKOUT_PERSIST_MSG = "checkout must set persist-credentials: false"
 COVERAGE_ARTIFACT_SHA_MSG = "coverage workflow actions must use a commit SHA"
 UPLOAD_JOB_KEYS_MSG = (
     "codecov upload job keys must be name, needs, permissions, runs-on, "
@@ -580,6 +616,37 @@ _KANI_PACKAGES = {
     "kani-sdk": "astraweave-sdk",
     "kani-core": "astraweave-core",
 }
+_KANI_WITH_KEYS = frozenset({"kani-version", "working-directory", "args", "command"})
+_KANI_COMMAND = "cargo-kani"
+_KANI_WORKDIR = "."
+_KANI_TIMEOUT_RUN = (
+    'raw="${KANI_TIMEOUT_INPUT:-300}"\n'
+    'if [ "$raw" = "null" ]; then\n'
+    "  raw=300\n"
+    "fi\n"
+    'case "$raw" in\n'
+    "  60|120|300|600|900) ;;\n"
+    "  *)\n"
+    '    echo "harness timeout must be 60, 120, 300, 600, or 900" >&2\n'
+    "    exit 1\n"
+    "    ;;\n"
+    "esac\n"
+    'echo "value=$raw" >> "$GITHUB_OUTPUT"\n'
+)
+_PRODUCER_JOB_KEYS = frozenset(
+    {"name", "permissions", "runs-on", "timeout-minutes", "steps"}
+)
+_PRODUCER_STEP_KINDS = {
+    "coverage.yml": ("checkout", "setup", "install-tarpaulin", "xml-tarpaulin", "upload"),
+    "aw-editor-tests.yml": (
+        "checkout",
+        "toolchain",
+        "apt",
+        "install-llvm",
+        "llvm-cov",
+        "upload",
+    ),
+}
 _UPLOAD_PERMISSIONS = {"contents": "read", "id-token": "write"}
 _CODECOV_WITH_KEYS = frozenset(
     {
@@ -597,6 +664,13 @@ _LEAST_PRIVILEGE_WORKFLOWS = frozenset({"kani.yml", "editor-ci.yml"})
 _MISSING = object()
 KANI_VERSION_MSG = "kani step must set kani-version to an exact X.Y.Z"
 KANI_ARGS_MSG = "kani args must match the approved package line"
+KANI_WITH_MSG = (
+    "kani step with: keys must be kani-version, working-directory, args, or command"
+)
+KANI_COMMAND_MSG = "kani command must be absent or cargo-kani"
+KANI_WORKDIR_MSG = "kani working-directory must be absent or ."
+KANI_DUP_MSG = "kani step with: must not repeat an input"
+KANI_TIMEOUT_MSG = "kani timeout step must write only the validated timeout"
 LLVM_COV_CARGO_MSG = "cargo install cargo-llvm-cov must set --version X.Y.Z and --locked"
 LLVM_COV_ACTION_MSG = "install-action cargo-llvm-cov must set tool: cargo-llvm-cov@X.Y.Z"
 _COVERAGE_WORKFLOW_NAMES = frozenset({"coverage.yml", "aw-editor-tests.yml"})
@@ -902,13 +976,137 @@ def _needs_exactly(needs: object, job_id: str) -> bool:
     return isinstance(needs, list) and needs == [job_id]
 
 
-def _ends_at_upload_artifact(job: object) -> bool:
+def _run_text(step: object) -> str:
+    if not isinstance(step, dict):
+        return ""
+    run = step.get("run")
+    return run if isinstance(run, str) else ""
+
+
+def _producer_job_keys_ok(job: object) -> bool:
+    """Job keys are the allowlist. A job-level if: is not in it."""
+    if not isinstance(job, dict) or getattr(job, "duplicate_keys", None):
+        return False
+    return set(job) == _PRODUCER_JOB_KEYS
+
+
+def _producer_step_matches(step: object, kind: str) -> bool:
+    if not isinstance(step, dict):
+        return False
+    if kind == "checkout":
+        return _is_named_action(step, "actions/checkout")
+    if kind == "setup":
+        return step.get("uses") == "./.github/actions/rust-ci-setup"
+    if kind == "install-tarpaulin":
+        return _run_text(step).lstrip().startswith("cargo install cargo-tarpaulin")
+    if kind == "xml-tarpaulin":
+        run = _run_text(step)
+        return "cargo tarpaulin" in run and "--out Xml" in run
+    if kind == "upload":
+        return _is_named_action(step, "actions/upload-artifact")
+    if kind == "toolchain":
+        return _is_named_action(step, "dtolnay/rust-toolchain")
+    if kind == "apt":
+        return _run_text(step).lstrip().startswith("sudo apt-get")
+    if kind == "install-llvm":
+        return _run_text(step).lstrip().startswith("cargo install cargo-llvm-cov")
+    if kind == "llvm-cov":
+        return _run_text(step).lstrip().startswith("cargo llvm-cov")
+    return False
+
+
+def _producer_sequence_ok(job: object, workflow: str) -> bool:
+    """The ordered step list is fixed, so nothing can sit after the upload.
+
+    In aw-editor-tests.yml the cargo llvm-cov step is immediately before
+    the lcov upload. An inserted step fails the length check.
+    """
+    kinds = _PRODUCER_STEP_KINDS.get(workflow)
+    if kinds is None or not isinstance(job, dict):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list) or len(steps) != len(kinds):
+        return False
+    return all(
+        _producer_step_matches(step, kind) for step, kind in zip(steps, kinds)
+    )
+
+
+def _producer_upload_name_ok(job: object, artifact_name: str) -> bool:
+    """The last step is the upload whose with.name is the pinned artifact."""
     if not isinstance(job, dict):
         return False
     steps = job.get("steps")
     if not isinstance(steps, list) or not steps or not isinstance(steps[-1], dict):
         return False
-    return _is_named_action(steps[-1], "actions/upload-artifact")
+    step = steps[-1]
+    if not _is_named_action(step, "actions/upload-artifact"):
+        return False
+    body = step.get("with")
+    if _mapping_has_duplicate(body):
+        return False
+    matches = _ci_matches(body, "name")
+    return len(matches) == 1 and matches[0][1] == artifact_name
+
+
+def _producer_steps_unconditional(job: object) -> bool:
+    """No step if:. if: always() on the upload would keep a failed job red."""
+    if not isinstance(job, dict):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list):
+        return False
+    for step in steps:
+        if not isinstance(step, dict):
+            return False
+        if any(isinstance(key, str) and key.casefold() == "if" for key in step):
+            return False
+    return True
+
+
+def _producer_tarpaulin_order_ok(job: object, workflow: str) -> bool:
+    """The XML upload comes before any HTML or other tarpaulin step.
+
+    The only legal cargo tarpaulin run is the XML one, and it contains no
+    Html output. A later HTML command in that same script is another
+    tarpaulin step for this check. Other workflows have no tarpaulin producer.
+    """
+    if workflow != "coverage.yml":
+        return True
+    if not isinstance(job, dict):
+        return False
+    steps = job.get("steps")
+    if not isinstance(steps, list) or not steps:
+        return False
+    upload_at = None
+    xml_at: list[int] = []
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            return False
+        if upload_at is None and _is_named_action(step, "actions/upload-artifact"):
+            upload_at = index
+        run = _run_text(step)
+        if "cargo tarpaulin" not in run:
+            continue
+        if "Html" in run or "--out Xml" not in run:
+            return False
+        xml_at.append(index)
+    if upload_at is None or len(xml_at) != 1 or xml_at[0] > upload_at:
+        return False
+    return not any(
+        index > upload_at and "cargo tarpaulin" in _run_text(step)
+        for index, step in enumerate(steps)
+    )
+
+
+def _producer_end_ok(job: object, workflow: str, artifact_name: str) -> bool:
+    return (
+        _producer_job_keys_ok(job)
+        and _producer_sequence_ok(job, workflow)
+        and _producer_upload_name_ok(job, artifact_name)
+        and _producer_steps_unconditional(job)
+        and _producer_tarpaulin_order_ok(job, workflow)
+    )
 
 
 def _producer_end_line(jobs: dict, producer_id: str, fallback: int) -> int:
@@ -939,10 +1137,14 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     permission value write, fail, including a flow mapping or a quoted key.
     The upload job's keys are exactly name, needs, permissions, runs-on,
     timeout-minutes, and steps. needs is exactly the job coverage. The
-    coverage job ends at its upload-artifact step. The upload job's steps
-    are actions/download-artifact, with exactly name and path, plus the
-    SHA-pinned Codecov action. That download step's keys are only name,
-    uses, and with, and its name is the pinned report artifact. Its
+    coverage job's keys are name, permissions, runs-on, timeout-minutes,
+    and steps. Its last step is the upload-artifact whose with.name is the
+    pinned report. A job-level if:, a step if:, a later step, a different
+    artifact name, an HTML or other cargo tarpaulin run, or a step between
+    the editor cargo llvm-cov run and the lcov upload fails. The upload
+    job's steps are actions/download-artifact, with exactly name and path,
+    plus the SHA-pinned Codecov action. That download step's keys are only
+    name, uses, and with, and its name is the pinned report artifact. Its
     permissions are exactly contents: read and id-token: write. This check
     does not apply to other workflow file names.
     """
@@ -1004,7 +1206,9 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
         if has_codecov and not _needs_exactly(job.get("needs"), "coverage"):
             needs_line = int(getattr(job, "key_lines", {}).get("needs", job_line))
             violations.append(f"{prefix}{needs_line}: {UPLOAD_NEEDS_MSG}")
-        if has_codecov and not _ends_at_upload_artifact(jobs.get("coverage")):
+        if has_codecov and not _producer_end_ok(
+            jobs.get("coverage"), Path(path).name, artifact_name or ""
+        ):
             end_line = _producer_end_line(jobs, "coverage", job_line)
             violations.append(f"{prefix}{end_line}: {COVERAGE_JOB_END_MSG}")
         if upload_only and not _exact_upload_permissions(job_perms):
@@ -1076,13 +1280,38 @@ def _approved_kani_args(job_id: str) -> str | None:
     return f"--package {package} -Z unstable-options --harness-timeout {_KANI_TIMEOUT_EXPR}"
 
 
-def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
-    """Each Kani step's args must be that job's approved package line.
+def _kani_with_keys_ok(body: object) -> bool:
+    if not isinstance(body, dict):
+        return False
+    folded: set[str] = set()
+    for key in body:
+        if not isinstance(key, str) or key.casefold() not in _KANI_WITH_KEYS:
+            return False
+        folded.add(key.casefold())
+    return "kani-version" in folded and "args" in folded
 
-    The line is `--package <crate> -Z unstable-options --harness-timeout
+
+def _kani_optional_exact(body: object, key: str, expected: str) -> bool:
+    """Absent, or one match whose value is exactly expected.
+
+    A second case-variant is not exact, even when `_ci_item` would return
+    the first value.
+    """
+    matches = _ci_matches(body, key)
+    if not matches:
+        return True
+    return len(matches) == 1 and matches[0][1] == expected
+
+
+def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
+    """Each Kani step's with: inputs are allowlisted.
+
+    args is `--package <crate> -Z unstable-options --harness-timeout
     ${{ steps.timeout.outputs.value }}`. The only expression is
-    steps.timeout.outputs.value. Any other string fails, including a dot,
-    bracket, quoted, whitespace, or case spelling of the input context.
+    steps.timeout.outputs.value. command is absent or exactly cargo-kani.
+    working-directory is absent or the literal `.`. Keys are kani-version,
+    working-directory, args, and command. A repeated key fails, including
+    a case-variant where `_ci_item` would return the first match.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -1094,9 +1323,86 @@ def kani_dispatch_args_violations(text: str, *, path: str = "") -> list[str]:
     for job_id, _job, step in _iter_steps(doc):
         if not _is_named_action(step, "model-checking/kani-github-action"):
             continue
-        _key, args = _ci_item(_mapping(step.get("with")), "args")
-        if args != _approved_kani_args(job_id):
-            violations.append(f"{prefix}{_step_line(step)}: {KANI_ARGS_MSG}")
+        line_no = _step_line(step)
+        body = step.get("with")
+        if _mapping_has_duplicate(body):
+            violations.append(f"{prefix}{line_no}: {KANI_DUP_MSG}")
+        else:
+            if not _kani_with_keys_ok(body):
+                violations.append(f"{prefix}{line_no}: {KANI_WITH_MSG}")
+            if not _kani_optional_exact(body, "command", _KANI_COMMAND):
+                violations.append(f"{prefix}{line_no}: {KANI_COMMAND_MSG}")
+            if not _kani_optional_exact(body, "working-directory", _KANI_WORKDIR):
+                violations.append(f"{prefix}{line_no}: {KANI_WORKDIR_MSG}")
+            matches = _ci_matches(body, "args")
+            args = matches[0][1] if len(matches) == 1 else None
+            if args != _approved_kani_args(job_id):
+                violations.append(f"{prefix}{line_no}: {KANI_ARGS_MSG}")
+    return violations
+
+
+def kani_timeout_run_violations(text: str, *, path: str = "") -> list[str]:
+    """Each Kani job's timeout step run text is the approved script.
+
+    The script writes `value=$raw` once, after the allowlist case. A second
+    output write is a different script, even when the case text is still
+    present.
+    """
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if doc is None:
+        return []
+    kani_jobs: set[str] = set()
+    timeout_steps: dict[str, list[dict]] = {}
+    for job_id, _job, step in _iter_steps(doc):
+        if _is_named_action(step, "model-checking/kani-github-action"):
+            kani_jobs.add(job_id)
+            timeout_steps.setdefault(job_id, [])
+        if step.get("id") == "timeout":
+            timeout_steps.setdefault(job_id, []).append(step)
+    violations: list[str] = []
+    for job_id in sorted(kani_jobs):
+        steps = timeout_steps.get(job_id, [])
+        if len(steps) == 1 and steps[0].get("run") == _KANI_TIMEOUT_RUN:
+            continue
+        line_no = _step_line(steps[0]) if steps else 1
+        violations.append(f"{prefix}{line_no}: {KANI_TIMEOUT_MSG}")
+    return violations
+
+
+def _plain_word_false(mapping: object, key: str) -> bool:
+    matches = _ci_matches(mapping, key)
+    if len(matches) != 1:
+        return False
+    actual, value = matches[0]
+    if value is not False:
+        return False
+    found = getattr(mapping, "scalar_style", {}).get(actual)
+    if not isinstance(found, tuple) or len(found) != 2:
+        return False
+    style, raw = found
+    return style is None and isinstance(raw, str) and raw.casefold() == "false"
+
+
+def checkout_persist_credentials_violations(text: str, *, path: str = "") -> list[str]:
+    """coverage.yml and aw-editor-tests.yml checkouts set persist-credentials: false."""
+    if Path(path).name not in _COVERAGE_WORKFLOW_NAMES:
+        return []
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    if doc is None:
+        return []
+    violations: list[str] = []
+    for _job_id, _job, step in _iter_steps(doc):
+        if not _is_named_action(step, "actions/checkout"):
+            continue
+        body = step.get("with")
+        if _mapping_has_duplicate(body) or not _plain_word_false(body, "persist-credentials"):
+            violations.append(f"{prefix}{_step_line(step)}: {CHECKOUT_PERSIST_MSG}")
     return violations
 
 
@@ -2062,6 +2368,8 @@ class WorkflowPolicyTest(unittest.TestCase):
             codecov.extend(least_privilege_permission_violations(text, path=rel))
             codecov.extend(kani_version_violations(text, path=rel))
             codecov.extend(kani_dispatch_args_violations(text, path=rel))
+            codecov.extend(kani_timeout_run_violations(text, path=rel))
+            codecov.extend(checkout_persist_credentials_violations(text, path=rel))
             codecov.extend(llvm_cov_pin_violations(text, path=rel))
         self.assertEqual(violations, [])
         self.assertEqual(codecov, [])
@@ -2897,7 +3205,25 @@ jobs:
             args_values.append(args)
         self.assertEqual(len(args_values), 4)
         self.assertTrue(all("steps.timeout.outputs.value" in value for value in args_values))
-        self.assertEqual(text.count("60|120|300|600|900"), 4)
+        self.assertEqual(kani_timeout_run_violations(text, path="kani.yml"), [])
+        timeout_steps = [
+            step
+            for _job_id, _job, step in _iter_steps(doc)
+            if step.get("id") == "timeout"
+        ]
+        self.assertEqual(len(timeout_steps), 4)
+        self.assertTrue(all(step.get("run") == _KANI_TIMEOUT_RUN for step in timeout_steps))
+        needle = '          echo "value=$raw" >> "$GITHUB_OUTPUT"\n'
+        injected = text.replace(
+            needle,
+            needle + '          echo "value=300; echo injected" >> "$GITHUB_OUTPUT"\n',
+            1,
+        )
+        self.assertNotEqual(injected, text)
+        self.assertEqual(injected.count("60|120|300|600|900"), text.count("60|120|300|600|900"))
+        injected_violations = kani_timeout_run_violations(injected, path="kani.yml")
+        self.assertEqual(len(injected_violations), 1)
+        self.assertIn(KANI_TIMEOUT_MSG, injected_violations[0])
         folded = text.replace(
             "          args: --package astraweave-ecs -Z unstable-options --harness-timeout ${{ steps.timeout.outputs.value }}\n",
             "          args: >-\n"
@@ -3511,6 +3837,256 @@ jobs:
             COVERAGE_JOB_END_MSG,
             " ".join(coverage_permission_violations(editor_tail, path="aw-editor-tests.yml")),
         )
+
+    def test_coverage_job_end_is_the_pinned_upload(self) -> None:
+        """The last step's artifact name is pinned, and the step list is ordered.
+
+        A trailing upload-artifact with another name still ends on
+        upload-artifact. Renaming the report, a job-level if:, if: on the
+        upload, an HTML tarpaulin command in the XML script, and a step
+        between llvm-cov and the lcov upload each fail this check.
+        """
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        renamed = text.replace(
+            "          name: coverage-xml\n"
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n",
+            "          name: decoy\n"
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n",
+            1,
+        )
+        self.assertNotEqual(renamed, text)
+        renamed_doc, renamed_err = load_workflow_yaml(renamed)
+        self.assertIsNone(renamed_err)
+        last = renamed_doc["jobs"]["coverage"]["steps"][-1]
+        self.assertTrue(_is_named_action(last, "actions/upload-artifact"))
+        self.assertEqual(_ci_item(last.get("with"), "name")[1], "decoy")
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(renamed, path="coverage.yml")),
+        )
+        decoy_tail = text.replace(
+            "          name: coverage-xml\n"
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+            "          retention-days: 30\n",
+            "          name: coverage-xml\n"
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+            "          retention-days: 30\n"
+            "      - name: After XML\n"
+            "        if: always()\n"
+            "        run: exit 1\n"
+            "      - name: Decoy upload\n"
+            "        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        with:\n"
+            "          name: decoy\n"
+            "          path: .\n",
+            1,
+        )
+        self.assertNotEqual(decoy_tail, text)
+        decoy_doc, decoy_err = load_workflow_yaml(decoy_tail)
+        self.assertIsNone(decoy_err)
+        decoy_last = decoy_doc["jobs"]["coverage"]["steps"][-1]
+        self.assertTrue(_is_named_action(decoy_last, "actions/upload-artifact"))
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(decoy_tail, path="coverage.yml")),
+        )
+        job_if = text.replace(
+            "  coverage:\n    name: Generate Code Coverage\n",
+            "  coverage:\n    name: Generate Code Coverage\n    if: false\n",
+            1,
+        )
+        self.assertNotEqual(job_if, text)
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(job_if, path="coverage.yml")),
+        )
+        step_if = text.replace(
+            "      - name: Upload coverage XML\n        uses: actions/upload-artifact@",
+            "      - name: Upload coverage XML\n        if: always()\n"
+            "        uses: actions/upload-artifact@",
+            1,
+        )
+        self.assertNotEqual(step_if, text)
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(step_if, path="coverage.yml")),
+        )
+        html_in_script = text.replace(
+            "          cargo tarpaulin --out Xml --output-dir coverage "
+            "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n",
+            "          cargo tarpaulin --out Xml --output-dir coverage "
+            "--exclude-files 'src/main.rs' --exclude-files 'tests/*'\n"
+            "          cargo tarpaulin --out Html --output-dir coverage-html\n",
+            1,
+        )
+        self.assertNotEqual(html_in_script, text)
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(html_in_script, path="coverage.yml")),
+        )
+        between = editor.replace(
+            "        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n\n"
+            "    - name: Upload coverage report\n",
+            "        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info\n\n"
+            "    - name: Between test and upload\n"
+            "      run: exit 1\n\n"
+            "    - name: Upload coverage report\n",
+            1,
+        )
+        self.assertNotEqual(between, editor)
+        between_doc, between_err = load_workflow_yaml(between)
+        self.assertIsNone(between_err)
+        editor_steps = between_doc["jobs"]["coverage"]["steps"]
+        self.assertEqual(
+            _ci_item(editor_steps[-1].get("with"), "name")[1],
+            "aw-editor-lcov",
+        )
+        self.assertIn(
+            COVERAGE_JOB_END_MSG,
+            " ".join(coverage_permission_violations(between, path="aw-editor-tests.yml")),
+        )
+
+    def test_kani_with_inputs_are_allowlisted(self) -> None:
+        """command, working-directory, and repeated with: keys are checked.
+
+        `_ci_item` returns the first case-variant. A later Args key, and an
+        exact duplicate of the approved args line, still fail.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_dispatch_args_violations(text, path="kani.yml"), [])
+        anchor = (
+            "          working-directory: .\n"
+            "          args: --package astraweave-math -Z unstable-options "
+            "--harness-timeout ${{ steps.timeout.outputs.value }}\n"
+        )
+        self.assertEqual(text.count(anchor), 1)
+        approved = _approved_kani_args("kani-math")
+        absent = text.replace(anchor, anchor.replace("          working-directory: .\n", "", 1), 1)
+        self.assertNotEqual(absent, text)
+        self.assertEqual(kani_dispatch_args_violations(absent, path="kani.yml"), [])
+        commanded = text.replace(
+            anchor,
+            anchor.replace(
+                "          working-directory: .\n",
+                "          command: cargo-kani\n          working-directory: .\n",
+                1,
+            ),
+            1,
+        )
+        self.assertEqual(kani_dispatch_args_violations(commanded, path="kani.yml"), [])
+        shapes = {
+            "command-inject": (
+                anchor.replace(
+                    "          working-directory: .\n",
+                    "          command: cargo-kani; echo injected\n          working-directory: .\n",
+                    1,
+                ),
+                KANI_COMMAND_MSG,
+            ),
+            "command-inputs": (
+                anchor.replace(
+                    "          working-directory: .\n",
+                    "          command: cargo-kani ${{ inputs.crates }}\n"
+                    "          working-directory: .\n",
+                    1,
+                ),
+                KANI_COMMAND_MSG,
+            ),
+            "workdir-inject": (
+                anchor.replace("working-directory: .", "working-directory: .; echo injected", 1),
+                KANI_WORKDIR_MSG,
+            ),
+            "workdir-expr": (
+                anchor.replace(
+                    "working-directory: .",
+                    "working-directory: ${{ inputs.crates }}",
+                    1,
+                ),
+                KANI_WORKDIR_MSG,
+            ),
+            "extra-key": (
+                anchor.replace(
+                    "          working-directory: .\n",
+                    "          sudo: true\n          working-directory: .\n",
+                    1,
+                ),
+                KANI_WITH_MSG,
+            ),
+        }
+        for name, (snippet, message) in shapes.items():
+            mutant = text.replace(anchor, snippet, 1)
+            self.assertNotEqual(mutant, text, name)
+            violations = kani_dispatch_args_violations(mutant, path="kani.yml")
+            self.assertTrue(violations, name)
+            self.assertIn(message, violations[0], name)
+        case_variant = text.replace(
+            anchor,
+            anchor + "          Args: --package astraweave-math ${{ inputs.crates }}\n",
+            1,
+        )
+        self.assertNotEqual(case_variant, text)
+        case_doc, case_err = load_workflow_yaml(case_variant)
+        self.assertIsNone(case_err)
+        case_step = next(
+            step
+            for job_id, _job, step in _iter_steps(case_doc)
+            if job_id == "kani-math" and _is_named_action(step, "model-checking/kani-github-action")
+        )
+        self.assertEqual(_ci_item(case_step.get("with"), "args")[1], approved)
+        case_violations = kani_dispatch_args_violations(case_variant, path="kani.yml")
+        self.assertIn(KANI_DUP_MSG, " ".join(case_violations))
+        self.assertNotIn(KANI_ARGS_MSG, " ".join(case_violations))
+        duplicated = text.replace(
+            anchor,
+            "          working-directory: .\n"
+            "          args: --package astraweave-math -Z unstable-options "
+            "--harness-timeout ${{ steps.timeout.outputs.value }}\n"
+            "          args: --package astraweave-math -Z unstable-options "
+            "--harness-timeout ${{ steps.timeout.outputs.value }}\n",
+            1,
+        )
+        self.assertNotEqual(duplicated, text)
+        dup_doc, dup_err = load_workflow_yaml(duplicated)
+        self.assertIsNone(dup_err)
+        dup_step = next(
+            step
+            for job_id, _job, step in _iter_steps(dup_doc)
+            if job_id == "kani-math" and _is_named_action(step, "model-checking/kani-github-action")
+        )
+        self.assertEqual(_ci_item(dup_step.get("with"), "args")[1], approved)
+        self.assertTrue(getattr(dup_step.get("with"), "duplicate_keys", None))
+        dup_violations = kani_dispatch_args_violations(duplicated, path="kani.yml")
+        self.assertIn(KANI_DUP_MSG, " ".join(dup_violations))
+        self.assertNotIn(KANI_ARGS_MSG, " ".join(dup_violations))
+
+    def test_checkout_persist_credentials_is_false(self) -> None:
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        self.assertEqual(checkout_persist_credentials_violations(text, path="coverage.yml"), [])
+        self.assertEqual(
+            checkout_persist_credentials_violations(editor, path="aw-editor-tests.yml"),
+            [],
+        )
+        self.assertEqual(text.count("persist-credentials: false"), 2)
+        self.assertEqual(editor.count("persist-credentials: false"), 2)
+        dropped = text.replace(
+            "        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n"
+            "        with:\n"
+            "          persist-credentials: false\n",
+            "        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n",
+            1,
+        )
+        self.assertNotEqual(dropped, text)
+        dropped_violations = checkout_persist_credentials_violations(dropped, path="coverage.yml")
+        self.assertTrue(dropped_violations)
+        self.assertIn(CHECKOUT_PERSIST_MSG, dropped_violations[0])
+        enabled = editor.replace("persist-credentials: false", "persist-credentials: true", 1)
+        enabled_violations = checkout_persist_credentials_violations(
+            enabled, path="aw-editor-tests.yml"
+        )
+        self.assertTrue(enabled_violations)
+        self.assertIn(CHECKOUT_PERSIST_MSG, enabled_violations[0])
 
     def test_codecov_files_path_is_pinned(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
