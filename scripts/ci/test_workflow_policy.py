@@ -1975,24 +1975,22 @@ def _composite_caller_violations(
     return list(dict.fromkeys(violations))
 
 
-def _job_runs_sccache_policy_steps(steps: list[dict]) -> bool:
-    for step in steps:
-        if _is_sccache_action_step(step) or _uses_rust_ci_setup(step) or _is_prefetch_step(step):
-            return True
-        if _step_looks_like_fallback(step) or _step_wrapper_assignments(step):
-            return True
-        if _invokes_sccache_command(_step_run(step)):
-            return True
-    return False
+def _job_continue_on_error_violations(path: str, doc: dict) -> list[str]:
+    """Every job in every workflow. A value other than false is a violation.
 
-
-def _unconditional_continue_on_error(value: object) -> bool:
-    if value is True:
-        return True
-    if not isinstance(value, str):
-        return False
-    text = value.strip()
-    return text.lower() == "true" or "${{" in text
+    Composite actions have no jobs. A job with no `steps` is still a job.
+    Step-level `continue-on-error` is a different key and is not read here.
+    """
+    if _is_composite_action(path, doc):
+        return []
+    jobs = doc.get("jobs")
+    if not isinstance(jobs, dict):
+        return []
+    violations: list[str] = []
+    for name, job in jobs.items():
+        if isinstance(job, dict) and _step_continue_on_error(job):
+            violations.append(f"{path}: continue-on-error is set on job {name}")
+    return violations
 
 
 def _load_referenced_cargo_configs(
@@ -2063,6 +2061,7 @@ def sccache_install_violations(texts: dict[str, str]) -> list[str]:
                 violations.append(f"{path}: workflow YAML did not parse")
                 continue
             violations.extend(_other_field_wrapper_violations(path, doc))
+            violations.extend(_job_continue_on_error_violations(path, doc))
             step_lists = _iter_sccache_step_lists(doc, path)
             file_uses = 0
             for steps, job in step_lists:
@@ -2075,11 +2074,6 @@ def sccache_install_violations(texts: dict[str, str]) -> list[str]:
                 violations.extend(_gated_prefetch_id_violations(path, steps))
                 violations.extend(_prefetch_pin_violations(path, steps, job, doc))
                 violations.extend(_composite_caller_violations(path, steps, job, doc))
-                if job is not None and _unconditional_continue_on_error(job.get("continue-on-error")):
-                    if _job_runs_sccache_policy_steps(steps):
-                        violations.append(
-                            f"{path}: continue-on-error is set on a job that runs sccache"
-                        )
                 incremental_steps = [step for step in steps if _unconditional_cargo_incremental(step)]
                 if action_indexes and not incremental_steps:
                     violations.append(
@@ -5525,7 +5519,7 @@ exec {real_node} "$@"
                 + "        run: sccache --show-stats\n",
                 job_header="    continue-on-error: true\n",
             ),
-            "continue-on-error is set on a job that runs sccache",
+            "continue-on-error is set on job build",
         )
 
         for label, snippet in (
@@ -6047,7 +6041,7 @@ exec {real_node} "$@"
             flagged(
                 ".github/workflows/composite-continue.yml",
                 workflow("      - uses: ./.github/actions/rust-ci-setup\n", job_header=header),
-                "continue-on-error is set on a job that runs sccache",
+                "continue-on-error is set on job build",
             )
         flagged(
             ".github/workflows/second-wrapper.yml",
@@ -6098,6 +6092,74 @@ exec {real_node} "$@"
         )
         split_found = sccache_checksum_source_violations(split)
         self.assertTrue(any("before the checksum" in item for item in split_found), split_found)
+
+    def test_job_continue_on_error_covers_every_job(self) -> None:
+        """A job that does not run sccache is still rejected. False and step-level stay allowed."""
+
+        def plain(header: str) -> str:
+            return (
+                "name: gap\n"
+                "on: push\n"
+                "jobs:\n"
+                "  lint:\n"
+                f"{header}"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - run: echo ok\n"
+            )
+
+        def job_hits(text: str) -> list[str]:
+            found = sccache_install_violations({".github/workflows/plain-job.yml": text})
+            return [item for item in found if "continue-on-error is set on job" in item]
+
+        for header in (
+            "    continue-on-error: true\n",
+            "    continue-on-error: ${{ true }}\n",
+            '    continue-on-error: "true"\n',
+            "    continue-on-error: 1\n",
+            "    continue-on-error:\n      x: true\n",
+        ):
+            hits = job_hits(plain(header))
+            self.assertTrue(any("continue-on-error is set on job lint" in item for item in hits), hits)
+
+        called = (
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  called:\n"
+            "    continue-on-error: true\n"
+            "    uses: example/workflows/.github/workflows/reuse.yml@v1\n"
+            "  other:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: echo ok\n"
+        )
+        found = sccache_install_violations({".github/workflows/called-job.yml": called})
+        self.assertTrue(any("continue-on-error is set on job called" in item for item in found), found)
+        self.assertFalse(any("job other" in item for item in found), found)
+
+        for header in (
+            "    continue-on-error: false\n",
+            '    continue-on-error: "false"\n',
+            "",
+        ):
+            self.assertEqual(job_hits(plain(header)), [])
+
+        step_only = plain("").replace(
+            "      - run: echo ok\n",
+            "      - continue-on-error: true\n        run: echo ok\n",
+            1,
+        )
+        self.assertEqual(job_hits(step_only), [])
+
+        pbr = (WORKFLOWS / "pbr-pipeline-ci.yml").read_text(encoding="utf-8")
+        self.assertNotIn("wgsl-analyzer", pbr)
+        live = [
+            item
+            for item in sccache_install_violations(sccache_policy_texts())
+            if "continue-on-error is set on job" in item
+        ]
+        self.assertEqual(live, [])
 
 
 if __name__ == "__main__":

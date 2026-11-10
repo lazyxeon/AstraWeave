@@ -78,7 +78,7 @@ Automated material validation and PBR pipeline testing in GitHub Actions CI. Thi
 #### **Job 3: Validate WGSL Shaders**
 - **Checks**: Shader file syntax (basic validation)
 - **Lists**: All `.wgsl` files with line counts
-- **Optional**: `wgsl-analyzer` (continues if not installed)
+- **Analyzer**: the job does not install `wgsl-analyzer`. The old install was unpinned and unused.
 
 ---
 

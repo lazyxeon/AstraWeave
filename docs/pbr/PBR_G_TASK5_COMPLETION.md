@@ -68,7 +68,7 @@ Task 5 implements **automated CI validation** for PBR materials and pipeline com
 #### **Job 3: Validate WGSL Shaders**
 - **Checks**: Shader file syntax (basic)
 - **Lists**: All `.wgsl` files with line counts
-- **Optional**: `wgsl-analyzer` (continues if missing)
+- **Analyzer**: the job does not install `wgsl-analyzer`. The old install was unpinned and unused.
 
 ---
 
