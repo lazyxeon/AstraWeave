@@ -547,6 +547,10 @@ SCCACHE_ACTION_TAG_OBJECT = "fd02668681acd5f960e1372061bee5e3e987195c"
 SCCACHE_VERSION = "v0.19.0"
 SCCACHE_UNAVAILABLE_WARNING = "::warning::sccache unavailable, building without cache"
 SCCACHE_PREFETCH_RUN = "run: bash scripts/ci/fetch_sccache_release.sh"
+# Prefetch failure exits 0 with available=false. Anything after this check on
+# the install `if` (`|| true`, `|| success()`) runs sccache-action, which then
+# calls downloadSCCache on the same release (#721).
+SCCACHE_PREFETCH_IF = "steps.sccache_fetch.outputs.available == 'true'"
 CARGO_INCREMENTAL_ECHO = 'echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"'
 # sha256 of the v0.19.0 archives fetch_sccache_release.sh can install.
 PINNED_SCCACHE_SHA256 = {
@@ -648,13 +652,25 @@ def _last_index_before(steps: list[str], end: int, needle: str) -> int:
     return found
 
 
+def _yaml_if_value(step: str) -> str | None:
+    match = re.search(r"(?m)^\s*if:\s*(.*?)\s*$", step)
+    if match is None:
+        return None
+    return match.group(1).strip()
+
+
 def _sccache_wrapper_violations(path: str, steps: list[str]) -> list[str]:
     violations: list[str] = []
     for step in steps:
         if "RUSTC_WRAPPER=sccache" not in step:
             continue
-        if "steps.sccache_fetch.outputs.available == 'true'" not in step:
+        if_value = _yaml_if_value(step)
+        if if_value is None or SCCACHE_PREFETCH_IF not in if_value:
             violations.append(f"{path}: RUSTC_WRAPPER=sccache is set without a successful prefetch")
+        # `|| success()` is true after a prefetch that exits 0. The wrapper is
+        # then set with no sccache binary, and cargo exits 101.
+        if if_value is not None and "||" in if_value:
+            violations.append(f"{path}: sccache enable if must not use ||, found {if_value!r}")
         if any("|| true" in line for line in step.splitlines()):
             violations.append(f"{path}: sccache enable if must not ignore failure with || true")
         if _has_continue_on_error(step):
@@ -733,8 +749,11 @@ def _sccache_action_step_violations(path: str, steps: list[str], index: int) -> 
         violations.append(
             f"{prefix}: unpinned version {_version_value(step)!r}; want explicit {SCCACHE_VERSION}"
         )
-    if "steps.sccache_fetch.outputs.available == 'true'" not in step:
-        violations.append(f"{prefix}: install must run only after a successful prefetch")
+    if _yaml_if_value(step) != SCCACHE_PREFETCH_IF:
+        violations.append(
+            f"{prefix}: install if must be exactly {SCCACHE_PREFETCH_IF!r}, "
+            f"found {_yaml_if_value(step)!r}"
+        )
     if _has_continue_on_error(step):
         violations.append(f"{prefix}: continue-on-error is set")
 
@@ -1552,6 +1571,66 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(
             any("sccache enable if must not ignore failure with || true" in item for item in enable_if_violations),
             enable_if_violations,
+        )
+
+        enable_success = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Enable sccache\n      if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "    - name: Enable sccache\n      if: steps.sccache_fetch.outputs.available == 'true' || success()\n",
+        )
+        enable_success_violations = sccache_install_violations(enable_success)
+        self.assertTrue(
+            any("sccache enable if must not use ||" in item for item in enable_success_violations),
+            enable_success_violations,
+        )
+
+        configure_success = _replace_policy_once(
+            texts,
+            ".github/workflows/toolchain-management.yml",
+            "      - name: Configure sccache\n        if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "      - name: Configure sccache\n        if: steps.sccache_fetch.outputs.available == 'true' || success()\n",
+        )
+        configure_success_violations = sccache_install_violations(configure_success)
+        self.assertTrue(
+            any("sccache enable if must not use ||" in item for item in configure_success_violations),
+            configure_success_violations,
+        )
+
+        install_or_true = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Install sccache\n      if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "    - name: Install sccache\n      if: steps.sccache_fetch.outputs.available == 'true' || true\n",
+        )
+        install_or_true_violations = sccache_install_violations(install_or_true)
+        self.assertTrue(
+            any("install if must be exactly" in item for item in install_or_true_violations),
+            install_or_true_violations,
+        )
+
+        install_or_success = _replace_policy_once(
+            texts,
+            ".github/actions/rust-ci-setup/action.yml",
+            "    - name: Install sccache\n      if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "    - name: Install sccache\n      if: steps.sccache_fetch.outputs.available == 'true' || success()\n",
+        )
+        install_or_success_violations = sccache_install_violations(install_or_success)
+        self.assertTrue(
+            any("install if must be exactly" in item for item in install_or_success_violations),
+            install_or_success_violations,
+        )
+
+        workflow_install = _replace_policy_once(
+            texts,
+            ".github/workflows/toolchain-management.yml",
+            "      - name: Install sccache\n        if: steps.sccache_fetch.outputs.available == 'true'\n",
+            "      - name: Install sccache\n        if: steps.sccache_fetch.outputs.available == 'true' || success()\n",
+        )
+        workflow_install_violations = sccache_install_violations(workflow_install)
+        self.assertTrue(
+            any("install if must be exactly" in item for item in workflow_install_violations),
+            workflow_install_violations,
         )
 
         overridden = _replace_policy_once(
