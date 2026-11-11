@@ -27,25 +27,30 @@
 # A failure to remove the temp directory cannot change the exit or the
 # recorded output. A failed download retries with backoff.
 #
-# Before extraction, archive headers must be regular files or directories.
-# A directory-like header must have size zero. A size or checksum field that
-# is not plain octal is refused, so the reader and the extractor agree on
-# the next header. Links and devices are refused, including when tar
-# materializes a link as a copy. After extraction, an lstat walk rejects a
-# symlink or any entry that is not a regular file or a directory. Cleanup
-# does not chmod a symbolic link. The archive must contain exactly one
-# top-level entry, a real directory named for this release asset. The
-# installed name is sccache.exe on win32 and sccache otherwise. That entry
-# must be one regular file with a link count of 1. The script copies that
-# file alone, checks the tool cache holds only that file, and checks its
-# bytes match the extracted file.
+# Before extraction, the script reads archive headers and allows a regular
+# file or a zero-size directory only when it can classify the header. A size
+# or checksum field that is not plain octal is refused. A header the reader
+# will not classify is refused before tar. Links and devices are refused.
+# After extraction, an lstat walk rejects a symlink or any entry that is not
+# a regular file or a directory. Cleanup does not chmod a symbolic link. The
+# archive must contain exactly one top-level entry, a real directory named
+# for this release asset. The installed name is sccache.exe on win32 and
+# sccache otherwise. That entry must be one regular file with a link count
+# of 1. The script copies that file alone and checks the tool cache holds
+# only that file. The installed bytes are compared to the named member of
+# the already-verified archive.
 #
-# Workflow steps start this script with /usr/bin/env -i and bash
-# --noprofile --norc, passing PATH, HOME, GITHUB_OUTPUT, and
-# RUNNER_TOOL_CACHE. The job environment is trusted until /usr/bin/env
-# starts. curl's first argument is -q, so it does not read a curlrc.
-# --release-base is for the policy test harness. Workflows call this script
-# with no arguments.
+# Workflow steps start this script with /usr/bin/env -i and an absolute bash
+# --noprofile --norc. Darwin uses /bin/bash. Every other OS uses
+# /usr/bin/bash. The command passes PATH, HOME, GITHUB_OUTPUT, and
+# RUNNER_TOOL_CACHE. The job environment and the step shell are trusted
+# until /usr/bin/env starts. PATH still selects curl, mktemp, rm, chmod,
+# mkdir, sleep, and cygpath. tar is /usr/bin/tar, cp is /usr/bin/cp, and
+# node is an absolute path, not a PATH lookup. curl's first argument is
+# -q, so it does not read a curlrc. --release-base is for the policy test
+# harness. Workflows call this script with no arguments.
+# SCCACHE_READER_CHECK, when set, runs the archive reader on that path and
+# exits with the reader's status. The fetch command does not pass it.
 # -E runs the ERR trap inside functions and command substitutions.
 set -eEuo pipefail
 
@@ -149,15 +154,22 @@ if [ "$ATTEMPTS" -lt 1 ]; then
   fail_closed "SCCACHE_FETCH_ATTEMPTS must be at least 1"
 fi
 
-if ! command -v node >/dev/null 2>&1; then
+NODE_BIN=""
+for _aw_node in "/usr/local/bin/node" "/usr/bin/node" "/c/Program Files/nodejs/node.exe"; do
+  if [ -x "$_aw_node" ]; then
+    NODE_BIN="$_aw_node"
+    break
+  fi
+done
+if [ -z "$NODE_BIN" ]; then
   fail_closed "node is required to match the action tool-cache arch"
 fi
 if [ -z "${RUNNER_TOOL_CACHE:-}" ]; then
   fail_closed "RUNNER_TOOL_CACHE is unset"
 fi
 
-node_arch="$(node -p 'process.arch')" || fail_closed "could not read the runner arch"
-node_platform="$(node -p 'process.platform')" || fail_closed "could not read the runner platform"
+node_arch="$("$NODE_BIN" -p 'process.arch')" || fail_closed "could not read the runner arch"
+node_platform="$("$NODE_BIN" -p 'process.platform')" || fail_closed "could not read the runner platform"
 
 case "$node_arch" in
   x64) asset_arch=x86_64 ;;
@@ -206,33 +218,43 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 
 sha256_file() {
-  node -e 'const fs=require("fs"),crypto=require("crypto");const h=crypto.createHash("sha256");h.update(fs.readFileSync(process.argv[1]));process.stdout.write(h.digest("hex"));' "$1"
+  "$NODE_BIN" -e 'const fs=require("fs"),crypto=require("crypto");const h=crypto.createHash("sha256");h.update(fs.readFileSync(process.argv[1]));process.stdout.write(h.digest("hex"));' "$1"
 }
 
 # One regular file. lstat does not follow a link, and a link count above 1
 # is another name for the same inode.
 plain_binary() {
-  node -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (!st.isFile() || st.nlink !== 1) process.exit(1);' "$1"
+  "$NODE_BIN" -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (!st.isFile() || st.nlink !== 1) process.exit(1);' "$1"
 }
 
 # lstat does not follow a link. A symlink to a directory is not a directory.
 plain_directory() {
-  node -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (!st.isDirectory()) process.exit(1);' "$1"
+  "$NODE_BIN" -e 'const fs=require("fs"); let st; try { st=fs.lstatSync(process.argv[1]); } catch (e) { process.exit(1); } if (!st.isDirectory()) process.exit(1);' "$1"
 }
 
 # Reject a symlink or any other non-regular entry anywhere under the root.
 # A failed directory read or a failed entry lstat rejects the tree.
 plain_tree() {
-  node -e 'const fs=require("fs"),path=require("path"); const root=process.argv[1]; function walk(dir){ let names; try { names=fs.readdirSync(dir); } catch (e) { process.exit(1); } for (const name of names) { const p=path.join(dir, name); let st; try { st=fs.lstatSync(p); } catch (e) { process.exit(1); } if (st.isDirectory()) { walk(p); continue; } if (!st.isFile()) process.exit(1); } } walk(root);' "$1"
+  "$NODE_BIN" -e 'const fs=require("fs"),path=require("path"); const root=process.argv[1]; function walk(dir){ let names; try { names=fs.readdirSync(dir); } catch (e) { process.exit(1); } for (const name of names) { const p=path.join(dir, name); let st; try { st=fs.lstatSync(p); } catch (e) { process.exit(1); } if (st.isDirectory()) { walk(p); continue; } if (!st.isFile()) process.exit(1); } } walk(root);' "$1"
 }
 
 # Deny by default. Type flags: NUL and "0" are regular files, "5" is a
 # directory. A name that ends in "/" is directory-like for NUL and "0" too.
 # Directory-like headers must have size zero; the following block is the
-# next header. Anything else, including links and devices, is refused.
-# Exit 1 is a refused member. Exit 2 is an archive this parser cannot read.
+# next header. A header this reader will not classify is refused. Anything
+# else, including links and devices, is refused. Exit 1 is a refused member.
+# Exit 2 is an archive this parser cannot read. The hash mode prints the
+# sha256 of one named member from these bytes.
+read_archive() {
+  "$NODE_BIN" -e 'const fs=require("fs"),zlib=require("zlib"),crypto=require("crypto"); const archive=process.argv[1]; const mode=process.argv[2]; const want=process.argv[3]||""; let buf; try { buf=zlib.gunzipSync(fs.readFileSync(archive)); } catch (e) { process.exit(2); } function plainOctal(header, start, length) { const bytes=header.subarray(start, start+length); let i=0; while (i<bytes.length && bytes[i]===32) i++; if (i>=bytes.length) return 0; if (bytes[i]===0) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0) return null; return 0; } let value=0; let saw=false; for (; i<bytes.length; i++) { const c=bytes[i]; if (c===0 || c===32) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0 && bytes[j]!==32) return null; return saw?value:0; } if (c<48 || c>55) return null; saw=true; value=value*8+(c-48); if (!Number.isSafeInteger(value)) return null; } return saw?value:0; } function nameEndsWithSlash(header) { let end=0; while (end<100 && header[end]!==0) end++; return end>0 && header[end-1]===47; } function nameLength(header) { let end=0; while (end<100 && header[end]!==0) end++; return end; } function isUstar(header) { return header[257]===117 && header[258]===115 && header[259]===116 && header[260]===97 && header[261]===114; } function prefixLength(header) { let end=0; while (end<155 && header[345+end]!==0) end++; return end; } function memberName(header) { const n=nameLength(header); let name=""; for (let i=0;i<n;i++) name+=String.fromCharCode(header[i]); return name; } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) { if (mode==="hash") process.exit(2); process.exit(0); } let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=plainOctal(h, 148, 8); if (recorded===null || recorded!==sum) process.exit(2); if (nameLength(h)===0) process.exit(1); if (isUstar(h) && prefixLength(h)!==0) process.exit(1); const typ=h[156]; const size=plainOctal(h, 124, 12); if (size===null || size<0) process.exit(2); const directoryLike=typ===53 || ((typ===0 || typ===48) && nameEndsWithSlash(h)); if (directoryLike) { if (size!==0) process.exit(1); off+=512; continue; } if (!(typ===0 || typ===48)) process.exit(1); const blocks=Math.ceil(size/512); const dataOff=off+512; if (mode==="hash" && memberName(h)===want) { if (dataOff+size>buf.length) process.exit(2); const hsh=crypto.createHash("sha256"); hsh.update(buf.subarray(dataOff, dataOff+size)); process.stdout.write(hsh.digest("hex")); process.exit(0); } off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$@"
+}
+
 archive_plain_members() {
-  node -e 'const fs=require("fs"),zlib=require("zlib"); let buf; try { buf=zlib.gunzipSync(fs.readFileSync(process.argv[1])); } catch (e) { process.exit(2); } function plainOctal(header, start, length) { const bytes=header.subarray(start, start+length); let i=0; while (i<bytes.length && bytes[i]===32) i++; if (i>=bytes.length) return 0; if (bytes[i]===0) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0) return null; return 0; } let value=0; let saw=false; for (; i<bytes.length; i++) { const c=bytes[i]; if (c===0 || c===32) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0 && bytes[j]!==32) return null; return saw?value:0; } if (c<48 || c>55) return null; saw=true; value=value*8+(c-48); if (!Number.isSafeInteger(value)) return null; } return saw?value:0; } function nameEndsWithSlash(header) { let end=0; while (end<100 && header[end]!==0) end++; return end>0 && header[end-1]===47; } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) process.exit(0); let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=plainOctal(h, 148, 8); if (recorded===null || recorded!==sum) process.exit(2); const typ=h[156]; const size=plainOctal(h, 124, 12); if (size===null || size<0) process.exit(2); const directoryLike=typ===53 || ((typ===0 || typ===48) && nameEndsWithSlash(h)); if (directoryLike) { if (size!==0) process.exit(1); off+=512; continue; } if (!(typ===0 || typ===48)) process.exit(1); const blocks=Math.ceil(size/512); off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$1"
+  read_archive "$1" members
+}
+
+archive_member_sha256() {
+  read_archive "$1" hash "$2"
 }
 
 # An extracted member can be mode 000. chmod the directory before descending
@@ -266,6 +288,12 @@ cleanup_tmp() {
   restore_tree "$tmp" || true
   rm -rf "$tmp" || true
 }
+
+if [ -n "${SCCACHE_READER_CHECK:-}" ]; then
+  reader_status=0
+  archive_plain_members "$SCCACHE_READER_CHECK" || reader_status=$?
+  exit "$reader_status"
+fi
 
 tmp="$(mktemp -d)" || fail_closed "could not create a temp directory"
 trap cleanup_tmp EXIT
@@ -312,14 +340,14 @@ fi
 
 rm -rf "$tmp/extract"
 mkdir -p "$tmp/extract" || fail_closed "could not create the extract directory"
-tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
+/usr/bin/tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
 
 if ! plain_tree "$tmp/extract"; then
   fail_closed "archive has a symlink or non-regular entry"
 fi
 
 release_root="${filename%.tar.gz}"
-top_name="$(node -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1) process.exit(1); process.stdout.write(names[0]);' "$tmp/extract")" || fail_closed "archive does not contain exactly one release root"
+top_name="$("$NODE_BIN" -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1) process.exit(1); process.stdout.write(names[0]);' "$tmp/extract")" || fail_closed "archive does not contain exactly one release root"
 if [ "$top_name" != "$release_root" ]; then
   fail_closed "archive release root does not match the asset"
 fi
@@ -335,7 +363,7 @@ dest="${tool_cache}/sccache/${clean_version}/${node_arch}"
 rm -rf "$dest" "${dest}.complete"
 if ! {
   mkdir -p "$dest" \
-    && cp "${inner}/${binary_name}" "${dest}/${binary_name}"
+    && /usr/bin/cp "${inner}/${binary_name}" "${dest}/${binary_name}"
 }; then
   fail_closed "could not install sccache into the tool cache"
 fi
@@ -343,12 +371,12 @@ fi
 if ! plain_binary "$dest/$binary_name"; then
   fail_closed "tool cache is missing the sccache binary"
 fi
-if ! node -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1 || names[0]!==process.argv[2]) process.exit(1);' "$dest" "$binary_name"; then
+if ! "$NODE_BIN" -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1 || names[0]!==process.argv[2]) process.exit(1);' "$dest" "$binary_name"; then
   fail_closed "tool cache is missing the sccache binary"
 fi
-src_sum="$(sha256_file "${inner}/${binary_name}")"
+member_sum="$(archive_member_sha256 "$tmp/pkg.tar.gz" "${release_root}/${binary_name}")" || member_sum=""
 dst_sum="$(sha256_file "${dest}/${binary_name}")"
-if [ "$src_sum" != "$dst_sum" ]; then
+if [ -z "$member_sum" ] || [ "$member_sum" != "$dst_sum" ]; then
   fail_closed "tool cache is missing the sccache binary"
 fi
 

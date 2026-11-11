@@ -22,8 +22,11 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import textwrap
 import threading
 import unittest
+
+import yaml
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -655,19 +658,30 @@ def _ustar_header(
     linkname: bytes = b"",
     *,
     signed: bool = False,
+    prefix: bytes = b"",
+    size_field: bytes | None = None,
 ) -> bytes:
     header = bytearray(512)
     header[0 : len(name)] = name
     header[100:108] = _octal_field(0o755, 8)
     header[108:116] = _octal_field(0, 8)
     header[116:124] = _octal_field(0, 8)
-    header[124:136] = _octal_field(size, 12)
+    if size_field is None:
+        header[124:136] = _octal_field(size, 12)
+    else:
+        if len(size_field) != 12:
+            raise AssertionError(len(size_field))
+        header[124:136] = size_field
     header[136:148] = _octal_field(0, 12)
     header[148:156] = b"        "
     header[156] = typ
     header[157 : 157 + len(linkname)] = linkname
     header[257:262] = b"ustar"
     header[263:265] = b"00"
+    if prefix:
+        if len(prefix) > 155:
+            raise AssertionError(len(prefix))
+        header[345 : 345 + len(prefix)] = prefix
     total = 0
     for index, byte in enumerate(header):
         value = 32 if 148 <= index < 156 else byte
@@ -788,6 +802,24 @@ exec /bin/rm "$@"
     )
 
 
+def _bind_tool(script: Path, literal: str, replacement: Path) -> None:
+    text = script.read_text(encoding="utf-8")
+    index = text.rfind(literal)
+    if index < 0:
+        raise AssertionError(literal)
+    script.write_text(
+        text[:index] + str(replacement) + text[index + len(literal) :],
+        encoding="utf-8",
+    )
+
+
+def _script_copy(directory: Path) -> Path:
+    source = ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"
+    dest = directory / "fetch.sh"
+    dest.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    return dest
+
+
 def _script_pinned_to(directory: Path, digest: str) -> Path:
     filename, _arch = _host_sccache_filename()
     return _script_pinned_named(directory, filename, digest)
@@ -865,6 +897,24 @@ def _assert_prefetch_fell_back(
     test.assertNotIn("checksum mismatch", result.stderr)
     test.assertFalse(marker.exists())
     test.assertFalse(dest.exists())
+
+
+def _reader_status(work: Path, blob: bytes) -> int:
+    archive = work / "reader.tar.gz"
+    archive.write_bytes(blob)
+    script = _script_copy(work)
+    env = os.environ.copy()
+    env["SCCACHE_READER_CHECK"] = str(archive)
+    env["RUNNER_TOOL_CACHE"] = str(work / "tool-cache")
+    env["GITHUB_OUTPUT"] = str(work / "output")
+    result = subprocess.run(
+        ["bash", str(script)],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode
 
 
 def _fetch_blob(
@@ -949,13 +999,17 @@ def _run_fetch(
 
 
 SCCACHE_FETCH_COMMAND = (
-    '/usr/bin/env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" '
+    'if [ "$(/usr/bin/uname -s)" = Darwin ]; then '
+    'exec /usr/bin/env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" '
     'RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" '
-    "bash --noprofile --norc scripts/ci/fetch_sccache_release.sh"
+    "/bin/bash --noprofile --norc scripts/ci/fetch_sccache_release.sh; fi; "
+    'exec /usr/bin/env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" '
+    'RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" '
+    "/usr/bin/bash --noprofile --norc scripts/ci/fetch_sccache_release.sh"
 )
 _FETCH_RUN_LINE = f"run: {SCCACHE_FETCH_COMMAND}"
 # Exact run lines that may name scripts/ci. Anything else that names that
-# tree, after quote removal and simple expansion, is refused.
+# tree, or that executes by a path the scanner cannot classify, is refused.
 _ALLOWED_SCRIPTS_CI_LINES = frozenset(
     {
         _FETCH_RUN_LINE,
@@ -973,11 +1027,23 @@ _ALLOWED_SCRIPTS_CI_LINES = frozenset(
         'counts=$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}") || exit 1',
     }
 )
-_RUN_KEY_RE = re.compile(r"^([ \t]*)run:[ \t]*(.*)$")
 _ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+
+
+def _plain_assignment(word: str) -> bool:
+    match = _ASSIGN_RE.fullmatch(word)
+    if match is None:
+        return False
+    value = match.group(2)
+    return not any(mark in value for mark in ("$(", "`", "\n", ";"))
 _FETCH_NAME_RE = re.compile(r"(?<![A-Za-z0-9_])fetch_sccache")
 _BRACED_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _SIMPLE_VAR_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
+_INTERPRETERS = frozenset({"bash", "sh", "python", "python3", "node", "source", "."})
+
+
+class _PolicyScanError(Exception):
+    pass
 
 
 def _sccache_policy_texts() -> list[tuple[str, str]]:
@@ -986,6 +1052,22 @@ def _sccache_policy_texts() -> list[tuple[str, str]]:
     return [
         (str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")) for path in paths
     ]
+
+
+def _allowlisted_command(command: str) -> bool:
+    stripped = command.strip()
+    if not stripped:
+        return False
+    if stripped in _ALLOWED_SCRIPTS_CI_LINES or f"run: {stripped}" in _ALLOWED_SCRIPTS_CI_LINES:
+        return True
+    for item in _ALLOWED_SCRIPTS_CI_LINES:
+        if not item.rstrip().endswith("\\"):
+            continue
+        prefix = item[4:].strip() if item.startswith("run: ") else item
+        prefix = prefix.rstrip("\\").strip()
+        if stripped == prefix or stripped.startswith(prefix + " "):
+            return True
+    return False
 
 
 def _drop_quotes_and_escapes(text: str) -> str:
@@ -1013,6 +1095,33 @@ def _drop_quotes_and_escapes(text: str) -> str:
                 quote = char
             else:
                 out.append(char)
+            index += 1
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _fold_path_separators(text: str) -> str:
+    """Treat a backslash between path parts as a slash, outside quotes."""
+    out: list[str] = []
+    quote = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            out.append(char)
+            if char == quote:
+                quote = ""
+            index += 1
+            continue
+        if char in "\"'":
+            quote = char
+            out.append(char)
+            index += 1
+            continue
+        if char == "\\":
+            out.append("/")
             index += 1
             continue
         out.append(char)
@@ -1065,76 +1174,446 @@ def _strip_shell_comment(text: str) -> str:
     return text
 
 
-def _command_names_scripts_ci(command: str, env: dict[str, str]) -> tuple[bool, dict[str, str]]:
-    normalized = _expand_vars(_drop_quotes_and_escapes(command), env)
+def _split_commands(text: str) -> list[str]:
+    parts: list[str] = []
+    buf: list[str] = []
+    quote = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            buf.append(char)
+            if char == quote and text[index - 1] != "\\":
+                quote = ""
+            index += 1
+            continue
+        if char in "\"'":
+            quote = char
+            buf.append(char)
+            index += 1
+            continue
+        if char in ";\n":
+            parts.append("".join(buf))
+            buf = []
+            index += 1
+            continue
+        if text.startswith("&&", index) or text.startswith("||", index):
+            parts.append("".join(buf))
+            buf = []
+            index += 2
+            continue
+        buf.append(char)
+        index += 1
+    parts.append("".join(buf))
+    return [part.strip() for part in parts if part.strip()]
+
+
+def _raw_words(command: str) -> list[str]:
+    words: list[str] = []
+    buf: list[str] = []
+    quote = ""
+    for char in command:
+        if quote:
+            buf.append(char)
+            if char == quote:
+                quote = ""
+            continue
+        if char in "\"'":
+            quote = char
+            buf.append(char)
+            continue
+        if char.isspace():
+            if buf:
+                words.append("".join(buf))
+                buf = []
+            continue
+        buf.append(char)
+    if buf:
+        words.append("".join(buf))
+    return words
+
+
+_ARRAY_COMMAND_RE = re.compile(r"""^["']?\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}["']?$""")
+_HEREDOC_RE = re.compile(r"<<\s*-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
+
+
+def _has_backslash_path(token: str) -> bool:
+    index = 0
+    while index < len(token):
+        if token[index] != "\\":
+            index += 1
+            continue
+        nxt = token[index + 1] if index + 1 < len(token) else ""
+        if nxt in {"n", "t", "r", "\\", '"', "'"}:
+            index += 2
+            continue
+        return True
+    return False
+
+
+def _script_arg_nonliteral(token: str) -> bool:
+    if any(mark in token for mark in ("$", "`", "*", "?", "[")):
+        return True
+    return _has_backslash_path(token)
+
+
+def _argv0_nonliteral(token: str) -> bool:
+    if token in {"[", "[[", "]", "]]"}:
+        return False
+    if _ARRAY_COMMAND_RE.fullmatch(token):
+        return False
+    if token.startswith("$") or token.startswith("`"):
+        return True
+    if _has_backslash_path(token):
+        return True
+    if any(mark in token for mark in ("*", "?")) and (
+        "/" in token or token.startswith(".")
+    ):
+        return True
+    return False
+
+
+def _unclosed_quote(text: str) -> bool:
+    quote = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == quote:
+                quote = ""
+            index += 1
+            continue
+        if char == "\\" and index + 1 < len(text):
+            index += 2
+            continue
+        if char in "\"'":
+            quote = char
+        index += 1
+    return bool(quote)
+
+
+def _logical_shell_lines(body: str) -> list[str]:
+    """Join continuations and quoted newlines, and drop heredoc bodies."""
+    lines: list[str] = []
+    buf = ""
+    pending = False
+    heredoc: str | None = None
+    for raw in body.splitlines():
+        if heredoc is not None:
+            if raw.strip() == heredoc:
+                heredoc = None
+            continue
+        if not _unclosed_quote(buf):
+            match = _HEREDOC_RE.search(raw)
+            if match is not None:
+                heredoc = match.group(1)
+        stripped = raw.rstrip()
+        continued = (
+            not _unclosed_quote(buf + stripped)
+            and stripped.endswith("\\")
+            and not stripped.endswith("\\\\")
+        )
+        piece = (stripped[:-1] + " ") if continued else raw
+        if pending or (buf and _unclosed_quote(buf)):
+            buf += piece if pending else "\n" + piece
+        else:
+            buf = piece
+        pending = continued
+        if continued or _unclosed_quote(buf):
+            continue
+        lines.append(buf)
+        buf = ""
+        pending = False
+    if buf:
+        lines.append(buf)
+    return lines
+
+
+def _nonliteral_execution(words: list[str]) -> bool:
+    if not words:
+        return False
+    if _argv0_nonliteral(words[0]):
+        return True
+    base = words[0].rsplit("/", 1)[-1]
+    if base in _INTERPRETERS or base.endswith("bash"):
+        for word in words[1:]:
+            if word.startswith("-") and word != "-":
+                continue
+            return _script_arg_nonliteral(word)
+    return False
+
+
+def _cwd_parts(path: str) -> list[str]:
+    return [part for part in path.split("/") if part not in {"", "."}]
+
+
+def _apply_cd(parts: list[str], dest: str) -> list[str]:
+    if dest.startswith("/"):
+        out: list[str] = []
+    else:
+        out = list(parts)
+    for part in dest.split("/"):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if out:
+                out.pop()
+            continue
+        out.append(part)
+    return out
+
+
+def _cwd_text(parts: list[str]) -> str:
+    return "/".join(parts)
+
+
+def _script_token(words: list[str]) -> str | None:
+    if not words:
+        return None
+    base = words[0].rsplit("/", 1)[-1]
+    if base in _INTERPRETERS or base.endswith("bash"):
+        for word in words[1:]:
+            if word.startswith("-") and word != "-":
+                continue
+            return word
+        return None
+    return words[0]
+
+
+def _relative_under_scripts_ci(parts: list[str], words: list[str]) -> bool:
+    if not _path_names_scripts_ci(_cwd_text(parts)):
+        return False
+    token = _script_token(words)
+    if token is None or token.startswith("/"):
+        return False
+    return token.startswith("./") or token.startswith("../") or "/" in token
+
+
+def _cwd_unclassified(parts: list[str], words: list[str]) -> bool:
+    if not any(any(mark in part for mark in ("$", "`", "\\")) for part in parts):
+        return False
+    token = _script_token(words)
+    if token is None:
+        return False
+    return token.startswith("./") or token.startswith("../") or (
+        "/" in token and not token.startswith("/")
+    )
+
+
+def _command_names_scripts_ci(
+    command: str, env: dict[str, str], cwd: list[str]
+) -> tuple[bool, dict[str, str], list[str]]:
+    folded = _fold_path_separators(command)
+    normalized = _expand_vars(_drop_quotes_and_escapes(folded), env)
     try:
-        words = shlex.split(command, posix=True)
+        words = shlex.split(folded, posix=True)
     except ValueError:
-        return _names_scripts_ci(normalized), env
+        return _names_scripts_ci(normalized), env, cwd
+    raw = _raw_words(command)
     local = dict(env)
     fresh: dict[str, str] = {}
     index = 0
-    while index < len(words) and _ASSIGN_RE.fullmatch(words[index]):
+    while index < len(words) and _plain_assignment(words[index]):
         name, value = words[index].split("=", 1)
-        fresh[name] = _drop_quotes_and_escapes(value)
+        fresh[name] = _drop_quotes_and_escapes(_fold_path_separators(value))
         local[name] = fresh[name]
         index += 1
     if index == len(words):
         env.update(fresh)
-        return any(_names_scripts_ci(value) for value in fresh.values()), env
-    expanded = " ".join(_expand_vars(_drop_quotes_and_escapes(word), local) for word in words[index:])
-    return _names_scripts_ci(normalized) or _names_scripts_ci(expanded), env
+        return any(_names_scripts_ci(value) for value in fresh.values()), env, cwd
+    if words[index] == "cd" and index + 1 < len(words):
+        dest = _expand_vars(_drop_quotes_and_escapes(words[index + 1]), local)
+        return _names_scripts_ci(dest), env, _apply_cd(cwd, dest)
+    expanded_words = [
+        _expand_vars(_drop_quotes_and_escapes(word), local) for word in words[index:]
+    ]
+    expanded = " ".join(expanded_words)
+    named = (
+        _names_scripts_ci(normalized)
+        or _names_scripts_ci(expanded)
+        or _relative_under_scripts_ci(cwd, expanded_words)
+    )
+    nonliteral = _nonliteral_execution(raw[index:])
+    if _cwd_unclassified(cwd, raw[index:]):
+        nonliteral = True
+    return named or nonliteral, env, cwd
 
 
-def _iter_run_steps(text: str) -> list[list[tuple[int, str]]]:
-    lines = text.splitlines()
-    steps: list[list[tuple[int, str]]] = []
-    index = 0
-    while index < len(lines):
-        match = _RUN_KEY_RE.match(lines[index])
-        if not match:
-            index += 1
-            continue
-        indent = len(match.group(1).expandtabs(2))
-        rest = match.group(2).strip()
-        if rest in {"|", "|-", "|+", ">", ">-", ">+", ""}:
-            body: list[tuple[int, str]] = []
-            index += 1
-            while index < len(lines):
-                line = lines[index]
-                if not line.strip():
-                    body.append((index + 1, line))
-                    index += 1
-                    continue
-                line_indent = len(line) - len(line.lstrip(" \t"))
-                if line_indent <= indent:
-                    break
-                body.append((index + 1, line))
-                index += 1
-            steps.append(body)
-            continue
-        steps.append([(index + 1, lines[index])])
-        index += 1
-    return steps
-
-
-def _unlisted_scripts_ci(label: str, step: list[tuple[int, str]]) -> list[str]:
+def _run_body_violations(
+    label: str,
+    body: str,
+    env: dict[str, str],
+    workdir: str,
+    shell: str | None = None,
+) -> list[str]:
     violations: list[str] = []
-    env: dict[str, str] = {}
-    for line_no, raw in step:
-        stripped = raw.strip()
+    if shell and shell.split()[0].lower() in {"pwsh", "powershell", "pwsh.exe"}:
+        if _names_scripts_ci(body):
+            violations.append(f"{label} is not an allowlisted scripts/ci command")
+        return violations
+    cwd = _cwd_parts(workdir)
+    local = dict(env)
+    for raw_line in _logical_shell_lines(body):
+        stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        if stripped in _ALLOWED_SCRIPTS_CI_LINES:
+        if _allowlisted_command(stripped):
             continue
-        command = stripped.split(":", 1)[1].strip() if stripped.startswith("run:") else stripped
-        command = _strip_shell_comment(command)
+        command = _strip_shell_comment(stripped)
         if not command.strip():
             continue
-        named, env = _command_names_scripts_ci(command, env)
-        if named:
-            violations.append(f"{label}:{line_no} is not an allowlisted scripts/ci command")
+        if _allowlisted_command(command):
+            continue
+        for part in _split_commands(command):
+            if _allowlisted_command(part):
+                continue
+            named, local, cwd = _command_names_scripts_ci(part, local, cwd)
+            if named:
+                violations.append(f"{label} is not an allowlisted scripts/ci command")
+                return violations
     return violations
+
+
+def _string_env(value: object, where: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise _PolicyScanError(f"{where} env")
+    out: dict[str, str] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or isinstance(item, (dict, list)):
+            raise _PolicyScanError(f"{where} env")
+        out[key] = "" if item is None else str(item)
+    return out
+
+
+def _optional_string(value: object, where: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise _PolicyScanError(where)
+    return value
+
+
+def _run_defaults(value: object, where: str) -> tuple[str | None, str | None]:
+    if value is None:
+        return None, None
+    if not isinstance(value, dict):
+        raise _PolicyScanError(f"{where} defaults")
+    run = value.get("run")
+    if run is None:
+        return None, None
+    if not isinstance(run, dict):
+        raise _PolicyScanError(f"{where} defaults.run")
+    return (
+        _optional_string(run.get("shell"), f"{where} shell"),
+        _optional_string(run.get("working-directory"), f"{where} working-directory"),
+    )
+
+
+def _env_names_scripts_ci(where: str, env: dict[str, str]) -> list[str]:
+    violations: list[str] = []
+    for value in env.values():
+        if _names_scripts_ci(value):
+            violations.append(f"{where} is not an allowlisted scripts/ci command")
+            break
+    return violations
+
+
+def _scan_step(
+    label: str,
+    step: object,
+    job_env: dict[str, str],
+    workflow_env: dict[str, str],
+    default_shell: str | None,
+    default_wd: str | None,
+) -> tuple[list[str], int]:
+    if not isinstance(step, dict):
+        raise _PolicyScanError(f"{label} step")
+    violations: list[str] = []
+    if "env" in step:
+        step_env = _string_env(step.get("env"), label)
+    else:
+        step_env = {}
+    env = dict(workflow_env)
+    env.update(job_env)
+    env.update(step_env)
+    violations.extend(_env_names_scripts_ci(label, step_env))
+    shell = default_shell
+    if "shell" in step:
+        shell = _optional_string(step.get("shell"), f"{label} shell")
+    workdir = default_wd or ""
+    if "working-directory" in step:
+        parsed = _optional_string(step.get("working-directory"), f"{label} working-directory")
+        workdir = parsed or ""
+    if shell and (_names_scripts_ci(shell) or _script_arg_nonliteral(shell)):
+        violations.append(f"{label} shell is not an allowlisted scripts/ci command")
+    found = 0
+    if "run" not in step:
+        return violations, found
+    run = step.get("run")
+    if run is None:
+        return violations, found
+    if not isinstance(run, str):
+        raise _PolicyScanError(f"{label} run")
+    if run.strip() == SCCACHE_FETCH_COMMAND:
+        found = 1
+        if "env" in step:
+            violations.append(f"{label} fetch step sets env")
+        own_shell = step.get("shell") if "shell" in step else None
+        if "shell" in step and own_shell != "bash":
+            violations.append(f"{label} fetch step shell is not bash")
+        elif "shell" not in step and default_shell not in (None, "bash"):
+            violations.append(f"{label} fetch step shell is not bash")
+    violations.extend(_run_body_violations(label, run, env, workdir, shell))
+    return violations, found
+
+
+def _scan_document(label: str, data: object) -> tuple[list[str], int]:
+    if not isinstance(data, dict):
+        raise _PolicyScanError("root")
+    violations: list[str] = []
+    found = 0
+    workflow_env = _string_env(data.get("env"), label)
+    violations.extend(_env_names_scripts_ci(label, workflow_env))
+    default_shell, default_wd = _run_defaults(data.get("defaults"), label)
+    if default_shell and (
+        _names_scripts_ci(default_shell) or _script_arg_nonliteral(default_shell)
+    ):
+        violations.append(f"{label} shell is not an allowlisted scripts/ci command")
+    runs = data.get("runs")
+    indexed: list[tuple[str, object, dict[str, str]]] = []
+    if isinstance(runs, dict) and "steps" in runs:
+        raw = runs.get("steps")
+        if not isinstance(raw, list):
+            raise _PolicyScanError("runs.steps")
+        for index, step in enumerate(raw):
+            indexed.append((f"{label}:runs:{index}", step, {}))
+    else:
+        jobs = data.get("jobs")
+        if jobs is None:
+            return violations, found
+        if not isinstance(jobs, dict):
+            raise _PolicyScanError("jobs")
+        for name, job in jobs.items():
+            if not isinstance(job, dict):
+                raise _PolicyScanError(f"job {name}")
+            job_env = _string_env(job.get("env"), f"{label}:{name}")
+            violations.extend(_env_names_scripts_ci(f"{label}:{name}", job_env))
+            raw = job.get("steps")
+            if raw is None:
+                continue
+            if not isinstance(raw, list):
+                raise _PolicyScanError(f"job {name} steps")
+            for index, step in enumerate(raw):
+                indexed.append((f"{label}:{name}:{index}", step, job_env))
+    for step_label, step, job_env in indexed:
+        step_violations, step_found = _scan_step(
+            step_label, step, job_env, workflow_env, default_shell, default_wd
+        )
+        violations.extend(step_violations)
+        found += step_found
+    return violations, found
 
 
 def sccache_fetch_run_violations(
@@ -1149,11 +1628,20 @@ def sccache_fetch_run_violations(
     violations: list[str] = []
     found = 0
     for label, text in texts:
-        for line in text.splitlines():
-            if line.strip() == _FETCH_RUN_LINE:
-                found += 1
-        for step in _iter_run_steps(text):
-            violations.extend(_unlisted_scripts_ci(label, step))
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError:
+            violations.append(f"{label}: could not classify the workflow")
+            continue
+        if data is None:
+            continue
+        try:
+            file_violations, file_found = _scan_document(label, data)
+        except _PolicyScanError:
+            violations.append(f"{label}: could not classify the workflow")
+            continue
+        violations.extend(file_violations)
+        found += file_found
     if expected_fetch_count is not None and found != expected_fetch_count:
         violations.append(f"expected {expected_fetch_count} fetch steps, found {found}")
     return violations
@@ -1178,20 +1666,15 @@ def _probe_workflow(run: str) -> str:
 
 
 def _workflow_fetch_argv(script: Path, base: str, env: dict[str, str]) -> list[str]:
-    argv: list[str] = []
-    for token in shlex.split(SCCACHE_FETCH_COMMAND):
-        if token == "scripts/ci/fetch_sccache_release.sh":
-            argv.append(str(script))
-            continue
-        if "=" in token:
-            key, value = token.split("=", 1)
-            if value.startswith("$"):
-                argv.append(f"{key}={env.get(value[1:], '')}")
-                continue
-        argv.append(token)
-    argv.extend(["--release-base", base])
+    replacement = shlex.quote(str(script)) + " --release-base " + shlex.quote(base)
+    command = SCCACHE_FETCH_COMMAND.replace(
+        "scripts/ci/fetch_sccache_release.sh", replacement
+    )
+    argv = ["/usr/bin/env", "-i"]
+    for key in ("PATH", "HOME", "GITHUB_OUTPUT", "RUNNER_TOOL_CACHE"):
+        argv.append(f"{key}={env.get(key, '')}")
+    argv.extend(["/usr/bin/bash", "--noprofile", "--norc", "-c", command])
     return argv
-
 
 def _run_workflow_fetch(
     work: Path,
@@ -2029,8 +2512,10 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_sccache_prefetch_falls_back_when_node_query_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            script = _script_copy(work)
             _write_exe(work / "bin", "node", "#!/bin/sh\nexit 1\n")
-            result, output = _run_fetch(work, path_prefix=work / "bin")
+            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+            result, output = _run_fetch(work, script=script)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(output, "available=false\n")
         self.assertIn("could not read the runner arch", result.stderr)
@@ -2058,13 +2543,15 @@ exit 1
 """
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            script = _script_copy(work)
             _write_exe(work / "bin", "node", node)
+            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
             with _fixed_body_server(b"not-the-archive", status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
+                    script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
                 hits = list(getattr(server, "hits"))
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -2087,13 +2574,15 @@ exit 1
 """
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            script = _script_copy(work)
             _write_exe(work / "bin", "node", node)
+            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
             with _fixed_body_server(b"archive-bytes", status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
+                    script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
                 tool_cache_exists = (work / "tool-cache").exists()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -2179,13 +2668,13 @@ exit 1
                 "cp",
                 "#!/bin/sh\nprintf leaked > \"$3/leaked\"\nexit 1\n",
             )
+            _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
                 dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
                 dest_exists = dest.exists()
@@ -2320,13 +2809,13 @@ exit 1
                 "cp",
                 "#!/bin/sh\nln -s /etc/hostname \"$2\"\nexit 0\n",
             )
+            _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
                 marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
                 cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
@@ -2358,7 +2847,7 @@ exit 1
         self.assertNotIn("cp -R", script_text)
         self.assertNotIn("cp -L", script_text)
         self.assertIn(
-            'cp "${inner}/${binary_name}" "${dest}/${binary_name}"',
+            '/usr/bin/cp "${inner}/${binary_name}" "${dest}/${binary_name}"',
             script_text,
         )
         self.assertNotIn("for candidate in", script_text)
@@ -2482,13 +2971,13 @@ exit 1
                     "#!/bin/sh\n/bin/cp \"$1\" \"$2\"\n"
                     "ln -s /etc/hostname \"$(dirname \"$2\")/cargo\"\nexit 0\n",
                 )
+                _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
                         work,
                         script=script,
                         base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                        path_prefix=work / "bin",
                     )
                 _assert_prefetch_fell_back(
                     self,
@@ -2561,13 +3050,13 @@ exec {real_node} "$@"
                     filename=windows,
                 )
                 script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
+                _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
                         work,
                         script=script,
                         base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                        path_prefix=work / "bin",
                     )
                     cached = work / "tool-cache" / "sccache" / "0.19.0" / "x64" / "sccache.exe"
                     marker = work / "tool-cache" / "sccache" / "0.19.0" / "x64.complete"
@@ -2593,13 +3082,13 @@ exec {real_node} "$@"
                     filename=windows,
                 )
                 script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
+                _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
                         work,
                         script=script,
                         base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                        path_prefix=work / "bin",
                     )
                 _assert_prefetch_fell_back(
                     self,
@@ -2816,7 +3305,14 @@ exec {real_node} "$@"
             mutant = action.replace(old, new, 1)
             self.assertNotEqual(mutant, action)
             self.assertTrue(sccache_fetch_run_violations([("action.yml", mutant)]))
-        self.assertTrue(SCCACHE_FETCH_COMMAND.startswith("/usr/bin/env -i "))
+        self.assertTrue(
+            SCCACHE_FETCH_COMMAND.startswith(
+                'if [ "$(/usr/bin/uname -s)" = Darwin ]; then exec /usr/bin/env -i '
+            )
+        )
+        self.assertIn("/bin/bash --noprofile --norc ", SCCACHE_FETCH_COMMAND)
+        self.assertIn("/usr/bin/bash --noprofile --norc ", SCCACHE_FETCH_COMMAND)
+        self.assertNotIn(" bash --noprofile", SCCACHE_FETCH_COMMAND)
 
     def test_sccache_fetch_rejects_unpinned_env_forms(self) -> None:
         pinned = SCCACHE_FETCH_COMMAND
@@ -2848,17 +3344,23 @@ exec {real_node} "$@"
 
     def test_sccache_fetch_count_rejects_extra_and_removed_sites(self) -> None:
         texts = _sccache_policy_texts()
-        fetch = _FETCH_RUN_LINE
-        label, body = texts[0]
-        self.assertIn(fetch, body)
-        extra = list(texts)
-        extra[0] = (label, body + "\n" + fetch + "\n")
+        label, body = next(item for item in texts if item[0].endswith("benchmark_alert.yml"))
+        self.assertIn(SCCACHE_FETCH_COMMAND, body)
+        extra_job = (
+            "\n  aw_fetch_probe:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - name: Fetch\n"
+            "        shell: bash\n"
+            "        run: |\n"
+            f"          {SCCACHE_FETCH_COMMAND}\n"
+        )
+        extra = [(name, text if name != label else body + extra_job) for name, text in texts]
         added = sccache_fetch_run_violations(extra, expected_fetch_count=10)
         self.assertTrue(any("expected 10 fetch steps, found 11" in item for item in added), added)
-        removed_body = body.replace(fetch, "run: echo kept", 1)
+        removed_body = body.replace(SCCACHE_FETCH_COMMAND, "echo kept", 1)
         self.assertNotEqual(removed_body, body)
-        removed = list(texts)
-        removed[0] = (label, removed_body)
+        removed = [(name, text if name != label else removed_body) for name, text in texts]
         missing = sccache_fetch_run_violations(removed, expected_fetch_count=10)
         self.assertTrue(
             any("expected 10 fetch steps, found 9" in item for item in missing),
@@ -2898,6 +3400,7 @@ exec {real_node} "$@"
             ("extra", extra),
             ("trailing", trailing),
             ("stem", stem),
+            ("dot-segment", "bash scripts/./ci/tool.sh"),
         ):
             found = sccache_fetch_run_violations([(f"{label}.yml", _probe_workflow(run))])
             self.assertTrue(any("allowlisted" in item for item in found), (label, found))
@@ -3095,6 +3598,7 @@ exec {real_node} "$@"
 
     def test_sccache_fetch_keeps_archive_bytes_when_cp_is_replaced(self) -> None:
         _filename, arch = _host_sccache_filename()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
@@ -3112,16 +3616,45 @@ exec {real_node} "$@"
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
                     hostile={"PATH": f"{work / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"},
                 )
-                dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
+                cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
                 marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
-                dest_exists = dest.exists()
-                marker_exists = marker.exists()
+                ran = subprocess.check_output([str(cached)], text=True).strip()
+                marker_is_file = marker.is_file()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(output, "available=false\n")
-        self.assertIn("tool cache is missing the sccache binary", result.stderr)
-        self.assertNotIn("SWAPPED", output)
-        self.assertFalse(dest_exists)
-        self.assertFalse(marker_exists)
+        self.assertEqual(output, "available=true\n")
+        self.assertTrue(marker_is_file)
+        self.assertEqual(ran, "sccache 0.19.0")
+        self.assertNotIn("SWAPPED", ran)
+
+        both = (
+            "#!/bin/sh\n"
+            "printf '%s\\n' '#!/bin/sh' 'echo SWAPPED' > \"$1\"\n"
+            "printf '%s\\n' '#!/bin/sh' 'echo SWAPPED' > \"$2\"\n"
+            "chmod 755 \"$1\" \"$2\"\n"
+            "exit 0\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(work / "bin", "cp", both)
+            _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            _assert_prefetch_fell_back(
+                self,
+                result,
+                output,
+                work,
+                arch,
+                message="tool cache is missing the sccache binary",
+            )
+            self.assertNotIn("SWAPPED", result.stdout)
 
     def test_sccache_prefetch_requires_the_release_root(self) -> None:
         filename, arch = _host_sccache_filename()
@@ -3430,6 +3963,7 @@ exit 0
         blob = gzip.compress(directory + member + _pad_block(payload))
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
             result, output = _fetch_blob(work, blob)
         _assert_prefetch_fell_back(
             self,
@@ -3482,13 +4016,17 @@ exit 0
             outside.write_bytes(b"keep\n")
             outside.chmod(0o400)
             blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
             _write_exe(work / "bin", "tar", planting)
-            result, output = _fetch_blob(
-                work,
-                blob,
-                path_prefix=work / "bin",
-                extra_env={"AW_OUTSIDE": str(outside)},
-            )
+            _bind_tool(script, "/usr/bin/tar", work / "bin" / "tar")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"AW_OUTSIDE": str(outside)},
+                )
             mode = outside.stat().st_mode & 0o777
         _assert_prefetch_fell_back(
             self,
@@ -3533,13 +4071,13 @@ exit 0
             )
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
             _write_exe(work / "bin", "tar", planting_tar)
+            _bind_tool(script, "/usr/bin/tar", work / "bin" / "tar")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
             _assert_prefetch_fell_back(
                 self,
@@ -3633,13 +4171,13 @@ exit 0
                 "cp",
                 "#!/bin/sh\n/bin/cp \"$1\" \"$2\"\nprintf 'extra\\n' > \"$(dirname \"$2\")/cargo\"\nexit 0\n",
             )
+            _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
             _assert_prefetch_fell_back(
                 self,
@@ -3699,13 +4237,13 @@ exec {real_node} "$@"
                 filename=darwin,
             )
             script = _script_pinned_named(work, darwin, hashlib.sha256(blob).hexdigest())
+            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
                 cached = work / "tool-cache" / "sccache" / "0.19.0" / "x64" / "sccache"
                 exe = work / "tool-cache" / "sccache" / "0.19.0" / "x64" / "sccache.exe"
@@ -3839,13 +4377,13 @@ exec {real_node} "$@"
                 'mkdir "$(dirname "$2").complete"\n'
                 "exit 0\n",
             )
+            _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
                 dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
                 marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
@@ -3883,13 +4421,13 @@ exit 0
             blob = _packed_archive(work, [("sccache", "file", payload)])
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
             _write_exe(work / "bin", "tar", planting_tar)
+            _bind_tool(script, "/usr/bin/tar", work / "bin" / "tar")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
                     script=script,
                     base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
-                    path_prefix=work / "bin",
                 )
             _assert_prefetch_fell_back(
                 self,
@@ -3899,6 +4437,637 @@ exit 0
                 arch,
                 message="archive has no sccache binary",
             )
+
+    def test_sccache_prefetch_refuses_an_unclassified_header(self) -> None:
+        _filename, arch, root = self._release_root()
+        root_b = root.encode()
+        link = _ustar_header(root_b + b"/sccache", 50, 0, b"/etc/hostname")
+        cases = {
+            "extractor": _gzip_tar(
+                [_ustar_header(b"", 48, 512, prefix=root_b + b"/"), link]
+            ),
+            "joined": _gzip_tar(
+                [
+                    _ustar_header(b"sccache", 48, 30, prefix=root_b),
+                    _pad_block(b"#!/bin/sh\necho sccache 0.19.0\n"),
+                ]
+            ),
+            "blank": _gzip_tar([_ustar_header(b"", 48, 512), link]),
+        }
+        for name, blob in cases.items():
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    work = Path(tmp)
+                    outside = work / "outside-file"
+                    prefix = self._materializing_prefix(work, outside)
+                    outside.chmod(0o400)
+                    result, output = _fetch_blob(
+                        work,
+                        blob,
+                        path_prefix=prefix,
+                        extra_env={"AW_OUTSIDE": str(outside)},
+                    )
+                    _assert_prefetch_fell_back(
+                        self,
+                        result,
+                        output,
+                        work,
+                        arch,
+                        message="archive has a symlink or non-regular entry",
+                    )
+                    self.assertEqual(outside.stat().st_mode & 0o777, 0o400)
+                    self.assertNotIn("outside-the-archive", output)
+
+    def test_sccache_prefetch_refuses_a_nul_led_size(self) -> None:
+        _filename, arch, root = self._release_root()
+        root_b = root.encode()
+        first = _ustar_header(
+            root_b + b"/decoy",
+            48,
+            0,
+            size_field=b"\0" + b"00000001000",
+        )
+        second = _ustar_header(root_b + b"/data", 48, 512)
+        link = _ustar_header(root_b + b"/sccache", 50, 0, b"/etc/hostname")
+        blob = _gzip_tar([first, second, link])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="could not extract the archive"
+        )
+        self.assertNotIn("symlink or non-regular", result.stderr)
+
+    def test_sccache_prefetch_refuses_a_hundred_byte_name(self) -> None:
+        _filename, arch, root = self._release_root()
+        name = b"a" * 99 + b"/"
+        self.assertEqual(len(name), 100)
+        first = _ustar_header(name, 48, 512)
+        link = _ustar_header(root.encode() + b"/sccache", 50, 0, b"/etc/hostname")
+        blob = _gzip_tar([first, link])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 1)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self,
+            result,
+            output,
+            work,
+            arch,
+            message="archive has a symlink or non-regular entry",
+        )
+
+    def test_sccache_prefetch_reader_rejects_a_base256_size(self) -> None:
+        _filename, arch, root = self._release_root()
+        raw = (512).to_bytes(12, "big")
+        field = bytes([raw[0] | 0x80]) + raw[1:]
+        first = _ustar_header(root.encode() + b"/sccache", 48, 0, size_field=field)
+        link = _ustar_header(root.encode() + b"/hidden", 50, 0, b"/etc/hostname")
+        blob = _gzip_tar([first, link])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="could not extract the archive"
+        )
+        self.assertNotIn("symlink or non-regular", result.stderr)
+
+    def test_sccache_prefetch_installs_a_space_padded_size(self) -> None:
+        _filename, arch, root = self._release_root()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        field = f"{len(payload):o}".encode().rjust(11, b" ") + b"\0"
+        directory = _ustar_header(root.encode() + b"/", 53, 0)
+        member = _ustar_header(
+            root.encode() + b"/sccache", 48, len(payload), size_field=field
+        )
+        blob = _gzip_tar([directory, member, _pad_block(payload)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            result, output = _fetch_blob(work, blob)
+            marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
+            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output, "available=true\n")
+            self.assertTrue(marker.is_file())
+            self.assertEqual(cached.read_bytes(), payload)
+
+    def test_sccache_prefetch_reader_accepts_a_blank_size(self) -> None:
+        _filename, _arch, root = self._release_root()
+        member = _ustar_header(
+            root.encode() + b"/sccache", 48, 0, size_field=b" " * 12
+        )
+        blob = _gzip_tar([member])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 0)
+
+    def test_sccache_prefetch_reader_rejects_a_trailing_size_byte(self) -> None:
+        _filename, arch, root = self._release_root()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        field = f"{len(payload):o}".encode().rjust(10, b"0") + b"\0X"
+        self.assertEqual(len(field), 12)
+        directory = _ustar_header(root.encode() + b"/", 53, 0)
+        member = _ustar_header(
+            root.encode() + b"/sccache", 48, len(payload), size_field=field
+        )
+        blob = _gzip_tar([directory, member, _pad_block(payload)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="could not extract the archive"
+        )
+
+    def test_sccache_prefetch_restores_modes_before_cleanup(self) -> None:
+        filename, _arch = _host_sccache_filename()
+        root = filename[: -len(".tar.gz")]
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            archive_path = work / filename
+            with tarfile.open(archive_path, "w:gz") as archive:
+                info = tarfile.TarInfo(name=f"{root}/sccache")
+                info.size = len(payload)
+                info.mode = 0
+                archive.addfile(info, io.BytesIO(payload))
+            blob = archive_path.read_bytes()
+            log = work / "mode-log"
+            _write_exe(
+                work / "bin",
+                "rm",
+                "#!/bin/sh\n"
+                'if [ "$1" = "-rf" ] && [ -d "$2" ]; then\n'
+                '  find "$2" -type f -perm 000 -print >> "$AW_MODE_LOG"\n'
+                "fi\n"
+                "exec /bin/rm \"$@\"\n",
+            )
+            result, output = _fetch_blob(
+                work,
+                blob,
+                path_prefix=work / "bin",
+                extra_env={"AW_MODE_LOG": str(log)},
+            )
+            logged = log.read_text(encoding="utf-8") if log.exists() else ""
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("available=true", output)
+        self.assertEqual(logged, "")
+
+    def test_sccache_fetch_default_count_rejects_a_changed_repo(self) -> None:
+        global _sccache_policy_texts
+        saved = _sccache_policy_texts
+        texts = saved()
+        label, body = next(item for item in texts if item[0].endswith("benchmark_alert.yml"))
+        nine = [
+            (name, text if name != label else body.replace(SCCACHE_FETCH_COMMAND, "echo kept", 1))
+            for name, text in texts
+        ]
+        extra_job = (
+            "\n  aw_fetch_probe:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - shell: bash\n"
+            "        run: |\n"
+            f"          {SCCACHE_FETCH_COMMAND}\n"
+        )
+        eleven = [(name, text if name != label else body + extra_job) for name, text in texts]
+
+        def nine_texts() -> list[tuple[str, str]]:
+            return nine
+
+        def eleven_texts() -> list[tuple[str, str]]:
+            return eleven
+
+        try:
+            _sccache_policy_texts = nine_texts
+            found = sccache_fetch_run_violations()
+            self.assertTrue(any("found 9" in item for item in found), found)
+            _sccache_policy_texts = eleven_texts
+            found = sccache_fetch_run_violations()
+            self.assertTrue(any("found 11" in item for item in found), found)
+        finally:
+            _sccache_policy_texts = saved
+
+    def test_sccache_prefetch_closes_any_reader_failure(self) -> None:
+        real_node = "/usr/local/bin/node"
+        self.assertTrue(Path(real_node).exists())
+        shim = (
+            "#!/bin/sh\n"
+            "for arg in \"$@\"; do\n"
+            "  case \"$arg\" in\n"
+            "    *zlib.gunzipSync*) exit 3 ;;\n"
+            "  esac\ndone\n"
+            f"exec {real_node} \"$@\"\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(work / "bin", "node", shim)
+            _bind_tool(script, real_node, work / "bin" / "node")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            _filename, arch = _host_sccache_filename()
+            _assert_prefetch_fell_back(
+                self, result, output, work, arch, message="could not extract the archive"
+            )
+
+    def test_sccache_prefetch_ignores_a_path_tar(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        swap = (
+            "#!/bin/sh\n"
+            "real=/usr/bin/tar\n"
+            '"$real" "$@" || exit $?\n'
+            "dest=\n"
+            "prev=\n"
+            "for arg in \"$@\"; do\n"
+            "  if [ \"$prev\" = \"-C\" ]; then dest=$arg; fi\n"
+            "  prev=$arg\n"
+            "done\n"
+            "if [ -n \"$dest\" ]; then\n"
+            "  find \"$dest\" -type f -name sccache -exec sh -c "
+            "'printf \"%s\\n\" \"#!/bin/sh\" \"echo SWAPPED\" > \"$1\"' sh {} \\;\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            _write_exe(work / "bin", "tar", swap)
+            result, output = _fetch_blob(work, blob, path_prefix=work / "bin")
+            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+            ran = subprocess.check_output([str(cached)], text=True).strip()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertEqual(ran, "sccache 0.19.0")
+
+    def test_sccache_fetch_rejects_unclassified_steps(self) -> None:
+        text = textwrap.dedent(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - just-a-string
+            """
+        ).lstrip()
+        found = sccache_fetch_run_violations([("probe.yml", text)])
+        self.assertTrue(any("could not classify" in item for item in found), found)
+
+    def test_sccache_fetch_rejects_yaml_spellings(self) -> None:
+        forms = {
+            "list": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash scripts/ci/fetch_sccache_release.sh
+            """,
+            "flow": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - {name: p, run: bash scripts/ci/fetch_sccache_release.sh}
+            """,
+            "quoted": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - name: p
+                        "run": bash scripts/ci/fetch_sccache_release.sh
+            """,
+            "indicator": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: |2
+                          bash scripts/ci/fetch_sccache_release.sh
+            """,
+            "comment-header": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: | # note
+                          bash scripts/ci/fetch_sccache_release.sh
+            """,
+            "plain": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash
+                          scripts/ci/fetch_sccache_release.sh
+            """,
+            "working-directory": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - working-directory: scripts/ci
+                        run: bash ./fetch_s*.sh
+            """,
+            "working-directory-literal": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - working-directory: scripts/ci
+                        run: bash ./fetch_sccache_release.sh
+            """,
+            "job-env": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    env:
+                      F: scripts/ci/fetch_sccache_release.sh
+                    steps:
+                      - run: bash "$F"
+            """,
+            "step-env": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - env:
+                          SCRIPT: scripts/ci/fetch_sccache_release.sh
+                        run: bash $SCRIPT
+            """,
+            "expression": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash ${{ env.SCRIPT }}
+            """,
+            "input-expression": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash ${{ inputs.script }}
+            """,
+            "shell": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - shell: bash scripts/ci/fetch_sccache_release.sh {0}
+                        run: echo hello
+            """,
+            "cd": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: |
+                          cd scripts
+                          cd ci
+                          bash ./fetch_s*.sh
+            """,
+            "assignments": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: s=scripts; c=ci; bash "$s/$c/tool.sh"
+            """,
+            "split-stem": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: s=scripts; c=ci; p1=fetch_scc; p2=ache_release.sh; bash "$s/$c/$p1$p2"
+            """,
+            "ansi": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash $'scripts/ci/tool.sh'
+            """,
+            "ansi-hex": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash $'\\x73cripts/ci/tool.sh'
+            """,
+            "backslash": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash scripts\\ci\\fetch_sccache_release.sh
+            """,
+            "command-substitution": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash $(echo c2NyaXB0cy9jaS90b29sLnNo | base64 -d)
+            """,
+            "glob": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - working-directory: scripts/ci
+                        run: bash *
+            """,
+            "glob-sh": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - working-directory: scripts/ci
+                        run: bash *.sh
+            """,
+            "folded": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: >-
+                          bash scripts/ci/tool.sh
+            """,
+            "folded-strip": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: |-
+                          bash scripts/ci/tool.sh
+            """,
+            "folded-clip": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: >
+                          bash scripts/ci/tool.sh
+            """,
+            "and-or": """
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo hello && bash scripts/ci/tool.sh
+            """,
+            "defaults-wd": """
+                name: probe
+                on: push
+                defaults:
+                  run:
+                    working-directory: scripts/ci
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash ./tool.sh
+            """,
+            "workflow-env": """
+                name: probe
+                on: push
+                env:
+                  SCRIPT: scripts/ci/fetch_sccache_release.sh
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: bash $SCRIPT
+            """,
+        }
+        for label, body in forms.items():
+            with self.subTest(label=label):
+                text = textwrap.dedent(body).lstrip()
+                found = sccache_fetch_run_violations([(f"{label}.yml", text)])
+                self.assertTrue(found, (label, found))
+                self.assertFalse(
+                    any("could not classify" in item for item in found),
+                    (label, found),
+                )
+
+    def test_sccache_fetch_pins_the_step_shell_and_env(self) -> None:
+        pin = SCCACHE_FETCH_COMMAND
+        env_step = textwrap.dedent(
+            f"""
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: bash
+                    env:
+                      BASH_ENV: /tmp/x
+                    run: {pin}
+            """
+        ).lstrip()
+        shell_step = textwrap.dedent(
+            f"""
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: pwsh
+                    run: {pin}
+            """
+        ).lstrip()
+        env_found = sccache_fetch_run_violations([("env.yml", env_step)])
+        shell_found = sccache_fetch_run_violations([("shell.yml", shell_step)])
+        self.assertTrue(any("fetch step sets env" in item for item in env_found), env_found)
+        self.assertTrue(
+            any("fetch step shell is not bash" in item for item in shell_found),
+            shell_found,
+        )
+        default_shell = textwrap.dedent(
+            f"""
+            name: probe
+            on: push
+            defaults:
+              run:
+                shell: pwsh
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: {pin}
+            """
+        ).lstrip()
+        default_found = sccache_fetch_run_violations([("default.yml", default_shell)])
+        self.assertTrue(
+            any("fetch step shell is not bash" in item for item in default_found),
+            default_found,
+        )
 
     def test_cargo_incremental_step_has_no_if(self) -> None:
         paths = [ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml"]
