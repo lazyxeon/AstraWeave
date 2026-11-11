@@ -28,6 +28,20 @@ import mutation_ai_outcomes  # noqa: E402
 CONCURRENCY_GROUP = "group: ${{ github.workflow }}-${{ github.ref }}"
 CONCURRENCY_CANCEL = "cancel-in-progress: ${{ github.event_name == 'pull_request' }}"
 
+_LOCAL_ACTION_USES = frozenset(
+    {
+        "./.github/actions/rust-ci-setup",
+        "./.github/actions/rust-nightly",
+    }
+)
+_LOCAL_USES_RE = re.compile(r"uses:\s*(?P<action>\./[^\s#]+)")
+
+
+def local_action_uses(text: str) -> list[str]:
+    """Local `uses:` paths. Anything outside `_LOCAL_ACTION_USES` is refused."""
+    return [match.group("action") for match in _LOCAL_USES_RE.finditer(text)]
+
+
 POLICY_ACTIONS = (
     "actions/checkout",
     "actions/upload-artifact",
@@ -272,24 +286,52 @@ def _load_workflow(text: str) -> object:
 _PRUNE_ROOT_DIRS = frozenset({".git", "target"})
 
 
+def _git_env() -> dict[str, str]:
+    """Environment for `git -C`, with every `GIT_*` variable removed.
+
+    `GIT_DIR` and `GIT_INDEX_FILE` override `-C` and can list a different
+    repository while `git` still exits 0. An empty action list from that
+    listing would hide a composite-action violation, so the call fails closed
+    unless the git dir is `root/.git`.
+    """
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
 def _tracked_action_paths(root: Path) -> list[Path]:
-    """Tracked `action.yml` and `action.yaml` files, from `git ls-files`."""
+    """Tracked `action.yml` and `action.yaml` files, from `git ls-files`.
+
+    The basename match is exact. `Action.yml` is not an action file.
+    A missing `git` binary raises `FileNotFoundError` and is not an empty list.
+    """
+    env = _git_env()
     listed = subprocess.run(
         ["git", "-C", str(root), "ls-files", "-z"],
         check=False,
         capture_output=True,
+        env=env,
     )
     if listed.returncode != 0:
         detail = listed.stderr.decode("utf-8", "replace").strip()
         raise RuntimeError(f"git ls-files failed in {root}: {detail}")
+    git_dir = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--absolute-git-dir"],
+        check=False,
+        capture_output=True,
+        env=env,
+    )
+    if git_dir.returncode != 0:
+        detail = git_dir.stderr.decode("utf-8", "replace").strip()
+        raise RuntimeError(f"git rev-parse failed in {root}: {detail}")
+    actual = Path(git_dir.stdout.decode("utf-8", "replace").strip()).resolve()
+    expected = (root / ".git").resolve()
+    if actual != expected:
+        raise RuntimeError(f"git ls-files in {root} used {actual}, not {expected}")
     found: list[Path] = []
     for raw in listed.stdout.split(b"\0"):
         if not raw:
             continue
         rel = raw.decode("utf-8", "surrogateescape").replace("\\", "/")
         name = rel.rsplit("/", 1)[-1]
-        # Tracked action names are already lowercase, so a lowercased
-        # comparison accepts the same paths.
         if name not in ("action.yml", "action.yaml"):
             continue
         if rel.split("/", 1)[0] in _PRUNE_ROOT_DIRS:
@@ -499,12 +541,25 @@ def nightly_failure_watched_workflows(text: str) -> list[str]:
     return watched
 
 
+_UNCLASSIFIABLE_TRIGGER_WORDS = frozenset({"True", "true", "yes"})
+
+
+def _trigger_name(item: object) -> str:
+    if not isinstance(item, str) or item == "" or item in _UNCLASSIFIABLE_TRIGGER_WORDS:
+        raise ValueError("workflow trigger cannot be classified")
+    return item
+
+
 def trigger_has_pull_request(doc: object) -> bool:
     """True when the workflow trigger lists `pull_request`.
 
-    The trigger key is `on`. Stock YAML also reads that bare word as boolean
-    true, so that key counts. A root that is not a mapping, a missing trigger,
-    an empty trigger, or a trigger value this checker cannot name raises.
+    Every call site loads the file with `_WorkflowLoader`. The trigger key is
+    `on`. Stock YAML also reads that bare word as boolean true, so a root
+    that has both keys cannot be classified. A root that is not a mapping, a
+    missing trigger, an empty trigger, a boolean word (`True`, `true`, `yes`),
+    or any other value this checker cannot name raises. `pull_request_target`,
+    `pull_request_review`, and `pull_request_review_comment` are not
+    `pull_request`.
     """
     if not isinstance(doc, dict):
         raise ValueError("workflow root is not a mapping")
@@ -513,21 +568,21 @@ def trigger_has_pull_request(doc: object) -> bool:
         raise ValueError("workflow trigger cannot be classified")
     block = doc[found[0]]
     if isinstance(block, str):
-        if block == "":
-            raise ValueError("workflow trigger cannot be classified")
-        names = {block}
+        names = {_trigger_name(block)}
     elif isinstance(block, list):
         names = set()
         for item in block:
-            if not isinstance(item, str):
-                raise ValueError("workflow trigger list cannot be classified")
-            names.add(item)
+            names.add(_trigger_name(item))
+        if not names:
+            raise ValueError("workflow trigger cannot be classified")
     elif isinstance(block, dict):
         names = set()
         for key in block:
             if not isinstance(key, str):
                 raise ValueError("workflow trigger mapping cannot be classified")
             names.add(key)
+        if not names:
+            raise ValueError("workflow trigger cannot be classified")
     else:
         raise ValueError("workflow trigger cannot be classified")
     return "pull_request" in names
@@ -1780,6 +1835,106 @@ class WorkflowPolicyTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 scan_policy_tree(root)
 
+    def test_action_basename_match_is_exact(self) -> None:
+        composite = (
+            "name: demo\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - name: bad\n"
+            "      shell: bash\n"
+            "      run: echo\n"
+            "      continue-on-error: true\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            upper = root / "tools" / "local" / "Action.yml"
+            lower = root / "tools" / "other" / "action.yml"
+            upper.parent.mkdir(parents=True)
+            lower.parent.mkdir(parents=True)
+            upper.write_text(composite, encoding="utf-8")
+            lower.write_text(composite, encoding="utf-8")
+            _track_tree(root)
+            rels = {path.relative_to(root).as_posix() for path in _tracked_action_paths(root)}
+            self.assertEqual(rels, {"tools/other/action.yml"})
+            violations = scan_policy_tree(root)
+            self.assertTrue(any(item.startswith("tools/other/action.yml") for item in violations))
+            self.assertFalse(any("Action.yml" in item for item in violations))
+
+    def test_git_env_cannot_hide_a_tracked_action(self) -> None:
+        composite = (
+            "name: demo\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - name: bad\n"
+            "      shell: bash\n"
+            "      run: echo\n"
+            "      continue-on-error: true\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "work"
+            other = Path(tmp) / "other"
+            planted = root / "tools" / "local" / "action.yml"
+            planted.parent.mkdir(parents=True)
+            planted.write_text(composite, encoding="utf-8")
+            _track_tree(root)
+            other.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=other, check=True)
+            subprocess.run(["git", "read-tree", "--empty"], cwd=other, check=True)
+            wrong = {
+                "GIT_DIR": str(other / ".git"),
+                "GIT_INDEX_FILE": str(other / ".git" / "index"),
+                "GIT_WORK_TREE": str(other),
+            }
+            saved = dict(os.environ)
+            try:
+                for key, value in wrong.items():
+                    os.environ.pop("GIT_DIR", None)
+                    os.environ.pop("GIT_INDEX_FILE", None)
+                    os.environ.pop("GIT_WORK_TREE", None)
+                    os.environ[key] = value
+                    rels = {
+                        path.relative_to(root).as_posix() for path in _tracked_action_paths(root)
+                    }
+                    self.assertEqual(rels, {"tools/local/action.yml"}, key)
+            finally:
+                os.environ.clear()
+                os.environ.update(saved)
+
+    def test_missing_git_is_not_an_empty_action_list(self) -> None:
+        saved = subprocess.run
+
+        def missing_git(*_args, **_kwargs):
+            raise FileNotFoundError("git")
+
+        subprocess.run = missing_git
+        try:
+            with self.assertRaises(FileNotFoundError):
+                _tracked_action_paths(ROOT)
+        finally:
+            subprocess.run = saved
+
+    def test_local_action_uses_stay_on_the_allowlist(self) -> None:
+        self.assertEqual(
+            _LOCAL_ACTION_USES,
+            frozenset(
+                {
+                    "./.github/actions/rust-ci-setup",
+                    "./.github/actions/rust-nightly",
+                }
+            ),
+        )
+        seen: set[str] = set()
+        for path in WORKFLOWS.glob("*.yml"):
+            for action in local_action_uses(path.read_text(encoding="utf-8")):
+                self.assertIn(action, _LOCAL_ACTION_USES, path.name)
+                seen.add(action)
+        self.assertEqual(seen, set(_LOCAL_ACTION_USES))
+        stray = local_action_uses("uses: ./.github/actions/not-allowlisted\n")
+        self.assertEqual(stray, ["./.github/actions/not-allowlisted"])
+        self.assertNotIn(stray[0], _LOCAL_ACTION_USES)
+
     def test_pull_request_trigger_forms(self) -> None:
         present = (
             "'on':\n  pull_request:\n",
@@ -1796,14 +1951,41 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(trigger_has_pull_request(stock))
         stock_flow = yaml.safe_load("on: [pull_request]\n")
         self.assertTrue(trigger_has_pull_request(stock_flow))
+        self.assertTrue(has_pull_request("on: pull_request\n"))
+        self.assertFalse(has_pull_request("on: push\n"))
+        cousins = (
+            "pull_request_target",
+            "pull_request_review",
+            "pull_request_review_comment",
+        )
+        for name in cousins:
+            self.assertFalse(has_pull_request(f"on: {name}\n"), name)
+            self.assertFalse(has_pull_request(f"on: [{name}]\n"), name)
+            self.assertFalse(has_pull_request(f"on:\n  {name}:\n"), name)
         for text in (
             "name: only\n",
             "on:\n",
+            "on: {}\n",
+            "on: []\n",
             "on:\n  - pull_request: {}\n",
             "on: !!int 3\n",
+            "on: True\n",
+            "on: true\n",
+            "on: yes\n",
+            "On:\n  pull_request:\n",
+            "ON:\n  pull_request:\n",
+            "[]\n",
+            "just a string\n",
+            "- just a list\n",
         ):
             with self.assertRaises(ValueError):
                 has_pull_request(text)
+        mixed_bool = {"on": {"pull_request": None}, True: {"push": None}}
+        with self.assertRaises(ValueError):
+            trigger_has_pull_request(mixed_bool)
+        explicit_key = _load_workflow("on:\n  !!int '1':\n  pull_request:\n")
+        with self.assertRaises(ValueError):
+            trigger_has_pull_request(explicit_key)
 
     def test_folded_false_is_forbidden(self) -> None:
         folded = "name: bad\ncontinue-on-error: >-\n  false\n"
