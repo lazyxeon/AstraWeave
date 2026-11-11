@@ -2,7 +2,7 @@ name: Comprehensive CI Pipeline
 
 # PR tier (required): detect, gate (fmt + one clippy + check), one Linux
 # archive build plus 3 partition runs, one Windows archive build plus 3
-# partition runs, MSRV.
+# partition runs, MSRV, and astraweave-asset tests on macOS.
 # Docs-only pulls skip the compile steps. The cross-OS replay hash check is
 # Determinism Replay, which is a separate workflow with no path filter.
 # Heavy optional workflows (PBR, editor, AW Editor tests) are not on
@@ -453,10 +453,30 @@ jobs:
             "${args[@]}"
           fi
 
+  test-asset-macos:
+    name: Test astraweave-asset (macos)
+    runs-on: macos-latest
+    needs: [changes, gate]
+    timeout-minutes: 45
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.gate.result == 'success' &&
+      needs.changes.outputs.docs_only != 'true' &&
+      (needs.changes.outputs.full == 'true' || contains(format(',{0},', needs.changes.outputs.packages), ',astraweave-asset,'))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Asset tests
+        run: cargo test --locked -p astraweave-asset
+
   pr-rust-checks:
     name: PR Rust checks
     runs-on: ubuntu-latest
-    needs: [changes, gate, test-linux-build, test-linux, test-windows, msrv]
+    needs: [changes, gate, test-linux-build, test-linux, test-windows, msrv, test-asset-macos]
     if: always() && github.event_name == 'pull_request'
     timeout-minutes: 5
     steps:
@@ -469,10 +489,11 @@ jobs:
           linux="${{ needs.test-linux.result }}"
           windows="${{ needs.test-windows.result }}"
           msrv="${{ needs.msrv.result }}"
+          macos="${{ needs.test-asset-macos.result }}"
           docs="${{ needs.changes.outputs.docs_only }}"
           full="${{ needs.changes.outputs.full }}"
           packages="${{ needs.changes.outputs.packages }}"
-          echo "changes=$changes gate=$gate linux_build=$linux_build linux=$linux windows=$windows msrv=$msrv docs_only=$docs full=$full"
+          echo "changes=$changes gate=$gate linux_build=$linux_build linux=$linux windows=$windows msrv=$msrv macos=$macos docs_only=$docs full=$full"
           [ "$changes" = "success" ]
           [ "$gate" = "success" ]
           if [ "$docs" = "true" ]; then
@@ -487,6 +508,11 @@ jobs:
           [ "$linux" = "success" ]
           [ "$windows" = "success" ]
           [ "$msrv" = "success" ]
+          # The macOS job runs the asset crate when this diff is full or
+          # includes that crate. A skipped run is the other case.
+          if [ "$full" = "true" ] || [[ ",$packages," == *",astraweave-asset,"* ]]; then
+            [ "$macos" = "success" ]
+          fi
 
   test-full:
     name: Test full (${{ matrix.os }})

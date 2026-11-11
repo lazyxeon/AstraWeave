@@ -944,7 +944,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 13. **Four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip` type families — unify into a shared `astraweave-animation` crate?** `animation.md` §11.
 
-14. **`MAX_JOINTS = 256` — permanent limit or scale with hardware?** Hard-coded in Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:261`); kept in sync manually; surplus joints silently drop. `animation.md` §11.
+14. **`MAX_JOINTS = 256` — permanent limit or scale with hardware?** Hard-coded in Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:262`); kept in sync manually; surplus joints silently drop. `animation.md` §11.
 
 15. **CubicSpline interpolation — implement or remove the variant?** Render-side and asset-side both have the variant but fall back to Linear/Slerp. glTF cubic-spline clips lose fidelity. `animation.md` §11.
 

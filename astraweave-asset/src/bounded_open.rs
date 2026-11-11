@@ -5,15 +5,19 @@
 //! the caller supplies the container bytes. On Unix the handle is a directory
 //! file descriptor. Each URI is opened from that descriptor, one component at
 //! a time, with `O_NOFOLLOW`, and those descriptors are not kept. An
-//! intermediate component uses directory flags (`O_PATH` and `O_DIRECTORY` on
-//! Linux), so an execute-only directory still loads and a non-directory is
-//! refused before a read-only open. On Windows the handle is the
-//! directory-handle chain plus the final path. Those directory handles do not
-//! share delete, so a directory the load holds cannot be renamed or removed
-//! while they are open. Each distinct intermediate directory stays on
-//! `OpenedRoot` until that root drops. A repeated open of the same directory
-//! does not add another handle. The held set fails closed past 64 directory
-//! handles. Each URI component is opened from the held parent
+//! intermediate component uses directory flags. On Linux those flags include
+//! `O_PATH` and `O_DIRECTORY`, so an execute-only directory still loads and a
+//! non-directory is refused before a read-only open. Other Unix opens an
+//! intermediate read-only with `O_DIRECTORY`, so an execute-only directory
+//! does not load there. On Windows the root directory handle is its own
+//! field. Intermediate directory handles are a separate set, and every URI
+//! starts from the root handle. Those directory handles do not share delete,
+//! so a directory the load holds cannot be renamed or removed while they are
+//! open. Each distinct intermediate directory stays on `OpenedRoot` until
+//! that root drops. A repeated open of the same directory does not add
+//! another handle. The held set fails closed past 64 directory handles. That
+//! budget counts the resolved-root chain, so a deep root leaves fewer URI
+//! directory slots. Each URI component is opened from the held parent
 //! handle, and that directory's final path must stay under the root. A
 //! cloud-file reparse tag is allowed. Delete sharing is on the first open of
 //! each URI leaf file, so that name can be replaced while the handle is held.
@@ -42,17 +46,23 @@ use std::path::{Component, Path};
 /// and every URI. A base-taking loader opens the base once for its URIs, and
 /// the caller supplies the container bytes. On Unix each URI is opened from
 /// this descriptor with `O_NOFOLLOW`, and those descriptors are not kept. On
-/// Windows the held directory handles do not share delete, so those
-/// directories cannot be renamed or removed while the load holds them. Each
-/// distinct intermediate directory stays here until this root drops. A
-/// repeated open of the same directory does not add another handle. The held
-/// set fails closed past 64 directory handles.
+/// Windows the root directory handle is its own field. Intermediate handles
+/// are a separate set, and every URI starts from the root handle. Those
+/// handles do not share delete, so those directories cannot be renamed or
+/// removed while the load holds them. Each distinct intermediate directory
+/// stays here until this root drops. A repeated open of the same directory
+/// does not add another handle. The held set fails closed past 64 directory
+/// handles. That budget counts the resolved-root chain, so a deep root leaves
+/// fewer URI directory slots.
 #[derive(Debug)]
 pub(crate) struct OpenedRoot {
     #[cfg(unix)]
     dir: rustix::fd::OwnedFd,
     #[cfg(windows)]
     root_final: PathBuf,
+    /// Resolved root directory. Never stored in `held.files`.
+    #[cfg(windows)]
+    root_dir: File,
     #[cfg(windows)]
     held: std::sync::Mutex<HeldDirectories>,
 }
@@ -383,12 +393,6 @@ fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
             }
         }
     }
-    if names.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "empty relative path",
-        ));
-    }
     Ok(names)
 }
 
@@ -397,15 +401,30 @@ fn directory_flags() -> rustix::fs::OFlags {
     use rustix::fs::OFlags;
     // Linux opens each directory component with O_PATH so a load still works
     // when an ancestor is not readable. Other Unix keeps a read-only directory
-    // open, which is the portable equivalent.
+    // open, which is the portable equivalent. Adjacent flags are disjoint, so
+    // replacing `|` with `^` does not change the mask.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
+        const _: () = assert!(OFlags::PATH.bits() & OFlags::DIRECTORY.bits() == 0);
+        const _: () = assert!(OFlags::DIRECTORY.bits() & OFlags::NOFOLLOW.bits() == 0);
+        const _: () = assert!(OFlags::NOFOLLOW.bits() & OFlags::CLOEXEC.bits() == 0);
         OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
+        const _: () = assert!(OFlags::RDONLY.bits() & OFlags::DIRECTORY.bits() == 0);
+        const _: () = assert!(OFlags::DIRECTORY.bits() & OFlags::NOFOLLOW.bits() == 0);
+        const _: () = assert!(OFlags::NOFOLLOW.bits() & OFlags::CLOEXEC.bits() == 0);
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
     }
+}
+
+#[cfg(unix)]
+fn canonical_root_flags() -> rustix::fs::OFlags {
+    use rustix::fs::OFlags;
+    const _: () = assert!(OFlags::RDONLY.bits() & OFlags::DIRECTORY.bits() == 0);
+    const _: () = assert!(OFlags::DIRECTORY.bits() & OFlags::CLOEXEC.bits() == 0);
+    OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC
 }
 
 #[cfg(unix)]
@@ -425,6 +444,9 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     use rustix::fs::{openat, Mode, OFlags};
 
     let directory = directory_flags();
+    const _: () = assert!(OFlags::RDONLY.bits() & OFlags::NOFOLLOW.bits() == 0);
+    const _: () = assert!(OFlags::NOFOLLOW.bits() & OFlags::CLOEXEC.bits() == 0);
+    const _: () = assert!(OFlags::CLOEXEC.bits() & OFlags::NONBLOCK.bits() == 0);
     let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let names = relative_names(relative)?;
     // Each URI starts again at the root descriptor. Component descriptors are
@@ -455,7 +477,7 @@ fn open_canonical(
     absolute: &Path,
     flags: rustix::fs::OFlags,
 ) -> std::io::Result<rustix::fd::OwnedFd> {
-    use rustix::fs::{openat, Mode, OFlags, CWD};
+    use rustix::fs::{openat, Mode, CWD};
 
     let mut components = absolute.components();
     if !matches!(components.next(), Some(Component::RootDir)) {
@@ -464,8 +486,7 @@ fn open_canonical(
             "not a regular file",
         ));
     }
-    let root_flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC;
-    let mut dir = opened(openat(CWD, "/", root_flags, Mode::empty()))?;
+    let mut dir = opened(openat(CWD, "/", canonical_root_flags(), Mode::empty()))?;
     for component in components {
         match component {
             Component::Normal(name) => {
@@ -504,6 +525,9 @@ thread_local! {
         const { std::cell::Cell::new(None) };
     static FILE_ID_ERROR: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
     static FILE_ID_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static FILE_ID_BYTES: std::cell::RefCell<Vec<[u8; 16]>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+    static NT_CREATE_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     static BEFORE_COMPONENT: std::cell::RefCell<Option<BeforeComponentHook>> =
         std::cell::RefCell::new(None);
 }
@@ -556,9 +580,10 @@ fn ensure_directory(file: &File) -> std::io::Result<()> {
 #[cfg(windows)]
 impl OpenedRoot {
     fn open_resolved(absolute: &Path) -> std::io::Result<Self> {
-        let (root_final, held) = open_resolved_directory(absolute)?;
+        let (root_final, root_dir, held) = open_resolved_directory(absolute)?;
         let root = Self {
             root_final,
+            root_dir,
             held: std::sync::Mutex::new(held),
         };
         record_root_open();
@@ -566,9 +591,13 @@ impl OpenedRoot {
     }
 }
 
-/// Root chain plus distinct URI directories. One past this fails the open.
+/// Root chain, including the root handle stored outside `files`, plus distinct
+/// URI directories. One past this fails the open. A deep root leaves fewer
+/// URI slots.
 #[cfg(windows)]
 const MAX_HELD_DIRECTORIES: usize = 64;
+#[cfg(windows)]
+const _: () = assert!(MAX_HELD_DIRECTORIES == 64);
 
 #[cfg(windows)]
 #[derive(Debug)]
@@ -584,7 +613,8 @@ impl HeldDirectories {
         if self.ids.contains(&id) {
             return Ok(());
         }
-        if self.files.len() >= MAX_HELD_DIRECTORIES {
+        // `files` does not hold the root directory. That handle counts as one.
+        if self.files.len() + 1 >= MAX_HELD_DIRECTORIES {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
                 "too many open directories",
@@ -592,6 +622,21 @@ impl HeldDirectories {
         }
         self.ids.insert(id);
         self.files.push(file);
+        Ok(())
+    }
+
+    fn note_root(&mut self, file: &File) -> std::io::Result<()> {
+        let id = windows_file_id(file)?;
+        if self.ids.contains(&id) {
+            return Ok(());
+        }
+        if self.files.len() + 1 > MAX_HELD_DIRECTORIES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "too many open directories",
+            ));
+        }
+        self.ids.insert(id);
         Ok(())
     }
 }
@@ -606,13 +651,10 @@ fn hold_directory(root: &OpenedRoot, file: File) -> std::io::Result<()> {
 }
 
 #[cfg(windows)]
-fn open_resolved_directory(resolved: &Path) -> std::io::Result<(PathBuf, HeldDirectories)> {
+fn open_resolved_directory(resolved: &Path) -> std::io::Result<(PathBuf, File, HeldDirectories)> {
     let mut cursor = PathBuf::new();
     let mut parent_final: Option<PathBuf> = None;
-    let mut held = HeldDirectories {
-        files: Vec::new(),
-        ids: std::collections::HashSet::new(),
-    };
+    let mut opened = Vec::new();
     for component in resolved.components() {
         let open_this = matches!(component, Component::RootDir | Component::Normal(_));
         cursor.push(component.as_os_str());
@@ -639,32 +681,34 @@ fn open_resolved_directory(resolved: &Path) -> std::io::Result<(PathBuf, HeldDir
             }
         }
         parent_final = Some(component_final);
-        held.push(file)?;
+        opened.push(file);
     }
-    match parent_final {
-        Some(root_final) => Ok((root_final, held)),
-        None => Err(std::io::Error::new(
+    let Some(root_final) = parent_final else {
+        return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "not a regular file",
-        )),
+        ));
+    };
+    let Some(root_file) = opened.pop() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a regular file",
+        ));
+    };
+    let mut held = HeldDirectories {
+        files: Vec::new(),
+        ids: std::collections::HashSet::new(),
+    };
+    for file in opened {
+        held.push(file)?;
     }
+    held.note_root(&root_file)?;
+    Ok((root_final, root_file, held))
 }
 
 #[cfg(windows)]
 fn root_directory_handle(root: &OpenedRoot) -> std::io::Result<File> {
-    let held = root
-        .held
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner());
-    held.files.last().map_or_else(
-        || {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "not a regular file",
-            ))
-        },
-        File::try_clone,
-    )
+    root.root_dir.try_clone()
 }
 
 #[cfg(all(windows, test))]
@@ -782,13 +826,15 @@ fn open_at(parent: &File, name: &std::ffi::OsStr, kind: RelativeOpen) -> std::io
     const OBJ_CASE_INSENSITIVE: u32 = 0x0000_0040;
     const FILE_OPEN: u32 = 1;
     const FILE_LIST_DIRECTORY: u32 = 0x0000_0001;
+    const FILE_READ_DATA: u32 = 0x0000_0001;
     const FILE_READ_EA: u32 = 0x0000_0008;
     const FILE_TRAVERSE: u32 = 0x0000_0020;
     const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
     const READ_CONTROL: u32 = 0x0002_0000;
     const SYNCHRONIZE: u32 = 0x0010_0000;
-    const FILE_GENERIC_READ: u32 =
-        READ_CONTROL | FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES | FILE_READ_EA | SYNCHRONIZE;
+    // Leaf read access. `FILE_READ_DATA` is the file form of the directory-list bit.
+    const FILE_READ_ACCESS: u32 =
+        READ_CONTROL | FILE_READ_DATA | FILE_READ_ATTRIBUTES | FILE_READ_EA | SYNCHRONIZE;
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_SHARE_WRITE: u32 = 0x0000_0002;
     const FILE_SHARE_DELETE: u32 = 0x0000_0004;
@@ -802,7 +848,16 @@ fn open_at(parent: &File, name: &std::ffi::OsStr, kind: RelativeOpen) -> std::io
     const STATUS_STOPPED_ON_SYMLINK: i32 = 0x8000_002Du32 as i32;
 
     let mut units: Vec<u16> = name.encode_wide().collect();
-    if units.is_empty() || units.len() > (u16::MAX as usize) / 2 {
+    // One path segment. A colon, NUL, or separator is not a component name.
+    if units.is_empty()
+        || units.len() > (u16::MAX as usize) / 2
+        || units.iter().any(|unit| {
+            *unit == 0
+                || *unit == u16::from(b':')
+                || *unit == u16::from(b'\\')
+                || *unit == u16::from(b'/')
+        })
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "not a regular file",
@@ -845,7 +900,7 @@ fn open_at(parent: &File, name: &std::ffi::OsStr, kind: RelativeOpen) -> std::io
             if share_delete {
                 share |= FILE_SHARE_DELETE;
             }
-            (FILE_GENERIC_READ, share, options)
+            (FILE_READ_ACCESS, share, options)
         }
     };
     let mut io = IoStatusBlock {
@@ -853,6 +908,8 @@ fn open_at(parent: &File, name: &std::ffi::OsStr, kind: RelativeOpen) -> std::io
         information: 0,
     };
     let mut handle = std::ptr::null_mut();
+    #[cfg(test)]
+    NT_CREATE_CALLS.with(|cell| cell.set(cell.get().saturating_add(1)));
     // SAFETY: `parent` is a live directory handle. `unicode` and `attributes`
     // stay alive for the call, and `units` backs the name. `handle` and `io`
     // are writable outputs. A success status writes one owned handle.
@@ -1092,11 +1149,43 @@ fn windows_link_count(file: &File) -> std::io::Result<u64> {
     Ok(windows_by_handle(file)?.links)
 }
 
+/// Compare and hash all 16 id bytes. A shorter prefix treats a high-half
+/// change as the same file.
+#[cfg(any(windows, test))]
+fn file_id_bytes_eq(left: &[u8; 16], right: &[u8; 16]) -> bool {
+    left.iter().zip(right.iter()).take(16).all(|(a, b)| a == b)
+}
+
+#[cfg(any(windows, test))]
+fn hash_file_id_bytes<H: std::hash::Hasher>(bytes: &[u8; 16], state: &mut H) {
+    for byte in bytes.iter().take(16) {
+        std::hash::Hash::hash(byte, state);
+    }
+}
+
 #[cfg(windows)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, Debug)]
 struct WindowsFileId {
     volume: u64,
     file_id: [u8; 16],
+}
+
+#[cfg(windows)]
+impl PartialEq for WindowsFileId {
+    fn eq(&self, other: &Self) -> bool {
+        self.volume == other.volume && file_id_bytes_eq(&self.file_id, &other.file_id)
+    }
+}
+
+#[cfg(windows)]
+impl Eq for WindowsFileId {}
+
+#[cfg(windows)]
+impl std::hash::Hash for WindowsFileId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::hash::Hash::hash(&self.volume, state);
+        hash_file_id_bytes(&self.file_id, state);
+    }
 }
 
 #[cfg(windows)]
@@ -1149,6 +1238,17 @@ fn windows_file_id(file: &File) -> std::io::Result<WindowsFileId> {
     };
     if ok == 0 {
         return Err(std::io::Error::last_os_error());
+    }
+    #[cfg(test)]
+    if let Some(bytes) = FILE_ID_BYTES.with(|cell| {
+        let mut queue = cell.borrow_mut();
+        if queue.is_empty() {
+            None
+        } else {
+            Some(queue.remove(0))
+        }
+    }) {
+        info.file_id = bytes;
     }
     Ok(WindowsFileId {
         volume: info.volume_serial_number,
@@ -1459,6 +1559,55 @@ mod tests {
     }
 
     #[test]
+    fn file_id_bytes_that_differ_in_the_high_half_stay_distinct() {
+        use std::hash::Hasher;
+        let mut low = [0u8; 16];
+        low[0] = 1;
+        let mut at_eight = low;
+        at_eight[8] = 2;
+        let mut at_last = low;
+        at_last[15] = 3;
+        assert!(file_id_bytes_eq(&low, &low));
+        assert!(!file_id_bytes_eq(&low, &at_eight));
+        assert!(!file_id_bytes_eq(&low, &at_last));
+        let hash = |bytes: &[u8; 16]| {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            hash_file_id_bytes(bytes, &mut hasher);
+            hasher.finish()
+        };
+        assert_ne!(hash(&low), hash(&at_eight));
+        assert_ne!(hash(&low), hash(&at_last));
+    }
+
+    #[test]
+    fn leading_dot_component_loads_the_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tex = dir.path().join("tex");
+        std::fs::create_dir(&tex).expect("tex");
+        std::fs::write(tex.join("a.png"), b"png-bytes").expect("write");
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        let bytes = root
+            .read(Path::new("./tex/a.png"), 64, "", Path::new("./tex/a.png"))
+            .expect("dot uri");
+        assert_eq!(bytes, b"png-bytes");
+    }
+
+    #[test]
+    fn empty_relative_path_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.bin"), b"abc").expect("write");
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        let err = root
+            .read(Path::new(""), 64, "", Path::new(""))
+            .expect_err("empty");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("not a regular file") || msg.contains("empty relative path"),
+            "{msg}"
+        );
+    }
+
+    #[test]
     fn absolute_component_is_refused() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(dir.path().join("secret"), b"nope").expect("write");
@@ -1711,6 +1860,53 @@ mod tests {
         assert_not_regular_without_blocking(move || {
             read_under(&root, Path::new("textures/pipe.bin"), 64, "", &display).map(|_| ())
         });
+    }
+
+    /// A FIFO used as an intermediate must fail before a writer connects.
+    /// Other Unix opens that component read-only, so a missing directory flag
+    /// would block here.
+    #[cfg(unix)]
+    #[test]
+    fn fifo_intermediate_is_rejected_without_blocking() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pipe = dir.path().join("mid");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success(), "mkfifo");
+        let root = dir.path().to_path_buf();
+        let display = std::path::PathBuf::from("mid/leaf.bin");
+        assert_not_regular_without_blocking(move || {
+            read_under(&root, Path::new("mid/leaf.bin"), 64, "", &display).map(|_| ())
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opened_descriptors_are_close_on_exec() {
+        use rustix::fs::{openat, Mode, CWD};
+        use rustix::io::{fcntl_getfd, FdFlags};
+        let root_fd = openat(CWD, "/", canonical_root_flags(), Mode::empty()).expect("slash");
+        let root_flags = fcntl_getfd(&root_fd).expect("slash flags");
+        assert!(root_flags.contains(FdFlags::CLOEXEC));
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.bin"), b"abc").expect("write");
+        let opened_root = OpenedRoot::open(dir.path()).expect("root");
+        let dir_flags = fcntl_getfd(&opened_root.dir).expect("dir flags");
+        assert!(dir_flags.contains(FdFlags::CLOEXEC));
+        let file = open_relative(&opened_root, Path::new("a.bin")).expect("file");
+        let file_flags = fcntl_getfd(&file).expect("file flags");
+        assert!(file_flags.contains(FdFlags::CLOEXEC));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_a_regular_file_as_the_root_fails_at_open() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("plain.bin");
+        std::fs::write(&file, b"bytes").expect("write");
+        OpenedRoot::open(&file).expect_err("a regular file is not a directory");
     }
 
     #[cfg(unix)]
@@ -2390,10 +2586,13 @@ mod tests {
             .held
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
-        held.files
+        let mut ids: Vec<_> = held
+            .files
             .iter()
             .map(|file| windows_file_id(file).expect("file id"))
-            .collect()
+            .collect();
+        ids.push(windows_file_id(&root.root_dir).expect("root id"));
+        ids
     }
 
     /// Eight reads of one nested URI add that intermediate directory once.
@@ -2437,6 +2636,8 @@ mod tests {
             super::INTERMEDIATE_FINAL_OVERRIDE.with(|cell| cell.take());
             super::FILE_ID_ERROR.with(|cell| cell.take());
             super::FILE_ID_CALLS.with(|cell| cell.set(0));
+            super::FILE_ID_BYTES.with(|cell| cell.borrow_mut().clear());
+            super::NT_CREATE_CALLS.with(|cell| cell.set(0));
             super::BEFORE_COMPONENT.with(|cell| cell.borrow_mut().take());
         }
     }
@@ -2581,21 +2782,20 @@ mod tests {
     fn directory_past_the_handle_budget_is_refused() {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = OpenedRoot::open(dir.path()).expect("root");
+        assert_eq!(super::MAX_HELD_DIRECTORIES, 64);
         let used = held_ids(&root).len();
-        assert!(
-            used < super::MAX_HELD_DIRECTORIES,
-            "root chain uses the budget"
-        );
-        let room = super::MAX_HELD_DIRECTORIES - used;
+        assert!(used < 64, "root chain uses the budget");
+        assert!(used >= 1, "the root handle counts");
+        let room = 64 - used;
         let within = nested_leaf(dir.path(), room);
         let bytes = root.read(&within, 64, "", &within).expect("at the budget");
         assert_eq!(bytes, b"leaf");
-        assert_eq!(held_ids(&root).len(), super::MAX_HELD_DIRECTORIES);
+        assert_eq!(held_ids(&root).len(), 64);
 
         let over_dir = tempfile::tempdir().expect("over");
         let over = OpenedRoot::open(over_dir.path()).expect("over root");
         let over_used = held_ids(&over).len();
-        let too_many = nested_leaf(over_dir.path(), super::MAX_HELD_DIRECTORIES - over_used + 1);
+        let too_many = nested_leaf(over_dir.path(), 65 - over_used);
         let err = over
             .read(&too_many, 64, "", &too_many)
             .expect_err("past the budget");
@@ -2638,5 +2838,187 @@ mod tests {
             "file-id lookups {calls} for {count} directories"
         );
         assert_eq!(held_ids(&root).len(), before + count);
+    }
+
+    /// A nested URI must not move the directory later top-level reads start from.
+    #[cfg(windows)]
+    #[test]
+    fn top_level_file_after_a_nested_uri_is_the_root_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let tex = dir.path().join("tex");
+        std::fs::create_dir(&tex).expect("tex");
+        std::fs::write(tex.join("a.png"), b"nested-a").expect("a");
+        std::fs::write(tex.join("b.png"), b"nested-b").expect("nested b");
+        std::fs::write(dir.path().join("b.png"), b"root-b").expect("root b");
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        let nested = root
+            .read(Path::new("tex/a.png"), 64, "", Path::new("tex/a.png"))
+            .expect("nested");
+        assert_eq!(nested, b"nested-a");
+        let top = root
+            .read(Path::new("b.png"), 64, "", Path::new("b.png"))
+            .expect("top");
+        assert_eq!(top, b"root-b");
+        let again = root
+            .read(Path::new("tex/a.png"), 64, "", Path::new("tex/a.png"))
+            .expect("nested again");
+        assert_eq!(again, b"nested-a");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn inside_root_junction_is_not_followed() {
+        let base = tempfile::tempdir().expect("tempdir");
+        let jail = base.path().join("jail");
+        let real = jail.join("real");
+        std::fs::create_dir_all(&real).expect("real");
+        std::fs::write(real.join("leaf.bin"), b"real-bytes").expect("leaf");
+        let via = jail.join("via");
+        junction(&via, &real);
+        let root = OpenedRoot::open(&jail).expect("root");
+        let err = root
+            .read(Path::new("via/leaf.bin"), 64, "", Path::new("via/leaf.bin"))
+            .expect_err("junction");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
+        assert!(!msg.contains("real-bytes"), "{msg}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn inside_root_symlink_leaf_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let real = dir.path().join("real.bin");
+        std::fs::write(&real, b"target-bytes").expect("real");
+        let link = dir.path().join("link.bin");
+        std::os::windows::fs::symlink_file(&real, &link).expect("symlink");
+        let err = read_under(
+            dir.path(),
+            Path::new("link.bin"),
+            64,
+            "",
+            Path::new("link.bin"),
+        )
+        .expect_err("symlink leaf");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
+        assert!(!msg.contains("target-bytes"), "{msg}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_file_id_high_half_is_part_of_eq_and_hash() {
+        let mut low = [0u8; 16];
+        low[0] = 1;
+        let mut high = low;
+        high[8] = 4;
+        let left = WindowsFileId {
+            volume: 3,
+            file_id: low,
+        };
+        let right = WindowsFileId {
+            volume: 3,
+            file_id: high,
+        };
+        assert_ne!(left, right);
+        let mut set = std::collections::HashSet::new();
+        set.insert(left);
+        assert!(
+            set.insert(right),
+            "an id that differs in the high half was treated as the same file"
+        );
+        assert_eq!(set.len(), 2);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn file_ids_differing_in_the_high_half_are_distinct() {
+        let _guard = ClearComponent;
+        let dir = tempfile::tempdir().expect("tempdir");
+        for name in ["a", "b"] {
+            let mid = dir.path().join(name);
+            std::fs::create_dir(&mid).expect("mid");
+            std::fs::write(mid.join("leaf.bin"), b"leaf").expect("leaf");
+        }
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        let before = stored_ids(&root).len();
+        let mut low = [0u8; 16];
+        low[0] = 1;
+        let mut high = low;
+        high[15] = 2;
+        super::FILE_ID_BYTES.with(|cell| {
+            cell.borrow_mut().clear();
+            cell.borrow_mut().extend([low, high]);
+        });
+        for name in ["a/leaf.bin", "b/leaf.bin"] {
+            let bytes = root
+                .read(Path::new(name), 64, "", Path::new(name))
+                .expect("read");
+            assert_eq!(bytes, b"leaf");
+        }
+        let ids = stored_ids(&root);
+        assert!(ids.iter().any(|id| id.file_id == low), "{ids:?}");
+        assert!(ids.iter().any(|id| id.file_id == high), "{ids:?}");
+        assert_eq!(ids.len(), before + 2);
+    }
+
+    #[cfg(windows)]
+    fn stored_ids(root: &OpenedRoot) -> Vec<WindowsFileId> {
+        let held = root
+            .held
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        held.ids.iter().copied().collect()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn open_at_refuses_a_name_with_a_separator_or_a_colon() {
+        use std::os::windows::ffi::OsStringExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let nested = dir.path().join("sub");
+        std::fs::create_dir(&nested).expect("sub");
+        std::fs::write(nested.join("ok.bin"), b"nested").expect("nested");
+        std::fs::write(dir.path().join("ok.bin"), b"ok").expect("ok");
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        let parent = root.root_dir.try_clone().expect("clone");
+        super::NT_CREATE_CALLS.with(|cell| cell.set(0));
+        let rejected = [
+            std::ffi::OsString::from("ok.bin:$DATA"),
+            std::ffi::OsString::from("sub\\ok.bin"),
+            std::ffi::OsString::from("sub/ok.bin"),
+            std::ffi::OsString::from_wide(&[b'o' as u16, b'k' as u16, 0, b'x' as u16]),
+        ];
+        for name in &rejected {
+            let err = open_at(
+                &parent,
+                name,
+                RelativeOpen::Leaf {
+                    share_delete: false,
+                    follow_reparse: false,
+                },
+            )
+            .expect_err("rejected name");
+            assert!(
+                err.to_string().contains("not a regular file"),
+                "{name:?} {err}"
+            );
+        }
+        let calls = super::NT_CREATE_CALLS.with(|cell| cell.get());
+        assert_eq!(calls, 0, "rejected names reached the create call");
+        let mut file = open_at(
+            &parent,
+            std::ffi::OsStr::new("ok.bin"),
+            RelativeOpen::Leaf {
+                share_delete: false,
+                follow_reparse: false,
+            },
+        )
+        .expect("leaf");
+        let calls = super::NT_CREATE_CALLS.with(|cell| cell.get());
+        assert_eq!(calls, 1);
+        let mut bytes = Vec::new();
+        std::io::Read::read_to_end(&mut file, &mut bytes).expect("read");
+        assert_eq!(bytes, b"ok");
     }
 }

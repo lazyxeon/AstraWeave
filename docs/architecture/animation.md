@@ -9,7 +9,7 @@ lifecycle_status: active
 integration_status: wired
 owns: []
 doc_version: "1.1"
-last_verified_commit: 32afac52f
+last_verified_commit: f59241e3
 ---
 
 # Architecture Trace: Animation System
@@ -21,8 +21,8 @@ last_verified_commit: 32afac52f
 | **System name** | Skeletal Animation System |
 | **Primary crates** | `astraweave-render` (canonical runtime), `astraweave-asset` (glTF import), `astraweave-scene` (ECS integration), `tools/aw_editor` (editor UI + bridge) |
 | **Document version** | 1.1 |
-| **Last verified against commit** | `32afac52f` |
-| **Last verified date** | 2026-05-10 |
+| **Last verified against commit** | `f59241e3` |
+| **Last verified date** | 2026-11-11 |
 | **Status** | Active. Phase 2 Task 5 delivered the core pipeline (asset import → animation runtime → CPU/GPU skinning → ECS integration → tests + demo) on 2025-10-01. Continues to evolve via the editor's `EditorAnimationBridge` and Wave 2 mutation-remediation tests. |
 | **Owner notes** | The system spans **four crates** with **parallel type families** for the same logical concepts (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `Interpolation`, `ChannelData`). Each family is internally consistent but distinct from the others. The crossings are handled at integration points (glTF loader → runtime, runtime → ECS, editor → bridge). See §6 for the forensic conflict map. |
 
@@ -39,8 +39,8 @@ Loads glTF skeletons and animation clips, plays them back at runtime with keyfra
 Provides the canonical skeletal animation runtime for the engine — used by `examples/skinning_demo`, integration tests, the editor viewport, and any subsystem that needs to render bone-animated meshes. The CPU path is the deterministic CI-safe default; the GPU path is opt-in for performance.
 
 **Where it primarily lives:**
-- `astraweave-render/src/animation.rs` (710 LoC) — canonical runtime types and CPU pipeline (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `AnimationState`, `JointMatrixGPU`, `JointPalette`, `MAX_JOINTS = 256`, `compute_joint_matrices`, `skin_vertex_cpu`)
-- `astraweave-render/src/skinning_gpu.rs` (814 LoC, feature `skinning-gpu`) — pooled `JointPaletteManager` SSBO with dynamic offsets, plus the embedded WGSL `SKINNING_GPU_SHADER`
+- `astraweave-render/src/animation.rs` (750 LoC) — canonical runtime types and CPU pipeline (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `AnimationState`, `JointMatrixGPU`, `JointPalette`, `MAX_JOINTS = 256`, `compute_joint_matrices`, `skin_vertex_cpu`)
+- `astraweave-render/src/skinning_gpu.rs` (808 LoC, feature `skinning-gpu`) — pooled `JointPaletteManager` SSBO with dynamic offsets, plus the embedded WGSL `SKINNING_GPU_SHADER`
 - `astraweave-render/src/types.rs:51-106` — `SkinnedVertex` GPU vertex layout (60 bytes per vertex: position + normal + tangent + uv + joints[u16;4] + weights[f32;4])
 - `astraweave-asset/src/lib.rs:1447-…` — glTF import (`load_skeleton`, `load_animations`, plus parallel asset-side `Skeleton`/`Joint`/`Transform`/`AnimationClip`/`AnimationChannel`/`ChannelData`/`Interpolation` types using plain float arrays for Pod-friendly serialization)
 - `astraweave-scene/src/lib.rs:415-` — ECS animation components (`CSkeleton`, `CSkinnedMesh`, `CAnimator`, `CJointMatrices`, `CParentBone`, `PlaybackState`) + systems (`update_animations`, `compute_poses_stub`, `update_bone_attachments`)
@@ -87,14 +87,14 @@ The core pipeline is Phase-2-Task-5 complete (per `docs/archive/phase_reports/PH
     ▼
 [D: AnimationClip::sample(time, skeleton)]
     file: astraweave-render/src/animation.rs:101-166
-    role: Per active channel: find_keyframes() binary-search → interpolate per ChannelData variant
+    role: Per active channel: find_keyframes() linear scan → interpolate per ChannelData variant
           (Translation: Vec3::lerp; Rotation: Quat::slerp; Scale: Vec3::lerp;
            CubicSpline falls back to linear/slerp at lines 137, 150, 163).
           Returns Vec<Transform> indexed by joint.
     │
     ▼
 [E: compute_joint_matrices(skeleton, local_transforms)]
-    file: astraweave-render/src/animation.rs:282-374
+    file: astraweave-render/src/animation.rs:282-300 (`compute_joint_matrices`), 304-374 (`compute_joint_matrices_into`)
     role: Hierarchical traversal from root_indices via recursive walk; cycle detection via
           visited HashSet (anyhow::Error on cycle, line 328).
           Result: Vec<Mat4> = world_matrix * inverse_bind_matrix per joint (line 370).
@@ -140,8 +140,8 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | **AnimationClip** | A named, fixed-duration set of channels animating joint properties. Render-side, asset-side, and editor-side (`GltfAnimationClip`) all use `name` + `duration` + `channels` shape but with distinct channel type definitions. | `astraweave-render/src/animation.rs:92-96`, `astraweave-asset/src/lib.rs:1525-1529`, `tools/aw_editor/src/viewport/types.rs:359-366` |
 | **AnimationChannel** | One animated property (translation/rotation/scale) on one joint, with keyframe times + values + interpolation mode. Render-side and asset-side embed the property in a `ChannelData` discriminated union; editor-side `GltfAnimChannel` splits the property name (`GltfChannelProperty`) from the values (`Vec<Vec<f32>>`). | `astraweave-render/src/animation.rs:83-88`, `astraweave-asset/src/lib.rs:1508-1513`, `tools/aw_editor/src/viewport/types.rs:344-355` |
 | **ChannelData** | The discriminated union variant carrying typed keyframe values: `Translation(Vec<Vec3>)`, `Rotation(Vec<Quat>)`, `Scale(Vec<Vec3>)` on render-side; same variants with `Vec<[f32;3]>`/`Vec<[f32;4]>` on asset-side. Marked `#[non_exhaustive]`. | `astraweave-render/src/animation.rs:74-79`, `astraweave-asset/src/lib.rs:1500-1504` |
-| **Interpolation** | `Step / Linear / CubicSpline` keyframe interpolation modes. `#[non_exhaustive]`. CubicSpline falls back to Linear/Slerp in `AnimationClip::sample` (`astraweave-render/src/animation.rs:137, 150, 163`); the asset side comments "Not fully implemented yet" at `astraweave-asset/src/lib.rs:1520`. | `astraweave-render/src/animation.rs:64-70`, `astraweave-asset/src/lib.rs:1523-1527`, `tools/aw_editor/src/viewport/types.rs:328-332` |
-| **AnimationState** | Render-side per-clip playback state: `clip_index`, `time`, `speed`, `looping`, `playing`. Looping wraps via `%` (`animation.rs:241-248`); non-looping clamps and sets `playing = false` at duration (`animation.rs:249-254`). | `astraweave-render/src/animation.rs:204-267` |
+| **Interpolation** | `Step / Linear / CubicSpline` keyframe interpolation modes. `#[non_exhaustive]`. CubicSpline falls back to Linear/Slerp in `AnimationClip::sample` (`astraweave-render/src/animation.rs:137, 150, 163`); the asset side comments "Not fully implemented yet" at `astraweave-asset/src/lib.rs:1520`. | `astraweave-render/src/animation.rs:64-70`, `astraweave-asset/src/lib.rs:1515-1521`, `tools/aw_editor/src/viewport/types.rs:328-332` |
+| **AnimationState** | Render-side per-clip playback state: `clip_index`, `time`, `speed`, `looping`, `playing`. Looping wraps via `%` (`animation.rs:241-248`); non-looping clamps and sets `playing = false` at duration (`animation.rs:249-254`). | `astraweave-render/src/animation.rs:212-275` |
 | **CAnimator** | ECS-side per-entity playback state. Same conceptual role as `AnimationState` but with a `PlaybackState` enum (`Playing` / `Paused` / `Stopped`) instead of a plain `playing: bool`. Distinct type from `AnimationState`. | `astraweave-scene/src/lib.rs:493-499` |
 | **PlaybackState** | ECS-side enum (`Playing`, `Paused`, `Stopped`) with helper predicates `is_playing` / `is_paused` / `is_stopped` / `is_active`. `#[non_exhaustive]`. | `astraweave-scene/src/lib.rs:437-489` |
 | **EntityAnimationState** | Editor-bridge per-entity state. Same conceptual role as `AnimationState` / `CAnimator` but with `clip_index: Option<usize>` (Optional, while render-side defaults to `0`). | `tools/aw_editor/src/animation_bridge.rs:14-26` |
@@ -206,7 +206,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-render/src/animation.rs` | Canonical runtime types + CPU pipeline (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `AnimationState`, `JointMatrixGPU`, `JointPalette`, `MAX_JOINTS`, `compute_joint_matrices`, `skin_vertex_cpu`) plus 13 inline unit tests | Active | 710 LoC. Re-exported at crate root via `lib.rs:272-276` |
+| `astraweave-render/src/animation.rs` | Canonical runtime types + CPU pipeline (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `AnimationState`, `JointMatrixGPU`, `JointPalette`, `MAX_JOINTS`, `compute_joint_matrices`, `skin_vertex_cpu`) plus 13 inline unit tests | Active | 750 LoC. Re-exported at crate root via `lib.rs:272-276` |
 | `astraweave-render/src/skinning_gpu.rs` | `JointPaletteManager` pooled SSBO + embedded `SKINNING_GPU_SHADER` WGSL + 8 inline tests | Active (feature `skinning-gpu`) | 814 LoC. Re-exported at `lib.rs:278-279` (feature-gated) |
 | `astraweave-render/src/animation_extra_tests.rs` | 29 additional unit tests (mutation-killing coverage) | Active (test gate) | 613 LoC; declared `#[cfg(test)]` at `lib.rs:126-127` |
 | `astraweave-render/src/types.rs:49-106` | `SkinnedVertex` GPU vertex struct + `layout()` | Active | 60-byte vertex; shader locations 0/1/10/11/12/13 |
@@ -283,7 +283,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | Three per-entity playback states | `AnimationState` (render), `CAnimator` + `PlaybackState` (scene), `EntityAnimationState` (editor bridge) | Coexisting | Same conceptual data; different field choices (`playing: bool` vs `PlaybackState` enum; `clip_index: usize` vs `Option<usize>`) |
 | Asset-side `SkinnedVertexLite` vs render-side `SkinnedVertex` | `astraweave-asset/src/lib.rs:1447-1454` vs `astraweave-render/src/types.rs:51-58` | Coexisting | Asset-side uses `[f32; …]` plus `joints: [u16; 4]` and `weights: [f32; 4]` for serialization; render-side has the same fields but as a `#[repr(C)] Pod Zeroable` struct with an explicit GPU `layout()` |
 | Render-side `Renderer::set_skinned_mesh` "v0 API" vs newer pooled `JointPaletteManager` | `renderer.rs:10714-10742` vs `skinning_gpu.rs:20-…` | Coexisting | Inline comment at `renderer.rs:10714` labels the simple API as "v0"; the pooled SSBO with dynamic offsets is the modern path. Both are active. [NEEDS VERIFICATION on whether v0 has documented planned deprecation] |
-| `compute_poses_stub` (scene ECS, named "stub") vs `compute_joint_matrices` (render canonical) | `astraweave-scene/src/lib.rs:941` vs `astraweave-render/src/animation.rs:282-374` | Coexisting | The render-side function is the canonical hierarchical pose-compute. The scene-side `compute_poses_stub` checks ECS component presence but does not (per its name) replicate the full pose computation. Whether it's intentional that pose compute lives entirely on the render-side is unrecorded |
+| `compute_poses_stub` (scene ECS, named "stub") vs `compute_joint_matrices` (render canonical) | `astraweave-scene/src/lib.rs:941` vs `astraweave-render/src/animation.rs:282-300` and `304-374` | Coexisting | The render-side function is the canonical hierarchical pose-compute. The scene-side `compute_poses_stub` checks ECS component presence but does not (per its name) replicate the full pose computation. Whether it's intentional that pose compute lives entirely on the render-side is unrecorded |
 | CPU skinning (default) vs GPU skinning (`skinning-gpu` feature) | `astraweave-render/src/animation.rs:439-473` vs `astraweave-render/src/skinning_gpu.rs:…` | Coexisting (intentional, by feature flag) | Documented in `lib.rs:117-118` (`#[cfg(feature = "skinning-gpu")]` module gate). CPU is the deterministic CI-safe default per `animation.rs:1-6` module header |
 
 ### Naming collisions
@@ -305,7 +305,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **Trap**: Assuming `AnimationClip::sample` interpolates `CubicSpline` keyframes correctly.
   **What's actually true**: `astraweave-render/src/animation.rs:137, 150, 163` explicitly fall back to Linear (for translations and scales) or Slerp (for rotations) when the interpolation is `CubicSpline`. The asset-side comment at `astraweave-asset/src/lib.rs:1520` confirms "Not fully implemented yet". A glTF clip authored with cubic-spline keyframes will play back as linear in this engine until that gap is closed.
 - **Trap**: Skeletons with more than 256 joints.
-  **What's actually true**: `JointPalette::from_matrices` silently drops surplus joints via `take(MAX_JOINTS)` at `animation.rs:426`. No error is returned. `MAX_JOINTS = 256` is hard-coded at `animation.rs:396` and is also the size baked into the GPU SSBO struct at `skinning_gpu.rs:261`.
+  **What's actually true**: `JointPalette::from_matrices` silently drops surplus joints via `take(MAX_JOINTS)` at `animation.rs:426`. No error is returned. `MAX_JOINTS = 256` is hard-coded at `animation.rs:396` and is also the size baked into the GPU SSBO struct at `skinning_gpu.rs:262`.
 - **Trap**: Calling `compute_joint_matrices` on a skeleton whose `root_indices` is empty or whose joint parent chain has cycles.
   **What's actually true**: Cycle detection exists (`animation.rs:328-332` returns `anyhow::Error` with the offending joint index). Empty `root_indices` returns an all-identity `Vec<Mat4>` (because the inner `compute_recursive` is never called). The "invalid parent index" test at `animation.rs:721-749` documents that out-of-bounds parents are treated as orphans (the child becomes detached rather than panicking).
 - **Trap**: Using `compute_poses_stub` (`astraweave-scene/src/lib.rs:941`) and expecting it to populate `CJointMatrices::matrices`.
@@ -336,10 +336,10 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 ### Decision: `MAX_JOINTS = 256` as the per-skeleton GPU palette limit
 - **Date:** Phase 2 Task 5 Phase D
 - **Status:** Accepted (in active code)
-- **Context:** Defined at `astraweave-render/src/animation.rs:396` and consumed by `JointPalette` (line 401) and `JointPalette::from_matrices` (line 420). The WGSL shader hard-codes the same constant: `joints: array<JointMatrix, 256>` at `skinning_gpu.rs:261`. Phase 2 Task 5 implementation summary line 180 confirms the constant.
+- **Context:** Defined at `astraweave-render/src/animation.rs:396` and consumed by `JointPalette` (line 401) and `JointPalette::from_matrices` (line 420). The WGSL shader hard-codes the same constant: `joints: array<JointMatrix, 256>` at `skinning_gpu.rs:262`. Phase 2 Task 5 implementation summary line 180 confirms the constant.
 - **Decision:** Skeletons may have at most 256 joints; surplus joints are silently dropped via `.take(MAX_JOINTS)` in `JointPalette::from_matrices` (`animation.rs:426`).
 - **Alternatives considered:** [Reasoning not recovered.]
-- **Consequences:** A `JointPalette` is 16,396 bytes (256 × 64 + 12 padding). Skeletons over 256 joints lose data silently. The constant must be kept in sync between Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:261`) by manual edit — there is no compile-time mirror.
+- **Consequences:** A `JointPalette` is 16,396 bytes (256 × 64 + 12 padding). Skeletons over 256 joints lose data silently. The constant must be kept in sync between Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:262`) by manual edit — there is no compile-time mirror.
 
 ### Decision: Four parallel type families across crate boundaries (rather than a shared crate)
 - **Date:** Phase 2 Task 5 (asset/render/scene types landed together)
@@ -379,7 +379,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
-| 1 | `MAX_JOINTS = 256` is the per-skeleton GPU palette limit; the WGSL shader and the Rust constant must match | Manual | `animation.rs:396` (Rust) ↔ `skinning_gpu.rs:261` (WGSL string) — kept in sync by manual edit; no compile-time check |
+| 1 | `MAX_JOINTS = 256` is the per-skeleton GPU palette limit; the WGSL shader and the Rust constant must match | Manual | `animation.rs:396` (Rust) ↔ `skinning_gpu.rs:262` (WGSL string) — kept in sync by manual edit; no compile-time check |
 | 2 | `JointPalette::from_matrices` silently drops joints beyond `MAX_JOINTS` (no error returned) | Yes | `animation.rs:426` (`.take(MAX_JOINTS)`); test coverage [NEEDS VERIFICATION] |
 | 3 | `compute_joint_matrices` detects cycles in the joint hierarchy and returns `anyhow::Error` | Yes | `animation.rs:328-332` (`if !visited.insert(joint_idx) { return Err(...) }`); test in `animation_extra_tests.rs` [NEEDS VERIFICATION on exact test name] |
 | 4 | `AnimationState::update` wraps time modulo clip duration when `looping`, and clamps + stops at duration when not | Yes | `animation.rs:241-254`; tests `test_animation_state_update_looping` (line 503) and `test_animation_state_update_clamping` (line 518) |
@@ -387,10 +387,10 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | 6 | CPU and GPU skinning produce equivalent results within floating-point tolerance | Yes (test) | `skinning_parity_cpu_vs_gpu.rs` (642 LoC, `--ignored` for CI per file header) |
 | 7 | `JointPaletteManager` grows by doubling and preserves existing data; bind group is rebuilt after growth | Yes | `skinning_gpu.rs:195-247`; growth-test [NEEDS VERIFICATION on exact test name] |
 | 8 | The pooled SSBO slot stride equals `JointPalette` size rounded up to `device.limits().min_storage_buffer_offset_alignment` | Yes | `skinning_gpu.rs:55-57` (`slot_stride = raw_size.div_ceil(alignment) * alignment`) |
-| 9 | `skin_vertex_cpu` normalizes the skinned normal (or returns zero) | Yes | `animation.rs:434` (`skinned_normal.normalize_or_zero()`) |
+| 9 | `skin_vertex_cpu` normalizes the skinned normal (or returns zero) | Yes | `animation.rs:472` (`skinned_normal.normalize_or_zero()`) |
 | 10 | `AnimationClip::sample` returns one `Transform` per skeleton joint, initialized to the joint's bind-pose `local_transform` and then overwritten by active channels | Yes | `animation.rs:104-107, 162-165` |
-| 11 | Vertices with `weights[i] == 0.0` skip the corresponding joint matrix multiply (early-continue) | Yes | `animation.rs:413-415` (`if weight == 0.0 { continue; }`) |
-| 12 | Out-of-range joint indices in CPU skinning skip the contribution (no panic) | Yes | `animation.rs:417-420` (`if joint_idx >= joint_matrices.len() { continue; }`) |
+| 11 | Vertices with `weights[i] == 0.0` skip the corresponding joint matrix multiply (early-continue) | Yes | `animation.rs:451-453` (`if weight == 0.0 { continue; }`) |
+| 12 | Out-of-range joint indices in CPU skinning skip the contribution (no panic) | Yes | `animation.rs:455-458` (`if joint_idx >= joint_matrices.len() { continue; }`) |
 | 13 | Animation crate has no `unsafe` code on the render side (crate-level `#![deny(unsafe_code)]`) and the scene crate is `#![forbid(unsafe_code)]` | Yes | `astraweave-render/src/lib.rs:1` (`#![deny(unsafe_code)]`); `astraweave-scene/src/lib.rs:1` (`#![forbid(unsafe_code)]`) |
 
 ---
@@ -398,7 +398,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 ## 9. Performance & Resource Profile
 
 ### Hot paths
-- **`AnimationClip::sample`**: per active animator per tick. Cost = O(channels × log keyframes) via the binary search at `animation.rs:187-192`. For a 30-bone skeleton with 90 channels (TRS per bone) and 30 keyframes per channel, ~270 binary searches per sample.
+- **`AnimationClip::sample`**: per active animator per tick. Cost = O(channels × keyframes) via the linear scan in `find_keyframes` at `animation.rs:177-203` (the loop is `195-200`). For a 30-bone skeleton with 90 channels (TRS per bone) and 30 keyframes per channel, ~270 scans per sample.
 - **`compute_joint_matrices`**: per skeleton per tick. Cost = O(joints) for the recursive walk + O(joints) for inverse-bind multiply at the end (`animation.rs:369-371`).
 - **CPU `skin_vertex_cpu`**: per vertex per tick when CPU skinning is active. Cost = O(4 × matrix-vector mults) per vertex. For a 30k-vertex mesh: ~120k matrix-vector mults per frame.
 - **GPU skinning vertex shader**: per vertex per draw, but executed on the GPU in parallel. The shader at `skinning_gpu.rs:277-296` does 4 mat4×vec4 mults per vertex.
@@ -456,7 +456,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **CubicSpline interpolation — implement or remove the variant?** [Decisional.] Factual: render-side and asset-side both have the variant but fall back to Linear/Slerp. glTF files authored with cubic-spline keyframes lose fidelity in this engine. Whether to implement it (matrix coefficient + tangent computation per glTF spec) or to remove the variant from the enum is undecided.
 - **`Renderer::set_skinned_mesh` "v0 API" — eventual deprecation?** [Decisional.] Factual: the inline comment at `renderer.rs:10714` labels it v0; the pooled `JointPaletteManager` is the modern path. No deprecation timeline was found.
 - **`EditorAnimationBridge` parity with runtime playback** — should a parity test ensure editor preview matches `AnimationState::update` + `AnimationClip::sample` outputs? [Decisional, with factual context.] Factual: no automated parity test between editor bridge and runtime animation was found in this pass.
-- **`MAX_JOINTS = 256` — is this a permanent limit, or should it scale with hardware?** [Decisional.] Factual: hard-coded at `animation.rs:396` and `skinning_gpu.rs:261`, kept in sync by manual edit. Surplus joints silently drop. Industry conventions vary (Unity 32-64, Unreal 256-1024, custom engines often 256-512).
+- **`MAX_JOINTS = 256` — is this a permanent limit, or should it scale with hardware?** [Decisional.] Factual: hard-coded at `animation.rs:396` and `skinning_gpu.rs:262`, kept in sync by manual edit. Surplus joints silently drop. Industry conventions vary (Unity 32-64, Unreal 256-1024, custom engines often 256-512).
 - **Are skeletons >256 joints a real authoring concern in current AstraWeave assets?** [Factual — investigable.] [NEEDS VERIFICATION via asset audit — but if yes, the silent drop at `animation.rs:426` is a hidden data-loss bug.]
 - **Cross-crate conversion functions — should `From`/`Into` impls be added between the four `Skeleton`/`Joint`/etc. type families?** [Decisional, with factual context.] Factual: no `impl From<` between any pair of the four `Skeleton` types was found in this pass. Conversions happen ad-hoc at call sites.
 
@@ -466,7 +466,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 **Update this doc when:**
 - A new `Skeleton` / `Joint` / `Transform` / `AnimationClip` definition is added or one of the existing four is removed (touch §3, §5, §6)
-- `MAX_JOINTS` changes (must update Rust constant at `animation.rs:396` AND WGSL constant at `skinning_gpu.rs:261` AND this doc)
+- `MAX_JOINTS` changes (must update Rust constant at `animation.rs:396` AND WGSL constant at `skinning_gpu.rs:262` AND this doc)
 - CubicSpline interpolation is implemented or removed (touch §6, §8, §11)
 - A new ECS animation component is added to `astraweave-scene` (touch §5, §3)
 - The Renderer's "v0 skinning API" gains a planned deprecation (touch §6 conflict map, §11)
@@ -489,10 +489,10 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 1. **There are FOUR parallel type families for animation data.** `astraweave_render::animation` (runtime, glam), `astraweave_asset::*` (loader, float arrays), `astraweave_scene::C*` (ECS, parallel arrays), `aw_editor::viewport::types::Gltf*` (editor, glam). They are not interchangeable. Each boundary needs explicit conversion. Editor also adds `EditorAnimationBridge`-specific types (`JointTransform`, `AnimationOutput`, `EntityAnimationState`, `ClipEntry`).
 2. **CPU is the deterministic default; GPU is opt-in.** Per `animation.rs:1-6` module header. The CI-safe path is CPU. GPU parity test is `--ignored` for CI per `skinning_parity_cpu_vs_gpu.rs:6-7`.
-3. **`MAX_JOINTS = 256`.** Hard-coded in Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:261`). Surplus joints silently dropped at `animation.rs:426`. Keep both constants in sync.
+3. **`MAX_JOINTS = 256`.** Hard-coded in Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:262`). Surplus joints silently dropped at `animation.rs:426`. Keep both constants in sync.
 4. **CubicSpline interpolation falls back to Linear/Slerp.** `animation.rs:137, 150, 163`. glTF cubic-spline clips lose fidelity.
 5. **`compute_poses_stub` is named stub for a reason.** ECS-side full pose compute may be a gap; the canonical compute is render-side `compute_joint_matrices`.
-6. **CPU skinning early-continues on weight==0 and out-of-range joint indices.** Silent skips, not panics (`animation.rs:413-420`).
+6. **CPU skinning early-continues on weight==0 and out-of-range joint indices.** Silent skips, not panics (`animation.rs:451-458`).
 7. **`JointPaletteManager` uses a pooled SSBO with dynamic offsets.** One bind group, many skeletons. Pool doubles on grow.
 8. **Renderer has two skinning paths.** v0 simple API (`renderer.rs:10714-10742`) and pooled manager (`skinning_gpu.rs`). Pick deliberately.
 
@@ -505,16 +505,16 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - `tools/aw_editor/src/viewport/types.rs:306-366` — editor type definitions
 
 **Files you should NOT touch without strong reason:**
-- `astraweave-render/src/animation.rs:396` `MAX_JOINTS` — must stay in sync with `skinning_gpu.rs:261`
+- `astraweave-render/src/animation.rs:396` `MAX_JOINTS` — must stay in sync with `skinning_gpu.rs:262`
 - `astraweave-render/src/skinning_gpu.rs:254-335` `SKINNING_GPU_SHADER` — embedded WGSL; CLAUDE.md mandates `shader-wgsl-reviewer` agent on shader changes
 - `astraweave-render/src/types.rs:49-106` `SkinnedVertex` — GPU vertex layout; changing offsets/types breaks the WGSL shader at `skinning_gpu.rs` and all `SkinnedVertex` consumers
-- `astraweave-render/src/animation.rs:282-374` `compute_joint_matrices` — cycle detection logic; the canonical hierarchical-pose computation
+- `astraweave-render/src/animation.rs:282-300` `compute_joint_matrices` and `304-374` `compute_joint_matrices_into` — cycle detection logic; the canonical hierarchical-pose computation
 
 **Common mistakes when changing this system:**
 - **Mistake**: Passing an `astraweave_asset::Skeleton` where an `astraweave_render::Skeleton` is required (or vice versa).
   **Why wrong**: Distinct types. Compiler catches the type mismatch. Add explicit conversion at the call site.
 - **Mistake**: Updating `MAX_JOINTS` in Rust without updating the WGSL string constant.
-  **Why wrong**: The WGSL at `skinning_gpu.rs:261` hard-codes `256`. Out-of-sync constants cause GPU buffer-binding mismatches.
+  **Why wrong**: The WGSL at `skinning_gpu.rs:262` hard-codes `256`. Out-of-sync constants cause GPU buffer-binding mismatches.
 - **Mistake**: Authoring a glTF clip with cubic-spline interpolation and expecting it to play back correctly.
   **Why wrong**: Both render-side and asset-side fall back to Linear/Slerp.
 - **Mistake**: Authoring a skeleton with >256 joints.
@@ -531,9 +531,9 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 The animation system was delivered as **Phase 2 Task 5** of the engine roadmap. Per `docs/archive/phase_reports/PHASE2_TASK5_IMPLEMENTATION_SUMMARY.md` (2025-10-01), the implementation followed a six-phase plan:
 
 - **Phase A — Asset Import**: `astraweave-asset` extended with `Skeleton`, `Joint`, `Transform`, `AnimationClip` types and `load_skeleton` / `load_animations` glTF functions (5 tests).
-- **Phase B — Animation Runtime**: `astraweave-render/src/animation.rs` (~600 lines original; 710 today) with `AnimationClip::sample`, `AnimationState`, `compute_joint_matrices`, `skin_vertex_cpu` (10 tests).
+- **Phase B — Animation Runtime**: `astraweave-render/src/animation.rs` (~600 lines original; 750 today) with `AnimationClip::sample`, `AnimationState`, `compute_joint_matrices`, `skin_vertex_cpu` (10 tests).
 - **Phase C — ECS Integration**: `astraweave-scene` extended with `CSkeleton`, `CSkinnedMesh`, `CAnimator`, `CJointMatrices`, `CParentBone` and the `update_animations` / `compute_poses` / `update_bone_attachments` systems (14 tests).
-- **Phase D — GPU Skinning Pipeline**: `astraweave-render/src/skinning_gpu.rs` (~400 lines original; 814 today after pool refactor) with `JointPalette`, `JointPaletteManager`, embedded WGSL shader (9 tests). The summary at line 210 notes "Pipeline implemented, compute dispatch integration pending" — the pooled SSBO with dynamic offsets refactor came later.
+- **Phase D — GPU Skinning Pipeline**: `astraweave-render/src/skinning_gpu.rs` (~400 lines original; 808 today after pool refactor) with `JointPalette`, `JointPaletteManager`, embedded WGSL shader (9 tests). The summary at line 210 notes "Pipeline implemented, compute dispatch integration pending" — the pooled SSBO with dynamic offsets refactor came later.
 - **Phase E — Golden & Stress Tests**: 5 test files / 1,921 lines / 38 tests covering rest pose, animated pose, integration, CPU/GPU parity, stress.
 - **Phase F — Interactive Demo**: `examples/skinning_demo` with keyboard controls and HUD.
 
