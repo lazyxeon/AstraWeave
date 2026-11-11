@@ -350,7 +350,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 ## 10. Testing & Validation
 
 - **Unit tests:** Extensive in-module `#[cfg(test)]` blocks: `lib.rs` (glTF/GUID/DB/watcher), `cell_loader.rs:315-841` (RON round-trip, magic validation, async load), `nanite_preprocess.rs:717-941` (AABB, meshlet gen, LOD hierarchy, QEM), pipeline `mesh.rs`/`texture.rs`/`validator.rs`.
-- **Mutation testing:** `astraweave-asset/src/mutation_tests.rs` (~33 KB) — explicitly boundary/operator/constant mutation-killers. `astraweave-asset` is in the `sanitizers.yml` P1 array (per ARCHITECTURE_MAP.md:815).
+- **Mutation testing:** `astraweave-asset/src/mutation_tests.rs` (~33 KB) — explicitly boundary/operator/constant mutation-killers. `astraweave-asset` is in the `sanitizers.yml` P1 array (per ARCHITECTURE_MAP.md:831).
 - **Fuzzing:** `astraweave-asset/fuzz/` member present (declares the crate as a dep).
 - **Benchmarks:** `astraweave-asset-pipeline` declares `benches/pipeline_adversarial` (Cargo.toml). (Render-side Nanite/residency benches live in `astraweave-render/benches/`, using their own types.)
 - **Manual validation:** glTF loaders are exercised by `examples/visual_3d`, `hello_companion`, `veilweaver_demo`; meshlet preprocess by `examples/nanite_demo`.

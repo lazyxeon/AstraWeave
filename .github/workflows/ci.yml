@@ -10,8 +10,9 @@ name: Comprehensive CI Pipeline
 #
 # Main, schedule, and workflow_dispatch: the same gate against the full
 # workspace, then the 3-OS test matrix and a release build. Coverage,
-# CodeQL, the toolchain matrix, and benchmarks live in their own workflows
-# and do not run on pull requests. sanitizers.yml does run on pull requests:
+# CodeQL, and the toolchain matrix live in their own workflows and do not
+# run on pull requests. benchmark.yml runs on a pull request that has the
+# run-benchmarks label. sanitizers.yml does run on pull requests:
 # source integrity, LeakSanitizer, and ThreadSanitizer. AddressSanitizer's
 # critical job skips pull requests.
 

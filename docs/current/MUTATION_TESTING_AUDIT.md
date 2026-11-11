@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-AstraWeave has completed mutation testing on **59 library crates** covering **~771K LOC** — the **entire library crate inventory**. **Phase 1 (Safety-Critical) is 100% complete**, **Phase 2 (Simulation & AI) is 100% complete in this 2026-03-13 audit (not the nightly score)**, **Phase 3/4 (Supporting Systems) is 100% complete**, and **Phase 5 (Tools & Macros) is 100% complete**. All 4 crates containing `unsafe` code in Tier 1 have been verified. 3 library crates have 0 tests (noted as excluded). 1 crate (`astraweave-stress-test`) excluded due to broken baseline tests. 67 binary/demo/example crates are out of scope for mutation testing.
+AstraWeave has completed mutation testing on **59 library crates** covering **~771K LOC** — the **entire library crate inventory**. **Phase 1 (Safety-Critical) is 100% complete in this 2026-03-13 audit (not the nightly score)**, **Phase 2 (Simulation & AI) is 100% complete in this 2026-03-13 audit (not the nightly score)**, **Phase 3/4 (Supporting Systems) is 100% complete**, and **Phase 5 (Tools & Macros) is 100% complete**. All 4 crates containing `unsafe` code in Tier 1 have been verified. 3 library crates have 0 tests (noted as excluded). 1 crate (`astraweave-stress-test`) excluded due to broken baseline tests. 67 binary/demo/example crates are out of scope for mutation testing.
 
 The percentages below are this audit's 2026-03-13 figures from cargo-mutants 26.2.0 (raw and adjusted kill rates). They are not the nightly workflow score. That workflow uses caught / (caught + missed), and a miss or a timeout fails the job. Run `42753998469` measured: ecs job `129623992106` 329 caught and 163 missed (about 66.9%); nav 266 missed and 8 timeouts; each of the eight ai shards 61–70 missed and 1–5 timeouts; behavior 13 missed; core 0 mutants tested because the baseline could not find `libudev.pc`.
 
@@ -2364,7 +2364,7 @@ Target: `astraweave-ecs`, `astraweave-math`, `astraweave-core` (remaining), `ast
 | `astraweave-core` | 30 | **99.53%** | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-sdk` | 22 | **100%** | ✅ Complete |
 
-**Result**: ✅ ALL COMPLETE — ≥97% adjusted kill rate on all 4 crates, 0 undetected mutations in unsafe blocks.
+**Result**: ✅ ALL COMPLETE in the 2026-03-13 audit — ≥97% adjusted kill rate on all 4 crates, 0 undetected mutations in unsafe blocks in that audit. That is not the nightly score. Run `42753998469` measured the ecs job at about 66.9% (329 caught, 163 missed).
 
 ### Phase 2 — Simulation & AI (Weeks 3-5)
 Target: `astraweave-fluids`, `astraweave-ai`, `astraweave-gameplay`, `astraweave-scripting`
