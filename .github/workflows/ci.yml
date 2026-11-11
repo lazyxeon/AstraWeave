@@ -119,6 +119,7 @@ jobs:
         run: python3 scripts/ci/test_workflow_policy.py
 
       - name: Rust CI setup
+        id: rust_ci
         if: needs.changes.outputs.docs_only != 'true'
         uses: ./.github/actions/rust-ci-setup
 
@@ -131,8 +132,8 @@ jobs:
         run: bash scripts/ci/run-gate.sh
 
       - name: sccache stats
-        if: always() && needs.changes.outputs.docs_only != 'true'
-        run: sccache --show-stats || true
+        if: always() && needs.changes.outputs.docs_only != 'true' && steps.rust_ci.outputs.sccache-available == 'true'
+        run: sccache --show-stats
 
   test-linux-build:
     name: Test (ubuntu, build archive)
