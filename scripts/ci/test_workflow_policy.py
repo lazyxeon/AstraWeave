@@ -662,12 +662,23 @@ def _iter_cargo_configs() -> list[Path]:
             for name in dirnames
             if name != ".git" and not _is_cargo_target_dir(Path(dirpath) / name)
         ]
+        cargo_dir = Path(dirpath) / ".cargo"
+        # os.walk does not enter a symlinked directory. Cargo does.
+        if cargo_dir.is_symlink():
+            for name in ("config.toml", "config"):
+                candidate = cargo_dir / name
+                try:
+                    readable = candidate.is_file()
+                except OSError:
+                    readable = False
+                if readable:
+                    found.append(candidate)
         if Path(dirpath).name != ".cargo":
             continue
         for name in ("config.toml", "config"):
             if name in filenames:
                 found.append(Path(dirpath) / name)
-    return sorted(found)
+    return sorted(set(found))
 
 
 def sccache_policy_texts() -> dict[str, str]:
@@ -1147,10 +1158,14 @@ def _is_pinned_prefetch_run(run: str) -> bool:
 
     `env -i`, then PATH, HOME, GITHUB_OUTPUT, and RUNNER_TOOL_CACHE, each
     exactly `"$NAME"`, then `bash --noprofile --norc` and the script.
-    Any other name, value, flag, or argument is rejected. Whitespace is
-    collapsed; the quotes and the flag list are not.
+    One trailing newline is ignored. Any other newline, or `;`, `&`, `|`,
+    or a backslash, is rejected. Only spaces and tabs are collapsed.
     """
-    return " ".join(run.split()) == _PINNED_PREFETCH_RUN
+    text = run[:-1] if run.endswith("\n") else run
+    if any(char in text for char in "\n;&|\\"):
+        return False
+    collapsed = re.sub(r"[ \t]+", " ", text).strip(" \t")
+    return collapsed == _PINNED_PREFETCH_RUN
 
 
 def _without_full_line_comments(run: str) -> str:
@@ -1395,14 +1410,15 @@ def _unconditional_cargo_incremental(step: str | dict) -> bool:
     return False
 
 
-# sha256 of scripts/ci/fetch_sccache_release.sh. The checker accepts that
-# file only when the bytes match. Phrase matching is not the check.
+# sha256 of the raw bytes of scripts/ci/fetch_sccache_release.sh. The checker
+# accepts that file only when those bytes match. Phrase matching is not the check.
 PINNED_FETCH_SCRIPT_SHA256 = "b4796d86ec43b1ecfbcd697502024606ce63e67755fd4bd037eedfacb28c01dd"
 
 
-def sccache_checksum_source_violations(script: str) -> list[str]:
-    """The prefetch script is accepted only when its bytes match the pin."""
-    digest = hashlib.sha256(script.encode("utf-8")).hexdigest()
+def sccache_checksum_source_violations(script: str | bytes) -> list[str]:
+    """The prefetch script is accepted only when its raw bytes match the pin."""
+    raw = script if isinstance(script, bytes) else script.encode("utf-8")
+    digest = hashlib.sha256(raw).hexdigest()
     if digest != PINNED_FETCH_SCRIPT_SHA256:
         return ["prefetch script does not match the pinned source"]
     return []
@@ -1786,6 +1802,101 @@ def _mapping_changes_path(env: object) -> bool:
     return any(str(key).upper() in _PATH_ENV_KEYS for key in env)
 
 
+# sha256 of each run that already appears before a prefetch, with one trailing
+# newline removed. The pinned prefetch command is allowlisted separately.
+_ALLOWLISTED_EARLIER_RUN_SHA256 = frozenset(
+    {
+        # .github/workflows/benchmark_alert.yml
+        "e45645f730bacb34feb6ebe787adef000bd55aab8e9ccdcf12993936fcf0498f",
+        # .github/workflows/ci.yml
+        "03a5a2af132d508eaae1fb5934642800dbe69affa0e52ecb9601effbfb6456f6",
+        "1071cde4a194487aed44817bc598729f972e393abbc3a7b323bd457bfe21b5c8",
+        "ec8f6f454db2fb26a33e990c21f59e8cd056148038c048d95d702d1586283103",
+        # .github/workflows/dependency-management.yml
+        "973250532e4550ed39e2553cca0a2f49dd72b90a24c9da54a4a6175519be24bb",
+        "72168230df13a4113f607836be2d67ed2c3c3a6f5f3fd60c8614cfbb607eafb2",
+        "1509ead446afcc0ff42152ff38c8aa61507511fa2179d3f686358de3c266d99f",
+        # .github/workflows/determinism-replay.yml
+        "4730bbc1f7671393839e5b1ca3c49d333e08522f777a5bf7533a9bca6eaec2d4",
+        # .github/workflows/net-tests.yml
+        "1a21be8bb1dc4721d30cc1850ead617faa55ae9aebf416da4369668bdeaf0824",
+        # .github/workflows/toolchain-management.yml
+        "687cca3fed027a213d81aeca1521236a80806df3b3e8e9bf3a2f5344842b112f",
+        "fc1138f06b7f7ad443402ffd872b5ccdbc46f7486703767e93e08d1dabfb8f75",
+        "21635c38a8efd013d8c14bb761c2726a345431ed4299f1fac2ece416df4fb5f5",
+        # .github/actions/rust-ci-setup/action.yml
+        "7d1e6dcbe430e74bc20fbe4b55a71fd5f8807d798ab9c2df3bf55f55dfd37395",
+        "d2fde9b6aa15db063af5b7b0fd835bdbbadbd771c539f11f34f50320f14f0b56",
+    }
+)
+_EARLIER_ACTION_NAMES = frozenset(
+    {
+        "actions/checkout",
+        "dtolnay/rust-toolchain",
+        "actions/cache",
+        "actions/download-artifact",
+        "./.github/actions/rust-nightly",
+    }
+)
+_CHECKOUT_FORBIDDEN_WITH = frozenset({"ref", "repository", "path"})
+
+
+def _earlier_run_sha256(run: str) -> str:
+    text = run[:-1] if run.endswith("\n") else run
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _is_allowlisted_earlier_run(run: str) -> bool:
+    if _is_pinned_prefetch_run(run) or _is_pinned_prefetch_run(run.strip()):
+        return True
+    return _earlier_run_sha256(run) in _ALLOWLISTED_EARLIER_RUN_SHA256
+
+
+def _uses_action_name(uses: object) -> str:
+    if not isinstance(uses, str):
+        return ""
+    return uses.split("#", 1)[0].strip().split("@", 1)[0]
+
+
+def _is_allowlisted_earlier_uses(step: dict) -> bool:
+    return _uses_action_name(step.get("uses")) in _EARLIER_ACTION_NAMES
+
+
+def _checkout_forbidden_keys(step: dict) -> list[str]:
+    if _uses_action_name(step.get("uses")) != "actions/checkout":
+        return []
+    with_block = step.get("with")
+    if not isinstance(with_block, dict):
+        return []
+    return sorted(str(key) for key in with_block if str(key) in _CHECKOUT_FORBIDDEN_WITH)
+
+
+def _earlier_step_env_unlisted(step: dict) -> bool:
+    env = step.get("env")
+    if not isinstance(env, dict):
+        return False
+    return any(str(key).upper() not in _PREFETCH_ENV_ALLOWLIST for key in env)
+
+
+def _earlier_step_allowlist_violations(path: str, step: dict) -> list[str]:
+    """Earlier prefetch steps must be an allowlisted run or action."""
+    violations: list[str] = []
+    run = step.get("run")
+    has_run = isinstance(run, str) and run.strip() != ""
+    has_uses = isinstance(step.get("uses"), str) and str(step.get("uses")).strip() != ""
+    if has_run and not _is_allowlisted_earlier_run(_step_run(step)):
+        violations.append(f"{path}: prefetch run is not an allowlisted command")
+    if has_uses and not _is_allowlisted_earlier_uses(step):
+        violations.append(f"{path}: prefetch action is not allowlisted")
+    for key in _checkout_forbidden_keys(step):
+        violations.append(f"{path}: prefetch checkout sets {key}")
+    if not has_run and not has_uses:
+        violations.append(f"{path}: prefetch step is not allowlisted")
+    if _earlier_step_env_unlisted(step):
+        violations.append(f"{path}: prefetch environment is not allowlisted")
+    return violations
+
+
 _PREFETCH_ENV_ALLOWLIST = frozenset(
     {
         "CARGO_TERM_COLOR",
@@ -1822,19 +1933,22 @@ def _step_changes_path(step: dict) -> bool:
 
 
 def _normalized_shell(run: str) -> str:
-    return _decode_wrapper_spellings(_joined_adjacent_literals(_join_continuations(run)))
+    joined = _decode_wrapper_spellings(_joined_adjacent_literals(_join_continuations(run)))
+    return _strip_quote_glue(joined)
 
 
 def _step_rewrites_prefetch_script(step: dict) -> bool:
     """True when an earlier run can replace the prefetch script.
 
-    Continued lines and shell escapes are joined first. Any mention of the
-    script's name fails closed, including a variable, a glob, or an in-place
-    edit. A copy into `scripts/ci` fails closed as well.
+    The raw pinned command is exempt, so a second copy of that command is
+    not a rewrite. Continued lines, shell escapes, and empty quote glue are
+    joined before the name check. Any mention of the script's name then
+    fails closed. A copy into `scripts/ci` fails closed as well.
     """
-    run = _normalized_shell(_step_run(step))
-    if _is_pinned_prefetch_run(run.strip()):
+    raw = _step_run(step)
+    if _is_pinned_prefetch_run(raw) or _is_pinned_prefetch_run(raw.strip()):
         return False
+    run = _normalized_shell(raw)
     if "fetch_sccache" in run:
         return True
     return re.search(r"\b(?:cp|mv|install|tee)\b", run) is not None and "scripts/ci" in run
@@ -1854,22 +1968,36 @@ def _prefetch_step_shape_violations(path: str, step: dict) -> list[str]:
     return violations
 
 
+_EXACT_PREFETCH_FILE_LINES = frozenset(
+    {
+        'echo "AW_NIGHTLY=$channel" >> "$GITHUB_ENV"',
+        'echo "version=$version" >> "$GITHUB_OUTPUT"',
+        'echo "channel=$channel" >> "$GITHUB_OUTPUT"',
+    }
+)
+
+
+_ENV_FILE_WRITE_RE = re.compile(
+    r"(?:>>?|[|][ \t]*tee\b|tee\s+-[a-zA-Z]*a)\s*['\"]?\$\{?(?:GITHUB_ENV|GITHUB_OUTPUT)\b"
+)
+
+
 def _earlier_env_file_unlisted(step: dict) -> bool:
-    run = _step_run(step)
-    if "GITHUB_ENV" not in run:
+    """True unless every env or output write is one exact allowlisted line.
+
+    Naming `GITHUB_ENV` or `GITHUB_OUTPUT` in the pinned command is not a write.
+    A line that redirects to either file must be exactly one allowlisted assignment.
+    """
+    run = _join_continuations(_step_run(step))
+    if "GITHUB_ENV" not in run and "GITHUB_OUTPUT" not in run:
         return False
     for line in run.splitlines():
         stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "GITHUB_ENV" not in line:
+        if not stripped or stripped.startswith("#"):
             continue
-        match = re.search(r"""(?:echo|printf)\s+(?:"([^"]*)"|'([^']*)'|(\S+))""", line)
-        if match is None:
-            return True
-        body = next(group for group in match.groups() if group is not None)
-        if "=" not in body:
-            return True
-        key = body.split("=", 1)[0]
-        if str(key).upper() not in _PREFETCH_ENV_ALLOWLIST:
+        if _ENV_FILE_WRITE_RE.search(stripped) is None:
+            continue
+        if stripped not in _EXACT_PREFETCH_FILE_LINES:
             return True
     return False
 
@@ -1961,6 +2089,7 @@ def _prefetch_context_violations(
             violations.append(f"{path}: prefetch script is rewritten by an earlier step")
         if _earlier_env_file_unlisted(step):
             violations.append(f"{path}: prefetch env file is written by an earlier step")
+        violations.extend(_earlier_step_allowlist_violations(path, step))
     return violations
 
 
@@ -3110,7 +3239,12 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertNotIn(".sha256", script)
         self.assertNotIn("SCCACHE_RELEASE_BASE", script)
         self.assertIn('--release-base', script)
-        self.assertEqual(sccache_checksum_source_violations(script), [])
+        self.assertEqual(
+            sccache_checksum_source_violations(
+                (ROOT / "scripts" / "ci" / "fetch_sccache_release.sh").read_bytes()
+            ),
+            [],
+        )
 
         silent = _replace_policy_once(
             texts,
@@ -6251,8 +6385,18 @@ exec {real_node} "$@"
             found = hits(path, text, extra)
             self.assertTrue(any(needle in item for item in found), found)
 
-        script = (ROOT / "scripts" / "ci" / "fetch_sccache_release.sh").read_text(encoding="utf-8")
-        self.assertEqual(sccache_checksum_source_violations(script), [])
+        script_path = ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"
+        script_bytes = script_path.read_bytes()
+        script = script_bytes.decode("utf-8")
+        self.assertEqual(sccache_checksum_source_violations(script_bytes), [])
+        self.assertNotIn(b"\r", script_bytes)
+        crlf_script = script_bytes.replace(b"\n", b"\r\n")
+        lone_cr_script = script_bytes.replace(b"\n", b"\r")
+        self.assertNotEqual(crlf_script, script_bytes)
+        self.assertNotEqual(lone_cr_script, script_bytes)
+        for raw_script in (crlf_script, lone_cr_script):
+            found = sccache_checksum_source_violations(raw_script)
+            self.assertTrue(any("pinned source" in item for item in found), found)
 
         inverted_cmp = '"$got" ' + "= " + '"$want"'
         inverted = script.replace('"$got" != "$want"', inverted_cmp, 1)
@@ -6405,6 +6549,20 @@ exec {real_node} "$@"
                 "sccache stats run must be exactly",
             )
 
+        name_glue = "fetch_" + "''" + "sccache_release.sh"
+        for label, run in (
+            ("glue-overwrite", "echo x > scripts/ci/" + name_glue),
+            ("glue-variable", "f=" + name_glue + "; echo x > $f"),
+            ("glue-name", ": " + name_glue),
+        ):
+            self.assertTrue(_step_rewrites_prefetch_script({"run": run}), label)
+            body = "".join(f"          {line}\n" for line in run.splitlines())
+            flagged(
+                f".github/workflows/rewrite-{label}.yml",
+                workflow("      - shell: bash\n        run: |\n" + body + fetch),
+                "prefetch script is rewritten by an earlier step",
+            )
+
         continued = "echo x > scripts/ci/fetch_sccache_rel" + "\\\n" + "ease.sh"
         split_name = "echo x > scripts/ci/fetch_scc" + "\\\n" + "ache_release.sh"
         decoded_name = "echo x > $'scripts/ci/" + "\\" + "146" + "etch_sccache_release.sh'"
@@ -6473,6 +6631,160 @@ exec {real_node} "$@"
             shutil.rmtree(rewrite_dir, ignore_errors=True)
             shutil.rmtree(path_dir, ignore_errors=True)
             include_path.unlink(missing_ok=True)
+
+        unquoted = _PINNED_PREFETCH_RUN.replace('PATH="$PATH"', "PATH=$PATH", 1)
+        self.assertNotEqual(unquoted, _PINNED_PREFETCH_RUN)
+        self.assertFalse(_is_pinned_prefetch_run(unquoted))
+        self.assertTrue(_is_pinned_prefetch_run(_PINNED_PREFETCH_RUN.replace(" ", "\t", 1)))
+        self.assertTrue(_is_pinned_prefetch_run(_PINNED_PREFETCH_RUN + "\n"))
+        self.assertFalse(_is_pinned_prefetch_run(_PINNED_PREFETCH_RUN + "\n\n"))
+        for label, sep in (("semi", ";"), ("amp", "&"), ("pipe", "|"), ("slash", "\\")):
+            broken = _PINNED_PREFETCH_RUN.replace(" bash ", sep + " bash ", 1)
+            self.assertNotEqual(broken, _PINNED_PREFETCH_RUN, label)
+            self.assertFalse(_is_pinned_prefetch_run(broken), label)
+        for label, run in (
+            ("before-bash", _PINNED_PREFETCH_RUN.replace(" bash ", "\nbash ", 1)),
+            ("after-env", _PINNED_PREFETCH_RUN.replace("env -i ", "env -i\n", 1)),
+            ("between-assign", _PINNED_PREFETCH_RUN.replace('"$PATH" HOME=', '"$PATH"\nHOME=', 1)),
+        ):
+            self.assertNotEqual(run, _PINNED_PREFETCH_RUN, label)
+            self.assertFalse(_is_pinned_prefetch_run(run), label)
+            flagged(
+                f".github/workflows/pin-{label}.yml",
+                workflow(
+                    "      - id: sccache_fetch\n"
+                    "        shell: bash\n"
+                    "        run: |\n"
+                    + "".join(f"          {line}\n" for line in run.splitlines())
+                ),
+                "sccache_fetch must be an earlier pinned prefetch",
+            )
+
+        tee_run = "echo x | tee " + "scripts/ci/" + "out.sh >/dev/null"
+        self.assertNotIn("fetch_sccache", tee_run)
+        self.assertTrue(_step_rewrites_prefetch_script({"run": tee_run}))
+        flagged(
+            ".github/workflows/rewrite-tee.yml",
+            workflow(as_run(tee_run) + fetch),
+            "prefetch script is rewritten by an earlier step",
+        )
+
+        short = "scripts/ci/fetch_"
+        classes = (
+            ("shorter-var", "f=" + short + '; echo x > "${f}' + 'sccache_release.sh"'),
+            ("glob-star", "echo x > scripts/ci/f*.sh"),
+            ("glob-question", "echo x > scripts/ci/fetch_s?cache"),
+            ("sed-inplace", "sed -i s/a/b/ scripts/ci/*.sh"),
+            ("perl-inplace", "perl -pi -e s/a/b/ scripts/ci/*.sh"),
+            ("dd-write", "dd if=/dev/null of=scripts/ci/out.sh"),
+            ("ln-write", "ln -s /tmp/x scripts/ci/out.sh"),
+            ("curl-write", "curl -o scripts/ci/out.sh http://127.0.0.1/x"),
+            ("cd-relative", "cd scripts/ci && echo x > out.sh"),
+            ("python-concat", "python3 -c 'open(\"scripts/ci/\"+\"a\"+\".sh\",\"w\").write(\"x\")'"),
+            ("git-checkout", "git checkout -- scripts/ci"),
+            ("rsync-write", "rsync -a /tmp/x/ scripts/ci/"),
+            ("tar-write", "tar -xf /tmp/x.tar -C scripts/ci"),
+            ("unzip-write", "unzip /tmp/x.zip -d scripts/ci"),
+        )
+        for label, run in classes:
+            self.assertFalse(_is_allowlisted_earlier_run(run), label)
+            flagged(
+                f".github/workflows/allow-{label}.yml",
+                workflow(as_run(run) + fetch),
+                "prefetch run is not an allowlisted command",
+            )
+
+        two = hits(".github/workflows/two-prefetch.yml", workflow(fetch + fetch))
+        noisy = (
+            "rewritten",
+            "allowlisted",
+            "prefetch env file",
+            "prefetch PATH",
+            "prefetch checkout",
+            "prefetch working directory",
+        )
+        self.assertFalse(any(any(needle in item for needle in noisy) for item in two), two)
+
+        flagged(
+            ".github/workflows/github-path.yml",
+            workflow('      - run: echo /tmp/x >> "$GITHUB_PATH"\n' + fetch),
+            "prefetch PATH is changed",
+        )
+        flagged(
+            ".github/workflows/env-path-line.yml",
+            workflow('      - run: echo "PATH=/tmp/x" >> "$GITHUB_ENV"\n' + fetch),
+            "prefetch PATH is changed",
+        )
+        second_key = (
+            'echo "AW_NIGHTLY=$channel" >> "$GITHUB_ENV"; '
+            'echo "LD_PRELOAD=/tmp/x" >> "$GITHUB_ENV"'
+        )
+        self.assertTrue(_earlier_env_file_unlisted({"run": second_key}))
+        flagged(
+            ".github/workflows/two-env-writes.yml",
+            workflow(as_run(second_key) + fetch),
+            "prefetch env file is written by an earlier step",
+        )
+        second_output = (
+            'echo "version=$version" >> "$GITHUB_OUTPUT"; '
+            'echo "available=true" >> "$GITHUB_OUTPUT"'
+        )
+        self.assertTrue(_earlier_env_file_unlisted({"run": second_output}))
+        flagged(
+            ".github/workflows/two-output-writes.yml",
+            workflow(as_run(second_output) + fetch),
+            "prefetch env file is written by an earlier step",
+        )
+        flagged(
+            ".github/workflows/step-env.yml",
+            workflow(
+                "      - run: exit 1\n"
+                "        env:\n"
+                "          LD_PRELOAD: /tmp/x\n"
+                + fetch
+            ),
+            "prefetch environment is not allowlisted",
+        )
+        flagged(
+            ".github/workflows/unknown-action.yml",
+            workflow("      - uses: actions/github-script@v7\n" + fetch),
+            "prefetch action is not allowlisted",
+        )
+        flagged(
+            ".github/workflows/bare-step.yml",
+            workflow("      - name: decoy\n" + fetch),
+            "prefetch step is not allowlisted",
+        )
+        for key in ("ref", "repository", "path"):
+            flagged(
+                f".github/workflows/checkout-{key}.yml",
+                workflow(
+                    "      - uses: actions/checkout@v7\n"
+                    "        with:\n"
+                    f"          {key}: main\n"
+                    + fetch
+                ),
+                f"prefetch checkout sets {key}",
+            )
+
+        link_parent = ROOT / "tools" / "aw_policy_symlink_cargo"
+        try:
+            target = link_parent / "target-config"
+            target.mkdir(parents=True)
+            (target / "config.toml").write_text('rustc-wrapper = "sccache"\n', encoding="utf-8")
+            cargo_link = link_parent / ".cargo"
+            cargo_link.symlink_to(target, target_is_directory=True)
+            linked = sccache_install_violations(sccache_policy_texts())
+            self.assertTrue(
+                any("aw_policy_symlink_cargo/.cargo/config.toml" in item and "wrapper key" in item for item in linked),
+                linked,
+            )
+        finally:
+            if link_parent.exists():
+                cargo_link = link_parent / ".cargo"
+                if cargo_link.is_symlink():
+                    cargo_link.unlink()
+                shutil.rmtree(link_parent, ignore_errors=True)
 
         quiet_anchor = hits(
             ".github/workflows/reused-with.yml",
