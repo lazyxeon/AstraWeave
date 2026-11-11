@@ -1,13 +1,17 @@
 //! Size-bounded read from a directory handle.
 //!
-//! One load opens the model directory once, and that handle is used for the
-//! container read, every sibling URI, and every image URI. On Unix the handle
-//! is a directory file descriptor and each URI component is opened from it
-//! with `O_NOFOLLOW`. On Windows the handle is the directory-handle chain plus
-//! the final path. Each URI component is reopened from that final path. A
-//! cloud-file reparse tag is allowed. A symlink, a junction, and a mount point
-//! are refused. The file's final path must stay under the root's. Those paths
-//! compare as exact UTF-16 units.
+//! On the editor, cook, and runtime paths, one handle covers the container
+//! and every URI. A base-taking loader opens the base once for its URIs, and
+//! the caller supplies the container bytes. On Unix the handle is a directory
+//! file descriptor and each URI component is opened from it with `O_NOFOLLOW`.
+//! On Windows the handle is the directory-handle chain plus the final path.
+//! Those directory handles do not share delete, so a directory the load holds
+//! cannot be renamed or removed while they are open. Each URI component is
+//! reopened from that final path. A cloud-file reparse tag is allowed. Delete
+//! sharing is only on the first open of that file, so its name can be replaced
+//! between the two opens, and the second open must be the same file. A symlink,
+//! a junction, and a mount point are refused. The file's final path must stay
+//! under the root's. Those paths compare as exact UTF-16 units.
 //!
 //! A caller-supplied model file is resolved once. Its parent is then opened
 //! with that component walk and is not resolved again. URI components are not
@@ -24,8 +28,11 @@ use std::path::{Component, Path};
 
 /// The model directory opened once for a load.
 ///
-/// One load opens the model directory once, and that handle is used for the
-/// container read, every sibling URI, and every image URI.
+/// On the editor, cook, and runtime paths, this handle covers the container
+/// and every URI. A base-taking loader opens the base once for its URIs, and
+/// the caller supplies the container bytes. On Windows the held directory
+/// handles do not share delete, so those directories cannot be renamed or
+/// removed while the load holds them.
 #[derive(Debug)]
 pub(crate) struct OpenedRoot {
     #[cfg(unix)]
@@ -330,7 +337,7 @@ pub(crate) fn root_open_count() -> u32 {
     ROOT_OPENS.with(|cell| cell.get())
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 pub(crate) fn after_root_open(hook: Box<dyn FnOnce()>) {
     AFTER_ROOT_OPEN.with(|cell| *cell.borrow_mut() = Some(hook));
 }
@@ -463,23 +470,33 @@ thread_local! {
 
 #[cfg(windows)]
 fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
+    // Directory handles, and the second open of a file, do not share delete.
+    // A directory this load holds cannot be renamed or removed while that
+    // handle is open.
+    open_with_share(path, reparse, false)
+}
+
+#[cfg(windows)]
+fn open_with_share(path: &Path, reparse: bool, share_delete: bool) -> std::io::Result<File> {
     use std::os::windows::fs::OpenOptionsExt;
 
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_SHARE_WRITE: u32 = 0x0000_0002;
-    // Share delete so a name can be replaced while this handle is held.
-    // The file-id compare then refuses a cloud file replaced between the two opens.
     const FILE_SHARE_DELETE: u32 = 0x0000_0004;
     const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 
+    let mut share = FILE_SHARE_READ | FILE_SHARE_WRITE;
+    if share_delete {
+        share |= FILE_SHARE_DELETE;
+    }
     let mut flags = FILE_FLAG_BACKUP_SEMANTICS;
     if reparse {
         flags |= FILE_FLAG_OPEN_REPARSE_POINT;
     }
     std::fs::OpenOptions::new()
         .read(true)
-        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .share_mode(share)
         .custom_flags(flags)
         .open(path)
 }
@@ -588,7 +605,10 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
 
 #[cfg(windows)]
 fn open_leaf_file(path: &Path) -> std::io::Result<File> {
-    let first = open_path(path, true)?;
+    // Delete sharing is only on this first open. A cloud file's name can be
+    // replaced while the handle is held, and the file-id compare then refuses
+    // a different file.
+    let first = open_with_share(path, true, true)?;
     let meta = first.metadata()?;
     let cloud = cloud_placeholder(&first, &meta)?;
     #[cfg(test)]

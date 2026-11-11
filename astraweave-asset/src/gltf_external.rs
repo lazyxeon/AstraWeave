@@ -124,10 +124,7 @@ impl ExternalBudget {
         Self { cap, spent: 0 }
     }
 
-    /// Bytes still under `cap`.
-    ///
-    /// A read limit that reports the full cap after earlier reads is still
-    /// refused by [`Self::charge`], which rejects a total past `cap`.
+    /// Bytes still under `cap`. A later read stops at this count.
     fn remaining(&self) -> u64 {
         self.cap.saturating_sub(self.spent)
     }
@@ -166,9 +163,10 @@ pub fn load_jailed_gltf(
 
 /// Parse `bytes` and read every sibling from `root`.
 ///
-/// One load opens the model directory once, and that handle is used for the
-/// container read, every sibling URI, and every image URI. This function does
-/// not open the directory again.
+/// The caller supplies the directory handle. This function reads every sibling
+/// URI and every image URI from it and does not open the directory again. On
+/// the editor, cook, and runtime paths the caller used that handle for the
+/// container read. A base-taking loader supplies the container bytes itself.
 pub fn load_jailed_gltf_with_root(
     root: &ModelRoot,
     bytes: &[u8],
@@ -522,7 +520,7 @@ mod tests {
         assert_eq!(buffers.len(), 2);
         let err = load_jailed_gltf(dir.path(), gltf, 6).expect_err("over total");
         let msg = err.to_string();
-        assert!(msg.contains("limit is") || msg.contains("exceed"), "{msg}");
+        assert!(msg.contains("limit is 2"), "{msg}");
     }
 
     #[test]

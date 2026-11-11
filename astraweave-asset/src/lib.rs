@@ -2668,6 +2668,70 @@ pub mod gltf_loader {
             let base = mat.base_color_texture.expect("base");
             assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
         }
+
+        #[cfg(windows)]
+        #[test]
+        fn skinned_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            write_model(&swapped, [9.0, 9.0, 9.0]);
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                // A held directory handle does not share delete, so the
+                // directory cannot be renamed while the load holds it.
+                let renamed = std::fs::rename(&model_hook, &hold);
+                if renamed.is_ok() {
+                    std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+                }
+                assert!(renamed.is_err(), "held directory was renamed");
+            }));
+            let (mesh, _, _, _) = load_skinned_mesh_complete(&model, &json).expect("skinned");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn glb_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            write_png(&model.join("a.png"), [10, 20, 30, 255]);
+            write_png(&model.join("b.png"), [1, 2, 3, 255]);
+            write_png(&swapped.join("a.png"), [90, 90, 90, 255]);
+            write_png(&swapped.join("b.png"), [90, 90, 90, 255]);
+            let glb = triangle_glb();
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                // A held directory handle does not share delete, so the
+                // directory cannot be renamed while the load holds it.
+                let renamed = std::fs::rename(&model_hook, &hold);
+                if renamed.is_ok() {
+                    std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+                }
+                assert!(renamed.is_err(), "held directory was renamed");
+            }));
+            let (_mesh, mat) = load_from_glb(&model, &glb).expect("glb");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            let base = mat.base_color_texture.expect("base");
+            assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
+        }
     }
 }
 
