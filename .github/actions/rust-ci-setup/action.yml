@@ -20,6 +20,11 @@ inputs:
     required: false
     default: "false"
 
+outputs:
+  sccache-available:
+    description: true when sccache v0.19.0 is on PATH for later steps
+    value: ${{ steps.sccache_fetch.outputs.available }}
+
 runs:
   using: composite
   steps:
@@ -50,23 +55,45 @@ runs:
           brew install pkg-config cmake
         fi
 
+    - name: Fetch sccache release
+      id: sccache_fetch
+      shell: bash
+      run: env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" bash --noprofile --norc scripts/ci/fetch_sccache_release.sh
+
+    - name: Note sccache unavailable
+      if: steps.sccache_fetch.outputs.available != 'true'
+      shell: bash
+      run: |
+        echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+        echo "::warning::sccache unavailable, building without cache"
+
+    - name: Disable incremental compilation
+      shell: bash
+      run: echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.11
+      if: steps.sccache_fetch.outputs.available == 'true'
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: v0.19.0
 
     - name: Enable sccache
+      if: steps.sccache_fetch.outputs.available == 'true'
       shell: bash
+      env:
+        AW_GITHUB_REF: ${{ github.ref }}
+        AW_GITHUB_EVENT_NAME: ${{ github.event_name }}
       run: |
         echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
         echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-        echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
         echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
         echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
         # sccache 0.19 writes through the Actions cache. A pull request that
         # also writes hits the service rate limit (cache write errors) and
-        # evicts the shared cache. Main pushes and schedules populate it.
-        # CARGO_INCREMENTAL=0 is already required; sccache still refuses bins,
-        # cdylibs, and proc-macros.
-        if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
+        # evicts the shared cache. Any non-pull-request run on refs/heads/main
+        # (push, schedule, or manual dispatch) populates it.
+        # sccache still refuses bins, cdylibs, and proc-macros.
+        if [ "$AW_GITHUB_REF" = "refs/heads/main" ] && [ "$AW_GITHUB_EVENT_NAME" != "pull_request" ]; then
           echo "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"
         else
           echo "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"

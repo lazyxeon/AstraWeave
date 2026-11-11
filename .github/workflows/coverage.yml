@@ -16,9 +16,7 @@ jobs:
     name: Generate Code Coverage
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # Coverage may fail on some configurations - non-blocking
-    continue-on-error: true
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

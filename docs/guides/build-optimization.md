@@ -4,7 +4,7 @@ This document describes the optimizations made to the AstraWeave AI Gaming Engin
 
 ## Overview
 
-The optimized build workflow (`rust-cache-optimized.yml`) implements advanced caching strategies and performance optimizations to significantly reduce build times while maintaining reliability and security.
+The shared setup (`.github/actions/rust-ci-setup`) implements advanced caching strategies and performance optimizations to significantly reduce build times while maintaining reliability and security.
 
 ## Key Optimizations
 
@@ -32,13 +32,17 @@ The optimized build workflow (`rust-cache-optimized.yml`) implements advanced ca
 
 ### 2. sccache Integration for Compilation Acceleration
 
-**Implementation**: Mozilla's sccache for distributed compilation caching
+**Implementation**: Mozilla's sccache for distributed compilation caching. The shared `rust-ci-setup` action writes the compiler wrapper on the gated enable step after the `sccache-action` install succeeds. A workflow-level env map is not the setup. The values below are the ones that step writes.
 
 ```yaml
-env:
-  RUSTC_WRAPPER: sccache
-  SCCACHE_CACHE_SIZE: "10G"
-  SCCACHE_IDLE_TIMEOUT: 0
+- name: Enable sccache
+  if: steps.sccache_fetch.outputs.available == 'true'
+  shell: bash
+  run: |
+    echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+    echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+    echo "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"
+    echo "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"
 ```
 
 **Benefits**:

@@ -26,8 +26,6 @@ jobs:
     name: Test AW Editor (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    # Skip if editor has known compilation issues - allows CI to pass while editor is being fixed
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

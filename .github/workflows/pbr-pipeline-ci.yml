@@ -32,7 +32,6 @@ jobs:
     name: Build PBR Components (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    continue-on-error: true  # Allow workflow to pass if editor/platform issues occur
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -224,16 +223,11 @@ jobs:
     name: Validate WGSL Shaders
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true  # wgsl-analyzer is optional
-    
+
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    
-    - name: Install wgsl-analyzer
-      run: |
-        cargo install --locked wgsl-analyzer || echo "wgsl-analyzer installation optional"
-    
+
     - name: Check shader syntax
       continue-on-error: true
       run: |

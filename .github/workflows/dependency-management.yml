@@ -155,8 +155,27 @@ jobs:
         run: echo "Windows dependencies managed via vcpkg"
 
       # FIX: separate steps; don't mix 'run' and 'uses' in the same step
+      - name: Fetch sccache release
+        id: sccache_fetch
+        shell: bash
+        run: env -i PATH="$PATH" HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" bash --noprofile --norc scripts/ci/fetch_sccache_release.sh
+
+      - name: Note sccache unavailable
+        if: steps.sccache_fetch.outputs.available != 'true'
+        shell: bash
+        run: |
+          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          echo "::warning::sccache unavailable, building without cache"
+
+      - name: Disable incremental compilation
+        shell: bash
+        run: echo "CARGO_INCREMENTAL=0" >> "$GITHUB_ENV"
+
       - name: Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
+        if: steps.sccache_fetch.outputs.available == 'true'
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: v0.19.0
 
       - name: Cache cleanup (if requested)
         if: github.event.inputs.cache_action == 'clean'
@@ -173,10 +192,13 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Configure sccache
-        run: echo "RUSTC_WRAPPER=sccache" >> $GITHUB_ENV
+        if: steps.sccache_fetch.outputs.available == 'true'
+        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - name: Show sccache stats (before)
-        run: sccache --show-stats || true
+        if: steps.sccache_fetch.outputs.available == 'true'
+        shell: bash
+        run: sccache --show-stats
 
       - name: Warm dependency cache
         if: github.event.inputs.cache_action == 'warm' || github.event_name == 'schedule'
@@ -199,7 +221,9 @@ jobs:
           cargo build --workspace ${{ env.EXCLUDED_PACKAGES }}
 
       - name: Show sccache stats (after)
-        run: sccache --show-stats || true
+        if: steps.sccache_fetch.outputs.available == 'true'
+        shell: bash
+        run: sccache --show-stats
 
   workspace-analysis:
     name: Workspace Health Analysis
