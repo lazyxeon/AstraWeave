@@ -1396,13 +1396,58 @@ def _command_spelling_names_sccache(text: str) -> bool:
     return _unquoted_glob_names_sccache(spelled)
 
 
+_QUOTED_HEREDOC_RE = re.compile(r"<<-?\s*(?:'([^']+)'|\"([^\"]+)\"|\\(\S+))")
+
+
+def _without_quoted_heredoc_bodies(text: str) -> str:
+    """Drop the body of a quoted heredoc. That body is not shell text."""
+    kept: list[str] = []
+    terminator: str | None = None
+    for line in text.splitlines():
+        if terminator is not None:
+            if line.strip() == terminator:
+                terminator = None
+            continue
+        match = _QUOTED_HEREDOC_RE.search(line)
+        if match is not None:
+            terminator = next(group for group in match.groups() if group is not None)
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def _is_exact_pinned_line(line: str) -> bool:
+    """A line the stats check accepts as written. Command substitution is not a spelling."""
+    stripped = line.strip()
+    if stripped in {_STATS_RUN, _PINNED_PREFETCH_RUN, _SANCTIONED_FALLBACK_LINE, _FALLBACK_WARNING_LINE}:
+        return True
+    if stripped in _SANCTIONED_GATE_LINES or stripped in _EXACT_PREFETCH_FILE_LINES:
+        return True
+    return False
+
+
+def _substitution_fails_closed(text: str) -> bool:
+    """True when a command word contains `$(` or a backtick.
+
+    That syntax is not decoded into another spelling of sccache. An exact
+    pinned line is exempt. A name built from variables stays a limit.
+    """
+    for line in _without_quoted_heredoc_bodies(text).splitlines():
+        if _is_exact_pinned_line(line):
+            continue
+        for word in _leading_command_words(line):
+            if "$(" in word or "`" in word:
+                return True
+    return False
+
+
 def _invokes_sccache_command(run: str) -> bool:
     """True when a run names sccache outside the pinned prefetch and the exact fallback.
 
     The stats check then requires the exact stats command. Runners, builtins,
     quoted commands, empty quote glue, locale quotes, an unquoted brace list,
-    an unquoted glob of the command name, and a command split across a
-    continued line all count.
+    an unquoted glob of the command name, a command split across a continued
+    line, and a command word that contains `$(` or a backtick all count.
+    The last of those is not another spelling. An exact pinned line is exempt.
     """
     if _is_pinned_prefetch_run(run.strip()):
         return False
@@ -1410,6 +1455,8 @@ def _invokes_sccache_command(run: str) -> bool:
     text = _strip_sanctioned_lines(_without_full_line_comments(text))
     if _is_pinned_prefetch_run(text.strip()):
         return False
+    if _substitution_fails_closed(text):
+        return True
     collapsed = _strip_quote_glue(text)
     return (
         _SCCACHE_COMMAND_RE.search(text) is not None
@@ -1626,7 +1673,7 @@ def _unconditional_cargo_incremental(step: str | dict) -> bool:
 PINNED_FETCH_SCRIPT_SHA256 = "b4796d86ec43b1ecfbcd697502024606ce63e67755fd4bd037eedfacb28c01dd"
 # sha256 of scripts/ci/test_workflow_policy.py with this assignment's hex
 # replaced by 64 zeros. The pin lives in the file it covers.
-_POLICY_CHECKER_SHA256 = "135267e9d23dc6d0ce832fcb6b3fb1b512311f9b19c067783a8ae61d80974e93"
+_POLICY_CHECKER_SHA256 = "90ceb598a508073ffde26483dc7bb00a7eb225bacbbd5fe9215c50b536085ace"
 _POLICY_SCRIPT = "scripts/ci/test_workflow_policy.py"
 _NAMES_SCRIPT = "scripts/ci/player_facing_names.sh"
 _POLICY_PIN_RE = re.compile(
@@ -2039,8 +2086,8 @@ _ALLOWLISTED_EARLIER_RUN_SHA256 = frozenset(
         # .github/workflows/benchmark_alert.yml
         "e45645f730bacb34feb6ebe787adef000bd55aab8e9ccdcf12993936fcf0498f",
         # .github/workflows/ci.yml
-        "03a5a2af132d508eaae1fb5934642800dbe69affa0e52ecb9601effbfb6456f6",
-        "1071cde4a194487aed44817bc598729f972e393abbc3a7b323bd457bfe21b5c8",
+        # The name check and the policy suite run in the policy job. They are
+        # not earlier steps, so their hashes are not in this set.
         "ec8f6f454db2fb26a33e990c21f59e8cd056148038c048d95d702d1586283103",
         # .github/workflows/dependency-management.yml
         "973250532e4550ed39e2553cca0a2f49dd72b90a24c9da54a4a6175519be24bb",
@@ -2068,8 +2115,10 @@ _EARLIER_ACTION_NAMES = frozenset(
         "./.github/actions/rust-nightly",
     }
 )
-# Checkout inputs are case-insensitive. Keys and values are the live set.
-# Any other key or value is rejected, including ssh-key, token, and github-server-url.
+# Checkout inputs are case-insensitive. The pairs are the live checkout inputs
+# across workflows, except filter. Before a prefetch the live tree uses
+# fetch-depth 0 and lfs true. Any other key or value is rejected, including
+# ssh-key, token, and github-server-url.
 _CHECKOUT_WITH_VALUES = {
     "fetch-depth": frozenset({"0", "1", "2"}),
     "fetch-tags": frozenset({"false"}),
@@ -2086,8 +2135,19 @@ _EARLIER_ACTION_REFS = {
     "dtolnay/rust-toolchain": frozenset({"master", "1.89.0"}),
 }
 # Job keys on a job that prefetches or calls rust-ci-setup. container is absent.
+# defaults is allowed only when run.shell is exactly bash. See the shell check.
 _PREFETCH_JOB_KEYS = frozenset(
-    {"env", "if", "name", "needs", "runs-on", "steps", "strategy", "timeout-minutes"}
+    {
+        "defaults",
+        "env",
+        "if",
+        "name",
+        "needs",
+        "runs-on",
+        "steps",
+        "strategy",
+        "timeout-minutes",
+    }
 )
 # actions/cache restores this exact path list and no other.
 _CACHE_PATH_PIN = "assets/_downloaded\n.asset_cache\n"
@@ -2249,12 +2309,23 @@ def _raw_defaults_shell(owner: object) -> object:
     return run.get("shell")
 
 
+_EXACT_BASH_DEFAULTS = {"run": {"shell": "bash"}}
+
+
 def _prefetch_shell_violations(
     path: str, steps: list[dict], job: dict | None, doc: dict | None
 ) -> list[str]:
-    """Step, job, and workflow shells are absent or exactly bash."""
+    """Step shells are absent or exactly bash. Job and workflow defaults match that.
+
+    The compare does not strip. `bash` with surrounding whitespace is rejected.
+    A present `defaults` key must be exactly `run.shell: bash`.
+    """
     violations: list[str] = []
     for owner, label in ((job, "job"), (doc, "workflow")):
+        if isinstance(owner, dict) and "defaults" in owner:
+            if owner.get("defaults") != _EXACT_BASH_DEFAULTS:
+                violations.append(f"{path}: prefetch {label} shell is not bash")
+            continue
         shell = _raw_defaults_shell(owner)
         if shell is not None and shell != "bash":
             violations.append(f"{path}: prefetch {label} shell is not bash")
@@ -2572,6 +2643,7 @@ def _prefetch_context_violations(
     for step in earlier:
         expanded.extend(_local_composite_steps(step.get("uses"), library, seen))
         expanded.append(step)
+    caller_ids = {id(step) for step in earlier}
     for step in expanded:
         if "working-directory" in step:
             violations.append(f"{path}: prefetch working directory is not the default")
@@ -2582,6 +2654,10 @@ def _prefetch_context_violations(
         if _earlier_env_file_unlisted(step):
             violations.append(f"{path}: prefetch env file is written by an earlier step")
         violations.extend(_earlier_step_allowlist_violations(path, step, texts))
+        # A composite run step cannot omit shell. Require exactly bash, no strip.
+        if id(step) not in caller_ids and isinstance(step.get("run"), str):
+            if step.get("shell") != "bash":
+                violations.append(f"{path}: prefetch step shell is not bash")
     return violations
 
 
@@ -2602,10 +2678,96 @@ def _prefetch_pin_violations(
     return list(dict.fromkeys(violations))
 
 
-def _uses_rust_ci_setup(step: dict) -> bool:
+def _resolved_action_rel(uses: str) -> str | None:
+    resolved = _resolve_local_action(uses)
+    if resolved is None:
+        return None
+    try:
+        return resolved.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _action_contains_prefetch(
+    rel: str, texts: dict[str, str] | None, seen: set[str] | None = None
+) -> bool:
+    """True when a local action's steps prefetch or call rust-ci-setup."""
+    if seen is None:
+        seen = set()
+    if rel in seen:
+        return False
+    seen.add(rel)
+    loaded = _load_local_action_text("./" + rel, texts or {})
+    if loaded is None:
+        return False
+    doc = _load_workflow_yaml(loaded[1])
+    if not isinstance(doc, dict):
+        return False
+    runs = doc.get("runs")
+    steps = runs.get("steps") if isinstance(runs, dict) else None
+    if not isinstance(steps, list):
+        return False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if _is_prefetch_step(step):
+            return True
+        raw = _uses_action_name(step.get("uses"))
+        if raw == _RUST_CI_SETUP_USES:
+            return True
+        if raw.startswith("./"):
+            child = _resolved_action_rel(raw)
+            if child is not None and _action_contains_prefetch(child, texts, seen):
+                return True
+    return False
+
+
+def _prefetch_composite_spelling_violations(
+    path: str, step: dict, texts: dict[str, str] | None
+) -> list[str]:
+    """A uses that resolves to a prefetching composite must be the canonical spelling."""
+    raw = _uses_action_name(step.get("uses"))
+    if not raw.startswith("./"):
+        return []
+    rel = _resolved_action_rel(raw)
+    if rel is None or not _action_contains_prefetch(rel, texts):
+        return []
+    expected = "./" + Path(rel).parent.as_posix()
+    if raw != expected:
+        return [f"{path}: prefetch action path is not canonical"]
+    return []
+
+
+def _uses_rust_ci_setup(step: dict, texts: dict[str, str] | None = None) -> bool:
     raw = _uses_action_name(step.get("uses"))
     normalized, _canonical = _lexical_local_uses(raw)
-    return normalized == _RUST_CI_SETUP_USES
+    if normalized == _RUST_CI_SETUP_USES:
+        return True
+    if not raw.startswith("./"):
+        return False
+    rel = _resolved_action_rel(raw)
+    return rel is not None and _action_contains_prefetch(rel, texts)
+
+
+def _github_symlink_violations() -> list[str]:
+    """A git index symlink under `.github/` fails closed. Mode 120000 is a symlink."""
+    try:
+        output = subprocess.check_output(
+            ["git", "ls-files", "-s", "--", ".github"],
+            cwd=ROOT,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return [".github: symlink check could not be read"]
+    violations: list[str] = []
+    for line in output.splitlines():
+        meta, sep, name = line.partition("\t")
+        if sep != "\t" or not name.startswith(".github/"):
+            continue
+        mode = meta.split(" ", 1)[0]
+        if mode == "120000":
+            violations.append(f"{name}: symlink under .github is rejected")
+    return violations
 
 
 def _composite_caller_violations(
@@ -2617,8 +2779,9 @@ def _composite_caller_violations(
 ) -> list[str]:
     violations: list[str] = []
     for index, step in enumerate(steps):
-        if not _uses_rust_ci_setup(step):
+        if not _uses_rust_ci_setup(step, texts):
             continue
+        violations.extend(_prefetch_composite_spelling_violations(path, step, texts))
         violations.extend(_local_uses_canonical_violations(path, step))
         violations.extend(_prefetch_shell_violations(path, steps[:index], job, doc))
         violations.extend(_prefetch_context_violations(path, steps[:index], job, doc, texts))
@@ -2693,7 +2856,9 @@ def _load_referenced_cargo_configs(
 
 
 def sccache_install_violations(texts: dict[str, str]) -> list[str]:
-    expanded, violations = _expand_local_actions(texts)
+    violations = _github_symlink_violations()
+    expanded, expanded_violations = _expand_local_actions(texts)
+    violations.extend(expanded_violations)
     cargo_paths, cargo_missing = _load_referenced_cargo_configs(expanded)
     violations.extend(cargo_missing)
     uses_per_file: dict[str, int] = {}
@@ -6851,6 +7016,41 @@ exec {real_node} "$@"
         ]
         self.assertEqual(live, [])
 
+    def test_policy_job_has_no_prefetch(self) -> None:
+        """The name check and the policy suite are not earlier steps of a prefetch."""
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        doc = _load_workflow_yaml(text)
+        self.assertIsInstance(doc, dict)
+        jobs = doc["jobs"]
+        found: list[tuple[str, dict]] = []
+        for name, job in jobs.items():
+            steps = job.get("steps") if isinstance(job, dict) else None
+            if not isinstance(steps, list):
+                continue
+            for step in steps:
+                if isinstance(step, dict) and step.get("run") == "python3 scripts/ci/test_workflow_policy.py":
+                    found.append((name, job))
+        self.assertEqual(len(found), 1)
+        name, job = found[0]
+        self.assertNotEqual(name, "gate")
+        runs = []
+        for step in job["steps"]:
+            self.assertFalse(_is_prefetch_step(step), step)
+            uses = str(step.get("uses") or "")
+            self.assertNotIn("rust-ci-setup", uses)
+            if isinstance(step.get("run"), str):
+                runs.append(step["run"])
+        self.assertIn("bash scripts/ci/player_facing_names.sh", runs)
+        self.assertIn("python3 scripts/ci/test_workflow_policy.py", runs)
+        gate = jobs["gate"]
+        gate_runs = [
+            step.get("run")
+            for step in gate["steps"]
+            if isinstance(step, dict) and isinstance(step.get("run"), str)
+        ]
+        self.assertNotIn("python3 scripts/ci/test_workflow_policy.py", gate_runs)
+        self.assertNotIn("bash scripts/ci/player_facing_names.sh", gate_runs)
+
     def test_sccache_policy_review_gaps(self) -> None:
         """Kill the untested guards. Probe text is built in pieces."""
 
@@ -7035,14 +7235,31 @@ exec {real_node} "$@"
         locale_word = "sc" + '$"' + "cache" + '" --version'
         brace_cmd = "sc" + "{" + "c,c" + "}" + "ache --zero-stats || true"
         glob_cmd = "sc" + "*" + " --show-stats"
+        sub_empty = "sc" + "$()" + "cache --show-stats"
+        sub_colon = "sc" + "$(" + ":)" + "cache --show-stats"
+        sub_true = "sc" + "$(" + "true)" + "cache --show-stats"
+        tick_empty = "sc" + "``" + "cache --show-stats"
+        tick_colon = "sc" + "`" + ":" + "`" + "cache --show-stats"
         self.assertNotIn("sccache", locale_empty)
         self.assertNotIn("sccache", locale_word)
         self.assertNotIn("sccache", brace_cmd)
         self.assertNotIn("sccache", glob_cmd)
+        self.assertNotIn("sccache", sub_empty)
+        self.assertNotIn("sccache", sub_colon)
+        self.assertNotIn("sccache", sub_true)
+        self.assertNotIn("sccache", tick_empty)
+        self.assertNotIn("sccache", tick_colon)
         self.assertTrue(_invokes_sccache_command(locale_empty))
         self.assertTrue(_invokes_sccache_command(locale_word))
         self.assertTrue(_invokes_sccache_command(brace_cmd))
         self.assertTrue(_invokes_sccache_command(glob_cmd))
+        self.assertTrue(_invokes_sccache_command(sub_empty))
+        self.assertTrue(_invokes_sccache_command(sub_colon))
+        self.assertTrue(_invokes_sccache_command(sub_true))
+        self.assertTrue(_invokes_sccache_command(tick_empty))
+        self.assertTrue(_invokes_sccache_command(tick_colon))
+        self.assertFalse(_substitution_fails_closed(_STATS_RUN))
+        self.assertFalse(_substitution_fails_closed(_PINNED_PREFETCH_RUN))
         for label, run in (
             ("glue-or", glued_or),
             ("glue-empty", glued_empty),
@@ -7053,6 +7270,11 @@ exec {real_node} "$@"
             ("locale-word", locale_word),
             ("brace-cmd", brace_cmd),
             ("glob-cmd", glob_cmd),
+            ("sub-empty", sub_empty),
+            ("sub-colon", sub_colon),
+            ("sub-true", sub_true),
+            ("tick-empty", tick_empty),
+            ("tick-colon", tick_colon),
         ):
             flagged(
                 f".github/workflows/stats-{label}.yml",
@@ -7160,7 +7382,14 @@ exec {real_node} "$@"
             ),
             [],
         )
-        for label, char in (("cr", "\r"), ("vt", "\v"), ("ff", "\f")):
+        for label, char in (
+            ("cr", "\r"),
+            ("vt", "\v"),
+            ("ff", "\f"),
+            ("nbsp", "\u00a0"),
+            ("nel", "\u0085"),
+            ("us", "\u001f"),
+        ):
             interior = _PINNED_PREFETCH_RUN.replace(" ", char, 1)
             self.assertNotEqual(interior, _PINNED_PREFETCH_RUN, label)
             self.assertFalse(_is_pinned_prefetch_run(interior), label)
@@ -7370,6 +7599,20 @@ exec {real_node} "$@"
             "prefetch actions/download-artifact path is not pinned",
         )
         flagged(
+            ".github/workflows/cache-dup.yml",
+            workflow(
+                "      - uses: actions/cache@v6\n"
+                "        with:\n"
+                "          Path: scripts/ci\n"
+                "          path: |\n"
+                "            assets/_downloaded\n"
+                "            .asset_cache\n"
+                "          key: k\n"
+                + fetch
+            ),
+            "prefetch actions/cache path is not pinned",
+        )
+        flagged(
             ".github/workflows/cache-extra.yml",
             workflow(
                 "      - uses: actions/cache@v6\n"
@@ -7428,6 +7671,48 @@ exec {real_node} "$@"
                 + fetch
             ),
             "prefetch checkout sets fetch-depth",
+        )
+        flagged(
+            ".github/workflows/checkout-depth-3.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          fetch-depth: 3\n"
+                + fetch
+            ),
+            "prefetch checkout sets fetch-depth",
+        )
+        flagged(
+            ".github/workflows/checkout-null.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          persist-credentials: null\n"
+                + fetch
+            ),
+            "prefetch checkout sets persist-credentials",
+        )
+        flagged(
+            ".github/workflows/checkout-seq.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          fetch-depth:\n"
+                "            - 0\n"
+                + fetch
+            ),
+            "prefetch checkout sets fetch-depth",
+        )
+        flagged(
+            ".github/workflows/checkout-map.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          lfs:\n"
+                "            value: true\n"
+                + fetch
+            ),
+            "prefetch checkout sets lfs",
         )
         flagged(
             ".github/workflows/checkout-tags.yml",
@@ -7504,15 +7789,65 @@ exec {real_node} "$@"
         for label, uses in (
             ("slash", "./.github/actions/rust-ci-setup" + "/"),
             ("dotdot", "./.github/" + "actions/../actions/" + "rust-ci-setup"),
+            ("dot", "./.github/./actions/rust-ci-setup"),
         ):
             flagged(
                 f".github/workflows/setup-{label}.yml",
                 workflow(f"      - uses: {uses}\n"),
                 "prefetch action path is not canonical",
             )
+        dot_path = "./.github/./actions/rust-ci-setup"
+        dot_normalized, dot_canonical = _lexical_local_uses(dot_path)
+        self.assertEqual(dot_normalized, "./.github/actions/rust-ci-setup")
+        self.assertFalse(dot_canonical)
         flagged(
             ".github/workflows/step-shell.yml",
             workflow("      - shell: pwsh\n        run: echo ok\n" + fetch),
+            "prefetch step shell is not bash",
+        )
+        flagged(
+            ".github/workflows/step-shell-pad.yml",
+            workflow("      - shell: ' bash'\n        run: echo ok\n" + fetch),
+            "prefetch step shell is not bash",
+        )
+        flagged(
+            ".github/workflows/job-shell-pad.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    defaults:\n"
+            "      run:\n"
+            "        shell: 'bash '\n"
+            "    steps:\n"
+            + fetch,
+            "prefetch job shell is not bash",
+        )
+        quiet_defaults = hits(
+            ".github/workflows/job-shell-bash.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    defaults:\n"
+            "      run:\n"
+            "        shell: bash\n"
+            "    steps:\n"
+            + fetch,
+        )
+        self.assertFalse(
+            any("shell" in item or "sets defaults" in item for item in quiet_defaults),
+            quiet_defaults,
+        )
+        flagged(
+            ".github/workflows/caller-shell.yml",
+            workflow(
+                '      - shell: "sh -e {0}"\n'
+                "        run: echo ok\n"
+                "      - uses: ./.github/actions/rust-ci-setup\n"
+            ),
             "prefetch step shell is not bash",
         )
         flagged(
@@ -7596,12 +7931,22 @@ exec {real_node} "$@"
             self.assertEqual(earlier_invoked_script_violations(rel, raw), [], rel)
             edited = earlier_invoked_script_violations(rel, raw + b"\n")
             self.assertTrue(any("pinned source" in item for item in edited), edited)
+            # Those two runs are not earlier steps. A prefetch job rejects them.
             found = hits(
                 ".github/workflows/edited-script.yml",
                 workflow("      - shell: bash\n        run: " + run + "\n" + fetch),
                 {rel: (raw + b"\n").decode("utf-8")},
             )
-            self.assertTrue(any("pinned source" in item for item in found), found)
+            self.assertTrue(any("not an allowlisted command" in item for item in found), found)
+        fetch_raw = (ROOT / _PREFETCH_SCRIPT).read_bytes()
+        edited_fetch = hits(
+            ".github/workflows/edited-fetch.yml",
+            workflow(
+                "      - shell: bash\n        run: " + _PINNED_PREFETCH_RUN + "\n" + fetch
+            ),
+            {_PREFETCH_SCRIPT: (fetch_raw + b"\n").decode("utf-8")},
+        )
+        self.assertTrue(any("pinned source" in item for item in edited_fetch), edited_fetch)
 
         link_parent = ROOT / "tools" / "aw_policy_symlink_cargo"
         try:
@@ -7621,6 +7966,53 @@ exec {real_node} "$@"
                 if cargo_link.is_symlink():
                     cargo_link.unlink()
                 shutil.rmtree(link_parent, ignore_errors=True)
+
+        nightly = (ROOT / ".github/actions/rust-nightly/action.yml").read_text(encoding="utf-8")
+        nightly_shell = nightly.replace("      shell: bash\n", "      shell: sh -e {0}\n", 1)
+        self.assertNotEqual(nightly_shell, nightly)
+        flagged(
+            ".github/workflows/nightly-shell.yml",
+            workflow("      - uses: ./.github/actions/rust-nightly\n" + fetch),
+            "prefetch step shell is not bash",
+            {".github/actions/rust-nightly/action.yml": nightly_shell},
+        )
+        nightly_pad = nightly.replace("      shell: bash\n", "      shell: ' bash'\n", 1)
+        flagged(
+            ".github/workflows/nightly-shell-pad.yml",
+            workflow("      - uses: ./.github/actions/rust-nightly\n" + fetch),
+            "prefetch step shell is not bash",
+            {".github/actions/rust-nightly/action.yml": nightly_pad},
+        )
+
+        alias = ROOT / ".github" / "actions" / "setup-alias"
+        try:
+            alias.symlink_to("rust-ci-setup", target_is_directory=True)
+            subprocess.check_call(
+                ["git", "add", "--", ".github/actions/setup-alias"],
+                cwd=ROOT,
+            )
+            alias_found = hits(
+                ".github/workflows/setup-alias.yml",
+                workflow(
+                    "      - run: echo unlisted\n"
+                    "      - uses: ./.github/actions/setup-alias\n"
+                ),
+            )
+            self.assertTrue(
+                any("symlink under .github is rejected" in item for item in alias_found),
+                alias_found,
+            )
+            self.assertTrue(
+                any("prefetch action path is not canonical" in item for item in alias_found),
+                alias_found,
+            )
+        finally:
+            subprocess.call(
+                ["git", "reset", "-q", "HEAD", "--", ".github/actions/setup-alias"],
+                cwd=ROOT,
+            )
+            if alias.is_symlink() or alias.exists():
+                alias.unlink()
 
         quiet_anchor = hits(
             ".github/workflows/reused-with.yml",

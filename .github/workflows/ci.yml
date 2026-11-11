@@ -103,11 +103,10 @@ jobs:
               --github-output "$GITHUB_OUTPUT"
           fi
 
-  gate:
-    name: Gate (fmt, clippy, check)
+  policy:
+    name: Policy (names, workflow)
     runs-on: ubuntu-latest
-    needs: changes
-    timeout-minutes: 45
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -117,6 +116,15 @@ jobs:
 
       - name: Workflow policy
         run: python3 scripts/ci/test_workflow_policy.py
+
+  gate:
+    name: Gate (fmt, clippy, check)
+    runs-on: ubuntu-latest
+    needs: [changes, policy]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
 
       - name: Rust CI setup
         id: rust_ci
