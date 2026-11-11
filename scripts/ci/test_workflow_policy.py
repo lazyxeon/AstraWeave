@@ -421,6 +421,73 @@ def _is_named_action(step: dict, action: str) -> bool:
     return _action_name(uses).casefold() == action.casefold()
 
 
+def _is_upload_artifact_step(step: dict) -> bool:
+    """The upload-artifact action, including a sub-path such as merge."""
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return False
+    name = _action_name(uses).casefold()
+    base = "actions/upload-artifact"
+    return name == base or name.startswith(base + "/")
+
+
+def _archive_is_default(step: dict) -> bool:
+    """archive is absent, or a value the runner passes as true."""
+    if "with" not in step or step.get("with") is None:
+        return True
+    body = step.get("with")
+    if not isinstance(body, dict):
+        return False
+    if not _has_ci_key(body, "archive"):
+        return True
+    return _runner_bool_true(body, "archive")
+
+
+def _local_use_target(uses: str) -> Path | None:
+    """Resolve an in-repo `uses: ./` path to a workflow or action file."""
+    if not isinstance(uses, str) or not uses.startswith("./"):
+        return None
+    if "${{" in uses or "@" in uses:
+        return None
+    raw = uses[2:].strip().strip("/")
+    if not raw:
+        return None
+    parts = Path(raw).parts
+    if ".." in parts:
+        return None
+    candidate = (ROOT / raw).resolve()
+    try:
+        candidate.relative_to(ROOT)
+    except ValueError:
+        return None
+    if candidate.is_file() and candidate.suffix in {".yml", ".yaml"}:
+        return candidate
+    if candidate.is_dir():
+        for name in ("action.yml", "action.yaml"):
+            action = (candidate / name).resolve()
+            try:
+                action.relative_to(ROOT)
+            except ValueError:
+                return None
+            if action.is_file():
+                return action
+    return None
+
+
+def _is_scanned_surface(path: Path) -> bool:
+    """True when the file is under .github/workflows or .github/actions."""
+    resolved = path.resolve()
+    if resolved.suffix not in {".yml", ".yaml"}:
+        return False
+    for root in (WORKFLOWS, ROOT / ".github" / "actions"):
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def _is_codecov_step(step: dict) -> bool:
     return _is_named_action(step, "codecov/codecov-action")
 
@@ -713,13 +780,20 @@ RUST_CI_SETUP_KEYS_MSG = (
 )
 COVERAGE_HTML_JOB_MSG = (
     "coverage-html keys must be name, needs, permissions, runs-on, timeout-minutes, and steps; "
+    "needs is coverage; permissions are contents: read; "
     "runs-on is ubuntu-latest; timeout-minutes is 45"
 )
 EDITOR_TEST_JOB_MSG = (
     "editor test keys must be name, permissions, runs-on, timeout-minutes, "
     "continue-on-error, strategy, and steps; "
-    "runs-on is ${{ matrix.os }}; timeout-minutes is 45"
+    "runs-on is ${{ matrix.os }}; timeout-minutes is 45; "
+    "strategy is fail-fast false and matrix.os is ubuntu-latest, windows-latest, macos-latest"
 )
+LOCAL_USE_MSG = "a local uses path must resolve to a scanned workflow or action"
+LOCAL_ACTION_MSG = "a local action uses path must be an allowlisted action"
+ARCHIVE_MSG = "upload-artifact archive must be absent or true"
+RUST_NIGHTLY_MSG = "rust-nightly must equal the canonical action"
+REUSABLE_WORKFLOW_MSG = "a reusable workflow uses must be an allowlisted target"
 RUN_CONTEXT_MSG = (
     "defaults is absent; workflow env is absent in coverage.yml and canonical in the other two; job env is absent"
 )
@@ -947,7 +1021,72 @@ _EDITOR_TEST_KEYS = frozenset(
 )
 _EDITOR_TEST_RUNS_ON = "${{ matrix.os }}"
 _EDITOR_TEST_TIMEOUT_MINUTES = 45
+_EDITOR_TEST_STRATEGY = {
+    "fail-fast": False,
+    "matrix": {
+        "os": ["ubuntu-latest", "windows-latest", "macos-latest"],
+    },
+}
 _PINNED_REPORT_NAME_VALUES = frozenset(_PINNED_REPORT_NAMES.values())
+_PINNED_REPORT_NAME_FOLDED = frozenset(name.casefold() for name in _PINNED_REPORT_NAME_VALUES)
+_LOCAL_ACTION_USES = frozenset(
+    {
+        "./.github/actions/rust-ci-setup",
+        "./.github/actions/rust-nightly",
+    }
+)
+_RUST_CI_SETUP_PATH = ".github/actions/rust-ci-setup/action.yml"
+_RUST_NIGHTLY_PATH = ".github/actions/rust-nightly/action.yml"
+_REUSABLE_WORKFLOW_USES: frozenset[str] = frozenset()
+_RUST_NIGHTLY_PIN_RUN = (
+    "channel=$(grep -v '^[[:space:]]*#' .github/rust-nightly-channel | tr -d '[:space:]')\n"
+    'if [ -z "$channel" ]; then\n'
+    '  echo "rust-nightly-channel is empty"\n'
+    "  exit 1\n"
+    "fi\n"
+    'echo "channel=$channel" >> "$GITHUB_OUTPUT"\n'
+    'echo "AW_NIGHTLY=$channel" >> "$GITHUB_ENV"\n'
+    'echo "Pinned nightly: $channel"\n'
+)
+_RUST_NIGHTLY_ACTION = {
+    "name": "Pinned Rust nightly",
+    "description": (
+        "Install the dated nightly named in .github/rust-nightly-channel (#560). "
+        "The caller must checkout the repository first. Exports AW_NIGHTLY for "
+        "later `cargo +$AW_NIGHTLY` steps.\n"
+    ),
+    "inputs": {
+        "components": {
+            "description": "Comma-separated rustup components",
+            "required": True,
+        }
+    },
+    "outputs": {
+        "channel": {
+            "description": "Pinned nightly channel",
+            "value": "${{ steps.pin.outputs.channel }}",
+        }
+    },
+    "runs": {
+        "using": "composite",
+        "steps": [
+            {
+                "name": "Read pinned nightly channel",
+                "id": "pin",
+                "shell": "bash",
+                "run": _RUST_NIGHTLY_PIN_RUN,
+            },
+            {
+                "name": "Install pinned nightly",
+                "uses": "dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8",
+                "with": {
+                    "toolchain": "${{ steps.pin.outputs.channel }}",
+                    "components": "${{ inputs.components }}",
+                },
+            },
+        ],
+    },
+}
 _RUST_CI_SETUP_LINUX_RUN = (
     "sudo apt-get update -q\n"
     "sudo apt-get install -y -q \\\n"
@@ -1708,9 +1847,12 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     canonical step fails. The coverage job is the exact ordered list of
     canonical steps, including Rust CI setup and Install Rust Toolchain,
     with their with: and env. An inserted, removed, or reordered step
-    fails. Its runs-on is ubuntu-latest and its timeout-minutes is 45.
+    fails.     Its runs-on is ubuntu-latest and its timeout-minutes is 45.
+    coverage-html needs is the job coverage, and its permissions are exactly
+    contents: read. The editor test strategy is fail-fast false and
+    matrix.os is ubuntu-latest, windows-latest, macos-latest.
     coverage-html and the editor test job are each an exact ordered list
-    of canonical steps. The Install cargo-tarpaulin step in coverage-html
+    of canonical steps. A repeated key on either job fails. The Install cargo-tarpaulin step in coverage-html
     is that list's canonical install. The key set matches, run matches after trailing whitespace is
     trimmed, leading whitespace fails, and every other value matches,
     including the upload with: map. A generate-coverage script other than
@@ -1796,18 +1938,21 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     workflow = Path(path).name
     if workflow == "coverage.yml":
         html = jobs.get("coverage-html")
+        html_line = int(job_lines.get("coverage-html", 1))
         if not _job_shape_ok(
             html,
             _COVERAGE_HTML_KEYS,
             _PINNED_RUNS_ON,
             _COVERAGE_HTML_TIMEOUT_MINUTES,
         ):
-            line = int(job_lines.get("coverage-html", 1))
-            violations.append(f"{prefix}{line}: {COVERAGE_HTML_JOB_MSG}")
+            violations.append(f"{prefix}{html_line}: {COVERAGE_HTML_JOB_MSG}")
+        if not isinstance(html, dict) or not _needs_exactly(html.get("needs"), "coverage"):
+            violations.append(f"{prefix}{html_line}: {COVERAGE_HTML_JOB_MSG}")
+        if not _producer_permissions_exact(html):
+            violations.append(f"{prefix}{html_line}: {COVERAGE_HTML_JOB_MSG}")
         html_steps = html.get("steps") if isinstance(html, dict) else None
         if not _steps_equal_ordered(html_steps, _COVERAGE_HTML_STEPS):
-            line = int(job_lines.get("coverage-html", 1))
-            violations.append(f"{prefix}{line}: {COVERAGE_HTML_STEPS_MSG}")
+            violations.append(f"{prefix}{html_line}: {COVERAGE_HTML_STEPS_MSG}")
     if workflow == "aw-editor-tests.yml":
         editor = jobs.get("test")
         if not _job_shape_ok(
@@ -1815,6 +1960,7 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
             _EDITOR_TEST_KEYS,
             _EDITOR_TEST_RUNS_ON,
             _EDITOR_TEST_TIMEOUT_MINUTES,
+            strategy=_EDITOR_TEST_STRATEGY,
         ):
             line = int(job_lines.get("test", 1))
             violations.append(f"{prefix}{line}: {EDITOR_TEST_JOB_MSG}")
@@ -2024,17 +2170,32 @@ def rust_ci_setup_violations(text: str, *, path: str = "") -> list[str]:
     runs.using is composite and runs has no other key beside steps.
     runs.steps is the ordered list, including one RUSTC_WRAPPER assignment
     in Enable sccache. An extra step, including one that writes GITHUB_ENV,
-    fails. The toolchain input default is the pinned toolchain.
+    fails. The toolchain input default is the pinned toolchain. The shape
+    check applies to `.github/actions/rust-ci-setup/action.yml` and
+    `.github/actions/rust-nightly/action.yml`. A local action `uses:` must
+    be one of those two paths. A non-mapping document fails.
     """
-    if "rust-ci-setup" not in Path(path).as_posix():
-        return []
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
     if err:
         return [f"{prefix}1: {err}"]
-    if not isinstance(doc, dict):
-        return [f"{prefix}1: {RUST_CI_SETUP_KEYS_MSG}"]
     violations: list[str] = []
+    if isinstance(doc, dict):
+        for line_no, uses in _iter_uses(doc):
+            if not isinstance(uses, str) or not uses.startswith("./"):
+                continue
+            if uses.startswith("./.github/workflows/"):
+                continue
+            if uses not in _LOCAL_ACTION_USES:
+                violations.append(f"{prefix}{int(line_no)}: {LOCAL_ACTION_MSG}")
+    if Path(path).as_posix() == _RUST_NIGHTLY_PATH:
+        if not isinstance(doc, dict) or not _mapping_equals(doc, _RUST_NIGHTLY_ACTION):
+            violations.append(f"{prefix}1: {RUST_NIGHTLY_MSG}")
+        return violations
+    if Path(path).as_posix() != _RUST_CI_SETUP_PATH:
+        return violations
+    if not isinstance(doc, dict):
+        return violations + [f"{prefix}1: {RUST_CI_SETUP_KEYS_MSG}"]
     if set(doc) != _RUST_CI_SETUP_KEYS:
         line = int(getattr(doc, "yaml_line", 1))
         violations.append(f"{prefix}{line}: {RUST_CI_SETUP_KEYS_MSG}")
@@ -2061,6 +2222,14 @@ def rust_ci_setup_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
+def _is_reusable_workflow_use(uses: str) -> bool:
+    """A uses value that names a workflow file, local or SHA-pinned."""
+    folded = uses.casefold()
+    if ".github/workflows/" not in folded:
+        return False
+    return ".yml" in folded or ".yaml" in folded
+
+
 def _has_overwrite(node: object) -> bool:
     if not isinstance(node, dict):
         return False
@@ -2068,19 +2237,14 @@ def _has_overwrite(node: object) -> bool:
 
 
 def _constant_expression(expr: str) -> str | None:
-    """A quoted string, or quoted strings joined by +, or None."""
-    parts = [part.strip() for part in expr.split("+")]
-    if not parts:
+    """A single quoted string, or None."""
+    part = expr.strip()
+    if len(part) < 2 or part[0] not in "\"'" or part[-1] != part[0]:
         return None
-    chunks: list[str] = []
-    for part in parts:
-        if len(part) < 2 or part[0] not in "\"'" or part[-1] != part[0]:
-            return None
-        body = part[1:-1]
-        if part[0] in body:
-            return None
-        chunks.append(body)
-    return "".join(chunks)
+    body = part[1:-1]
+    if part[0] in body:
+        return None
+    return body
 
 
 def _resolve_artifact_name(name: str) -> str | None:
@@ -2119,32 +2283,86 @@ def _unresolved_name_could_be_pinned(name: str) -> bool:
     return any(compiled.fullmatch(pinned) for pinned in _PINNED_REPORT_NAME_VALUES)
 
 
+def _expression_end(name: str, start: int) -> int | None:
+    """Index just after the closing `}}`, or None when the expression is open.
+
+    A quote hides `}}`. The expression text is not evaluated.
+    """
+    quote: str | None = None
+    index = start
+    while index < len(name):
+        char = name[index]
+        if quote is not None:
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in "\"'":
+            quote = char
+            index += 1
+            continue
+        if name.startswith("}}", index):
+            return index + 2
+        index += 1
+    return None
+
+
+def _expression_could_be_pinned(name: str) -> bool:
+    """True when a `${{` name can still be a pinned report.
+
+    The expression is not evaluated. Literal text outside each expression
+    stays. An expression that does not close fails closed.
+    """
+    pieces: list[str] = []
+    index = 0
+    while index < len(name):
+        if name.startswith("${{", index):
+            end = _expression_end(name, index + 3)
+            if end is None:
+                return True
+            pieces.append("\0")
+            index = end
+            continue
+        pieces.append(name[index])
+        index += 1
+    pattern = "".join(".*" if piece == "\0" else re.escape(piece) for piece in pieces)
+    compiled = re.compile("^" + pattern + "$", re.IGNORECASE)
+    return any(compiled.fullmatch(pinned) for pinned in _PINNED_REPORT_NAME_VALUES)
+
+
 def _could_be_pinned_report_name(name: object) -> bool:
     """True when an upload name is, or could be, coverage-xml or aw-editor-lcov.
 
-    A ${{ }} expression of quoted strings is resolved. An expression that
-    cannot be resolved fails closed when the literal text could still be
-    one of those names.
+    Surrounding whitespace is trimmed and the compare ignores case. A name
+    that contains `${{` is not evaluated. It fails when the literal text
+    outside the expression can still be a pinned report, and when the
+    expression does not close.
     """
     if not isinstance(name, str):
         return False
-    if "${{" not in name:
-        return name in _PINNED_REPORT_NAME_VALUES
-    resolved = _resolve_artifact_name(name)
-    if resolved is not None:
-        return resolved in _PINNED_REPORT_NAME_VALUES
-    return _unresolved_name_could_be_pinned(name)
+    stripped = name.strip()
+    if "${{" in stripped:
+        return _expression_could_be_pinned(stripped)
+    return stripped.casefold() in _PINNED_REPORT_NAME_FOLDED
 
 
-def coverage_report_publish_violations(text: str, *, path: str = "") -> list[str]:
+def coverage_report_publish_violations(
+    text: str, *, path: str = "", _seen: set[Path] | None = None
+) -> list[str]:
     """Only the producer upload may publish the pinned report name.
 
-    coverage-xml and aw-editor-lcov are those names. The one plain producer
-    upload in coverage.yml or aw-editor-tests.yml is the exception. Any other
-    upload of either name fails, including a second producer upload, a
-    constant ${{ }} expression, an unresolved expression that could be that
-    name, a local composite, and a reusable workflow. An overwrite key on a
-    step or under with: fails in every scanned file.
+    coverage-xml and aw-editor-lcov are those names. The compare trims
+    whitespace and ignores case. A name that contains `${{` is not
+    evaluated. It fails when the literal text outside the expression can
+    still be a pinned report, and when the expression does not close. The one plain
+    producer upload in coverage.yml or aw-editor-tests.yml is the exception
+    when the name is exactly that report. archive fails unless it is absent
+    or true. A sub-path of actions/upload-artifact, including merge, is the
+    same upload. An overwrite key on a step or under with: fails in every
+    scanned file. A caller uses: that starts with ./ must resolve to a
+    scanned local action or workflow that passes this check. A local path
+    outside that scan fails. A reusable workflow uses must be on the
+    allowlist, which is empty.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -2158,14 +2376,18 @@ def coverage_report_publish_violations(text: str, *, path: str = "") -> list[str
     for job_id, _job, step in _iter_steps(doc):
         if _has_overwrite(step) or _has_overwrite(step.get("with")):
             violations.append(f"{prefix}{_step_line(step)}: {OVERWRITE_MSG}")
-        if not _is_named_action(step, "actions/upload-artifact"):
+        if not _is_upload_artifact_step(step):
             continue
+        if not _archive_is_default(step):
+            violations.append(f"{prefix}{_step_line(step)}: {ARCHIVE_MSG}")
         _key, name = _ci_item(_mapping(step.get("with")), "name")
         plain_producer = (
             allowed is not None
+            and _is_named_action(step, "actions/upload-artifact")
             and isinstance(name, str)
             and "${{" not in name
             and name == allowed
+            and _archive_is_default(step)
         )
         if plain_producer:
             pinned_jobs.append(job_id)
@@ -2177,6 +2399,30 @@ def coverage_report_publish_violations(text: str, *, path: str = "") -> list[str
             violations.append(f"{prefix}1: {PINNED_REPORT_MSG}")
         if sum(job_id == "coverage" for job_id in pinned_jobs) != 1:
             violations.append(f"{prefix}1: {PINNED_REPORT_MSG}")
+    seen = set(_seen or ())
+    for line_no, uses in _iter_uses(doc):
+        if not isinstance(uses, str):
+            continue
+        if _is_reusable_workflow_use(uses) and uses not in _REUSABLE_WORKFLOW_USES:
+            violations.append(f"{prefix}{int(line_no)}: {REUSABLE_WORKFLOW_MSG}")
+        if not uses.startswith("./"):
+            continue
+        target = _local_use_target(uses)
+        if target is None or not _is_scanned_surface(target):
+            violations.append(f"{prefix}{int(line_no)}: {LOCAL_USE_MSG}")
+            continue
+        if target in seen:
+            continue
+        seen.add(target)
+        try:
+            target_text = target.read_text(encoding="utf-8")
+        except OSError:
+            violations.append(f"{prefix}{int(line_no)}: {LOCAL_USE_MSG}")
+            continue
+        rel = target.relative_to(ROOT).as_posix()
+        violations.extend(
+            coverage_report_publish_violations(target_text, path=rel, _seen=seen)
+        )
     return violations
 
 
@@ -2192,6 +2438,8 @@ def _job_has_kani_action(job: dict) -> bool:
 
 def _kani_job_shape_ok(job_id: str, job: dict) -> bool:
     """The mapped job's keys, runner, and timeout are the canonical values."""
+    if getattr(job, "duplicate_keys", None):
+        return False
     if set(job) != _KANI_JOB_KEYS:
         return False
     if job.get("runs-on") != _PINNED_RUNS_ON:
@@ -2219,6 +2467,8 @@ def _kani_fail_step_ok(job: dict) -> bool:
 
 def _kani_summary_shape_ok(job: dict) -> bool:
     """Summary keys, runner, and timeout are the canonical values."""
+    if getattr(job, "duplicate_keys", None):
+        return False
     if set(job) != _KANI_SUMMARY_KEYS:
         return False
     if job.get("runs-on") != _PINNED_RUNS_ON:
@@ -2234,8 +2484,8 @@ def _kani_summary_gate_ok(job: object) -> bool:
         return False
     if not _kani_summary_shape_ok(job):
         return False
-    needs = job.get("needs")
-    if list(needs) != _KANI_SUMMARY_NEEDS:
+    needs = job.get("needs", _MISSING)
+    if not isinstance(needs, list) or needs != _KANI_SUMMARY_NEEDS:
         return False
     if job.get("if") != _KANI_SUMMARY_IF:
         return False
@@ -2246,6 +2496,8 @@ def _kani_summary_gate_ok(job: object) -> bool:
 
 def _upload_runner_ok(job: dict) -> bool:
     """The Codecov upload job's runner and timeout are the pinned values."""
+    if getattr(job, "duplicate_keys", None):
+        return False
     if job.get("runs-on") != _PINNED_RUNS_ON:
         return False
     if job.get("timeout-minutes") != _UPLOAD_TIMEOUT_MINUTES:
@@ -2253,15 +2505,26 @@ def _upload_runner_ok(job: dict) -> bool:
     return True
 
 
-def _job_shape_ok(job: object, keys: frozenset, runs_on: str, timeout: int) -> bool:
-    """The job's key set, runs-on, and timeout-minutes are the pinned values."""
-    if not isinstance(job, dict):
+def _job_shape_ok(
+    job: object,
+    keys: frozenset,
+    runs_on: str,
+    timeout: int,
+    strategy: dict | None = None,
+) -> bool:
+    """The job's key set, runs-on, and timeout-minutes are the pinned values.
+
+    A repeated key fails. When strategy is set, that mapping must equal it.
+    """
+    if not isinstance(job, dict) or getattr(job, "duplicate_keys", None):
         return False
     if set(job) != keys:
         return False
     if job.get("runs-on") != runs_on:
         return False
     if job.get("timeout-minutes") != timeout:
+        return False
+    if strategy is not None and not _mapping_equals(job.get("strategy"), strategy):
         return False
     return True
 
@@ -2279,10 +2542,11 @@ def kani_job_steps_violations(text: str, *, path: str = "") -> list[str]:
     or renamed job that runs the action fails. The summary job's keys are
     name, permissions, runs-on, timeout-minutes, needs, if, and steps.
     runs-on is ubuntu-latest and timeout-minutes is 10. needs lists every
-    mapped Kani job in that order. if: is always(). The steps are Check
+    mapped Kani job in that order. A missing needs value, or a needs value
+    that is not that list, fails. if: is always(). The steps are Check
     Results, then the fail step. A changed Check Results step fails. The
     fail step equals the canonical step, so a skipped or cancelled result
-    fails the gate.
+    fails the gate. Each mapped job id is present.
     """
     if Path(path).name != "kani.yml":
         return []
@@ -2323,6 +2587,11 @@ def kani_job_steps_violations(text: str, *, path: str = "") -> list[str]:
             continue
         if not _steps_equal_ordered(job.get("steps"), steps):
             violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
+    for required_id in _KANI_JOBS:
+        if isinstance(jobs.get(required_id), dict):
+            continue
+        line = int(job_lines.get(required_id, getattr(jobs, "yaml_line", 1)))
+        violations.append(f"{prefix}{line}: {KANI_JOB_STEPS_MSG}")
     return violations
 
 
@@ -2633,6 +2902,53 @@ def codecov_trigger_violations(text: str, *, path: str = "") -> list[str]:
                 line = int(getattr(doc, "key_lines", {}).get(key, 1))
                 break
     return [f"{prefix}{line}: {CODECOV_EVENT_MSG}"]
+
+
+_PIN_SURFACE_CHECKS = (
+    "third_party_action_pin_violations",
+    "workflow_action_pin_violations",
+)
+_POLICY_SURFACE_CHECKS = (
+    "codecov_fail_ci_violations",
+    "codecov_continue_on_error_violations",
+    "codecov_explicit_file_violations",
+    "codecov_oidc_violations",
+    "codecov_with_key_violations",
+    "codecov_token_violations",
+    "codecov_trigger_violations",
+    "coverage_artifact_pin_violations",
+    "coverage_permission_violations",
+    "least_privilege_permission_violations",
+    "kani_version_violations",
+    "kani_dispatch_args_violations",
+    "kani_job_steps_violations",
+    "kani_timeout_run_violations",
+    "run_context_violations",
+    "rust_ci_setup_violations",
+    "coverage_report_publish_violations",
+    "checkout_persist_credentials_violations",
+    "kani_action_sha_violations",
+    "llvm_cov_pin_violations",
+)
+
+
+def _surface_check_names() -> tuple[str, ...]:
+    """Every public violations check the live-tree scan runs."""
+    return _PIN_SURFACE_CHECKS + _POLICY_SURFACE_CHECKS
+
+
+def scan_action_surface(text: str, rel: str) -> tuple[list[str], list[str]]:
+    """Run every surface check on one file. The name list is the scan."""
+    pin: list[str] = []
+    policy: list[str] = []
+    pin_names = set(_PIN_SURFACE_CHECKS)
+    for name in _surface_check_names():
+        found = globals()[name](text, path=rel)
+        if name in pin_names:
+            pin.extend(found)
+        else:
+            policy.extend(found)
+    return pin, policy
 
 
 def jobs_missing_timeout(text: str) -> list[str]:
@@ -3373,31 +3689,56 @@ class WorkflowPolicyTest(unittest.TestCase):
         for path in github_action_surfaces():
             text = path.read_text(encoding="utf-8")
             rel = str(path.relative_to(ROOT))
-            violations.extend(third_party_action_pin_violations(text, path=rel))
-            codecov.extend(codecov_fail_ci_violations(text, path=rel))
-            codecov.extend(codecov_continue_on_error_violations(text, path=rel))
-            codecov.extend(codecov_explicit_file_violations(text, path=rel))
-            codecov.extend(codecov_oidc_violations(text, path=rel))
-            codecov.extend(codecov_with_key_violations(text, path=rel))
-            codecov.extend(codecov_token_violations(text, path=rel))
-            codecov.extend(codecov_trigger_violations(text, path=rel))
-            codecov.extend(coverage_artifact_pin_violations(text, path=rel))
-            codecov.extend(coverage_permission_violations(text, path=rel))
-            codecov.extend(least_privilege_permission_violations(text, path=rel))
-            codecov.extend(kani_version_violations(text, path=rel))
-            codecov.extend(kani_dispatch_args_violations(text, path=rel))
-            codecov.extend(kani_job_steps_violations(text, path=rel))
-            codecov.extend(kani_timeout_run_violations(text, path=rel))
-            codecov.extend(run_context_violations(text, path=rel))
-            codecov.extend(rust_ci_setup_violations(text, path=rel))
-            codecov.extend(coverage_report_publish_violations(text, path=rel))
-            codecov.extend(checkout_persist_credentials_violations(text, path=rel))
-            codecov.extend(kani_action_sha_violations(text, path=rel))
-            codecov.extend(llvm_cov_pin_violations(text, path=rel))
+            pin, policy = scan_action_surface(text, rel)
+            violations.extend(pin)
+            codecov.extend(policy)
         self.assertEqual(violations, [])
         self.assertEqual(codecov, [])
         ignored = "uses: actions/checkout@v7\nuses: ./.github/actions/rust-ci-setup\n"
         self.assertEqual(third_party_action_pin_violations(ignored), [])
+
+    def test_live_tree_scan_calls_every_violation_check(self) -> None:
+        """The surface scan calls every public violations check.
+
+        Dropping a check, dropping `*.yaml`, or scanning only workflows fails.
+        """
+        defined = {
+            name
+            for name, obj in globals().items()
+            if name.endswith("_violations") and callable(obj) and not name.startswith("_")
+        }
+        self.assertEqual(defined, set(_surface_check_names()))
+        called: list[str] = []
+        originals = {name: globals()[name] for name in _surface_check_names()}
+
+        def wrap(check_name: str, fn):
+            def wrapped(text: str, *, path: str = "", **kwargs) -> list[str]:
+                # The recursive follow passes _seen. That call is not a surface check.
+                if not kwargs:
+                    called.append(check_name)
+                return fn(text, path=path, **kwargs)
+
+            return wrapped
+
+        for name, fn in originals.items():
+            globals()[name] = wrap(name, fn)
+        try:
+            text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+            scan_action_surface(text, "coverage.yml")
+        finally:
+            globals().update(originals)
+        self.assertEqual(called, list(_surface_check_names()))
+        surfaces = [path.relative_to(ROOT).as_posix() for path in github_action_surfaces()]
+        self.assertIn(".github/actions/rust-ci-setup/action.yml", surfaces)
+        self.assertIn(".github/actions/rust-nightly/action.yml", surfaces)
+        probe = WORKFLOWS / "surface-probe.yaml"
+        self.assertFalse(probe.exists())
+        probe.write_text("name: probe\n", encoding="utf-8")
+        try:
+            again = [path.relative_to(ROOT).as_posix() for path in github_action_surfaces()]
+        finally:
+            probe.unlink()
+        self.assertIn(".github/workflows/surface-probe.yaml", again)
 
     def test_codecov_upload_artifact_tag_mutant_is_rejected(self) -> None:
         text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -7104,14 +7445,14 @@ jobs:
         self.assertEqual(text.count(check_line), 1)
         rewritten = text.replace(
             check_line,
-            check_line + '          echo "BASH_ENV=/tmp/pwn" >> "$GITHUB_ENV"\n',
+            check_line + '          echo "extra-summary-line" >> $GITHUB_STEP_SUMMARY\n',
             1,
         )
         rewritten_doc, rewritten_err = load_workflow_yaml(rewritten)
         self.assertIsNone(rewritten_err)
         rewritten_job = rewritten_doc["jobs"]["summary"]
         self.assertEqual(len(rewritten_job["steps"]), len(_KANI_SUMMARY_STEPS))
-        self.assertIn("BASH_ENV", rewritten_job["steps"][0]["run"])
+        self.assertIn("extra-summary-line", rewritten_job["steps"][0]["run"])
         self.assertTrue(_kani_fail_step_ok(rewritten_job))
         self.assertFalse(_step_equals_canonical(rewritten_job["steps"][0], _KANI_CHECK_STEP))
         self.assertIn(
@@ -7455,11 +7796,10 @@ jobs:
         )
 
     def test_pinned_report_names_resolve_expressions_and_other_files(self) -> None:
-        """Expression names, composites, and reusable workflows cannot publish the report.
+        """An upload name that contains an expression cannot publish the report.
 
-        A quoted constant is resolved. An unresolved name fails closed when it
-        could be a pinned report. A resolved name that is not pinned is allowed,
-        including a literal prefix plus an unresolved expression.
+        The name is not parsed. A literal name that is not pinned is allowed.
+        Composites and reusable workflows stay under the same check.
         """
         coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         report = "          name: coverage-report\n"
@@ -7538,14 +7878,548 @@ jobs:
             "          name: benchmark-results-${{ github.sha }}\n"
             "          path: out\n"
         )
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(
+                coverage_report_publish_violations(allowed, path=".github/workflows/other.yml")
+            ),
+        )
+        literal = allowed.replace("name: ${{ 'not-a-pinned-report' }}\n", "name: benchmark-results\n", 1)
+        literal = literal.replace(
+            "name: benchmark-results-${{ github.sha }}\n",
+            "name: benchmark-results\n",
+            1,
+        )
         self.assertEqual(
-            coverage_report_publish_violations(allowed, path=".github/workflows/other.yml"),
+            coverage_report_publish_violations(literal, path=".github/workflows/other.yml"),
             [],
         )
-        self.assertFalse(_could_be_pinned_report_name("${{ 'not-a-pinned-report' }}"))
+        self.assertTrue(_could_be_pinned_report_name("${{ 'not-a-pinned-report' }}"))
         self.assertFalse(_could_be_pinned_report_name("benchmark-results-${{ github.sha }}"))
         self.assertTrue(_could_be_pinned_report_name("${{ 'coverage-xml' }}"))
         self.assertTrue(_could_be_pinned_report_name("${{ matrix.artifact }}"))
+        self.assertTrue(_could_be_pinned_report_name(" Coverage-XML "))
+        self.assertFalse(_could_be_pinned_report_name("benchmark-results"))
+
+    def test_mapped_kani_jobs_must_be_present(self) -> None:
+        """Each mapped Kani job id is present. Deleting one, or all four, fails.
+
+        The summary needs list still names those ids.
+        """
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        self.assertEqual(kani_job_steps_violations(text, path="kani.yml"), [])
+        needs = "    needs: [kani-ecs, kani-math, kani-sdk, kani-core]\n"
+        self.assertEqual(text.count(needs), 1)
+
+        def drop_through(following: str) -> str:
+            start = text.index("  kani-ecs:\n")
+            end = text.index(f"  {following}:\n")
+            return text[:start] + text[end:]
+
+        one = drop_through("kani-math")
+        one_doc, one_err = load_workflow_yaml(one)
+        self.assertIsNone(one_err)
+        self.assertNotIn("kani-ecs", one_doc["jobs"])
+        self.assertEqual(one_doc["jobs"]["summary"]["needs"], _KANI_SUMMARY_NEEDS)
+        one_hits = kani_job_steps_violations(one, path="kani.yml")
+        self.assertIn(KANI_JOB_STEPS_MSG, " ".join(one_hits))
+        self.assertNotIn(KANI_SUMMARY_MSG, " ".join(one_hits))
+        four = drop_through("summary")
+        four_doc, four_err = load_workflow_yaml(four)
+        self.assertIsNone(four_err)
+        for job_id in _KANI_JOBS:
+            self.assertNotIn(job_id, four_doc["jobs"])
+        self.assertEqual(four_doc["jobs"]["summary"]["needs"], _KANI_SUMMARY_NEEDS)
+        four_hits = [
+            hit
+            for hit in kani_job_steps_violations(four, path="kani.yml")
+            if KANI_JOB_STEPS_MSG in hit
+        ]
+        self.assertEqual(len(four_hits), len(_KANI_JOBS))
+
+    def test_summary_needs_must_be_the_list(self) -> None:
+        """A non-list needs value is a violation. It does not raise."""
+        text = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        needs = "    needs: [kani-ecs, kani-math, kani-sdk, kani-core]\n"
+        self.assertEqual(text.count(needs), 1)
+        for label, replacement in (("null", "    needs: null\n"), ("scalar", "    needs: 5\n")):
+            mutant = text.replace(needs, replacement, 1)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, label)
+            self.assertNotIsInstance(doc["jobs"]["summary"]["needs"], list, label)
+            try:
+                hits = kani_job_steps_violations(mutant, path="kani.yml")
+            except TypeError as exc:
+                self.fail(f"{label} raised {exc}")
+            self.assertIn(KANI_SUMMARY_MSG, " ".join(hits), label)
+
+    def test_duplicate_job_keys_fail_closed(self) -> None:
+        """A repeated runs-on whose last value is canonical still fails."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        kani = (WORKFLOWS / "kani.yml").read_text(encoding="utf-8")
+        html = (
+            "  coverage-html:\n"
+            "    name: HTML coverage report\n"
+            "    needs: coverage\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        self.assertEqual(coverage.count(html), 1)
+        html_dup = coverage.replace(
+            html,
+            html.replace(
+                "    runs-on: ubuntu-latest\n",
+                "    runs-on: self-hosted\n    runs-on: ubuntu-latest\n",
+                1,
+            ),
+            1,
+        )
+        html_doc, html_err = load_workflow_yaml(html_dup)
+        self.assertIsNone(html_err)
+        html_job = html_doc["jobs"]["coverage-html"]
+        self.assertEqual(html_job.get("runs-on"), "ubuntu-latest")
+        self.assertTrue(getattr(html_job, "duplicate_keys", None))
+        self.assertIn(
+            COVERAGE_HTML_JOB_MSG,
+            " ".join(coverage_permission_violations(html_dup, path="coverage.yml")),
+        )
+        editor_line = "    runs-on: ${{ matrix.os }}\n"
+        self.assertEqual(editor.count(editor_line), 1)
+        editor_dup = editor.replace(
+            editor_line,
+            "    runs-on: self-hosted\n    runs-on: ${{ matrix.os }}\n",
+            1,
+        )
+        editor_doc, editor_err = load_workflow_yaml(editor_dup)
+        self.assertIsNone(editor_err)
+        editor_job = editor_doc["jobs"]["test"]
+        self.assertEqual(editor_job.get("runs-on"), _EDITOR_TEST_RUNS_ON)
+        self.assertTrue(getattr(editor_job, "duplicate_keys", None))
+        self.assertIn(
+            EDITOR_TEST_JOB_MSG,
+            " ".join(coverage_permission_violations(editor_dup, path="aw-editor-tests.yml")),
+        )
+        summary = "    runs-on: ubuntu-latest\n    timeout-minutes: 10\n"
+        self.assertEqual(kani.count(summary), 1)
+        summary_dup = kani.replace(
+            summary,
+            "    runs-on: self-hosted\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n",
+            1,
+        )
+        summary_doc, summary_err = load_workflow_yaml(summary_dup)
+        self.assertIsNone(summary_err)
+        summary_job = summary_doc["jobs"]["summary"]
+        self.assertEqual(summary_job.get("runs-on"), "ubuntu-latest")
+        self.assertTrue(getattr(summary_job, "duplicate_keys", None))
+        self.assertIn(
+            KANI_SUMMARY_MSG,
+            " ".join(kani_job_steps_violations(summary_dup, path="kani.yml")),
+        )
+        upload = "      id-token: write\n    runs-on: ubuntu-latest\n"
+        self.assertEqual(coverage.count(upload), 1)
+        upload_dup = coverage.replace(
+            upload,
+            "      id-token: write\n    runs-on: self-hosted\n    runs-on: ubuntu-latest\n",
+            1,
+        )
+        upload_doc, upload_err = load_workflow_yaml(upload_dup)
+        self.assertIsNone(upload_err)
+        upload_job = upload_doc["jobs"]["codecov"]
+        self.assertEqual(upload_job.get("runs-on"), "ubuntu-latest")
+        self.assertTrue(getattr(upload_job, "duplicate_keys", None))
+        self.assertIn(
+            UPLOAD_RUNNER_MSG,
+            " ".join(coverage_permission_violations(upload_dup, path="coverage.yml")),
+        )
+        kani_header = (
+            "  kani-ecs:\n"
+            "    name: Kani - astraweave-ecs\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        self.assertEqual(kani.count(kani_header), 1)
+        kani_dup = kani.replace(
+            kani_header,
+            kani_header.replace(
+                "    runs-on: ubuntu-latest\n",
+                "    runs-on: self-hosted\n    runs-on: ubuntu-latest\n",
+                1,
+            ),
+            1,
+        )
+        kani_doc, kani_err = load_workflow_yaml(kani_dup)
+        self.assertIsNone(kani_err)
+        kani_job = kani_doc["jobs"]["kani-ecs"]
+        self.assertEqual(kani_job.get("runs-on"), "ubuntu-latest")
+        self.assertTrue(getattr(kani_job, "duplicate_keys", None))
+        self.assertIn(
+            KANI_JOB_SHAPE_MSG,
+            " ".join(kani_job_steps_violations(kani_dup, path="kani.yml")),
+        )
+
+    def test_upload_name_trim_case_archive_and_subpath(self) -> None:
+        """Trimmed, cased, expression, archive, and merge upload names fail."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+
+        def with_job(text: str, job: str) -> str:
+            return text.rstrip() + "\n" + job
+
+        names = {
+            "trailing-space": '          name: "coverage-xml "\n',
+            "leading-space": '          name: " coverage-xml"\n',
+            "case": "          name: Coverage-XML\n",
+            "expression": "          name: ${{ 'coverage-xml' || '}}' }}\n",
+            "unpinned-expression": "          name: ${{ 'other-report' }}\n",
+        }
+        for label, name_line in names.items():
+            job = (
+                "  decoy:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: actions/upload-artifact@{sha}\n"
+                "        with:\n"
+                f"{name_line}"
+                "          path: out\n"
+            )
+            mutant = with_job(coverage, job)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, label)
+            self.assertIn(
+                PINNED_REPORT_MSG,
+                " ".join(coverage_report_publish_violations(mutant, path="coverage.yml")),
+                label,
+            )
+        block = (
+            "  decoy:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            f"      - uses: actions/upload-artifact@{sha}\n"
+            "        with:\n"
+            "          name: |\n"
+            "            coverage-xml\n"
+            "          path: out\n"
+        )
+        block_doc, block_err = load_workflow_yaml(with_job(coverage, block))
+        self.assertIsNone(block_err)
+        block_name = _ci_item(block_doc["jobs"]["decoy"]["steps"][0].get("with"), "name")[1]
+        self.assertEqual(block_name.strip().casefold(), "coverage-xml")
+        self.assertNotEqual(block_name, "coverage-xml")
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(coverage_report_publish_violations(with_job(coverage, block), path="coverage.yml")),
+        )
+        archived = (
+            "  decoy:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            f"      - uses: actions/upload-artifact@{sha}\n"
+            "        with:\n"
+            "          name: other-report\n"
+            "          path: coverage-xml\n"
+            "          archive: false\n"
+        )
+        archived_hits = " ".join(
+            coverage_report_publish_violations(with_job(coverage, archived), path="coverage.yml")
+        )
+        self.assertIn(ARCHIVE_MSG, archived_hits)
+        self.assertNotIn(PINNED_REPORT_MSG, archived_hits)
+        merged = (
+            "  decoy:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            f"      - uses: actions/upload-artifact/merge@{sha}\n"
+            "        with:\n"
+            "          name: coverage-xml\n"
+            "          path: out\n"
+        )
+        merge_doc, merge_err = load_workflow_yaml(with_job(coverage, merged))
+        self.assertIsNone(merge_err)
+        merge_step = merge_doc["jobs"]["decoy"]["steps"][0]
+        self.assertTrue(_is_upload_artifact_step(merge_step))
+        self.assertFalse(_is_named_action(merge_step, "actions/upload-artifact"))
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(coverage_report_publish_violations(with_job(coverage, merged), path="coverage.yml")),
+        )
+        editor_job = (
+            "  decoy:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            f"      - uses: actions/upload-artifact@{sha}\n"
+            "        with:\n"
+            '          name: "aw-editor-lcov "\n'
+            "          path: out\n"
+        )
+        self.assertIn(
+            PINNED_REPORT_MSG,
+            " ".join(
+                coverage_report_publish_violations(
+                    with_job(editor, editor_job), path="aw-editor-tests.yml"
+                )
+            ),
+        )
+
+    def test_editor_test_strategy_is_exact(self) -> None:
+        """strategy is the canonical mapping. Editing the os list fails."""
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        os_line = "        os: [ubuntu-latest, windows-latest, macos-latest]\n"
+        self.assertEqual(editor.count(os_line), 1)
+        doc, err = load_workflow_yaml(editor)
+        self.assertIsNone(err)
+        self.assertTrue(_mapping_equals(doc["jobs"]["test"]["strategy"], _EDITOR_TEST_STRATEGY))
+        cases = {
+            "label": "        os: [self-hosted, windows-latest, macos-latest]\n",
+            "empty": "        os: []\n",
+            "include": os_line + "        include:\n          - os: self-hosted\n",
+        }
+        for label, replacement in cases.items():
+            mutant = editor.replace(os_line, replacement, 1)
+            parsed, parse_err = load_workflow_yaml(mutant)
+            self.assertIsNone(parse_err, label)
+            job = parsed["jobs"]["test"]
+            self.assertEqual(set(job), _EDITOR_TEST_KEYS, label)
+            self.assertEqual(job.get("runs-on"), _EDITOR_TEST_RUNS_ON, label)
+            self.assertFalse(_mapping_equals(job.get("strategy"), _EDITOR_TEST_STRATEGY), label)
+            self.assertTrue(_steps_equal_ordered(job["steps"], _EDITOR_TEST_STEPS), label)
+            messages = " ".join(coverage_permission_violations(mutant, path="aw-editor-tests.yml"))
+            self.assertIn(EDITOR_TEST_JOB_MSG, messages, label)
+            self.assertNotIn(EDITOR_TEST_STEPS_MSG, messages, label)
+
+    def test_coverage_html_needs_and_permissions_are_exact(self) -> None:
+        """coverage-html needs the coverage job and permissions are contents: read."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        html_head = (
+            "  coverage-html:\n"
+            "    name: HTML coverage report\n"
+            "    needs: coverage\n"
+            "    permissions:\n"
+            "      contents: read\n"
+        )
+        self.assertEqual(coverage.count(html_head), 1)
+        widened = coverage.replace(
+            html_head,
+            html_head.replace("    needs: coverage\n", "    needs: [coverage, codecov]\n", 1),
+            1,
+        )
+        other = coverage.replace(
+            html_head,
+            html_head.replace("    needs: coverage\n", "    needs: codecov\n", 1),
+            1,
+        )
+        extra_scope = coverage.replace(
+            html_head,
+            html_head.replace(
+                "    permissions:\n      contents: read\n",
+                "    permissions:\n      contents: read\n      actions: read\n",
+                1,
+            ),
+            1,
+        )
+        for label, mutant in (
+            ("widened", widened),
+            ("other", other),
+            ("scope", extra_scope),
+        ):
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, label)
+            job = doc["jobs"]["coverage-html"]
+            self.assertEqual(set(job), _COVERAGE_HTML_KEYS, label)
+            messages = " ".join(coverage_permission_violations(mutant, path="coverage.yml"))
+            self.assertIn(COVERAGE_HTML_JOB_MSG, messages, label)
+            self.assertNotIn(COVERAGE_HTML_STEPS_MSG, messages, label)
+
+    def test_caller_only_composite_must_resolve(self) -> None:
+        """A job whose only step is a local composite must resolve that uses."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        job = (
+            "  side-composite:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/actions/not-a-real-action\n"
+        )
+        mutant = coverage.rstrip() + "\n" + job
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        steps = [step for job_id, _job, step in _iter_steps(doc) if job_id == "side-composite"]
+        self.assertEqual(len(steps), 1)
+        self.assertFalse(_is_upload_artifact_step(steps[0]))
+        self.assertIn(
+            LOCAL_USE_MSG,
+            " ".join(coverage_report_publish_violations(mutant, path="coverage.yml")),
+        )
+
+    def test_caller_only_reusable_workflow_must_resolve(self) -> None:
+        """A job whose only uses is a local reusable workflow must resolve it."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        job = "  side-workflow:\n    uses: ./.github/workflows/not-a-real.yml\n"
+        mutant = coverage.rstrip() + "\n" + job
+        doc, err = load_workflow_yaml(mutant)
+        self.assertIsNone(err)
+        self.assertNotIn("steps", doc["jobs"]["side-workflow"])
+        called = [
+            step
+            for job_id, _job, step in _iter_steps(doc)
+            if job_id == "side-workflow"
+        ]
+        self.assertEqual(called, [])
+        self.assertIn(
+            LOCAL_USE_MSG,
+            " ".join(coverage_report_publish_violations(mutant, path="coverage.yml")),
+        )
+
+    def test_local_action_paths_are_allowlisted(self) -> None:
+        """Callers may use the two local actions. A sibling path fails."""
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        old = "uses: ./.github/actions/rust-ci-setup\n"
+        self.assertGreaterEqual(text.count(old), 1)
+        self.assertEqual(
+            rust_ci_setup_violations(text, path=".github/workflows/ci.yml"),
+            [],
+        )
+        mutant = text.replace(old, "uses: ./.github/actions/setup\n", 1)
+        self.assertNotIn("rust-ci-setup", ".github/workflows/ci.yml")
+        hits = rust_ci_setup_violations(mutant, path=".github/workflows/ci.yml")
+        self.assertIn(LOCAL_ACTION_MSG, " ".join(hits))
+
+    def test_expression_guards_fail_closed(self) -> None:
+        """Unbalanced markers, a literal marker in a piece, and a non-mapping action fail."""
+        self.assertTrue(_unresolved_name_could_be_pinned("coverage-xml ${{ no-close"))
+        self.assertIsNone(_resolve_artifact_name("a${{ 'b' }}c${{d"))
+        hits = rust_ci_setup_violations(
+            "[]\n",
+            path=".github/actions/rust-ci-setup/action.yml",
+        )
+        self.assertTrue(hits)
+        self.assertIn(RUST_CI_SETUP_KEYS_MSG, hits[0])
+
+    def test_rust_nightly_shape_is_locked(self) -> None:
+        """rust-nightly is shape-locked. A different runs.using fails."""
+        path = _RUST_NIGHTLY_PATH
+        text = (ROOT / path).read_text(encoding="utf-8")
+        self.assertEqual(rust_ci_setup_violations(text, path=path), [])
+        doc, err = load_workflow_yaml(text)
+        self.assertIsNone(err)
+        self.assertTrue(_mapping_equals(doc, _RUST_NIGHTLY_ACTION))
+        mutant = text.replace("  using: composite\n", "  using: node20\n", 1)
+        self.assertNotEqual(mutant, text)
+        parsed, parse_err = load_workflow_yaml(mutant)
+        self.assertIsNone(parse_err)
+        self.assertEqual(parsed["runs"]["steps"][0]["name"], "Read pinned nightly channel")
+        self.assertNotEqual(parsed["runs"]["using"], "composite")
+        hits = rust_ci_setup_violations(mutant, path=path)
+        self.assertIn(RUST_NIGHTLY_MSG, " ".join(hits))
+        self.assertNotIn(RUST_CI_SETUP_MSG, " ".join(hits))
+
+    def test_outside_composite_and_external_reusable_workflow_fail(self) -> None:
+        """A composite outside the scan roots, and a SHA-pinned reusable workflow, fail."""
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        outside = (
+            "  side-outside:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./tools/x\n"
+        )
+        outside_text = coverage.rstrip() + "\n" + outside
+        outside_doc, outside_err = load_workflow_yaml(outside_text)
+        self.assertIsNone(outside_err)
+        steps = [
+            step for job_id, _job, step in _iter_steps(outside_doc) if job_id == "side-outside"
+        ]
+        self.assertEqual(len(steps), 1)
+        self.assertFalse(_is_upload_artifact_step(steps[0]))
+        self.assertIn(
+            LOCAL_USE_MSG,
+            " ".join(coverage_report_publish_violations(outside_text, path="coverage.yml")),
+        )
+        reusable = (
+            "  side-reusable:\n"
+            "    uses: example/repo/.github/workflows/publish.yml@"
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+        )
+        reusable_text = coverage.rstrip() + "\n" + reusable
+        reusable_doc, reusable_err = load_workflow_yaml(reusable_text)
+        self.assertIsNone(reusable_err)
+        uses = reusable_doc["jobs"]["side-reusable"]["uses"]
+        self.assertTrue(_is_reusable_workflow_use(uses))
+        self.assertNotIn(uses, _REUSABLE_WORKFLOW_USES)
+        self.assertNotIn("steps", reusable_doc["jobs"]["side-reusable"])
+        self.assertIn(
+            REUSABLE_WORKFLOW_MSG,
+            " ".join(coverage_report_publish_violations(reusable_text, path="coverage.yml")),
+        )
+
+    def test_resolver_edges_fail_closed(self) -> None:
+        """Each rejected uses, archive, and expression edge stays rejected."""
+        self.assertFalse(_is_upload_artifact_step({"uses": None}))
+        self.assertFalse(_is_upload_artifact_step({}))
+        self.assertTrue(_archive_is_default({"uses": "actions/upload-artifact@sha"}))
+        self.assertTrue(_archive_is_default({"with": None}))
+        self.assertFalse(_archive_is_default({"with": "nope"}))
+        upload_name = "xx./.github/workflows/coverage.yml"
+        self.assertIsNone(_local_use_target(upload_name))
+        self.assertIsNone(_local_use_target("./../outside"))
+        self.assertFalse(_is_scanned_surface(WORKFLOWS / "nope.txt"))
+        self.assertFalse(_is_scanned_surface(ROOT / "scripts" / "ci" / "outside.yml"))
+        self.assertTrue(_is_scanned_surface(WORKFLOWS / "coverage.yml"))
+        workflow_uses = (
+            "name: probe\n"
+            "jobs:\n"
+            "  a:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/workflows/ci.yml\n"
+        )
+        self.assertNotIn(
+            LOCAL_ACTION_MSG,
+            " ".join(rust_ci_setup_violations(workflow_uses, path=".github/workflows/ci.yml")),
+        )
+        self.assertIsNone(_constant_expression("abc"))
+        self.assertIsNone(_constant_expression("\"abc'"))
+        self.assertIsNone(_constant_expression("\""))
+        self.assertIsNone(_constant_expression("'a'b'"))
+        self.assertEqual(_constant_expression("'coverage-xml'"), "coverage-xml")
+        quoted = "ok-${{'}}'}}-tail"
+        self.assertFalse(_expression_could_be_pinned(quoted))
+        self.assertIsNotNone(_expression_end(quoted, quoted.index("${{") + 3))
+        self.assertIsNone(_expression_end("${{ 'x'", 3))
+        self.assertTrue(_expression_could_be_pinned("${{ 'x'"))
+        plain = WORKFLOWS / "probe-not-yaml.txt"
+        ref = ROOT / ".github" / "actions" / "probe@ref"
+        root_action = ROOT / "action.yml"
+        outside = Path(tempfile.mkdtemp())
+        dir_link = ROOT / ".github" / "actions" / "dir-escape"
+        link_probe = ROOT / ".github" / "actions" / "link-probe"
+        try:
+            plain.write_text("nope\n", encoding="utf-8")
+            self.assertIsNone(_local_use_target("./.github/workflows/probe-not-yaml.txt"))
+            ref.mkdir()
+            (ref / "action.yml").write_text("name: probe\n", encoding="utf-8")
+            self.assertIsNone(_local_use_target("./.github/actions/probe@ref"))
+            root_action.write_text("name: probe\n", encoding="utf-8")
+            self.assertIsNone(_local_use_target("./"))
+            (outside / "action.yml").write_text("name: probe\n", encoding="utf-8")
+            dir_link.symlink_to(outside, target_is_directory=True)
+            self.assertIsNone(_local_use_target("./.github/actions/dir-escape"))
+            link_probe.mkdir()
+            (link_probe / "action.yml").symlink_to(outside / "action.yml")
+            self.assertIsNone(_local_use_target("./.github/actions/link-probe"))
+        finally:
+            if plain.exists():
+                plain.unlink()
+            if ref.exists():
+                shutil.rmtree(ref)
+            if root_action.exists():
+                root_action.unlink()
+            if dir_link.is_symlink() or dir_link.exists():
+                dir_link.unlink()
+            if link_probe.exists() or link_probe.is_symlink():
+                shutil.rmtree(link_probe)
+            shutil.rmtree(outside, ignore_errors=True)
 
 
 if __name__ == "__main__":
