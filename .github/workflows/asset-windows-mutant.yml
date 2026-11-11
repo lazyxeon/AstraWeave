@@ -1,0 +1,98 @@
+name: Asset Windows mutant
+
+# The held-directory no-op and the kept "." name are applied on a Windows
+# runner. The asset tests that cover those paths must fail. A green run means
+# a mutant survived.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  hold-noop:
+    name: Hold no-op mutant
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Drop the held directory and run the killers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("astraweave-asset/src/bounded_open.rs")
+          text = path.read_text(encoding="utf-8")
+          start = text.index("fn hold_directory(")
+          brace = text.index("{", start)
+          end = text.index("\n}", brace)
+          body = text[brace + 1 : end]
+          if "held.push(file)" not in body:
+              raise SystemExit("hold_directory does not push")
+          text = text[: brace + 1] + "\n    drop((root, file));\n    Ok(())\n" + text[end:]
+          path.write_text(text, encoding="utf-8")
+          PY
+          set +e
+          cargo test --locked -p astraweave-asset --lib -- \
+            directory_past_the_handle_budget_is_refused \
+            repeated_nested_uri_keeps_one_intermediate_handle \
+            glb_load_keeps_intermediate_uri_directory
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "hold no-op mutant survived"
+            exit 1
+          fi
+          echo "hold no-op mutant killed: cargo test exited $status"
+          exit "$status"
+
+  dot-component:
+    name: Kept dot-component mutant
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Keep a dot component and run the killer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("astraweave-asset/src/bounded_open.rs")
+          text = path.read_text(encoding="utf-8")
+          start = text.index("fn relative_names(")
+          end = text.index("fn directory_flags(", start)
+          body = text[start:end]
+          old = "Component::CurDir => {}"
+          if body.count(old) != 1:
+              raise SystemExit(f"expected one CurDir skip, found {body.count(old)}")
+          body = body.replace(old, 'Component::CurDir => names.push(".".into())', 1)
+          path.write_text(text[:start] + body + text[end:], encoding="utf-8")
+          PY
+          set +e
+          cargo test --locked -p astraweave-asset --lib -- leading_dot_component_loads_the_file
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "kept dot-component mutant survived"
+            exit 1
+          fi
+          echo "kept dot-component mutant killed: cargo test exited $status"
+          exit "$status"

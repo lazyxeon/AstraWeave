@@ -677,6 +677,22 @@ class WorkflowPolicyTest(unittest.TestCase):
             self.assertNotIn("astraweave-asset", body)
             self.assertNotIn("bounded_open", body)
 
+    def test_asset_macos_job_is_required_on_asset_pull_requests(self) -> None:
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("\n  test-asset-macos:\n", text)
+        job = text.split("\n  test-asset-macos:\n", 1)[1].split("\n  pr-rust-checks:\n", 1)[0]
+        self.assertIn("name: Test astraweave-asset (macos)", text)
+        self.assertIn("runs-on: macos-latest", job)
+        self.assertIn("github.event_name == 'pull_request'", job)
+        self.assertIn("cargo test --locked -p astraweave-asset", job)
+        self.assertRegex(job, r"uses: actions/checkout@[0-9a-f]{40}( # v7)?")
+        self.assertIn(
+            "needs: [changes, gate, test-linux-build, test-linux, test-windows, msrv, test-asset-macos]",
+            text,
+        )
+        self.assertIn('[ "$macos" = "success" ]', text)
+        self.assertIn("astraweave-asset", job)
+
     def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
         listed = []
         for line in (ROOT / "scripts" / "ci" / "deferred_pr_tests.txt").read_text(encoding="utf-8").splitlines():
