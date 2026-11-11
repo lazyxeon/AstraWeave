@@ -6,12 +6,13 @@
 //! file descriptor and each URI component is opened from it with `O_NOFOLLOW`.
 //! On Windows the handle is the directory-handle chain plus the final path.
 //! Those directory handles do not share delete, so a directory the load holds
-//! cannot be renamed or removed while they are open. Each URI component is
-//! reopened from that final path. A cloud-file reparse tag is allowed. Delete
-//! sharing is on the first open of each URI leaf file, so that name can be
-//! replaced while the handle is held. Only a cloud placeholder is opened a
-//! second time, without delete sharing, and that second open must be the same
-//! file. A symlink,
+//! cannot be renamed or removed while they are open. Each intermediate
+//! directory handle `open_relative` opens stays on `OpenedRoot` until that
+//! root drops. Each URI component is reopened from that final path. A
+//! cloud-file reparse tag is allowed. Delete sharing is on the first open of
+//! each URI leaf file, so that name can be replaced while the handle is held.
+//! Only a cloud placeholder is opened a second time, without delete sharing,
+//! and that second open must be the same file. A symlink,
 //! a junction, and a mount point are refused. The file's final path must stay
 //! under the root's. Those paths compare as exact UTF-16 units.
 //!
@@ -34,15 +35,18 @@ use std::path::{Component, Path};
 /// and every URI. A base-taking loader opens the base once for its URIs, and
 /// the caller supplies the container bytes. On Windows the held directory
 /// handles do not share delete, so those directories cannot be renamed or
-/// removed while the load holds them.
+/// removed while the load holds them. Intermediate directory handles opened
+/// for a URI stay here until this root drops.
 #[derive(Debug)]
 pub(crate) struct OpenedRoot {
     #[cfg(unix)]
     dir: rustix::fd::OwnedFd,
+    #[cfg(unix)]
+    held: std::sync::Mutex<Vec<rustix::fd::OwnedFd>>,
     #[cfg(windows)]
     root_final: PathBuf,
     #[cfg(windows)]
-    _held: Vec<File>,
+    held: std::sync::Mutex<Vec<File>>,
 }
 
 impl OpenedRoot {
@@ -183,6 +187,10 @@ fn read_opened(
             return Err(err).with_context(|| format!("open {}", subject(noun, display)));
         }
     };
+    // After `open_relative` returns, intermediate directory handles live only
+    // on `root`. A hook here runs once the leaf is open.
+    #[cfg(all(windows, test))]
+    fire_uri_directory_hook(relative);
     let meta = file
         .metadata()
         .with_context(|| format!("stat {}", subject(noun, display)))?;
@@ -398,10 +406,19 @@ impl OpenedRoot {
         let flags = directory_flags();
         let root = Self {
             dir: open_canonical(absolute, flags)?,
+            held: std::sync::Mutex::new(Vec::new()),
         };
         record_root_open();
         Ok(root)
     }
+}
+
+#[cfg(unix)]
+fn hold_directory(root: &OpenedRoot, fd: rustix::fd::OwnedFd) {
+    root.held
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .push(fd);
 }
 
 #[cfg(unix)]
@@ -415,7 +432,11 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     for (index, name) in names.iter().enumerate() {
         let last = index + 1 == names.len();
         let flags = if last { file_flags } else { directory };
-        dir = opened(openat(&dir, name.as_os_str(), flags, Mode::empty()))?;
+        let opened_fd = opened(openat(&dir, name.as_os_str(), flags, Mode::empty()))?;
+        if !last {
+            hold_directory(root, opened_fd.try_clone()?);
+        }
+        dir = opened_fd;
     }
     Ok(File::from(dir))
 }
@@ -475,6 +496,8 @@ thread_local! {
     static FORCE_CLOUD_REOPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static AFTER_LEAF_OPEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
         std::cell::RefCell::new(None);
+    static AFTER_SECOND_CLOUD_OPEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
     static TAG_RESULT: std::cell::RefCell<Option<std::io::Result<u32>>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -530,11 +553,19 @@ impl OpenedRoot {
         let (root_final, held) = open_resolved_directory(absolute)?;
         let root = Self {
             root_final,
-            _held: held,
+            held: std::sync::Mutex::new(held),
         };
         record_root_open();
         Ok(root)
     }
+}
+
+#[cfg(windows)]
+fn hold_directory(root: &OpenedRoot, file: File) {
+    root.held
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .push(file);
 }
 
 #[cfg(windows)]
@@ -583,18 +614,13 @@ fn open_resolved_directory(resolved: &Path) -> std::io::Result<(PathBuf, Vec<Fil
 fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     let names = relative_names(relative)?;
     let mut cursor = root.root_final.clone();
-    let mut held = Vec::new();
     for (index, name) in names.iter().enumerate() {
         cursor.push(name);
         let last = index + 1 == names.len();
         if !last {
             let file = open_path(&cursor, true)?;
             ensure_directory(&file)?;
-            held.push(file);
-            #[cfg(test)]
-            if let Some(hook) = AFTER_URI_DIRECTORY_OPEN.with(|cell| cell.borrow_mut().take()) {
-                hook();
-            }
+            hold_directory(root, file);
             continue;
         }
         let file = open_leaf_file(&cursor)?;
@@ -609,13 +635,25 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
                 "not a regular file",
             ));
         }
-        drop(held);
         return Ok(file);
     }
     Err(std::io::Error::new(
         std::io::ErrorKind::InvalidInput,
         "empty relative path",
     ))
+}
+
+#[cfg(all(windows, test))]
+fn fire_uri_directory_hook(relative: &Path) {
+    let Ok(names) = relative_names(relative) else {
+        return;
+    };
+    if names.len() < 2 {
+        return;
+    }
+    if let Some(hook) = AFTER_URI_DIRECTORY_OPEN.with(|cell| cell.borrow_mut().take()) {
+        hook();
+    }
 }
 
 #[cfg(windows)]
@@ -639,6 +677,11 @@ fn open_leaf_file(path: &Path) -> std::io::Result<File> {
         hook();
     }
     let second = open_path(path, false)?;
+    // `second` does not share delete. A hook here runs while that handle is held.
+    #[cfg(test)]
+    if let Some(hook) = AFTER_SECOND_CLOUD_OPEN.with(|cell| cell.borrow_mut().take()) {
+        hook();
+    }
     // The second open must be the same file. A cloud placeholder replaced
     // between the two opens is refused.
     if windows_file_id(&first)? != windows_file_id(&second)? {
@@ -1774,6 +1817,7 @@ mod tests {
         fn drop(&mut self) {
             super::FORCE_CLOUD_REOPEN.with(|cell| cell.set(false));
             super::AFTER_LEAF_OPEN.with(|cell| cell.borrow_mut().take());
+            super::AFTER_SECOND_CLOUD_OPEN.with(|cell| cell.borrow_mut().take());
             super::FORCE_FILE_REPARSE.with(|cell| cell.set(false));
             super::TAG_RESULT.with(|cell| cell.borrow_mut().take());
         }
@@ -1810,6 +1854,45 @@ mod tests {
         std::fs::write(&path, b"one!").expect("write");
         super::FORCE_CLOUD_REOPEN.with(|cell| cell.set(true));
         let bytes = read_under(dir.path(), Path::new("model.bin"), 64, "", &path).expect("same");
+        assert_eq!(bytes, b"one!");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn second_cloud_open_refuses_a_rename() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let _guard = ClearLeaf;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("model.bin");
+        std::fs::write(&path, b"one!").expect("write");
+        let hold = dir.path().join("held.bin");
+        let fired = Arc::new(AtomicBool::new(false));
+        let renamed = Arc::new(AtomicBool::new(false));
+        let fired_hook = Arc::clone(&fired);
+        let renamed_hook = Arc::clone(&renamed);
+        let path_hook = path.clone();
+        super::FORCE_CLOUD_REOPEN.with(|cell| cell.set(true));
+        super::AFTER_SECOND_CLOUD_OPEN.with(|cell| {
+            *cell.borrow_mut() = Some(Box::new(move || {
+                fired_hook.store(true, Ordering::SeqCst);
+                let result = std::fs::rename(&path_hook, &hold);
+                if result.is_ok() {
+                    std::fs::rename(&hold, &path_hook).expect("restore");
+                    renamed_hook.store(true, Ordering::SeqCst);
+                }
+            }));
+        });
+        let bytes = read_under(dir.path(), Path::new("model.bin"), 64, "", &path).expect("read");
+        assert!(
+            fired.load(Ordering::SeqCst),
+            "second cloud open hook did not fire"
+        );
+        assert!(
+            !renamed.load(Ordering::SeqCst),
+            "second cloud open allowed a rename"
+        );
         assert_eq!(bytes, b"one!");
     }
 

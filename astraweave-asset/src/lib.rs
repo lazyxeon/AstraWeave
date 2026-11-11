@@ -2801,16 +2801,32 @@ pub mod gltf_loader {
             let tex_hook = tex.clone();
             let swapped_hook = swapped_tex.clone();
             let hold = dir.path().join("tex_hold");
+            let fired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let renamed_ok = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let fired_hook = std::sync::Arc::clone(&fired);
+            let renamed_hook = std::sync::Arc::clone(&renamed_ok);
             crate::bounded_open::reset_root_opens();
             crate::bounded_open::after_uri_directory_open(Box::new(move || {
+                fired_hook.store(true, std::sync::atomic::Ordering::SeqCst);
                 let renamed = std::fs::rename(&tex_hook, &hold);
                 if renamed.is_ok() {
                     std::fs::rename(&swapped_hook, &tex_hook).expect("swap");
+                    renamed_hook.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
-                assert!(renamed.is_err(), "held uri directory was renamed");
             }));
-            let (_mesh, mat) = load_from_glb(&model, &glb).expect("glb");
+            let loaded = load_from_glb(&model, &glb);
+            // `reset_root_opens` clears the hook slot. The flags above are
+            // not that slot, so a hook that never ran still fails here.
             crate::bounded_open::reset_root_opens();
+            assert!(
+                fired.load(std::sync::atomic::Ordering::SeqCst),
+                "uri directory hook did not fire"
+            );
+            assert!(
+                !renamed_ok.load(std::sync::atomic::Ordering::SeqCst),
+                "held uri directory was renamed"
+            );
+            let (_mesh, mat) = loaded.expect("glb");
             let base = mat.base_color_texture.expect("base");
             assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
         }
