@@ -328,7 +328,7 @@ Kani uses CBMC bounded model checking. Math proofs use concrete representative i
 | **Wave 3 Total** | | **463** | **22** | **3** | **1** | **95.5%** |
 
 **Terrain remaining MISSED** (4 in latest v4 run):
-- `heightmap.rs:152–153`: `replace - with +` and `replace - with /` on the neighbour-index clamps `(x0 + 1).min(self.resolution - 1)` and `(z0 + 1).min(self.resolution - 1)` in `Heightmap::sample_bilinear`. Equivalent. The clamps at `:147–148` cap the sample at `resolution as f32 - 1.001`, so `x0 + 1` and `z0 + 1` are already at most `resolution - 1` and the `min` never changes the index.
+- `heightmap.rs:152–153`: `replace - with +` and `replace - with /` on the neighbour-index clamps `(x0 + 1).min(self.resolution - 1)` and `(z0 + 1).min(self.resolution - 1)` in `Heightmap::sample_bilinear`. `Heightmap::new` and `Heightmap::from_data` reject a resolution above 32769. For every resolution from 2 through 32769, `(resolution as f32) - 1.001` is strictly below `resolution - 1`, so `x0 + 1` and `z0 + 1` are already at most `resolution - 1` and the `min` does not change the index. Resolution 32770 is the first value where that subtraction rounds to `resolution - 1`, `x0 + 1` is `resolution`, and both replacements read past the edge. The constructor rejects it.
 - All 4 are those neighbour-index clamp mutants. The interpolation weights at `:163–166` are a different site.
 
 **Render remaining MISSED** (5 in v2 run):

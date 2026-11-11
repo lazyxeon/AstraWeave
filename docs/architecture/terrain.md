@@ -169,7 +169,7 @@ The parallel **voxel** path (wired in `examples/hybrid_voxel_demo` and `aravath_
 | **`ChunkCoord`** | 3D `{x,y,z:i32}` identifier for a voxel chunk (32³) | `voxel_data.rs:29`, `meshing.rs` |
 | **`TerrainChunk`** | Heightmap-based chunk: heightmap + biome_map + optional biome_weights/biome_ids | `chunk.rs:65` |
 | **`VoxelChunk`** | Sparse-voxel-octree chunk of `Voxel{density, material}` | `voxel_data.rs` |
-| **`Heightmap`** | 2D grid of f32 heights at a given resolution | `heightmap.rs`, `noise_gen.rs` |
+| **`Heightmap`** | 2D grid of f32 heights. `new` and `from_data` reject a resolution above 32769, so the bilinear neighbour clamp stays inside the grid | `heightmap.rs`, `noise_gen.rs` |
 | **`BiomeType`** | 8-variant ecological enum (Grassland/Desert/Forest/Mountain/Tundra/Swamp/Beach/River) | `biome.rs:12` |
 | **`BiomeId`** | Whittaker climate-lookup biome identity used by the F.4.B.3.D climate-field path | `biome_lookup.rs`, `chunk.rs:91` |
 | **`biome_weights`** | Per-vertex `[f32;8]` soft biome blend, pre-erosion | `chunk.rs:81`, `elevation_biome.rs` |
@@ -231,7 +231,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 | `noise_gen.rs` | `TerrainNoise`, `NoiseConfig`, layered fBm + domain warp + continental + derivative-weighted + per-octave weights | Active | Deterministic; seeded off `config.seed`. E3 defaults: base layer `NoiseType::Fbm` 4-octave (noise_gen.rs:226), mountains `NoiseType::Billow` (:241, replacing RidgedMulti's knife-ridge networks), detail amplitude 3.0 (:247). `continental_enabled` default **false — deliberate** (:120-139): the erosion-driven `mountains_amplitude` spline now gates mountain regions; continentalness gating on top would double-gate. `base_derivative_weighted` default false (:202-204). `mountain_octave_weights` field is read-but-no-effect (infrastructure-only, noise_gen.rs:84-97) |
 | `noise_simd.rs` | `SimdHeightmapGenerator` (SIMD heightmap, default `simd-noise` feature) | Active | Used by `generate_chunk` under `#[cfg(feature="simd-noise")]` (lib.rs:270) |
 | `perlin_gradient.rs` | Analytical-derivative Perlin + derivative-weighted fBm | Active (noise layer) | Backs `base_derivative_weighted` path |
-| `heightmap.rs` | `Heightmap`, `HeightmapConfig` | Active | Core storage type |
+| `heightmap.rs` | `Heightmap`, `HeightmapConfig` | Active | Core storage type. Constructors reject a resolution above 32769 |
 | `chunk.rs` | `ChunkId`, `TerrainChunk`, `ChunkManager`, `smooth_shared_vertices` | Active | Heightmap chunk + manager; legacy `apply_erosion` CA lives here (line 204) |
 | `climate.rs` | `ClimateMap`, `ClimateConfig` (temperature/moisture field) | Active | Feeds biome classification |
 | `biome.rs` | `BiomeType` (8), `BiomeConfig`, `BiomeVegetation`, `VegetationType` | Active | Imports gameplay `ResourceKind`/`BiomeRule` (reverse dep) |
