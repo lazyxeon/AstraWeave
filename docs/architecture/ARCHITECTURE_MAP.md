@@ -105,7 +105,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 | `astraweave-materials` | _(none)_ |
 | `astraweave-cinematics` | _(none)_ |
 | `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `52b9e711c` 2026-05-18)_ |
-| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:45), **aw_asset_cli** (tool — unusual direction, `astraweave-render/Cargo.toml:64`) |
+| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:46), **aw_asset_cli** (tool — unusual direction, `astraweave-render/Cargo.toml:64`) |
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
 | `astraweave-blend` | _(in crates/)_ |
@@ -268,7 +268,7 @@ There are no dependency cycles in the workspace graph as of 2026-05-13. The "rev
 - Types: `Transform`, `Node`, `Scene`, `SceneError`
 - Modules: gpu_resource_manager, partitioned_scene, streaming, world_partition
 - Animation ECS components: `CSkeleton`, `CSkinnedMesh`, `CAnimator`, `CJointMatrices`, `CParentBone` + systems `update_animations`, `compute_poses_stub`, `update_bone_attachments`
-- **Reconciliation note (v0.7.0)**: `animation.md` §6 documents `compute_poses_stub` (literal name "_stub"): the function checks for ECS component presence but does not write a full pose. The canonical hierarchical-pose computation is render-side `compute_joint_matrices` (`astraweave-render/src/animation.rs:274-336`). See `animation.md` §11 (decisional question: when does it stop being a stub?).
+- **Reconciliation note (v0.7.0)**: `animation.md` §6 documents `compute_poses_stub` (literal name "_stub"): the function checks for ECS component presence but does not write a full pose. The canonical hierarchical-pose computation is render-side `compute_joint_matrices` (`astraweave-render/src/animation.rs:282-374`). See `animation.md` §11 (decisional question: when does it stop being a stub?).
 
 **astraweave-terrain** (Trace: [`terrain_materials.md`](terrain_materials.md) for the 32-layer material pipeline)
 - Types: `Biome`, `BiomeType`, `ChunkManager`, `TerrainChunk`, `Heightmap`, `VoxelGrid`, `WorldConfig`, `ZoneRegistry`
@@ -944,7 +944,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 13. **Four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip` type families — unify into a shared `astraweave-animation` crate?** `animation.md` §11.
 
-14. **`MAX_JOINTS = 256` — permanent limit or scale with hardware?** Hard-coded in Rust (`animation.rs:358`) and WGSL (`skinning_gpu.rs:261`); kept in sync manually; surplus joints silently drop. `animation.md` §11.
+14. **`MAX_JOINTS = 256` — permanent limit or scale with hardware?** Hard-coded in Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:261`); kept in sync manually; surplus joints silently drop. `animation.md` §11.
 
 15. **CubicSpline interpolation — implement or remove the variant?** Render-side and asset-side both have the variant but fall back to Linear/Slerp. glTF cubic-spline clips lose fidelity. `animation.md` §11.
 
@@ -1021,7 +1021,7 @@ D.2.A.1 W.1-contamination correction (doc-truth campaign), driven by `docs/campa
 ### v0.7.2 (2026-06-10)
 Engine-health-audit reconciliation pass (doc-only), driven by the 2026-06-10 full workspace audit:
 - §1: total workspace members corrected **143 → 130** — the root Cargo.toml `[workspace].members` list contains 130 entries (128 unique paths; `astraweave-npc` and `astraweave-security` are each listed twice) and `cargo metadata --no-deps` resolves exactly 130 packages (the two extras are auto-included path-dependency packages). Examples count corrected to **59**.
-- §2.1: added `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) to the Rendering & Assets table; appended `camera` to `astraweave-render`'s workspace-deps row (non-optional, astraweave-render/Cargo.toml:45). Other production consumers: `tools/aw_editor` + 13 examples.
+- §2.1: added `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) to the Rendering & Assets table; appended `camera` to `astraweave-render`'s workspace-deps row (non-optional, astraweave-render/Cargo.toml:46). Other production consumers: `tools/aw_editor` + 13 examples.
 - §0: render-pipeline trace row updated (Multi-Tool SP3/SP4 closed, SP5 in flight; Render Parity P.1–P.7 closed 2026-05-17); aw_editor trace row updated (Real-Fix.A–E all landed; SP3/SP4 complete; SP5 in flight per commits `85786bf70`/`3cdb23239`).
 - Companion edits in the same pass: README engine-health section rewritten against this map + the live audit; `workspace_map.html` counts re-reconciled; MASTER_COVERAGE_REPORT bumped v5.3.0; MASTER_ROADMAP bumped v1.51; PROJECT_STATUS refreshed; CLAUDE.md known-build-issues + networking-hazard rows corrected.
 
