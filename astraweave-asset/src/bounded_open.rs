@@ -24,8 +24,11 @@
 //! Only a cloud placeholder is opened a second time, without delete sharing,
 //! and that second open must be the same file. A symlink,
 //! a junction, and a mount point are refused. The file's final path must stay
-//! under the root's. Those paths compare as exact UTF-16 units. Directory
-//! identity is the 128-bit file id plus the volume serial.
+//! under the root's. Those paths compare as exact UTF-16 units. A name that
+//! is not one path component is refused before the create call. An empty
+//! relative path is refused. On Unix that read reports the root descriptor is
+//! not a regular file. On Windows the message is that the relative path is
+//! empty. Directory identity is the 128-bit file id plus the volume serial.
 //!
 //! A caller-supplied model file is resolved once. Its parent is then opened
 //! with that component walk and is not resolved again. URI components are not
@@ -401,20 +404,14 @@ fn directory_flags() -> rustix::fs::OFlags {
     use rustix::fs::OFlags;
     // Linux opens each directory component with O_PATH so a load still works
     // when an ancestor is not readable. Other Unix keeps a read-only directory
-    // open, which is the portable equivalent. Adjacent flags are disjoint, so
-    // replacing `|` with `^` does not change the mask.
+    // open, which is the portable equivalent. `open_flag_masks_match_the_target_bits`
+    // pins each mask, including this other-Unix arm, to the bit value for the target.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
-        const _: () = assert!(OFlags::PATH.bits() & OFlags::DIRECTORY.bits() == 0);
-        const _: () = assert!(OFlags::DIRECTORY.bits() & OFlags::NOFOLLOW.bits() == 0);
-        const _: () = assert!(OFlags::NOFOLLOW.bits() & OFlags::CLOEXEC.bits() == 0);
         OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
-        const _: () = assert!(OFlags::RDONLY.bits() & OFlags::DIRECTORY.bits() == 0);
-        const _: () = assert!(OFlags::DIRECTORY.bits() & OFlags::NOFOLLOW.bits() == 0);
-        const _: () = assert!(OFlags::NOFOLLOW.bits() & OFlags::CLOEXEC.bits() == 0);
         OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
     }
 }
@@ -422,10 +419,17 @@ fn directory_flags() -> rustix::fs::OFlags {
 #[cfg(unix)]
 fn canonical_root_flags() -> rustix::fs::OFlags {
     use rustix::fs::OFlags;
-    const _: () = assert!(OFlags::RDONLY.bits() & OFlags::DIRECTORY.bits() == 0);
-    const _: () = assert!(OFlags::DIRECTORY.bits() & OFlags::CLOEXEC.bits() == 0);
     OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC
 }
+
+#[cfg(unix)]
+fn file_flags() -> rustix::fs::OFlags {
+    use rustix::fs::OFlags;
+    OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK
+}
+
+#[cfg(unix)]
+const _: () = assert!(rustix::fs::OFlags::RDONLY.bits() == 0);
 
 #[cfg(unix)]
 impl OpenedRoot {
@@ -441,13 +445,10 @@ impl OpenedRoot {
 
 #[cfg(unix)]
 fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
-    use rustix::fs::{openat, Mode, OFlags};
+    use rustix::fs::{openat, Mode};
 
     let directory = directory_flags();
-    const _: () = assert!(OFlags::RDONLY.bits() & OFlags::NOFOLLOW.bits() == 0);
-    const _: () = assert!(OFlags::NOFOLLOW.bits() & OFlags::CLOEXEC.bits() == 0);
-    const _: () = assert!(OFlags::CLOEXEC.bits() & OFlags::NONBLOCK.bits() == 0);
-    let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
+    let file_flags = file_flags();
     let names = relative_names(relative)?;
     // Each URI starts again at the root descriptor. Component descriptors are
     // not kept after this function returns.
@@ -492,7 +493,6 @@ fn open_canonical(
             Component::Normal(name) => {
                 dir = opened(openat(&dir, name, flags, Mode::empty()))?;
             }
-            Component::CurDir => {}
             _ => {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
@@ -624,21 +624,6 @@ impl HeldDirectories {
         self.files.push(file);
         Ok(())
     }
-
-    fn note_root(&mut self, file: &File) -> std::io::Result<()> {
-        let id = windows_file_id(file)?;
-        if self.ids.contains(&id) {
-            return Ok(());
-        }
-        if self.files.len() + 1 > MAX_HELD_DIRECTORIES {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "too many open directories",
-            ));
-        }
-        self.ids.insert(id);
-        Ok(())
-    }
 }
 
 #[cfg(windows)]
@@ -702,7 +687,6 @@ fn open_resolved_directory(resolved: &Path) -> std::io::Result<(PathBuf, File, H
     for file in opened {
         held.push(file)?;
     }
-    held.note_root(&root_file)?;
     Ok((root_final, root_file, held))
 }
 
@@ -1153,12 +1137,12 @@ fn windows_link_count(file: &File) -> std::io::Result<u64> {
 /// change as the same file.
 #[cfg(any(windows, test))]
 fn file_id_bytes_eq(left: &[u8; 16], right: &[u8; 16]) -> bool {
-    left.iter().zip(right.iter()).take(16).all(|(a, b)| a == b)
+    left.iter().zip(right.iter()).all(|(a, b)| a == b)
 }
 
 #[cfg(any(windows, test))]
 fn hash_file_id_bytes<H: std::hash::Hasher>(bytes: &[u8; 16], state: &mut H) {
-    for byte in bytes.iter().take(16) {
+    for byte in bytes.iter() {
         std::hash::Hash::hash(byte, state);
     }
 }
@@ -1209,6 +1193,8 @@ fn windows_file_id(file: &File) -> std::io::Result<WindowsFileId> {
         volume_serial_number: u64,
         file_id: [u8; 16],
     }
+    const _: () = assert!(std::mem::size_of::<FileIdInfo>() == 24);
+    const _: () = assert!(std::mem::offset_of!(FileIdInfo, file_id) == 8);
 
     #[link(name = "kernel32")]
     extern "system" {
@@ -1222,6 +1208,7 @@ fn windows_file_id(file: &File) -> std::io::Result<WindowsFileId> {
 
     // `FileIdInfo` in `FILE_INFO_BY_HANDLE_CLASS`.
     const FILE_ID_INFO: i32 = 18;
+    const _: () = assert!(FILE_ID_INFO == 18);
     let mut info = FileIdInfo {
         volume_serial_number: 0,
         file_id: [0; 16],
@@ -1601,10 +1588,16 @@ mod tests {
             .read(Path::new(""), 64, "", Path::new(""))
             .expect_err("empty");
         let msg = format!("{err:#}");
-        assert!(
-            msg.contains("not a regular file") || msg.contains("empty relative path"),
-            "{msg}"
-        );
+        #[cfg(unix)]
+        {
+            assert!(msg.contains("not a regular file"), "{msg}");
+            assert!(!msg.contains("empty relative path"), "{msg}");
+        }
+        #[cfg(windows)]
+        {
+            assert!(msg.contains("empty relative path"), "{msg}");
+            assert!(!msg.contains("not a regular file"), "{msg}");
+        }
     }
 
     #[test]
@@ -1884,6 +1877,37 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn open_flag_masks_match_the_target_bits() {
+        use rustix::fs::OFlags;
+        assert_eq!(OFlags::RDONLY.bits(), 0);
+        #[cfg(all(
+            any(target_os = "linux", target_os = "android"),
+            any(target_arch = "x86_64", target_arch = "x86")
+        ))]
+        {
+            assert_eq!(super::directory_flags().bits(), 0x002B_0000);
+            assert_eq!(super::canonical_root_flags().bits(), 0x0009_0000);
+            assert_eq!(super::file_flags().bits(), 0x000A_0800);
+        }
+        #[cfg(all(
+            any(target_os = "linux", target_os = "android"),
+            any(target_arch = "aarch64", target_arch = "arm")
+        ))]
+        {
+            assert_eq!(super::directory_flags().bits(), 0x0028_C000);
+            assert_eq!(super::canonical_root_flags().bits(), 0x0008_4000);
+            assert_eq!(super::file_flags().bits(), 0x0008_8800);
+        }
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        {
+            assert_eq!(super::directory_flags().bits(), 0x0110_0100);
+            assert_eq!(super::canonical_root_flags().bits(), 0x0110_0000);
+            assert_eq!(super::file_flags().bits(), 0x0100_0104);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn opened_descriptors_are_close_on_exec() {
         use rustix::fs::{openat, Mode, CWD};
         use rustix::io::{fcntl_getfd, FdFlags};
@@ -1898,6 +1922,15 @@ mod tests {
         let file = open_relative(&opened_root, Path::new("a.bin")).expect("file");
         let file_flags = fcntl_getfd(&file).expect("file flags");
         assert!(file_flags.contains(FdFlags::CLOEXEC));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn slash_root_descriptor_is_close_on_exec() {
+        use rustix::io::{fcntl_getfd, FdFlags};
+        let root = OpenedRoot::open(Path::new("/")).expect("slash root");
+        let flags = fcntl_getfd(&root.dir).expect("slash flags");
+        assert!(flags.contains(FdFlags::CLOEXEC));
     }
 
     #[cfg(unix)]
@@ -2736,29 +2769,53 @@ mod tests {
         let outside_late = outside.join("late");
         std::fs::create_dir_all(&outside_late).expect("outside");
         std::fs::write(outside_late.join("leaf.bin"), b"pwned").expect("pwned");
+        std::fs::write(outside.join("leaf.bin"), b"pwned").expect("outside leaf");
         let root = OpenedRoot::open(&jail).expect("root");
         let early_hook = early.clone();
+        let late_hook = late.clone();
         let outside_hook = outside.clone();
         let parked = base.path().join("parked");
+        let early_renamed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let late_renamed = std::rc::Rc::new(std::cell::Cell::new(false));
+        let early_flag = early_renamed.clone();
+        let late_flag = late_renamed.clone();
         super::BEFORE_COMPONENT.with(|cell| {
             *cell.borrow_mut() = Some(Box::new(move |index| {
                 if index != 1 {
                     return;
                 }
-                if std::fs::rename(&early_hook, &parked).is_ok() {
+                early_flag.set(std::fs::rename(&early_hook, &parked).is_ok());
+                if early_flag.get() {
                     junction(&early_hook, &outside_hook);
+                    return;
+                }
+                let held_late = early_hook.join("late_held");
+                late_flag.set(std::fs::rename(&late_hook, &held_late).is_ok());
+                if late_flag.get() {
+                    junction(&late_hook, &outside_hook);
                 }
             }));
         });
-        let bytes = root
-            .read(
-                Path::new("early/late/leaf.bin"),
-                64,
-                "",
-                Path::new("early/late/leaf.bin"),
-            )
-            .expect("held directory");
-        assert_eq!(bytes, b"safe");
+        let held = root.read(
+            Path::new("early/late/leaf.bin"),
+            64,
+            "",
+            Path::new("early/late/leaf.bin"),
+        );
+        assert!(
+            !early_renamed.get(),
+            "the held directory was renamed while its handle was open"
+        );
+        assert!(
+            late_renamed.get(),
+            "the directory that was not held was not replaced"
+        );
+        let err = held.expect_err("held handle followed the junction");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
+        assert!(!msg.contains("pwned"), "{msg}");
+        let path_bytes = std::fs::read(early.join("late").join("leaf.bin")).expect("path read");
+        assert_eq!(path_bytes, b"pwned");
     }
 
     #[cfg(windows)]
