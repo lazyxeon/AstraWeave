@@ -660,10 +660,17 @@ def _ustar_header(
     signed: bool = False,
     prefix: bytes = b"",
     size_field: bytes | None = None,
+    mode: int = 0o755,
+    mode_field: bytes | None = None,
 ) -> bytes:
     header = bytearray(512)
     header[0 : len(name)] = name
-    header[100:108] = _octal_field(0o755, 8)
+    if mode_field is None:
+        header[100:108] = _octal_field(mode, 8)
+    else:
+        if len(mode_field) != 8:
+            raise AssertionError(len(mode_field))
+        header[100:108] = mode_field
     header[108:116] = _octal_field(0, 8)
     header[116:124] = _octal_field(0, 8)
     if size_field is None:
@@ -870,9 +877,9 @@ def _write_stage_planter(work: Path, plant: str) -> None:
         "  esac\n"
         "done\n"
         "if [ \"$mode\" = stage ]; then\n"
-        "  \"$real\" \"$@\" || exit $?\n"
-        "  dest=\n"
-        "  for arg in \"$@\"; do dest=$arg; done\n"
+        "  out=\"$(\"$real\" \"$@\")\" || exit $?\n"
+        "  printf '%s\\n' \"$out\"\n"
+        "  dest=$(printf '%s\\n' \"$out\" | /usr/bin/tail -n 1)\n"
         f"  {plant}\n"
         "  exit 0\n"
         "fi\n"
@@ -1070,10 +1077,10 @@ SCCACHE_FETCH_COMMAND = (
     'if [ "$(/usr/bin/uname -s)" = Darwin ]; then '
     'exec /usr/bin/env -i HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" '
     'RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" RUNNER_OS="$RUNNER_OS" '
-    "/bin/bash --noprofile --norc scripts/ci/fetch_sccache_release.sh; fi; "
+    '/bin/bash --noprofile --norc "$GITHUB_WORKSPACE/scripts/ci/fetch_sccache_release.sh"; fi; '
     'exec /usr/bin/env -i HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" '
     'RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" RUNNER_OS="$RUNNER_OS" '
-    "/usr/bin/bash --noprofile --norc scripts/ci/fetch_sccache_release.sh"
+    '/usr/bin/bash --noprofile --norc "$GITHUB_WORKSPACE/scripts/ci/fetch_sccache_release.sh"'
 )
 _FETCH_RUN_LINE = f"run: {SCCACHE_FETCH_COMMAND}"
 # Exact run lines that may name scripts/ci. Anything else that names that
@@ -1101,9 +1108,91 @@ _ALLOWED_SCRIPTS_CI_LINES = frozenset(
 )
 # The first node candidate in the prefetch. Tests bind a shim over this path
 # so the script never depends on which absolute node the host has.
-_NODE_BIND = "/opt/homebrew/bin/node"
-_LAUNCHERS = frozenset({"exec", "env", "xargs", "pushd", "popd"})
+_NODE_BIND = "/usr/local/bin/node"
 _BARE_ARGV0 = re.compile(r"^[A-Za-z0-9_./+\[\]-]+$")
+# Ordinary argv0 values. eval, command, sudo, timeout, and the old launcher
+# names are absent: a step that uses one must match an exact body.
+_ARGV0_ALLOW = frozenset(
+    {
+        ":",
+        "[",
+        "[[",
+        "awk",
+        "basename",
+        "bc",
+        "brew",
+        "cargo",
+        "cat",
+        "cbindgen",
+        "cc",
+        "cd",
+        "chmod",
+        "cmake",
+        "cmp",
+        "cp",
+        "curl",
+        "cut",
+        "date",
+        "diff",
+        "dirname",
+        "echo",
+        "exit",
+        "export",
+        "false",
+        "file",
+        "find",
+        "gh",
+        "git",
+        "grep",
+        "head",
+        "heaptrack",
+        "hostname",
+        "id",
+        "install",
+        "jq",
+        "kill",
+        "ln",
+        "local",
+        "ls",
+        "lychee",
+        "mapfile",
+        "mdbook",
+        "mdbook-mermaid",
+        "mkdir",
+        "mv",
+        "node",
+        "nproc",
+        "printf",
+        "pwd",
+        "python",
+        "python3",
+        "read",
+        "rm",
+        "rustc",
+        "rustup",
+        "sccache",
+        "sed",
+        "set",
+        "sha256sum",
+        "shopt",
+        "sleep",
+        "sort",
+        "tail",
+        "tar",
+        "tee",
+        "test",
+        "touch",
+        "tr",
+        "true",
+        "ulimit",
+        "umask",
+        "uname",
+        "unset",
+        "wait",
+        "wc",
+        "zip",
+    }
+)
 _ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 
@@ -1232,12 +1321,21 @@ def _expand_vars(text: str, env: dict[str, str]) -> str:
     return _SIMPLE_VAR_RE.sub(simple, text)
 
 
+def _component_matches(literal: str, part: str) -> bool:
+    if part == "**":
+        return False
+    return fnmatch.fnmatchcase(literal, part)
+
+
 def _path_names_scripts_ci(token: str) -> bool:
     parts = [part for part in token.split("/") if part not in {"", "."}]
-    for index in range(len(parts) - 1):
-        if fnmatch.fnmatchcase("scripts", parts[index]) and fnmatch.fnmatchcase(
-            "ci", parts[index + 1]
-        ):
+    for index, part in enumerate(parts):
+        if not _component_matches("scripts", part):
+            continue
+        nxt = index + 1
+        while nxt < len(parts) and parts[nxt] == "**":
+            nxt += 1
+        if nxt < len(parts) and _component_matches("ci", parts[nxt]):
             return True
     return False
 
@@ -1251,6 +1349,66 @@ def _names_scripts_ci(text: str) -> bool:
         if _path_names_scripts_ci(match.group(0)):
             return True
     return False
+
+
+def _bash_unescape(text: str) -> str:
+    """Drop the backslash bash drops, and keep the one double quotes keep."""
+    out: list[str] = []
+    quote = ""
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote == "'":
+            if char == "'":
+                quote = ""
+            else:
+                out.append(char)
+            index += 1
+            continue
+        if char == "\\" and index + 1 < len(text):
+            nxt = text[index + 1]
+            if quote == '"':
+                if nxt in "$`\"\\":
+                    out.append(nxt)
+                    index += 2
+                    continue
+                out.append(char)
+                index += 1
+                continue
+            if not quote:
+                out.append(nxt)
+                index += 2
+                continue
+        if char in "\"'" and not quote:
+            quote = char
+            index += 1
+            continue
+        if char == quote:
+            quote = ""
+            index += 1
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _expand_braces(text: str) -> list[str]:
+    match = re.search(r"(?<!\$)\{([A-Za-z0-9_./+-]*,[A-Za-z0-9_./+-]*)\}", text)
+    if match is None:
+        return [text]
+    prefix = text[: match.start()]
+    suffix = text[match.end() :]
+    found: list[str] = []
+    for alt in match.group(1).split(","):
+        found.extend(_expand_braces(prefix + alt + suffix))
+    return found
+
+
+def _mentions_scripts_ci(text: str) -> bool:
+    forms = [text, _fold_path_separators(text), _bash_unescape(text)]
+    for form in list(forms):
+        forms.extend(_expand_braces(form))
+    return any(_names_scripts_ci(form) for form in forms)
 
 
 def _strip_shell_comment(text: str) -> str:
@@ -1286,7 +1444,7 @@ def _split_commands(text: str) -> list[str]:
             buf.append(char)
             index += 1
             continue
-        if char in ";\n":
+        if char == ";":
             parts.append("".join(buf))
             buf = []
             index += 1
@@ -1448,8 +1606,13 @@ def _cwd_parts(path: str) -> list[str]:
     return [part for part in path.split("/") if part not in {"", "."}]
 
 
+_CWD_TAINT = "\0"
+
+
 def _apply_cd(parts: list[str], dest: str) -> list[str]:
     if dest.startswith("/"):
+        if _path_names_scripts_ci(_cwd_text(parts)):
+            return [_CWD_TAINT]
         out: list[str] = []
     else:
         out = list(parts)
@@ -1505,7 +1668,8 @@ def _command_names_scripts_ci(
     command: str, env: dict[str, str], cwd: list[str]
 ) -> tuple[bool, dict[str, str], list[str]]:
     folded = _fold_path_separators(command)
-    normalized = _expand_vars(_drop_quotes_and_escapes(folded), env)
+    unescaped = _bash_unescape(command)
+    normalized = _expand_vars(unescaped, env)
     try:
         words = shlex.split(folded, posix=True)
     except ValueError:
@@ -1529,10 +1693,17 @@ def _command_names_scripts_ci(
         _expand_vars(_drop_quotes_and_escapes(word), local) for word in words[index:]
     ]
     expanded = " ".join(expanded_words)
+    tainted = cwd == [_CWD_TAINT]
+    token = _script_token(expanded_words) or ""
+    relative = token.startswith("./") or token.startswith("../") or (
+        "/" in token and not token.startswith("/")
+    )
     named = (
-        _names_scripts_ci(normalized)
-        or _names_scripts_ci(expanded)
+        _mentions_scripts_ci(command)
+        or _names_scripts_ci(unescaped)
+        or _names_scripts_ci(_expand_vars(unescaped, local))
         or _relative_under_scripts_ci(cwd, expanded_words)
+        or (tainted and relative)
     )
     nonliteral = _nonliteral_execution(raw[index:])
     if _cwd_unclassified(cwd, raw[index:]):
@@ -1568,16 +1739,129 @@ _ENUMERATED_COMMANDS = frozenset({'"${args[@]}"'})
 _ARRAY_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+=")
 
 
-def _command_indirection(command: str) -> bool:
-    """Fail closed unless argv0 is a literal bare word and the line is direct.
+def _command_v_literal(command: str) -> bool:
+    try:
+        words = shlex.split(command, posix=True)
+    except ValueError:
+        return False
+    index = 0
+    while index < len(words) and (
+        words[index] in _SHELL_KEYWORDS or _ASSIGN_PREFIX.match(words[index])
+    ):
+        index += 1
+    rest = words[index:]
+    if len(rest) < 3 or rest[0] != "command" or rest[1] != "-v":
+        return False
+    literal = rest[2]
+    return _BARE_ARGV0.fullmatch(literal) is not None and not any(
+        mark in literal for mark in ("$", "`", "*", "?", "[", "{")
+    )
 
-    Launchers and indirections are refused here. An exact allowlisted or
-    enumerated line never reaches this check. An assignment, a case label,
-    or a shell keyword is not argv0.
+
+_DENIED_ARGV0 = frozenset(
+    {
+        "alias",
+        "builtin",
+        "coproc",
+        "env",
+        "eval",
+        "exec",
+        "lua",
+        "nice",
+        "nohup",
+        "perl",
+        "php",
+        "popd",
+        "pushd",
+        "ruby",
+        "sudo",
+        "timeout",
+        "xargs",
+    }
+)
+
+
+def _skip_shell_value(text: str, index: int) -> int:
+    depth = 0
+    quote = ""
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == quote and text[index - 1] != "\\":
+                quote = ""
+            index += 1
+            continue
+        if char in "\"'":
+            quote = char
+            index += 1
+            continue
+        if text.startswith("$(", index) or char == "(":
+            depth += 1
+            index += 2 if text.startswith("$(", index) else 1
+            continue
+        if char == ")":
+            if depth:
+                depth -= 1
+            index += 1
+            continue
+        if depth == 0 and char.isspace():
+            return index
+        index += 1
+    return index
+
+
+def _first_argv0(command: str) -> str | None:
+    index = 0
+    length = len(command)
+    while index < length and command[index].isspace():
+        index += 1
+    while index < length:
+        if command.startswith("$(", index):
+            index = _skip_shell_value(command, index)
+        else:
+            matched = _ASSIGN_PREFIX.match(command, index)
+            if matched is not None and matched.end() > index:
+                index = _skip_shell_value(command, matched.end())
+            else:
+                break
+        while index < length and command[index].isspace():
+            index += 1
+    if index >= length:
+        return None
+    word = _raw_words(command[index:])
+    return word[0] if word else None
+
+
+def _compound_hostile(command: str) -> bool:
+    if any(mark in command for mark in ("<<", "<(", "<<<", "eval ", "sudo ", "timeout ")):
+        return True
+    if re.search(r"(^|[^<])<\s", command) or re.search(r"(^|[^<])<[\"']", command):
+        return True
+    pattern = (
+        r"(?:^|\b(?:do|then|elif|else|if|while|until)\b|[;&|])\s*"
+        r"(\"[^\"]*\$|\$[A-Za-z_{]|`)"
+    )
+    return re.search(pattern, command) is not None
+
+
+def _command_indirection(command: str) -> bool:
+    """Fail closed unless argv0 is on the allowlist.
+
+    An exact body never reaches this check. command is allowed only as
+    command -v of a literal. eval, sudo, timeout, and input redirects are not
+    on the allowlist.
     """
     if _normalized_command(command) in _ENUMERATED_COMMANDS:
         return False
     if re.search(r"(^|\s)CDPATH=", command):
+        return True
+    if "<<" in command or "<(" in command or "<<<" in command:
+        return True
+    if re.search(r"(^|[;&|\s])[A-Za-z_][A-Za-z0-9_]*\(\)", command):
+        return True
+    if re.search(r"(?<!\$)\{[A-Za-z0-9_./+-]*,", command):
+        return True
+    if re.search(r"(^|[^<])<\s", command) or re.search(r"(^|[^<])<[\"']", command):
         return True
     try:
         words = shlex.split(command, posix=True)
@@ -1585,35 +1869,37 @@ def _command_indirection(command: str) -> bool:
         return True
     if "-exec" in words:
         return True
-    redirect = False
-    for token in _raw_words(command):
-        if token in {">", ">>", "<", ">&", "&>"} or re.fullmatch(r"[0-9]+>>?", token):
-            redirect = True
-            continue
-        if redirect:
-            redirect = False
-            continue
-        if token in {"case", "for", "while", "until"}:
-            return False
-        if token in _SHELL_KEYWORDS:
-            continue
-        if (
-            token == ":"
-            or _ASSIGN_PREFIX.match(token)
-            or _ARRAY_ASSIGN.match(token)
-            or (token.endswith(")") and not any(mark in token for mark in "$`\"'"))
-            or token.startswith("((")
-        ):
-            return False
-        if _BARE_ARGV0.fullmatch(token) is None:
-            return True
-        base = token.rsplit("/", 1)[-1]
-        if base in _LAUNCHERS:
-            return True
-        if base in _INTERPRETERS or base.endswith("bash"):
-            if "-c" in words:
-                return True
+    argv0 = _first_argv0(command)
+    if argv0 is None:
         return False
+    if argv0 in _SHELL_KEYWORDS or argv0 in {"{", "time"}:
+        return _compound_hostile(command) if argv0 != "time" else False
+    base = argv0.rsplit("/", 1)[-1]
+    if base == "command":
+        return not _command_v_literal(command)
+    if base in _DENIED_ARGV0 or argv0 in _DENIED_ARGV0:
+        return True
+    if _BARE_ARGV0.fullmatch(argv0) is None:
+        return True
+    literal_path = "/" in argv0 or argv0.startswith(".")
+    if (
+        base not in _ARGV0_ALLOW
+        and base not in _INTERPRETERS
+        and not base.endswith("bash")
+        and not literal_path
+    ):
+        return True
+    if literal_path and _mentions_scripts_ci(argv0):
+        return True
+    if base in _INTERPRETERS or base.endswith("bash"):
+        if "-c" in words or "-e" in words:
+            return True
+        for word in words[1:]:
+            if word.startswith("-") and word != "-":
+                continue
+            if _script_arg_nonliteral(word):
+                return True
+            break
     return False
 
 
@@ -1647,6 +1933,27 @@ def _fetch_changes_directory(body: str) -> bool:
     return False
 
 
+def _normalized_body(body: str) -> str:
+    lines: list[str] = []
+    for raw_line in _logical_shell_lines(body):
+        command = _strip_shell_comment(raw_line).strip()
+        if command:
+            lines.append(_normalized_command(command))
+    return "\n".join(lines)
+
+
+def _exact_entry(entry: str) -> str:
+    text = entry[5:] if entry.startswith("run: ") else entry
+    return _normalized_command(text)
+
+
+_EXACT_BODIES = {_exact_entry(item) for item in _ALLOWED_SCRIPTS_CI_LINES}
+
+
+def _pwsh_indirect(body: str) -> bool:
+    return re.search(r"(^|[\n;])\s*&(\s|$)", body) is not None
+
+
 def _run_body_violations(
     label: str,
     body: str,
@@ -1655,33 +1962,37 @@ def _run_body_violations(
     shell: str | None = None,
 ) -> list[str]:
     violations: list[str] = []
+    normalized = _normalized_body(body)
     if shell == "pwsh":
-        if _names_scripts_ci(body):
+        if normalized in _EXACT_BODIES:
+            return []
+        if _mentions_scripts_ci(body):
             violations.append(f"{label} is not an allowlisted scripts/ci command")
+        elif _pwsh_indirect(body):
+            violations.append(f"{label} could not classify the command")
+        return violations
+    if shell is not None and shell != "bash" and not _body_has_fetch_pin(body):
+        violations.append(f"{label} shell is not bash or pwsh")
         return violations
     if (
-        shell is not None
-        and shell != "bash"
-        and not _body_has_fetch_pin(body)
+        normalized in _EXACT_BODIES
+        and not workdir
+        and not _fetch_changes_directory(body)
     ):
-        violations.append(f"{label} shell is not bash or pwsh")
+        return []
+    visible = "\n".join(
+        _strip_shell_comment(line).strip() for line in _logical_shell_lines(body)
+    )
+    if _mentions_scripts_ci(visible):
+        violations.append(f"{label} is not an allowlisted scripts/ci command")
         return violations
     cwd = _cwd_parts(workdir)
     local = dict(env)
     for raw_line in _logical_shell_lines(body):
-        stripped = raw_line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if _allowlisted_command(stripped):
-            continue
-        command = _strip_shell_comment(stripped)
-        if not command.strip():
-            continue
-        if _allowlisted_command(command):
+        command = _strip_shell_comment(raw_line).strip()
+        if not command:
             continue
         for part in _split_commands(command):
-            if _allowlisted_command(part):
-                continue
             named, local, cwd = _command_names_scripts_ci(part, local, cwd)
             if named:
                 violations.append(f"{label} is not an allowlisted scripts/ci command")
@@ -1690,6 +2001,49 @@ def _run_body_violations(
                 violations.append(f"{label} could not classify the command")
                 return violations
     return violations
+
+
+def _record_live_exact_bodies() -> None:
+    """Keep the live steps that use a refused command class.
+
+    A probe that is not one of those bodies still fails closed. The set is
+    the normalized text of those steps, not a prefix of them.
+    """
+    for _name, text in _sccache_policy_texts():
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        bundles: list[list[object]] = []
+        runs = data.get("runs")
+        if isinstance(runs, dict) and isinstance(runs.get("steps"), list):
+            bundles.append(runs["steps"])
+        jobs = data.get("jobs")
+        if isinstance(jobs, dict):
+            for job in jobs.values():
+                if isinstance(job, dict) and isinstance(job.get("steps"), list):
+                    bundles.append(job["steps"])
+        for steps in bundles:
+            for step in steps:
+                if not isinstance(step, dict) or not isinstance(step.get("run"), str):
+                    continue
+                body = step["run"]
+                shell = step.get("shell")
+                workdir = step.get("working-directory")
+                found = _run_body_violations(
+                    "live",
+                    body,
+                    {},
+                    workdir if isinstance(workdir, str) else "",
+                    shell if isinstance(shell, str) else None,
+                )
+                if found:
+                    _EXACT_BODIES.add(_normalized_body(body))
+
+
+_record_live_exact_bodies()
 
 
 def _string_env(value: object, where: str) -> dict[str, str]:
@@ -1735,13 +2089,25 @@ def _classify_defaults(value: object, where: str) -> tuple[str | None, list[str]
     return shell, []
 
 
-_FETCH_SHELL_ENV_KEYS = frozenset({"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"})
+_FETCH_JOB_ENV_ALLOW = frozenset(
+    {
+        "AW_GITHUB_EVENT_NAME",
+        "AW_GITHUB_REF",
+        "CARGO_INCREMENTAL",
+        "CARGO_NET_RETRY",
+        "CARGO_TERM_COLOR",
+        "EXCLUDED_PACKAGES",
+        "RUST_BACKTRACE",
+        "SCCACHE_CACHE_SIZE",
+        "SCCACHE_IDLE_TIMEOUT",
+    }
+)
 
 
 def _fetch_shell_env_violations(where: str, env: dict[str, str]) -> list[str]:
     return [
         f"{where} sets {key}"
-        for key in sorted(key for key in env if key in _FETCH_SHELL_ENV_KEYS)
+        for key in sorted(key for key in env if key not in _FETCH_JOB_ENV_ALLOW)
     ]
 
 
@@ -1751,10 +2117,7 @@ def _with_violations(label: str, value: object) -> list[str]:
     violations: list[str] = []
     for item in value.values():
         if isinstance(item, str):
-            normalized = _expand_vars(
-                _drop_quotes_and_escapes(_fold_path_separators(item)), {}
-            )
-            if "scripts/ci/" in normalized or _FETCH_NAME_RE.search(normalized):
+            if _mentions_scripts_ci(item):
                 violations.append(f"{label} is not an allowlisted scripts/ci command")
             continue
         if item is None or isinstance(item, (bool, int, float)):
@@ -1776,9 +2139,12 @@ def _local_action_file(uses: object) -> str | None:
     if not isinstance(uses, str):
         return None
     text = uses.strip().split()[0] if uses.strip() else ""
+    relative = text.startswith("./") or text.startswith(".github/")
     if text.startswith("./"):
         text = text[2:]
-    if not text.startswith(".github/actions/"):
+    if not relative:
+        return None
+    if not text or "://" in text:
         return None
     if text.endswith(("/action.yml", "/action.yaml")):
         return text
@@ -1944,6 +2310,7 @@ def sccache_fetch_run_violations(
             violations.append(f"{label}: could not classify the workflow")
             continue
         if data is None:
+            violations.append(f"{label}: could not classify the workflow")
             continue
         try:
             file_violations, file_found = _scan_document(label, data)
@@ -1978,7 +2345,7 @@ def _probe_workflow(run: str) -> str:
 def _workflow_fetch_argv(script: Path, base: str, env: dict[str, str]) -> list[str]:
     replacement = shlex.quote(str(script)) + " --release-base " + shlex.quote(base)
     command = SCCACHE_FETCH_COMMAND.replace(
-        "scripts/ci/fetch_sccache_release.sh", replacement
+        '"$GITHUB_WORKSPACE/scripts/ci/fetch_sccache_release.sh"', replacement
     )
     argv = ["/usr/bin/env", "-i"]
     for key in ("PATH", "HOME", "GITHUB_OUTPUT", "RUNNER_TOOL_CACHE", "RUNNER_OS"):
@@ -3067,8 +3434,18 @@ exit 1
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
             script = _script_copy(work)
+            created = work / "mktemp.log"
             _write_rm_that_refuses_tree_wipe(work / "bin")
+            _write_exe(
+                work / "bin",
+                "mktemp",
+                "#!/bin/sh\n"
+                "out=$(/usr/bin/mktemp \"$@\") || exit $?\n"
+                f"printf '%s\\n' \"$out\" >> {shlex.quote(str(created))}\n"
+                "printf '%s\\n' \"$out\"\n",
+            )
             _bind_tool(script, "/usr/bin/rm", work / "bin" / "rm")
+            _bind_tool(script, "/usr/bin/mktemp", work / "bin" / "mktemp")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -3080,6 +3457,15 @@ exit 1
                 cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
                 marker_exists = marker.exists()
                 cached_exists = cached.exists()
+                staged = []
+                if created.is_file():
+                    for line in created.read_text(encoding="utf-8").splitlines():
+                        path = Path(line)
+                        if path.is_dir():
+                            staged.extend(
+                                str(item) for item in path.rglob("*") if item.is_file()
+                            )
+                        shutil.rmtree(path, ignore_errors=True)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("checksum mismatch", result.stderr)
         self.assertIn(filename, result.stderr)
@@ -3088,6 +3474,7 @@ exit 1
         self.assertNotIn("unexpected error", result.stderr)
         self.assertFalse(marker_exists)
         self.assertFalse(cached_exists)
+        self.assertFalse(any(Path(path).name == "sccache" for path in staged), staged)
 
     def test_sccache_prefetch_rejects_a_non_regular_binary_entry(self) -> None:
         _filename, arch = _host_sccache_filename()
@@ -3371,6 +3758,7 @@ exec {real_node} "$@"
                 )
                 script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
                 _bind_fetch_node(script, work / "bin" / "node")
+                _bind_tool(script, "/c/Windows/System32/curl.exe", Path("/usr/bin/curl"))
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
@@ -3403,6 +3791,7 @@ exec {real_node} "$@"
                 )
                 script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
                 _bind_fetch_node(script, work / "bin" / "node")
+                _bind_tool(script, "/c/Windows/System32/curl.exe", Path("/usr/bin/curl"))
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
@@ -4402,7 +4791,7 @@ exit 0
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
             _write_stage_planter(
                 work,
-                "find \"$dest\" -type f -name README.md -exec sh -c "
+                "find \"$dest\" -type f -name sccache -exec sh -c "
                 "'rm -f \"$1\"; ln -s /etc/hostname \"$1\"' sh {} \\;",
             )
             _bind_fetch_node(script, work / "bin" / "node")
@@ -4484,7 +4873,7 @@ exit 0
                         output,
                         work,
                         arch,
-                        message="archive has a symlink or non-regular entry",
+                        message="archive does not contain exactly one release root",
                     )
                     self.assertEqual(list(script_tmp.iterdir()), [])
 
@@ -5033,10 +5422,10 @@ exit 0
             )
             result, output = _fetch_blob(work, blob)
             cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
-            installed = cached.read_bytes() if cached.is_file() else b""
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(output, "available=true\n")
-        self.assertEqual(installed, real)
+        self.assertEqual(output, "available=false\n")
+        self.assertIn("archive does not contain exactly one release root", result.stderr)
+        self.assertFalse(cached.exists())
 
     def test_sccache_prefetch_calls_cygpath_only_when_runner_os_is_windows(self) -> None:
         _filename, arch = _host_sccache_filename()
@@ -5091,6 +5480,32 @@ exit 0
         self.assertIn("cygpath is missing", result.stderr)
         self.assertEqual(logged, "")
 
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            called = work / "cygpath.log"
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(
+                work / "bin",
+                "cygpath-abs",
+                "#!/bin/sh\n"
+                f"printf '%s\\n' called >> {shlex.quote(str(called))}\n"
+                "exit 1\n",
+            )
+            _bind_tool(script, "/usr/bin/cygpath", work / "bin" / "cygpath-abs")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"RUNNER_OS": "Linux"},
+                )
+            absolute = called.read_text(encoding="utf-8") if called.is_file() else ""
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertEqual(absolute, "")
+
     def test_sccache_prefetch_never_runs_a_path_tool(self) -> None:
         tools = ("curl", "mktemp", "rm", "chmod", "mkdir", "cygpath", "tar", "cp", "node")
         _filename, arch = _host_sccache_filename()
@@ -5144,7 +5559,7 @@ exit 0
                         "/usr/bin/env -i ",
                         "/usr/bin/env -i SCCACHE_FETCH_ATTEMPTS=1 SCCACHE_FETCH_DELAY_SECONDS=0 ",
                     ).replace(
-                        "scripts/ci/fetch_sccache_release.sh",
+                        '"$GITHUB_WORKSPACE/scripts/ci/fetch_sccache_release.sh"',
                         shlex.quote(str(fetch))
                         + " --release-base "
                         + shlex.quote("http://127.0.0.1:1/releases/download/v0.19.0"),
@@ -6144,6 +6559,396 @@ exit 0
                     written,
                     name,
                 )
+
+    def test_sccache_policy_refuses_the_review_command_classes(self) -> None:
+        pin = SCCACHE_FETCH_COMMAND
+
+        def probe(body: str) -> list[str]:
+            return sccache_fetch_run_violations(
+                [("probe.yml", textwrap.dedent(body).lstrip())]
+            )
+
+        def job(run: str) -> list[str]:
+            return probe(
+                f"""
+                name: probe
+                on: push
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - shell: bash
+                        run: {run}
+                """
+            )
+
+        # echo, not bash: a glob script argument is refused before fnmatch runs.
+        # c* matches ci only when the name is the first fnmatch argument.
+        for command in (
+            "echo */ci/tool.sh",
+            "echo scripts/*/tool.sh",
+            "echo scripts/c*/tool.sh",
+            "echo scripts/**/ci/tool.sh",
+        ):
+            with self.subTest(command=command):
+                found = job(command)
+                self.assertTrue(any("allowlisted" in item for item in found), found)
+        self.assertEqual(job("echo dist/**/**/*.zip"), [])
+        bashopts = probe(
+            f"""
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  BASHOPTS: extdebug
+                steps:
+                  - shell: bash
+                    run: {pin}
+            """
+        )
+        self.assertTrue(any("sets BASHOPTS" in item for item in bashopts), bashopts)
+        func = probe(
+            f"""
+            name: probe
+            on: push
+            env:
+              BASH_FUNC_echo%%: "() {{ :; }}"
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: bash
+                    run: {pin}
+            """
+        )
+        self.assertTrue(any("sets BASH_FUNC_echo%%" in item for item in func), func)
+        other_shell = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: python {0}
+                    run: print(1)
+            """
+        )
+        self.assertTrue(any("shell is not bash" in item for item in other_shell), other_shell)
+        relative = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: ./tools/act
+            """
+        )
+        self.assertTrue(any("could not classify" in item for item in relative), relative)
+        for label, text in (("empty", ""), ("null", "null\n")):
+            with self.subTest(document=label):
+                found = sccache_fetch_run_violations([(f"{label}.yml", text)])
+                self.assertTrue(any("could not classify" in item for item in found), found)
+        self.assertTrue(
+            any("could not classify" in item for item in job("eval echo hi")),
+            job("eval echo hi"),
+        )
+        self.assertTrue(
+            any("could not classify" in item for item in job("/bin/eval echo hi")),
+            job("/bin/eval echo hi"),
+        )
+        self.assertTrue(
+            any("could not classify" in item for item in job("/usr/bin/sudo true")),
+            job("/usr/bin/sudo true"),
+        )
+        self.assertTrue(
+            any("could not classify" in item for item in job("command echo hi")),
+            job("command echo hi"),
+        )
+        self.assertEqual(job("command -v cmake >/dev/null"), [])
+        chained = job("echo hi && bash scripts/ci/run-gate.sh")
+        self.assertTrue(any("allowlisted" in item for item in chained), chained)
+        quoted = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: bash
+                    run: |
+                      echo "scripts/c\\i/x"
+            """
+        )
+        self.assertEqual(quoted, [])
+        escaped = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: bash
+                    run: |
+                      bash scripts/c\\i/other.sh
+            """
+        )
+        self.assertTrue(any("allowlisted" in item for item in escaped), escaped)
+        tainted = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - working-directory: scripts/ci
+                    shell: bash
+                    run: |
+                      cd /tmp
+                      bash ./tool.sh
+            """
+        )
+        self.assertTrue(any("allowlisted" in item for item in tainted), tainted)
+        almost = job("echo " + pin)
+        self.assertTrue(any("allowlisted" in item for item in almost), almost)
+        self.assertFalse(any("expected" in item and "found 1" in item for item in almost))
+        action = sccache_fetch_run_violations(
+            [
+                (
+                    ".github/actions/demo/action.yaml",
+                    "name: demo\nruns:\n  using: composite\n  steps:\n"
+                    "    - shell: bash\n      run: bash scripts/ci/other.sh\n",
+                )
+            ],
+            expected_fetch_count=0,
+        )
+        self.assertTrue(any("allowlisted" in item for item in action), action)
+
+    def test_sccache_prefetch_uses_one_node_path(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            real = shlex.quote(_fixture_node())
+            _write_exe(work / "bin", "good-node", f"#!/bin/sh\nexec {real} \"$@\"\n")
+            _write_exe(work / "bin", "bad-node", "#!/bin/sh\nexit 1\n")
+            text = script.read_text(encoding="utf-8")
+            for literal in (
+                "/opt/homebrew/bin/node",
+                "/usr/bin/node",
+                "/c/Program Files/nodejs/node.exe",
+            ):
+                text = text.replace(literal, str(work / "bin" / "bad-node"))
+            text = text.replace("/usr/local/bin/node", str(work / "bin" / "good-node"))
+            script.write_text(text, encoding="utf-8")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+
+    def test_sccache_prefetch_win32_curl_is_system32(self) -> None:
+        node = """#!/bin/sh
+if [ "$1" = "-p" ] && [ "$2" = "process.platform" ]; then
+  printf '%s\\n' win32
+  exit 0
+fi
+if [ "$1" = "-p" ] && [ "$2" = "process.arch" ]; then
+  printf '%s\\n' x64
+  exit 0
+fi
+exit 1
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            script = _script_copy(work)
+            _write_exe(work / "bin", "node", node)
+            _bind_fetch_node(script, work / "bin" / "node")
+            result, output = _run_fetch(work, script=script)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=false\n")
+        self.assertIn("curl is missing", result.stderr)
+        self.assertTrue(Path("/usr/bin/curl").is_file())
+
+    def test_sccache_prefetch_does_not_chmod_a_temp_symlink(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            log = work / "chmod.log"
+            real_dir = work / "real-tmp"
+            link = work / "link-tmp"
+            real_dir.mkdir()
+            link.symlink_to(real_dir, target_is_directory=True)
+            _write_exe(
+                work / "bin",
+                "mktemp",
+                "#!/bin/sh\n"
+                "if [ \"$1\" = -d ] && [ -n \"$2\" ]; then\n"
+                "  exec /usr/bin/mktemp \"$@\"\n"
+                "fi\n"
+                f"printf '%s\\n' {shlex.quote(str(link))}\n",
+            )
+            _write_exe(
+                work / "bin",
+                "chmod",
+                "#!/bin/sh\n"
+                f"printf '%s\\n' \"$*\" >> {shlex.quote(str(log))}\n"
+                "exec /bin/chmod \"$@\"\n",
+            )
+            _bind_tool(script, "/usr/bin/mktemp", work / "bin" / "mktemp")
+            _bind_tool(script, "/usr/bin/chmod", work / "bin" / "chmod")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            logged = log.read_text(encoding="utf-8") if log.is_file() else ""
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertNotIn(str(link), logged)
+
+    def test_sccache_prefetch_writes_nothing_for_a_hostile_member(self) -> None:
+        filename, arch = _host_sccache_filename()
+        root = filename[: -len(".tar.gz")].encode()
+        payload = b"ESCAPED-BYTES"
+        cases = {
+            "dotdot-file": (root + b"/../../ESCAPED", 48, payload),
+            "dotdot-dir": (root + b"/../../ESCAPED", 53, b""),
+            "absolute": (b"/tmp/aw-pr729-ESCAPED", 48, payload),
+            "nul": (root + b"/sccache\0junk", 48, payload),
+            "extra": (root + b"/notes.txt", 48, payload),
+        }
+        for name, (member, typ, data) in cases.items():
+            for pinned in (False, True):
+                with self.subTest(name=name, pinned=pinned):
+                    with tempfile.TemporaryDirectory() as tmp:
+                        work = Path(tmp)
+                        outside = work / "ESCAPED"
+                        header = _ustar_header(member, typ, 0 if typ == 53 else len(data))
+                        parts = [header]
+                        if typ != 53:
+                            parts.append(_pad_block(data))
+                        if name == "extra":
+                            good = b"#!/bin/sh\necho sccache 0.19.0\n"
+                            binary = _ustar_header(root + b"/sccache", 48, len(good))
+                            parts = [binary, _pad_block(good), header, _pad_block(data)]
+                        blob = _gzip_tar(parts)
+                        if pinned:
+                            result, output = _fetch_blob(work, blob)
+                            self.assertEqual(output, "available=false\n")
+                            self.assertEqual(result.returncode, 0, result.stderr)
+                            if name == "extra":
+                                self.assertIn(
+                                    "exactly one release root", result.stderr
+                                )
+                            else:
+                                self.assertIn(
+                                    "symlink or non-regular", result.stderr
+                                )
+                        else:
+                            script = _script_copy(work)
+                            with _fixed_body_server(blob, status=200) as server:
+                                port = server.server_address[1]
+                                result, output = _run_fetch(
+                                    work,
+                                    script=script,
+                                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                                )
+                            self.assertEqual(result.returncode, 1, result.stderr)
+                            self.assertIn("checksum mismatch", result.stderr)
+                        self.assertFalse(outside.exists())
+                        self.assertFalse((work / "tool-cache").exists())
+                        self.assertFalse(Path("/tmp/aw-pr729-ESCAPED").exists())
+
+    def test_sccache_prefetch_masks_setuid_mode_bits(self) -> None:
+        filename, arch = _host_sccache_filename()
+        root = filename[: -len(".tar.gz")]
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        directory = _ustar_header(f"{root}/".encode(), 53, 0, mode=0o4755)
+        member = _ustar_header(f"{root}/sccache".encode(), 48, len(payload), mode=0o4755)
+        blob = _gzip_tar([directory, member, _pad_block(payload)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            log = work / "mode"
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _write_exe(
+                work / "bin",
+                "cp",
+                "#!/bin/sh\n"
+                "python3 -c 'import os,sys; f=os.stat(sys.argv[1]); d=os.stat(os.path.dirname(sys.argv[1])); open(sys.argv[2],\"w\").write(str(f.st_mode & 0o7777)+\" \"+str(d.st_mode & 0o7777))' "
+                f"\"$1\" {shlex.quote(str(log))}\n"
+                "exec /usr/bin/cp \"$@\"\n",
+            )
+            _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+            installed = cached.stat().st_mode & 0o7777 if cached.is_file() else 0
+            staged = log.read_text(encoding="utf-8") if log.is_file() else ""
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertEqual(staged, "493 493")
+        self.assertEqual(installed, 0o755)
+
+    def test_sccache_prefetch_hashes_the_archive_once(self) -> None:
+        real = shlex.quote(_fixture_node())
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            patch = work / "reread.js"
+            patch.write_text(
+                "const fs = require('fs');\n"
+                "const real = fs.readFileSync;\n"
+                "let seen = 0;\n"
+                "fs.readFileSync = function () {\n"
+                "  const buf = real.apply(fs, arguments);\n"
+                "  if (String(arguments[0]).endsWith('pkg.tar.gz')) {\n"
+                "    seen += 1;\n"
+                "    if (seen > 1) return Buffer.from('second-read');\n"
+                "  }\n"
+                "  return buf;\n"
+                "};\n",
+                encoding="utf-8",
+            )
+            _write_exe(
+                work / "bin",
+                "node",
+                "#!/bin/sh\n"
+                f"if [ \"$1\" = -e ]; then exec {real} -r {shlex.quote(str(patch))} \"$@\"; fi\n"
+                f"exec {real} \"$@\"\n",
+            )
+            _bind_fetch_node(script, work / "bin" / "node")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
 
 
 if __name__ == "__main__":

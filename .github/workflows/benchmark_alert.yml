@@ -46,7 +46,7 @@ jobs:
       - name: Fetch sccache release
         id: sccache_fetch
         shell: bash
-        run: if [ "$(/usr/bin/uname -s)" = Darwin ]; then exec /usr/bin/env -i HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" RUNNER_OS="$RUNNER_OS" /bin/bash --noprofile --norc scripts/ci/fetch_sccache_release.sh; fi; exec /usr/bin/env -i HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" RUNNER_OS="$RUNNER_OS" /usr/bin/bash --noprofile --norc scripts/ci/fetch_sccache_release.sh
+        run: if [ "$(/usr/bin/uname -s)" = Darwin ]; then exec /usr/bin/env -i HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" RUNNER_OS="$RUNNER_OS" /bin/bash --noprofile --norc "$GITHUB_WORKSPACE/scripts/ci/fetch_sccache_release.sh"; fi; exec /usr/bin/env -i HOME="$HOME" GITHUB_OUTPUT="$GITHUB_OUTPUT" RUNNER_TOOL_CACHE="$RUNNER_TOOL_CACHE" RUNNER_OS="$RUNNER_OS" /usr/bin/bash --noprofile --norc "$GITHUB_WORKSPACE/scripts/ci/fetch_sccache_release.sh"
 
       - name: Note sccache unavailable
         if: steps.sccache_fetch.outputs.available != 'true'
