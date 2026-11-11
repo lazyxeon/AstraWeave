@@ -17,19 +17,20 @@ impl Default for GltfOptions {
 
 #[cfg(feature = "gltf-assets")]
 fn jail_gltf_uri(base: &std::path::Path, uri: &str) -> Result<()> {
-    if uri.starts_with("data:") {
-        return Ok(());
-    }
-    let path_part = uri.split('?').next().unwrap_or(uri);
-    astraweave_security::path::safe_under(base, std::path::Path::new(path_part))
-        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-    Ok(())
+    astraweave_asset::gltf_external::jail_gltf_uri(base, uri).map(|_| ())
 }
 
 #[cfg(feature = "gltf-assets")]
-fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
+fn gltf_container(
+    path: &std::path::Path,
+) -> Result<(Vec<u8>, astraweave_asset::gltf_external::ModelRoot)> {
+    astraweave_asset::gltf_loader::read_gltf_container_with_root(path)
+}
+
+#[cfg(feature = "gltf-assets")]
+fn reject_escaping_gltf_uris(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
     let base = path.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let doc = gltf::Gltf::open(path)?;
+    let doc = gltf::Gltf::from_slice(bytes)?;
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source() {
             jail_gltf_uri(base, uri)?;
@@ -40,14 +41,22 @@ fn reject_escaping_gltf_uris(path: &std::path::Path) -> Result<()> {
             jail_gltf_uri(base, uri)?;
         }
     }
+    astraweave_asset::gltf_external::reject_external_uri_count(&doc)?;
     Ok(())
 }
 
 #[cfg(feature = "gltf-assets")]
 pub fn load_gltf(path: &std::path::Path, opts: &GltfOptions) -> Result<Vec<CpuMesh>> {
     use gltf::mesh::util::ReadIndices;
-    reject_escaping_gltf_uris(path)?;
-    let (doc, buffers, images) = gltf::import(path)?;
+    let (bytes, root) = gltf_container(path)?;
+    reject_escaping_gltf_uris(path, &bytes)?;
+    // One load opens the model directory once, and that handle is used for the
+    // container read, every sibling URI, and every image URI.
+    let (doc, buffers, images) = astraweave_asset::gltf_external::load_jailed_gltf_with_root(
+        &root,
+        &bytes,
+        astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+    )?;
     let mut meshes_out = Vec::new();
     for mesh in doc.meshes() {
         for prim in mesh.primitives() {
@@ -164,6 +173,170 @@ mod jail_tests {
             msg.contains("traversal") || msg.contains("rejected"),
             "{msg}"
         );
+    }
+
+    #[test]
+    fn short_glb_declared_length_does_not_reach_from_reader() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        std::fs::write(&path, &bytes).expect("write");
+        let err = load_gltf(&path, &GltfOptions::default()).expect_err("short header");
+        let msg = err.to_string();
+        assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
+    }
+
+    #[test]
+    fn oversized_declared_length_does_not_reach_from_reader() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        std::fs::write(&path, &bytes).expect("write");
+        let err = load_gltf(&path, &GltfOptions::default()).expect_err("oversized header");
+        let msg = err.to_string();
+        assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+    }
+
+    #[test]
+    fn jailed_external_bin_and_image_load_beside_the_model() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        // 1x1 RGBA PNG, pixels 9, 8, 7, 6.
+        let png: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 224, 228,
+            96, 103, 3, 0, 0, 85, 0, 31, 173, 202, 66, 241, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66,
+            96, 130,
+        ];
+        std::fs::write(dir.path().join("tex.png"), png).expect("png");
+        let path = dir.path().join("hero.gltf");
+        std::fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "box.bin", "byteLength": 4}],
+                "images": [
+                    {"uri": "tex.png"},
+                    {"uri": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPg5GBnAwAAVQAfrcpC8QAAAABJRU5ErkJggg=="}
+                ]
+            }"#,
+        )
+        .expect("gltf");
+        let bytes = std::fs::read(&path).expect("read gltf");
+        let slice_err = gltf::import_slice(&bytes).expect_err("slice import has no base");
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let (read, root) =
+            astraweave_asset::gltf_loader::read_gltf_container_with_root(&path).expect("container");
+        assert_eq!(read, bytes);
+        let (_doc, buffers, images) = astraweave_asset::gltf_external::load_jailed_gltf_with_root(
+            &root,
+            &read,
+            astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+        )
+        .expect("sibling uris");
+        assert_eq!(buffers.len(), 1);
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert_eq!(images.len(), 2);
+        assert_eq!((images[0].width, images[0].height), (1, 1));
+        assert_eq!(&images[0].pixels[..4], &[9, 8, 7, 6]);
+        assert_eq!((images[1].width, images[1].height), (1, 1));
+        let meshes = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect("load keeps the jailed siblings");
+        assert!(meshes.is_empty());
+    }
+
+    /// `load_gltf` must not open a FIFO. `read_gltf_container` stats first.
+    #[cfg(unix)]
+    #[test]
+    fn load_gltf_rejects_a_fifo_before_open() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("pipe.gltf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success(), "mkfifo");
+        let started = std::time::Instant::now();
+        let err = load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect_err("fifo");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "load_gltf opened the fifo"
+        );
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
+    }
+
+    const HOSTILE_URIS: &[&str] = &[
+        "file:///etc/passwd",
+        "file:/%2e%2e/x",
+        "%2e%2e/x",
+        "../x",
+        "/abs",
+        r"C:\x",
+    ];
+
+    #[test]
+    fn hostile_uris_are_rejected_and_a_relative_uri_loads() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("box.bin"), b"box!").expect("bin");
+        for uri in HOSTILE_URIS {
+            let path = dir.path().join("hostile.gltf");
+            let doc = serde_json::json!({
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": uri, "byteLength": 4}]
+            });
+            std::fs::write(&path, serde_json::to_vec(&doc).expect("json")).expect("write");
+            let err = load_gltf(
+                &path,
+                &GltfOptions {
+                    generate_tangents: false,
+                },
+            )
+            .expect_err(uri);
+            let msg = format!("{err:#}").to_lowercase();
+            assert!(
+                msg.contains("traversal") || msg.contains("rejected"),
+                "{uri}: {msg}"
+            );
+        }
+        let path = dir.path().join("ok.gltf");
+        std::fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"box.bin","byteLength":4}]}"#,
+        )
+        .expect("write");
+        load_gltf(
+            &path,
+            &GltfOptions {
+                generate_tangents: false,
+            },
+        )
+        .expect("relative uri");
     }
 }
 

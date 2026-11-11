@@ -370,18 +370,13 @@ fn process_texture(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf
 }
 
 fn jail_gltf_uri(base: &Path, uri: &str) -> Result<()> {
-    if uri.starts_with("data:") {
-        return Ok(());
-    }
-    let path_part = uri.split('?').next().unwrap_or(uri);
-    astraweave_security::path::safe_under(base, Path::new(path_part))
-        .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-    Ok(())
+    astraweave_asset::gltf_external::jail_gltf_uri(base, uri).map(|_| ())
 }
 
-fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
+fn read_jailed_gltf(path: &Path) -> Result<(Vec<u8>, astraweave_asset::gltf_external::ModelRoot)> {
+    let (bytes, root) = astraweave_asset::gltf_loader::read_gltf_container_with_root(path)?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = gltf::Gltf::open(path)?;
+    let doc = gltf::Gltf::from_slice(&bytes)?;
     for buffer in doc.buffers() {
         if let gltf::buffer::Source::Uri(uri) = buffer.source() {
             jail_gltf_uri(base, uri)?;
@@ -392,7 +387,30 @@ fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
             jail_gltf_uri(base, uri)?;
         }
     }
-    Ok(())
+    astraweave_asset::gltf_external::reject_external_uri_count(&doc)?;
+    Ok((bytes, root))
+}
+
+fn reject_escaping_gltf_uris(path: &Path) -> Result<()> {
+    read_jailed_gltf(path).map(|_| ())
+}
+
+#[cfg(test)]
+thread_local! {
+    static AFTER_MODEL_READ: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
+}
+
+fn after_model_read() {
+    #[cfg(test)]
+    if let Some(hook) = AFTER_MODEL_READ.with(|cell| cell.borrow_mut().take()) {
+        hook();
+    }
+}
+
+#[cfg(test)]
+fn on_after_model_read(hook: Box<dyn FnOnce()>) {
+    AFTER_MODEL_READ.with(|cell| *cell.borrow_mut() = Some(hook));
 }
 
 fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> {
@@ -407,10 +425,18 @@ fn process_model(src: &Path, out_root: &str, compress: bool) -> Result<PathBuf> 
     if src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("gltf".into())
         || src.extension().map(|e| e.to_string_lossy().to_lowercase()) == Some("glb".into())
     {
-        reject_escaping_gltf_uris(src)?;
-        let (_doc, _buffers, _images) = gltf::import(src)?;
-        // Minimal example: just copy the glTF for now; swap to a meshbin writer later
-        fs::copy(src, &out)?;
+        let (bytes, root) = read_jailed_gltf(src)?;
+        // One load opens the model directory once, and that handle is used for
+        // the container read, every sibling URI, and every image URI.
+        let (_document, _buffers, _images) =
+            astraweave_asset::gltf_external::load_jailed_gltf_with_root(
+                &root,
+                &bytes,
+                astraweave_asset::gltf_loader::MAX_GLB_CONTAINER_BYTES,
+            )?;
+        // Write the container bytes already read. Do not open `src` again.
+        after_model_read();
+        fs::write(&out, &bytes)?;
         if compress {
             compress_file(&out, &processed)?;
             fs::remove_file(&out)?;
@@ -705,6 +731,223 @@ mod gltf_jail_tests {
             msg.contains("traversal") || msg.contains("rejected"),
             "{msg}"
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cli_short_glb_declared_length_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-short-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        let src = dir.join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        fs::write(&src, &bytes).expect("write");
+        let err = process_model(&src, dir.to_str().unwrap(), false).expect_err("short header");
+        let msg = err.to_string();
+        assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cli_external_bin_and_image_are_copied() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-ext-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        fs::write(dir.join("box.bin"), b"box!").expect("bin");
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]))
+            .save(dir.join("tex.png"))
+            .expect("png");
+        let src = dir.join("hero.gltf");
+        fs::write(
+            &src,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "box.bin", "byteLength": 4}],
+                "images": [{"uri": "tex.png"}]
+            }"#,
+        )
+        .expect("gltf");
+        let bytes = fs::read(&src).expect("read");
+        let slice_err = gltf::import_slice(&bytes).expect_err("slice import has no base");
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let out = dir.join("out");
+        let copied = process_model(&src, out.to_str().unwrap(), false).expect("cook");
+        assert!(copied.is_file(), "cook did not copy {}", copied.display());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `aw_asset_cli cook` is the path CI greybox does not run. It must import
+    /// a sibling `.bin` instead of stopping in `gltf::import_slice`.
+    #[test]
+    fn cli_cook_loads_an_external_bin() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-cook-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let src_dir = dir.join("src");
+        let out_dir = dir.join("out");
+        fs::create_dir_all(&src_dir).expect("src");
+        fs::write(src_dir.join("buf.bin"), b"box!").expect("bin");
+        image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]))
+            .save(src_dir.join("tex.png"))
+            .expect("png");
+        let src = src_dir.join("tri.gltf");
+        fs::write(
+            &src,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "buf.bin", "byteLength": 4}],
+                "images": [{"uri": "tex.png"}]
+            }"#,
+        )
+        .expect("gltf");
+        let bytes = fs::read(&src).expect("read");
+        let slice_err = gltf::import_slice(&bytes).expect_err("slice import has no base");
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let cfg_path = dir.join("pipeline.toml");
+        let src_toml = src_dir.display().to_string().replace('\\', "/");
+        let out_toml = out_dir.display().to_string().replace('\\', "/");
+        fs::write(
+            &cfg_path,
+            format!(
+                "source = \"{src_toml}\"\noutput = \"{out_toml}\"\ncompress = false\nvalidate = false\n\n[[rules]]\nkind = \"model\"\nglob = \"*.gltf\"\n"
+            ),
+        )
+        .expect("toml");
+        cook_pipeline(cfg_path.to_str().unwrap()).expect("cook external bin");
+        let cooked = out_dir.join("tri.meshbin");
+        assert!(cooked.is_file(), "cook did not write {}", cooked.display());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `cook` reads each model with `process_model` → `read_jailed_gltf`.
+    /// A FIFO must fail that stat check. `cook_pipeline` also stats the tree
+    /// while scanning, so this test calls the model reader cook uses.
+    #[cfg(unix)]
+    #[test]
+    fn cli_cook_model_reader_rejects_a_fifo_before_open() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-fifo-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("dir");
+        let pipe = dir.join("pipe.gltf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success(), "mkfifo");
+        let out = dir.join("out");
+        let started = std::time::Instant::now();
+        let err = process_model(&pipe, out.to_str().unwrap(), false).expect_err("fifo");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "process_model opened the fifo"
+        );
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cli_oversized_declared_length_is_rejected() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-over-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("tempdir");
+        let src = dir.join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        fs::write(&src, &bytes).expect("write");
+        let err = process_model(&src, dir.to_str().unwrap(), false).expect_err("oversized header");
+        let msg = err.to_string();
+        assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    const HOSTILE_URIS: &[&str] = &[
+        "file:///etc/passwd",
+        "file:/%2e%2e/x",
+        "%2e%2e/x",
+        "../x",
+        "/abs",
+        r"C:\x",
+    ];
+
+    #[test]
+    fn cli_hostile_uris_are_rejected_and_a_relative_uri_cooks() {
+        let dir = std::env::temp_dir().join(format!("aw-gltf-hostile-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("tempdir");
+        fs::write(dir.join("box.bin"), b"box!").expect("bin");
+        for uri in HOSTILE_URIS {
+            let src = dir.join("hostile.gltf");
+            let doc = serde_json::json!({
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": uri, "byteLength": 4}]
+            });
+            fs::write(&src, serde_json::to_vec(&doc).expect("json")).expect("write");
+            let out = dir.join("out");
+            let _ = fs::remove_dir_all(&out);
+            let err = process_model(&src, out.to_str().unwrap(), false).expect_err(uri);
+            let msg = format!("{err:#}").to_lowercase();
+            assert!(
+                msg.contains("traversal") || msg.contains("rejected"),
+                "{uri}: {msg}"
+            );
+            assert!(
+                !out.join("hostile.meshbin").exists(),
+                "{uri} wrote a meshbin"
+            );
+        }
+        let src = dir.join("ok.gltf");
+        fs::write(
+            &src,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"box.bin","byteLength":4}]}"#,
+        )
+        .expect("write");
+        let out = dir.join("ok-out");
+        let copied = process_model(&src, out.to_str().unwrap(), false).expect("relative");
+        assert!(copied.is_file(), "{}", copied.display());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn cook_writes_the_bytes_already_read() {
+        struct Clear;
+        impl Drop for Clear {
+            fn drop(&mut self) {
+                AFTER_MODEL_READ.with(|cell| *cell.borrow_mut() = None);
+            }
+        }
+        let _clear = Clear;
+        let dir = std::env::temp_dir().join(format!("aw-gltf-bytes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).expect("tempdir");
+        fs::write(dir.join("mesh.bin"), b"mesh").expect("bin");
+        let src = dir.join("scene.gltf");
+        let original =
+            br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"mesh.bin","byteLength":4}]}"#;
+        fs::write(&src, original).expect("gltf");
+        let src_hook = src.clone();
+        on_after_model_read(Box::new(move || {
+            fs::write(
+                &src_hook,
+                br#"{"asset":{"version":"2.0"},"buffers":[{"uri":"mesh.bin","byteLength":4}],"extras":{"replaced":true}}"#,
+            )
+            .expect("replace");
+        }));
+        let out = dir.join("out");
+        let written = process_model(&src, out.to_str().unwrap(), false).expect("cook");
+        assert_eq!(fs::read(&written).expect("read"), original);
         let _ = fs::remove_dir_all(&dir);
     }
 }

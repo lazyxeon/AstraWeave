@@ -35,6 +35,10 @@ gltf = { version = "1.4", optional = true, features = [
 # Optional: Blender .blend file import via subprocess conversion
 astraweave-blend = { path = "../crates/astraweave-blend", optional = true }
 
+[target.'cfg(unix)'.dependencies]
+# Safe openat. On Windows the crate denies unsafe and bounded_open has the calls.
+rustix = { version = "1.1.2", default-features = false, features = ["std", "fs"] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs"] }
 tempfile = "3"

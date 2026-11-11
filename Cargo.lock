@@ -252,6 +252,7 @@ version = "0.4.0"
 dependencies = [
  "anyhow",
  "astraweave-ai",
+ "astraweave-asset",
  "astraweave-camera",
  "astraweave-causality",
  "astraweave-destruction",
@@ -535,6 +536,7 @@ dependencies = [
  "meshopt",
  "notify",
  "ron 0.11.0",
+ "rustix 1.1.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",

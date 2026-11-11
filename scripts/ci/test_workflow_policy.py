@@ -664,6 +664,47 @@ class WorkflowPolicyTest(unittest.TestCase):
             _kind, package, binary = stripped.split(" ", 2)
             self.assertIn(f"package(={package})", linux)
             self.assertIn(f"binary(={binary})", linux)
+        # cfg(windows) tests live in the astraweave-asset lib. The Windows
+        # archive compiles them, and the partition profile must not drop them.
+        self.assertIn("AW_CI_PROFILE: ci-pr-archive", windows_job)
+        self.assertIn("AW_CI_PARTITION: count:", windows_job)
+        self.assertNotIn("continue-on-error", windows_job)
+        archive = nextest.split("[profile.ci-pr-archive]", 1)[1].split("\n[", 1)[0]
+        self.assertNotIn("astraweave-asset", archive)
+        self.assertNotIn("bounded_open", archive)
+        for name in ("archive_only_skips.txt", "deferred_pr_tests.txt", "linux_archive_skips.txt"):
+            body = (ROOT / "scripts" / "ci" / name).read_text(encoding="utf-8")
+            self.assertNotIn("astraweave-asset", body)
+            self.assertNotIn("bounded_open", body)
+
+    def test_asset_macos_job_is_required_on_asset_pull_requests(self) -> None:
+        text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("\n  test-asset-macos:\n", text)
+        job = text.split("\n  test-asset-macos:\n", 1)[1].split("\n  pr-rust-checks:\n", 1)[0]
+        self.assertIn("name: Test astraweave-asset (macos)", text)
+        self.assertIn("runs-on: macos-latest", job)
+        self.assertIn("github.event_name == 'pull_request'", job)
+        self.assertIn("cargo test --locked -p astraweave-asset", job)
+        self.assertRegex(job, r"uses: actions/checkout@[0-9a-f]{40}( # v7)?")
+        self.assertIn("persist-credentials: false", job)
+        self.assertIn(
+            "needs: [changes, gate, test-linux-build, test-linux, test-windows, msrv, test-asset-macos]",
+            text,
+        )
+        self.assertIn('[ "$macos" = "success" ]', text)
+        self.assertIn("astraweave-asset", job)
+
+    def test_asset_windows_mutant_is_a_scoped_runtime_kill(self) -> None:
+        text = (WORKFLOWS / "asset-windows-mutant.yml").read_text(encoding="utf-8")
+        self.assertIn("astraweave-asset/**", text)
+        self.assertIn("persist-credentials: false", text)
+        self.assertEqual(text.count("persist-credentials: false"), 2)
+        self.assertNotIn("continue-on-error", text)
+        self.assertNotIn("exit \"$status\"", text)
+        self.assertNotIn("a green run means", text.lower())
+        self.assertEqual(text.count("test result: FAILED"), 5)
+        self.assertIn("[1-9][0-9]* failed", text)
+        self.assertIn("workflow_dispatch:", text)
 
     def test_deferred_pr_filter_matches_the_list_and_skips_replay(self) -> None:
         listed = []

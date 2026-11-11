@@ -1,4 +1,5 @@
-#![forbid(unsafe_code)]
+#![cfg_attr(windows, deny(unsafe_code))]
+#![cfg_attr(not(windows), forbid(unsafe_code))]
 use anyhow::Result;
 use notify::Watcher;
 use serde::{Deserialize, Serialize};
@@ -300,7 +301,6 @@ pub mod blend_import {
 #[cfg(feature = "gltf")]
 pub mod gltf_loader {
     use anyhow::{anyhow, bail, Context, Result};
-    use base64::Engine as _;
     use gltf::Gltf;
 
     /// Minimal glTF loader prototype: validates header and detects JSON vs BIN format.
@@ -427,7 +427,7 @@ pub mod gltf_loader {
         // Parse GLB container
         let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-        let doc = Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?;
+        let doc = read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
 
         // Build buffer lookup (only supports embedded BIN at index 0 or single buffer)
@@ -495,7 +495,7 @@ pub mod gltf_loader {
         // Parse GLB container
         let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-        let doc = Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?;
+        let doc = read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
 
         // Build buffer lookup
@@ -576,11 +576,15 @@ pub mod gltf_loader {
 
     /// Load first mesh and minimal PBR material (baseColor factor/texture, metallic/roughness) from either GLB or GLTF JSON bytes.
     /// Supports GLB embedded BIN and GLTF JSON with data: URIs for buffers/images.
-    pub fn load_first_mesh_and_material(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
+    /// `base` is the directory file URIs are read from.
+    pub fn load_first_mesh_and_material(
+        base: &std::path::Path,
+        bytes: &[u8],
+    ) -> Result<(MeshData, MaterialData)> {
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            load_from_glb(bytes)
+            load_from_glb(base, bytes)
         } else {
-            load_from_gltf_json(bytes)
+            load_from_gltf_json(base, bytes)
         }
     }
 
@@ -588,15 +592,303 @@ pub mod gltf_loader {
     mod short_glb_tests {
         use super::*;
 
+        fn assert_short_header(err: anyhow::Error) {
+            let msg = err.to_string();
+            assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
+        }
+
         #[test]
         fn short_glb_declared_length_is_an_error() {
             let mut bytes = b"glTF".to_vec();
             bytes.extend_from_slice(&2u32.to_le_bytes());
             bytes.extend_from_slice(&8u32.to_le_bytes());
-            let err =
-                load_first_mesh_and_material(&bytes).expect_err("short header must not panic");
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+                .expect_err("short header must not panic");
+            assert_short_header(err);
+        }
+
+        /// Outer container is long enough for `Glb::from_slice`. The JSON
+        /// chunk is itself a 12-byte GLB header with declared length 8, which
+        /// `Gltf::from_slice` used to hand to `Glb::from_slice`.
+        #[test]
+        fn json_chunk_short_glb_header_is_an_error() {
+            let mut inner = b"glTF".to_vec();
+            inner.extend_from_slice(&2u32.to_le_bytes());
+            inner.extend_from_slice(&8u32.to_le_bytes());
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&32u32.to_le_bytes());
+            bytes.extend_from_slice(&(inner.len() as u32).to_le_bytes());
+            bytes.extend_from_slice(b"JSON");
+            bytes.extend_from_slice(&inner);
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+                .expect_err("json chunk short header must not panic");
+            assert_short_header(err);
+        }
+
+        /// Declared length 8, with a parseable JSON chunk after the header so
+        /// a size check of 20 bytes would still call `Glb::from_reader`.
+        #[test]
+        fn padded_short_glb_header_is_an_error() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&8u32.to_le_bytes());
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(b"JSON");
+            bytes.extend_from_slice(b"{}");
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+                .expect_err("padded header must not panic");
+            assert_short_header(err);
+
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("short.glb");
+            std::fs::write(&path, &bytes).expect("write");
+            let err = reject_short_glb_file(&path).expect_err("file header");
+            assert_short_header(err);
+        }
+
+        /// 22 bytes on disk, declared length 2_000_012. `Glb::from_reader`
+        /// would allocate 2_000_000 bytes and then hit EOF.
+        #[test]
+        fn oversized_declared_length_is_an_error() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(b"JSON");
+            bytes.extend_from_slice(b"{}");
+            assert_eq!(bytes.len(), 22);
+            let err = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+                .expect_err("oversized declared length must not allocate");
             let msg = err.to_string();
-            assert!(msg.contains("shorter than the 12-byte header"), "{msg}");
+            assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("over.glb");
+            std::fs::write(&path, &bytes).expect("write");
+            let err = reject_short_glb_file(&path).expect_err("file length");
+            let msg = err.to_string();
+            assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+        }
+
+        /// Declared length equal to the file is the bytes `from_reader` may allocate.
+        #[test]
+        fn declared_length_matching_the_file_is_not_rejected() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            let declared_at = bytes.len();
+            bytes.extend_from_slice(&0u32.to_le_bytes());
+            bytes.extend_from_slice(&4u32.to_le_bytes());
+            bytes.extend_from_slice(b"JSON");
+            bytes.extend_from_slice(b"{}  ");
+            let declared = bytes.len() as u32;
+            bytes[declared_at..declared_at + 4].copy_from_slice(&declared.to_le_bytes());
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("fit.glb");
+            std::fs::write(&path, &bytes).expect("write");
+            reject_short_glb_file(&path).expect("declared length matches the file");
+        }
+
+        /// `st_size` above the container cap is rejected before the read.
+        /// A sparse file can set that length without storing the payload.
+        #[test]
+        fn container_longer_than_the_cap_is_an_error() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("sparse.glb");
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&12u32.to_le_bytes());
+            std::fs::write(&path, &bytes).expect("write");
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .expect("open");
+            let len = MAX_GLB_CONTAINER_BYTES + 1;
+            file.set_len(len).expect("set_len");
+            drop(file);
+            let err = reject_short_glb_file(&path).expect_err("over the cap");
+            let msg = err.to_string();
+            assert!(
+                msg.contains(&len.to_string())
+                    && msg.contains(&MAX_GLB_CONTAINER_BYTES.to_string()),
+                "{msg}"
+            );
+        }
+
+        /// A FIFO `open` blocks until a peer connects. Stat must reject it first.
+        #[cfg(unix)]
+        #[test]
+        fn fifo_is_rejected_before_open() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("pipe.glb");
+            let status = std::process::Command::new("mkfifo")
+                .arg(&path)
+                .status()
+                .expect("mkfifo");
+            assert!(status.success(), "mkfifo");
+            let path_reject = path.clone();
+            crate::bounded_open::assert_not_regular_without_blocking(move || {
+                reject_short_glb_file(&path_reject).map(|_| ())
+            });
+            let path_read = path.clone();
+            crate::bounded_open::assert_not_regular_without_blocking(move || {
+                read_gltf_container(&path_read).map(|_| ())
+            });
+        }
+
+        /// `Read::read` may return one byte. The declared length is still checked.
+        struct OneByteReader<'a> {
+            data: &'a [u8],
+            pos: usize,
+        }
+
+        impl std::io::Read for OneByteReader<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.pos >= self.data.len() || buf.is_empty() {
+                    return Ok(0);
+                }
+                buf[0] = self.data[self.pos];
+                self.pos += 1;
+                Ok(1)
+            }
+        }
+
+        #[test]
+        fn one_byte_reads_still_see_the_declared_length() {
+            let mut bytes = b"glTF".to_vec();
+            bytes.extend_from_slice(&2u32.to_le_bytes());
+            bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+            let mut reader = OneByteReader {
+                data: &bytes,
+                pos: 0,
+            };
+            let err = reject_glb_reader(&mut reader, 22).expect_err("one-byte reads");
+            let msg = err.to_string();
+            assert!(msg.contains("exceeds the 22 bytes available"), "{msg}");
+
+            let mut tiny = OneByteReader {
+                data: b"glTF",
+                pos: 0,
+            };
+            reject_glb_reader(&mut tiny, 4).expect("eof before a 12-byte header");
+
+            let mut fit = b"glTF".to_vec();
+            fit.extend_from_slice(&2u32.to_le_bytes());
+            fit.extend_from_slice(&12u32.to_le_bytes());
+            let mut fit_reader = OneByteReader { data: &fit, pos: 0 };
+            reject_glb_reader(&mut fit_reader, 12).expect("declared length equals the prefix");
+        }
+
+        fn minimal_glb(json: &str) -> Vec<u8> {
+            let mut padded = json.as_bytes().to_vec();
+            while padded.len() % 4 != 0 {
+                padded.push(b' ');
+            }
+            let total = (12 + 8 + padded.len()) as u32;
+            let mut out = Vec::new();
+            out.extend_from_slice(b"glTF");
+            out.extend_from_slice(&2u32.to_le_bytes());
+            out.extend_from_slice(&total.to_le_bytes());
+            out.extend_from_slice(&(padded.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"JSON");
+            out.extend_from_slice(&padded);
+            out
+        }
+
+        #[test]
+        fn glb_image_uri_count_stops_at_the_cap() {
+            let mut uris = Vec::new();
+            for index in 0..64 {
+                uris.push(format!(r#"{{"uri":"i{index}.png"}}"#));
+            }
+            let within = format!(
+                r#"{{"asset":{{"version":"2.0"}},"images":[{}]}}"#,
+                uris.join(",")
+            );
+            let err = load_from_glb(std::path::Path::new("."), &minimal_glb(&within))
+                .expect_err("64 image uris");
+            assert!(!err.to_string().contains("too many"), "{err}");
+            uris.push(r#"{"uri":"extra.png"}"#.to_string());
+            let over = format!(
+                r#"{{"asset":{{"version":"2.0"}},"images":[{}]}}"#,
+                uris.join(",")
+            );
+            let err =
+                load_from_glb(std::path::Path::new("."), &minimal_glb(&over)).expect_err("65");
+            assert!(err.to_string().contains("too many"), "{err}");
+        }
+
+        fn one_pixel_png() -> Vec<u8> {
+            let image = image::RgbaImage::from_pixel(1, 1, image::Rgba([9, 8, 7, 6]));
+            let mut png = Vec::new();
+            image
+                .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+                .expect("png");
+            png
+        }
+
+        fn decode_two_images(
+            dir: &std::path::Path,
+        ) -> (
+            crate::gltf_external::ModelRoot,
+            crate::gltf_external::ExternalBudget,
+        ) {
+            let png = one_pixel_png();
+            std::fs::write(dir.join("a.png"), &png).expect("a");
+            std::fs::write(dir.join("b.png"), &png).expect("b");
+            let (root, mut budget) = open_model_budget(dir).expect("open");
+            let json = br#"{"asset":{"version":"2.0"},"images":[{"uri":"a.png"},{"uri":"b.png"}]}"#;
+            let gltf::Gltf { document, .. } = gltf::Gltf::from_slice(json).expect("parse");
+            let images: Vec<_> = document.images().collect();
+            let first =
+                decode_image_from_gltf(&root, images[0].source(), None, &mut budget).expect("a");
+            let second =
+                decode_image_from_gltf(&root, images[1].source(), None, &mut budget).expect("b");
+            assert_eq!(first.width, 1);
+            assert_eq!(second.width, 1);
+            assert_eq!(first.rgba8, [9, 8, 7, 6]);
+            assert_eq!(second.rgba8, [9, 8, 7, 6]);
+            (root, budget)
+        }
+
+        struct ClearRoot;
+        impl Drop for ClearRoot {
+            fn drop(&mut self) {
+                crate::bounded_open::reset_root_opens();
+            }
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn image_reads_share_the_directory_handle() {
+            let _guard = ClearRoot;
+            crate::bounded_open::reset_root_opens();
+            let parent = tempfile::tempdir().expect("parent");
+            let jail = parent.path().join("jail");
+            std::fs::create_dir(&jail).expect("jail");
+            let outside = parent.path().join("outside");
+            std::fs::create_dir(&outside).expect("outside");
+            std::fs::write(outside.join("a.png"), b"not-a-png").expect("other a");
+            std::fs::write(outside.join("b.png"), b"not-a-png").expect("other b");
+            let jail_hook = jail.clone();
+            let outside_hook = outside.clone();
+            let parked = parent.path().join("parked");
+            crate::bounded_open::after_root_open(Box::new(move || {
+                std::fs::rename(&jail_hook, &parked).expect("park");
+                std::os::unix::fs::symlink(&outside_hook, &jail_hook).expect("swap");
+            }));
+            let (_root, _budget) = decode_two_images(&jail);
+            assert_eq!(crate::bounded_open::root_open_count(), 1);
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn image_reads_use_one_directory_open() {
+            let _guard = ClearRoot;
+            crate::bounded_open::reset_root_opens();
+            let dir = tempfile::tempdir().expect("tempdir");
+            let (_root, _budget) = decode_two_images(dir.path());
+            assert_eq!(crate::bounded_open::root_open_count(), 1);
         }
     }
 
@@ -607,7 +899,7 @@ pub mod gltf_loader {
         mut decode_image: F,
     ) -> Result<MaterialData>
     where
-        F: FnMut(gltf::image::Source) -> Result<ImageData>,
+        F: FnMut(&gltf::Image<'_>) -> Result<ImageData>,
     {
         let mut mat = MaterialData::default();
         let pbr = mat_g.pbr_metallic_roughness();
@@ -617,21 +909,21 @@ pub mod gltf_loader {
         mat.metallic_factor = pbr.metallic_factor();
         mat.roughness_factor = pbr.roughness_factor();
         if let Some(tex) = pbr.base_color_texture() {
-            mat.base_color_texture = Some(decode_image(tex.texture().source().source())?);
+            mat.base_color_texture = Some(decode_image(&tex.texture().source())?);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
-            mat.metallic_roughness_texture = Some(decode_image(tex.texture().source().source())?);
+            mat.metallic_roughness_texture = Some(decode_image(&tex.texture().source())?);
         }
 
         // Normal map
         if let Some(n) = mat_g.normal_texture() {
-            mat.normal_texture = Some(decode_image(n.texture().source().source())?);
+            mat.normal_texture = Some(decode_image(&n.texture().source())?);
         }
 
         // Emissive
         mat.emissive_factor = mat_g.emissive_factor();
         if let Some(tex) = mat_g.emissive_texture() {
-            mat.emissive_texture = Some(decode_image(tex.texture().source().source())?);
+            mat.emissive_texture = Some(decode_image(&tex.texture().source())?);
         }
         // KHR_materials_emissive_strength
         if let Some(strength) = mat_g.emissive_strength() {
@@ -641,7 +933,7 @@ pub mod gltf_loader {
         // Occlusion
         if let Some(occ) = mat_g.occlusion_texture() {
             mat.occlusion_strength = occ.strength();
-            mat.occlusion_texture = Some(decode_image(occ.texture().source().source())?);
+            mat.occlusion_texture = Some(decode_image(&occ.texture().source())?);
         }
 
         // Alpha mode
@@ -684,23 +976,129 @@ pub mod gltf_loader {
         Ok(mat)
     }
 
-    /// gltf 1.4.1 subtracts the 12-byte header from the declared length and
-    /// panics when that length is smaller. Refuse that header before the call.
-    fn read_glb(bytes: &[u8]) -> Result<gltf::binary::Glb<'_>> {
+    /// gltf 1.4.1 `Glb::from_slice` panics in debug when a `glTF` header's
+    /// declared length is below 12. `Gltf::from_slice` calls that when the
+    /// slice starts with `glTF`, including a GLB JSON chunk.
+    /// `Glb::from_reader` (used by `Gltf::open` and `gltf::import`) subtracts
+    /// 12 as `u32` and allocates that many bytes before `read_exact`. A
+    /// declared length below 12 wraps to about 4 GiB. A declared length above
+    /// the bytes on hand still allocates `declared - 12` and can return after
+    /// the short read. `available` is the container length, header included.
+    fn reject_declared_glb_length(bytes: &[u8], available: u64) -> Result<()> {
         if bytes.len() >= 12 && bytes.starts_with(b"glTF") {
             let declared = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
             if (declared as usize) < 12 {
                 bail!("GLB declared length {declared} is shorter than the 12-byte header");
             }
+            if u64::from(declared) > available {
+                bail!("GLB declared length {declared} exceeds the {available} bytes available");
+            }
         }
+        Ok(())
+    }
+
+    /// Refuse a `glTF` header whose declared length is below 12 or past `bytes`.
+    pub fn reject_short_glb_header(bytes: &[u8]) -> Result<()> {
+        reject_declared_glb_length(bytes, bytes.len() as u64)
+    }
+
+    /// Read until `buf` is full or the reader hits EOF.
+    ///
+    /// One `Read::read` can return fewer than 12 bytes while the file is
+    /// longer. `read_exact` reports that short file as `UnexpectedEof` and
+    /// does not say how many bytes landed, so a `.gltf` that ends before the
+    /// header would become an error. This loop still returns `Ok` for that
+    /// file, and it assembles all 12 bytes when each `read` returns one.
+    fn read_header_or_eof(
+        reader: &mut impl std::io::Read,
+        buf: &mut [u8],
+    ) -> std::io::Result<usize> {
+        let mut filled = 0;
+        while filled < buf.len() {
+            match reader.read(&mut buf[filled..]) {
+                Ok(0) => break,
+                Ok(n) => filled += n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(filled)
+    }
+
+    fn reject_glb_reader(reader: &mut impl std::io::Read, available: u64) -> Result<()> {
+        let mut header = [0u8; 12];
+        let n = read_header_or_eof(reader, &mut header).context("read GLB header")?;
+        reject_declared_glb_length(&header[..n], available)
+    }
+
+    /// `Glb::from_reader` allocates `declared - 12` before it reads the file.
+    /// A sparse file can report that length in `st_size` without storing it.
+    /// [`read_gltf_container`] stops at this many bytes and callers parse the
+    /// slice, so that allocation is the bytes already read.
+    pub const MAX_GLB_CONTAINER_BYTES: u64 = 256 * 1024 * 1024;
+
+    /// Read a glTF container without letting `st_size` choose the allocation.
+    /// The slice is what [`reject_short_glb_header`] checks. Callers parse it
+    /// with `gltf_external::load_jailed_gltf_with_root`, which reads each URI
+    /// from the directory handle returned here, instead of `Gltf::open` and
+    /// `gltf::import`.
+    ///
+    /// One load opens the model directory once, and that handle is used for the
+    /// container read, every sibling URI, and every image URI. The model file
+    /// is resolved once, and its parent is opened from that path without
+    /// resolving the parent again. A symlink at the file loads. URI components
+    /// are not resolved that way. A hard-linked model is deliberately refused.
+    pub fn read_gltf_container(path: &std::path::Path) -> Result<Vec<u8>> {
+        Ok(read_gltf_container_with_root(path)?.0)
+    }
+
+    /// [`read_gltf_container`] plus the directory handle from that open.
+    ///
+    /// One load opens the model directory once, and that handle is used for the
+    /// container read, every sibling URI, and every image URI.
+    pub fn read_gltf_container_with_root(
+        path: &std::path::Path,
+    ) -> Result<(Vec<u8>, crate::gltf_external::ModelRoot)> {
+        let (bytes, opened) = crate::bounded_open::read_path(path, MAX_GLB_CONTAINER_BYTES, "GLB")?;
+        reject_glb_reader(&mut bytes.as_slice(), bytes.len() as u64)?;
+        Ok((bytes, crate::gltf_external::ModelRoot::from_opened(opened)))
+    }
+
+    /// Read a model file through [`crate::bounded_open::read_path`].
+    ///
+    /// The returned handle is the directory opened for that read. One load
+    /// opens the model directory once, and that handle is used for the
+    /// container read, every sibling URI, and every image URI.
+    pub fn read_model_file(
+        path: &std::path::Path,
+        max_bytes: u64,
+    ) -> Result<(Vec<u8>, crate::gltf_external::ModelRoot)> {
+        let (bytes, opened) = crate::bounded_open::read_path(path, max_bytes, "model")?;
+        Ok((bytes, crate::gltf_external::ModelRoot::from_opened(opened)))
+    }
+
+    /// Same check as [`reject_short_glb_header`] on the bytes
+    /// [`read_gltf_container`] actually read.
+    pub fn reject_short_glb_file(path: &std::path::Path) -> Result<()> {
+        read_gltf_container(path).map(|_| ())
+    }
+
+    fn read_glb(bytes: &[u8]) -> Result<gltf::binary::Glb<'_>> {
+        reject_short_glb_header(bytes)?;
         gltf::binary::Glb::from_slice(bytes).context("Invalid GLB container")
     }
 
-    fn load_from_glb(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
+    fn read_gltf(bytes: &[u8], parse_context: &'static str) -> Result<Gltf> {
+        reject_short_glb_header(bytes)?;
+        Gltf::from_slice(bytes).context(parse_context)
+    }
+
+    fn load_from_glb(base: &std::path::Path, bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
         use gltf::buffer::Data as BufferData;
         let glb = read_glb(bytes)?;
         let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-        let doc = Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?;
+        let doc = read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?;
+        crate::gltf_external::reject_external_uri_count(&doc)?;
         let bin = glb.bin.context("GLB missing BIN chunk")?;
 
         // Buffers
@@ -745,10 +1143,11 @@ pub mod gltf_loader {
             gltf::mesh::util::ReadIndices::U8(_) => bail!("u8 indices unsupported"),
         };
 
+        let (root, mut budget) = open_model_budget(base)?;
         let mat = {
             let mat_g = prim.material();
-            extract_extended_material(&mat_g, |source| {
-                decode_image_from_gltf(source, Some(&buffers))
+            extract_extended_material(&mat_g, |image| {
+                decode_image_from_gltf(&root, image.source(), Some(&buffers), &mut budget)
             })?
         };
 
@@ -764,17 +1163,12 @@ pub mod gltf_loader {
         ))
     }
 
-    fn load_from_gltf_json(bytes: &[u8]) -> Result<(MeshData, MaterialData)> {
-        let doc = Gltf::from_slice(bytes).context("Parse .gltf JSON")?;
-
-        // Build buffer sources that may include data: URIs
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        for b in doc.buffers() {
-            match b.source() {
-                gltf::buffer::Source::Bin => bail!(".gltf JSON should not have BIN source"),
-                gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-            }
-        }
+    fn load_from_gltf_json(
+        base: &std::path::Path,
+        bytes: &[u8],
+    ) -> Result<(MeshData, MaterialData)> {
+        let (root, mut budget) = open_model_budget(base)?;
+        let (doc, buffers, images) = load_json_parts(&root, bytes, &mut budget)?;
 
         let mesh = doc.meshes().next().ok_or_else(|| anyhow!("No meshes"))?;
         let prim = mesh
@@ -808,8 +1202,10 @@ pub mod gltf_loader {
         };
 
         let prim_mat = prim.material();
-        let mat =
-            extract_extended_material(&prim_mat, |source| decode_image_from_gltf(source, None))?;
+        let mat = extract_extended_material(&prim_mat, |image| {
+            let loaded = images.get(image.index()).context("gltf image index")?;
+            rgba_from_gltf_image(loaded)
+        })?;
 
         Ok((
             MeshData {
@@ -823,53 +1219,180 @@ pub mod gltf_loader {
         ))
     }
 
-    fn load_uri_bytes(uri: &str) -> Result<Vec<u8>> {
-        if let Some(rest) = uri.strip_prefix("data:") {
-            // data:[<mediatype>][;base64],<data>
-            let parts: Vec<&str> = rest.split(',').collect();
-            if parts.len() != 2 {
-                bail!("Invalid data URI")
-            }
-            let data = base64::engine::general_purpose::STANDARD.decode(parts[1])?;
-            Ok(data)
-        } else {
-            let base = std::env::current_dir().context("asset jail base")?;
-            let path = astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
-                .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-            let bytes = std::fs::read(&path).with_context(|| format!("Read uri {uri}"))?;
-            Ok(bytes)
+    fn open_model_budget(
+        base: &std::path::Path,
+    ) -> Result<(
+        crate::gltf_external::ModelRoot,
+        crate::gltf_external::ExternalBudget,
+    )> {
+        Ok((
+            crate::gltf_external::ModelRoot::open(base)?,
+            crate::gltf_external::ExternalBudget::new(MAX_GLB_CONTAINER_BYTES),
+        ))
+    }
+
+    /// JSON glTF buffers and images, with the same caps as [`crate::gltf_external::load_jailed_gltf`].
+    ///
+    /// `root` is the directory already opened for this load. This function does
+    /// not open it again.
+    fn load_json_parts(
+        root: &crate::gltf_external::ModelRoot,
+        bytes: &[u8],
+        budget: &mut crate::gltf_external::ExternalBudget,
+    ) -> Result<(gltf::Document, Vec<Vec<u8>>, Vec<gltf::image::Data>)> {
+        let (document, buffers, images) =
+            crate::gltf_external::load_with_budget(root, bytes, budget)?;
+        let buffers = buffers.into_iter().map(|data| data.0).collect();
+        Ok((document, buffers, images))
+    }
+
+    fn image_from_loaded(
+        root: &crate::gltf_external::ModelRoot,
+        image: gltf::Image<'_>,
+        buffers: &[gltf::buffer::Data],
+        loaded: &[gltf::image::Data],
+        budget: &mut crate::gltf_external::ExternalBudget,
+    ) -> Result<ImageData> {
+        if let Some(data) = loaded.get(image.index()) {
+            return rgba_from_gltf_image(data);
         }
+        decode_image_from_gltf(root, image.source(), Some(buffers), budget)
     }
 
     fn decode_image_from_gltf(
+        root: &crate::gltf_external::ModelRoot,
         source: gltf::image::Source,
-        buffers: Option<&Vec<gltf::buffer::Data>>,
+        buffers: Option<&[gltf::buffer::Data]>,
+        budget: &mut crate::gltf_external::ExternalBudget,
     ) -> Result<ImageData> {
         match source {
             gltf::image::Source::View { view, mime_type: _ } => {
                 let buf_idx = view.buffer().index();
                 let offset = view.offset();
                 let length = view.length();
-                let data = &buffers
-                    .ok_or_else(|| anyhow!("Missing buffers for buffer view image"))?[buf_idx]
+                let buffers =
+                    buffers.ok_or_else(|| anyhow!("Missing buffers for buffer view image"))?;
+                let data = buffers
+                    .get(buf_idx)
+                    .context("image buffer view has no buffer")?;
+                let end = offset
+                    .checked_add(length)
+                    .context("image view length overflows")?;
+                let bytes = data
                     .0
-                    .as_slice()[offset..offset + length];
-                decode_image_bytes(data)
+                    .get(offset..end)
+                    .context("image view is outside its buffer")?;
+                decode_image_bytes(bytes)
             }
             gltf::image::Source::Uri { uri, .. } => {
-                let bytes = if uri.starts_with("data:") {
-                    load_uri_bytes(uri)?
-                } else {
-                    let base = std::env::current_dir().context("asset jail base")?;
-                    let path =
-                        astraweave_security::path::safe_under(&base, std::path::Path::new(uri))
-                            .map_err(|err| anyhow!("path traversal rejected: {err}"))?;
-                    crate::read_limited_image_bytes(&path)
-                        .with_context(|| format!("Read image uri {uri}"))?
-                };
+                let bytes = crate::gltf_external::read_charged_uri(
+                    root,
+                    uri,
+                    budget,
+                    Some(crate::image_limits::MAX_IMAGE_ALLOC),
+                )
+                .with_context(|| format!("Read image uri {uri}"))?;
                 decode_image_bytes(&bytes)
             }
         }
+    }
+
+    fn rgba_from_gltf_image(image: &gltf::image::Data) -> Result<ImageData> {
+        let rgba8 = match image.format {
+            gltf::image::Format::R8G8B8A8 => image.pixels.clone(),
+            gltf::image::Format::R8G8B8 => {
+                let mut rgba = Vec::with_capacity(image.pixels.len() / 3 * 4);
+                for chunk in image.pixels.chunks_exact(3) {
+                    rgba.extend_from_slice(chunk);
+                    rgba.push(255);
+                }
+                rgba
+            }
+            gltf::image::Format::R8 => image
+                .pixels
+                .iter()
+                .flat_map(|&gray| [gray, gray, gray, 255])
+                .collect(),
+            gltf::image::Format::R8G8 => image
+                .pixels
+                .chunks_exact(2)
+                .flat_map(|la| [la[0], la[0], la[0], la[1]])
+                .collect(),
+            gltf::image::Format::R16 => gray16_rgba(&image.pixels, 1),
+            gltf::image::Format::R16G16 => gray16_rgba(&image.pixels, 2),
+            gltf::image::Format::R16G16B16 => samples16_rgba(&image.pixels, 3)?,
+            gltf::image::Format::R16G16B16A16 => samples16_rgba(&image.pixels, 4)?,
+            gltf::image::Format::R32G32B32FLOAT => samples32_rgba(&image.pixels, 3)?,
+            gltf::image::Format::R32G32B32A32FLOAT => samples32_rgba(&image.pixels, 4)?,
+        };
+        Ok(ImageData {
+            width: image.width,
+            height: image.height,
+            rgba8,
+        })
+    }
+
+    fn u16_byte(bytes: &[u8]) -> u8 {
+        let value = u16::from_le_bytes([bytes[0], bytes[1]]);
+        (value >> 8) as u8
+    }
+
+    fn gray16_rgba(pixels: &[u8], channels: usize) -> Vec<u8> {
+        let width = channels * 2;
+        let mut rgba = Vec::with_capacity(pixels.len() / width * 4);
+        for chunk in pixels.chunks_exact(width) {
+            let gray = u16_byte(chunk);
+            let alpha = if channels == 2 {
+                u16_byte(&chunk[2..])
+            } else {
+                255
+            };
+            rgba.extend_from_slice(&[gray, gray, gray, alpha]);
+        }
+        rgba
+    }
+
+    fn samples16_rgba(pixels: &[u8], channels: usize) -> Result<Vec<u8>> {
+        let width = channels * 2;
+        if pixels.len() % width != 0 {
+            bail!("gltf image byte length is not a whole pixel");
+        }
+        let mut rgba = Vec::with_capacity(pixels.len() / width * 4);
+        for chunk in pixels.chunks_exact(width) {
+            let sample = |index: usize| u16_byte(&chunk[index * 2..]);
+            let alpha = if channels == 4 { sample(3) } else { 255 };
+            rgba.extend_from_slice(&[sample(0), sample(1), sample(2), alpha]);
+        }
+        Ok(rgba)
+    }
+
+    fn samples32_rgba(pixels: &[u8], channels: usize) -> Result<Vec<u8>> {
+        let width = channels * 4;
+        if pixels.len() % width != 0 {
+            bail!("gltf image byte length is not a whole pixel");
+        }
+        let mut rgba = Vec::with_capacity(pixels.len() / width * 4);
+        for chunk in pixels.chunks_exact(width) {
+            let sample = |index: usize| {
+                let start = index * 4;
+                let value = f32::from_le_bytes([
+                    chunk[start],
+                    chunk[start + 1],
+                    chunk[start + 2],
+                    chunk[start + 3],
+                ]);
+                if value <= 0.0 {
+                    0
+                } else if value >= 1.0 {
+                    255
+                } else {
+                    (value * 255.0).round() as u8
+                }
+            };
+            let alpha = if channels == 4 { sample(3) } else { 255 };
+            rgba.extend_from_slice(&[sample(0), sample(1), sample(2), alpha]);
+        }
+        Ok(rgba)
     }
 
     fn decode_image_bytes(bytes: &[u8]) -> Result<ImageData> {
@@ -903,6 +1426,216 @@ pub mod gltf_loader {
                 msg.contains("limit") || msg.contains("dimension") || msg.contains("4096"),
                 "{msg}"
             );
+        }
+    }
+
+    #[cfg(test)]
+    mod survivor_tests {
+        use super::*;
+
+        struct Scripted {
+            steps: std::collections::VecDeque<std::io::Result<Vec<u8>>>,
+        }
+
+        impl std::io::Read for Scripted {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if buf.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "empty read",
+                    ));
+                }
+                let Some(step) = self.steps.pop_front() else {
+                    return Ok(0);
+                };
+                let bytes = step?;
+                let n = bytes.len().min(buf.len());
+                buf[..n].copy_from_slice(&bytes[..n]);
+                Ok(n)
+            }
+        }
+
+        fn scripted(steps: Vec<std::io::Result<Vec<u8>>>) -> Scripted {
+            Scripted {
+                steps: steps.into(),
+            }
+        }
+
+        fn twelve() -> Vec<u8> {
+            (1..=12).collect()
+        }
+
+        #[test]
+        fn header_read_stops_when_the_buffer_is_full() {
+            let mut reader = scripted(vec![Ok(twelve())]);
+            let mut buf = [0u8; 12];
+            let n = read_header_or_eof(&mut reader, &mut buf).expect("full");
+            assert_eq!(n, 12);
+            assert_eq!(buf.as_slice(), twelve().as_slice());
+        }
+
+        #[test]
+        fn header_read_retries_an_interrupted_read() {
+            let interrupted = Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "interrupted",
+            ));
+            let mut reader = scripted(vec![interrupted, Ok(twelve())]);
+            let mut buf = [0u8; 12];
+            let n = read_header_or_eof(&mut reader, &mut buf).expect("retry");
+            assert_eq!(n, 12);
+            assert_eq!(buf.as_slice(), twelve().as_slice());
+        }
+
+        #[test]
+        fn header_read_returns_a_different_error() {
+            let other = Err(std::io::Error::other("other"));
+            let mut reader = scripted(vec![other, Ok(twelve())]);
+            let mut buf = [0u8; 12];
+            let err = read_header_or_eof(&mut reader, &mut buf).expect_err("other");
+            assert_eq!(err.kind(), std::io::ErrorKind::Other);
+        }
+
+        fn le_u16(value: u16) -> [u8; 2] {
+            value.to_le_bytes()
+        }
+
+        fn image(format: gltf::image::Format, pixels: Vec<u8>) -> gltf::image::Data {
+            gltf::image::Data {
+                pixels,
+                format,
+                width: 1,
+                height: 1,
+            }
+        }
+
+        #[test]
+        fn wide_gltf_pixels_convert_to_rgba8() {
+            let gray = image(gltf::image::Format::R16, le_u16(0x4000).to_vec());
+            assert_eq!(
+                rgba_from_gltf_image(&gray).expect("r16").rgba8,
+                vec![0x40, 0x40, 0x40, 255]
+            );
+            let mut la = Vec::new();
+            la.extend(le_u16(0x4000));
+            la.extend(le_u16(0x1000));
+            let gray_alpha = image(gltf::image::Format::R16G16, la);
+            assert_eq!(
+                rgba_from_gltf_image(&gray_alpha).expect("r16g16").rgba8,
+                vec![0x40, 0x40, 0x40, 0x10]
+            );
+            let mut rgb = Vec::new();
+            rgb.extend(le_u16(0x0100));
+            rgb.extend(le_u16(0x0200));
+            rgb.extend(le_u16(0x0300));
+            let color = image(gltf::image::Format::R16G16B16, rgb);
+            assert_eq!(
+                rgba_from_gltf_image(&color).expect("r16g16b16").rgba8,
+                vec![1, 2, 3, 255]
+            );
+            let mut rgba16 = Vec::new();
+            rgba16.extend(le_u16(0x0100));
+            rgba16.extend(le_u16(0x0200));
+            rgba16.extend(le_u16(0x0300));
+            rgba16.extend(le_u16(0x0400));
+            let color_alpha = image(gltf::image::Format::R16G16B16A16, rgba16);
+            assert_eq!(
+                rgba_from_gltf_image(&color_alpha)
+                    .expect("r16g16b16a16")
+                    .rgba8,
+                vec![1, 2, 3, 4]
+            );
+            let mut rgb32 = Vec::new();
+            // 0.5048828125. Its second byte is not its first, so reading
+            // `start * 1` instead of `start + 1` changes the channel.
+            rgb32.extend([0u8, 64, 1, 63]);
+            for value in [1.5f32, -0.25] {
+                rgb32.extend(value.to_le_bytes());
+            }
+            let floats = image(gltf::image::Format::R32G32B32FLOAT, rgb32);
+            assert_eq!(
+                rgba_from_gltf_image(&floats).expect("rgb32").rgba8,
+                vec![129, 255, 0, 255]
+            );
+            let mut rgba32 = Vec::new();
+            for value in [0.5f32, 0.0, 1.0, 0.25] {
+                rgba32.extend(value.to_le_bytes());
+            }
+            let floats_alpha = image(gltf::image::Format::R32G32B32A32FLOAT, rgba32);
+            assert_eq!(
+                rgba_from_gltf_image(&floats_alpha).expect("rgba32").rgba8,
+                vec![128, 0, 255, 64]
+            );
+            let short = image(gltf::image::Format::R16G16B16, vec![1]);
+            let err = rgba_from_gltf_image(&short).expect_err("short");
+            assert!(err.to_string().contains("not a whole pixel"), "{err}");
+        }
+
+        fn animation_glb() -> Vec<u8> {
+            let json = r#"{
+                "asset":{"version":"2.0"},
+                "skins":[{"joints":[0]}],
+                "nodes":[{"name":"bone"}],
+                "animations":[{
+                    "name":"bounce",
+                    "samplers":[{"input":0,"output":1,"interpolation":"LINEAR"}],
+                    "channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]
+                }],
+                "accessors":[
+                    {"bufferView":0,"componentType":5126,"count":2,"type":"SCALAR","min":[0.0],"max":[1.0]},
+                    {"bufferView":1,"componentType":5126,"count":2,"type":"VEC3"}
+                ],
+                "bufferViews":[
+                    {"buffer":0,"byteOffset":0,"byteLength":8},
+                    {"buffer":0,"byteOffset":8,"byteLength":24}
+                ],
+                "buffers":[{"byteLength":32}]
+            }"#;
+            let mut json_bytes = json.as_bytes().to_vec();
+            while json_bytes.len() % 4 != 0 {
+                json_bytes.push(b' ');
+            }
+            let mut bin = Vec::new();
+            bin.extend(0.0f32.to_le_bytes());
+            bin.extend(1.0f32.to_le_bytes());
+            for value in [0.0f32, 0.0, 0.0, 0.0, 1.0, 0.0] {
+                bin.extend(value.to_le_bytes());
+            }
+            let total = (12 + 8 + json_bytes.len() + 8 + bin.len()) as u32;
+            let mut out = Vec::new();
+            out.extend_from_slice(b"glTF");
+            out.extend_from_slice(&2u32.to_le_bytes());
+            out.extend_from_slice(&total.to_le_bytes());
+            out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"JSON");
+            out.extend_from_slice(&json_bytes);
+            out.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"BIN\0");
+            out.extend_from_slice(&bin);
+            out
+        }
+
+        #[test]
+        fn glb_animation_load_returns_the_named_clip() {
+            let glb = animation_glb();
+            assert!(container_is_glb(&glb));
+            assert!(!container_is_glb(b"glTF"));
+            assert!(!container_is_glb(br#"{"asset":{"version":"2.0"}}"#));
+            let skeleton = Skeleton {
+                joints: Vec::new(),
+                root_indices: Vec::new(),
+            };
+            let clips = load_animations(std::path::Path::new("."), &glb, &skeleton).expect("clips");
+            assert_eq!(clips.len(), 1);
+            assert_eq!(clips[0].name, "bounce");
+            assert_eq!(clips[0].channels.len(), 1);
+            match &clips[0].channels[0].data {
+                ChannelData::Translation(values) => {
+                    assert_eq!(values.len(), 2);
+                    assert_eq!(values[1], [0.0, 1.0, 0.0]);
+                }
+                _ => panic!("expected a translation channel"),
+            }
         }
     }
 
@@ -1005,45 +1738,61 @@ pub mod gltf_loader {
         pub channels: Vec<AnimationChannel>,
     }
 
-    /// Load skeleton from glTF/GLB with inverse bind matrices and hierarchy
-    pub fn load_skeleton(bytes: &[u8]) -> Result<Skeleton> {
-        let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            // GLB path
-            let glb = read_glb(bytes)?;
-            let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
-        } else {
-            // JSON path
-            Gltf::from_slice(bytes).context("Parse .gltf JSON")?
-        };
+    fn container_is_glb(bytes: &[u8]) -> bool {
+        bytes.len() >= 12 && &bytes[0..4] == b"glTF"
+    }
 
+    /// Buffers and images for one already-open directory and one shared budget.
+    ///
+    /// A GLB BIN chunk is taken from `bytes`. A JSON document reads each
+    /// external URI through `root` and charges `budget` once.
+    fn loaded_parts(
+        root: &crate::gltf_external::ModelRoot,
+        budget: &mut crate::gltf_external::ExternalBudget,
+        bytes: &[u8],
+    ) -> Result<(gltf::Document, Vec<Vec<u8>>, Vec<gltf::image::Data>)> {
+        if container_is_glb(bytes) {
+            let (doc, buffers) = glb_parts(bytes)?;
+            Ok((doc, buffers, Vec::new()))
+        } else {
+            load_json_parts(root, bytes, budget)
+        }
+    }
+
+    fn glb_parts(bytes: &[u8]) -> Result<(gltf::Document, Vec<Vec<u8>>)> {
+        let glb = read_glb(bytes)?;
+        let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
+        let parsed = read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?;
+        let bin = glb.bin.context("GLB missing BIN chunk")?;
+        let mut buffers = Vec::new();
+        for b in parsed.document.buffers() {
+            match b.source() {
+                gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
+                gltf::buffer::Source::Uri(_) => {
+                    bail!("External buffer URIs not supported in GLB path")
+                }
+            }
+        }
+        Ok((parsed.document, buffers))
+    }
+
+    /// Load skeleton from glTF/GLB with inverse bind matrices and hierarchy
+    pub fn load_skeleton(base: &std::path::Path, bytes: &[u8]) -> Result<Skeleton> {
+        if container_is_glb(bytes) {
+            let (doc, buffers) = glb_parts(bytes)?;
+            return skeleton_from_loaded(&doc, &buffers);
+        }
+        let (root, mut budget) = open_model_budget(base)?;
+        let (doc, buffers, _) = loaded_parts(&root, &mut budget, bytes)?;
+        skeleton_from_loaded(&doc, &buffers)
+    }
+
+    fn skeleton_from_loaded(doc: &gltf::Document, buffers: &[Vec<u8>]) -> Result<Skeleton> {
         // Find first skin
         let skin = doc
             .skins()
             .next()
             .ok_or_else(|| anyhow!("No skins found in glTF"))?;
-
-        // Gather buffer data
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let bin = glb.bin.context("GLB missing BIN chunk")?;
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
-                    gltf::buffer::Source::Uri(_) => {
-                        bail!("External buffer URIs not supported in GLB path")
-                    }
-                }
-            }
-        } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
-        }
 
         // Build joint hierarchy
         let joint_nodes: Vec<gltf::Node> = skin.joints().collect();
@@ -1155,37 +1904,24 @@ pub mod gltf_loader {
     }
 
     /// Load all animation clips from glTF/GLB
-    pub fn load_animations(bytes: &[u8], _skeleton: &Skeleton) -> Result<Vec<AnimationClip>> {
-        let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
-        } else {
-            Gltf::from_slice(bytes).context("Parse .gltf JSON")?
-        };
-
-        // Gather buffer data
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let bin = glb.bin.context("GLB missing BIN chunk")?;
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
-                    gltf::buffer::Source::Uri(_) => {
-                        bail!("External buffer URIs not supported in GLB path")
-                    }
-                }
-            }
-        } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
+    pub fn load_animations(
+        base: &std::path::Path,
+        bytes: &[u8],
+        _skeleton: &Skeleton,
+    ) -> Result<Vec<AnimationClip>> {
+        if container_is_glb(bytes) {
+            let (doc, buffers) = glb_parts(bytes)?;
+            return animations_from_loaded(&doc, &buffers);
         }
+        let (root, mut budget) = open_model_budget(base)?;
+        let (doc, buffers, _) = loaded_parts(&root, &mut budget, bytes)?;
+        animations_from_loaded(&doc, &buffers)
+    }
 
+    fn animations_from_loaded(
+        doc: &gltf::Document,
+        buffers: &[Vec<u8>],
+    ) -> Result<Vec<AnimationClip>> {
         // Build node-to-joint mapping for this skeleton
         let mut node_to_joint: std::collections::HashMap<usize, usize> =
             std::collections::HashMap::new();
@@ -1341,6 +2077,7 @@ pub mod gltf_loader {
     /// Load first skinned mesh primitive (positions, normals, JOINTS_0, WEIGHTS_0) with complete skeleton and animations.
     /// Returns: (mesh data, skeleton, animation clips, optional material)
     pub fn load_skinned_mesh_complete(
+        base: &std::path::Path,
         bytes: &[u8],
     ) -> Result<(
         SkinnedMeshData,
@@ -1348,44 +2085,25 @@ pub mod gltf_loader {
         Vec<AnimationClip>,
         Option<MaterialData>,
     )> {
-        // Load skeleton first
-        let skeleton = load_skeleton(bytes)?;
+        let (root, mut budget) = open_model_budget(base)?;
+        load_skinned_mesh_with_budget(&root, &mut budget, bytes)
+    }
 
-        // Load animations
-        let animations = load_animations(bytes, &skeleton)?;
-
-        // Load mesh data (positions, normals, tangents, joints, weights, indices, material)
-        let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            // GLB path
-            let glb = read_glb(bytes)?;
-            let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
-        } else {
-            // JSON path
-            Gltf::from_slice(bytes).context("Parse .gltf JSON")?
-        };
-
-        // Gather buffer data (support GLB BIN or .gltf data: URIs)
-        let mut buffers: Vec<Vec<u8>> = Vec::new();
-        if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
-            let glb = read_glb(bytes)?;
-            let bin = glb.bin.context("GLB missing BIN chunk")?;
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Bin => buffers.push(bin.clone().into_owned()),
-                    gltf::buffer::Source::Uri(_) => {
-                        bail!("External buffer URIs not supported in GLB path")
-                    }
-                }
-            }
-        } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
-        }
+    fn load_skinned_mesh_with_budget(
+        root: &crate::gltf_external::ModelRoot,
+        budget: &mut crate::gltf_external::ExternalBudget,
+        bytes: &[u8],
+    ) -> Result<(
+        SkinnedMeshData,
+        Skeleton,
+        Vec<AnimationClip>,
+        Option<MaterialData>,
+    )> {
+        // One directory handle and one byte budget for the skeleton, the
+        // clips, and the mesh. The caller supplies the container bytes.
+        let (doc, buffers, loaded_images) = loaded_parts(root, budget, bytes)?;
+        let skeleton = skeleton_from_loaded(&doc, &buffers)?;
+        let animations = animations_from_loaded(&doc, &buffers)?;
 
         // Find first node with mesh and skin
         let mut skinned_node: Option<gltf::Node> = None;
@@ -1500,25 +2218,39 @@ pub mod gltf_loader {
         let buffers_data: Vec<gltf::buffer::Data> =
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
-            let img = decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
-                .unwrap_or_else(|_| ImageData {
-                    width: 1,
-                    height: 1,
-                    rgba8: vec![255, 255, 255, 255],
-                });
+            let img = image_from_loaded(
+                root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                budget,
+            )
+            .unwrap_or_else(|_| ImageData {
+                width: 1,
+                height: 1,
+                rgba8: vec![255, 255, 255, 255],
+            });
             mat.base_color_texture = Some(img);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
-            if let Ok(img) =
-                decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
-            {
+            if let Ok(img) = image_from_loaded(
+                root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                budget,
+            ) {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
-            if let Ok(img) =
-                decode_image_from_gltf(n.texture().source().source(), Some(&buffers_data))
-            {
+            if let Ok(img) = image_from_loaded(
+                root,
+                n.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                budget,
+            ) {
                 mat.normal_texture = Some(img);
             }
         }
@@ -1540,20 +2272,24 @@ pub mod gltf_loader {
     /// Deprecated: Use load_skinned_mesh_complete for full skeleton and animation support.
     #[deprecated(note = "Use load_skinned_mesh_complete for full skeleton support")]
     pub fn load_first_skinned_mesh_and_idle(
+        base: &std::path::Path,
         bytes: &[u8],
     ) -> Result<(SkinnedMeshData, Option<AnimationClip>, Option<MaterialData>)> {
         let doc = if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             // GLB path
             let glb = read_glb(bytes)?;
             let json = std::str::from_utf8(&glb.json).context("GLB JSON is not UTF-8")?;
-            Gltf::from_slice(json.as_bytes()).context("Failed to parse glTF JSON")?
+            read_gltf(json.as_bytes(), "Failed to parse glTF JSON")?
         } else {
             // JSON path
-            Gltf::from_slice(bytes).context("Parse .gltf JSON")?
+            read_gltf(bytes, "Parse .gltf JSON")?
         };
 
-        // Gather buffer data (support GLB BIN or .gltf data: URIs)
+        // The directory opened for this call is used for every URI in the call.
+        // The caller supplies the container bytes.
+        let (root, mut budget) = open_model_budget(base)?;
         let mut buffers: Vec<Vec<u8>> = Vec::new();
+        let mut loaded_images = Vec::new();
         if bytes.len() >= 12 && &bytes[0..4] == b"glTF" {
             let glb = read_glb(bytes)?;
             let bin = glb.bin.context("GLB missing BIN chunk")?;
@@ -1566,12 +2302,9 @@ pub mod gltf_loader {
                 }
             }
         } else {
-            for b in doc.buffers() {
-                match b.source() {
-                    gltf::buffer::Source::Uri(uri) => buffers.push(load_uri_bytes(uri)?),
-                    gltf::buffer::Source::Bin => bail!("Unexpected BIN in .gltf JSON"),
-                }
-            }
+            let (_document, loaded, images) = load_json_parts(&root, bytes, &mut budget)?;
+            buffers = loaded;
+            loaded_images = images;
         }
 
         // Find first node with mesh and skin
@@ -1776,25 +2509,39 @@ pub mod gltf_loader {
         let buffers_data: Vec<gltf::buffer::Data> =
             buffers.iter().cloned().map(gltf::buffer::Data).collect();
         if let Some(tex) = pbr.base_color_texture() {
-            let img = decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
-                .unwrap_or_else(|_| ImageData {
-                    width: 1,
-                    height: 1,
-                    rgba8: vec![255, 255, 255, 255],
-                });
+            let img = image_from_loaded(
+                &root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            )
+            .unwrap_or_else(|_| ImageData {
+                width: 1,
+                height: 1,
+                rgba8: vec![255, 255, 255, 255],
+            });
             mat.base_color_texture = Some(img);
         }
         if let Some(tex) = pbr.metallic_roughness_texture() {
-            if let Ok(img) =
-                decode_image_from_gltf(tex.texture().source().source(), Some(&buffers_data))
-            {
+            if let Ok(img) = image_from_loaded(
+                &root,
+                tex.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            ) {
                 mat.metallic_roughness_texture = Some(img);
             }
         }
         if let Some(n) = mat_g.normal_texture() {
-            if let Ok(img) =
-                decode_image_from_gltf(n.texture().source().source(), Some(&buffers_data))
-            {
+            if let Ok(img) = image_from_loaded(
+                &root,
+                n.texture().source(),
+                &buffers_data,
+                &loaded_images,
+                &mut budget,
+            ) {
                 mat.normal_texture = Some(img);
             }
         }
@@ -1870,7 +2617,433 @@ pub mod gltf_loader {
             assert!((q[0] - 0.5).abs() < 1e-5);
         }
     }
+
+    #[cfg(test)]
+    mod shared_root_tests {
+        use super::*;
+
+        fn skinned_bin(position: [f32; 3]) -> Vec<u8> {
+            let mut bin = Vec::new();
+            for value in position {
+                bin.extend(value.to_le_bytes());
+            }
+            bin.extend([0f32, 0.0, 0.0].iter().flat_map(|v| v.to_le_bytes()));
+            bin.extend([1f32, 0.0, 0.0].iter().flat_map(|v| v.to_le_bytes()));
+            for _ in 0..3 {
+                bin.extend([0f32, 0.0, 1.0].iter().flat_map(|v| v.to_le_bytes()));
+            }
+            for index in [0u16, 1, 2] {
+                bin.extend(index.to_le_bytes());
+            }
+            while bin.len() < 80 {
+                bin.push(0);
+            }
+            for _ in 0..3 {
+                bin.extend([0u8, 0, 0, 0]);
+            }
+            for _ in 0..3 {
+                bin.extend([1f32, 0.0, 0.0, 0.0].iter().flat_map(|v| v.to_le_bytes()));
+            }
+            bin
+        }
+
+        fn skinned_json(len: usize, position: [f32; 3]) -> Vec<u8> {
+            let max_x = position[0].max(1.0);
+            let max_y = position[1];
+            let max_z = position[2];
+            format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{"uri": "mesh.bin", "byteLength": {len}}}],
+                    "bufferViews": [
+                        {{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 36, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 72, "byteLength": 6}},
+                        {{"buffer": 0, "byteOffset": 80, "byteLength": 12}},
+                        {{"buffer": 0, "byteOffset": 92, "byteLength": 48}}
+                    ],
+                    "accessors": [
+                        {{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [{max_x}, {max_y}, {max_z}]}},
+                        {{"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                        {{"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}},
+                        {{"bufferView": 3, "componentType": 5121, "count": 3, "type": "VEC4"}},
+                        {{"bufferView": 4, "componentType": 5126, "count": 3, "type": "VEC4"}}
+                    ],
+                    "meshes": [{{"primitives": [{{
+                        "attributes": {{"POSITION": 0, "NORMAL": 1, "JOINTS_0": 3, "WEIGHTS_0": 4}},
+                        "indices": 2
+                    }}]}}],
+                    "nodes": [{{"name": "root"}}, {{"mesh": 0, "skin": 0}}],
+                    "skins": [{{"joints": [0]}}]
+                }}"#
+            )
+            .into_bytes()
+        }
+
+        fn write_model(dir: &std::path::Path, position: [f32; 3]) -> Vec<u8> {
+            let bin = skinned_bin(position);
+            std::fs::write(dir.join("mesh.bin"), &bin).expect("bin");
+            let json = skinned_json(bin.len(), position);
+            std::fs::write(dir.join("scene.gltf"), &json).expect("gltf");
+            json
+        }
+
+        #[test]
+        fn skinned_load_opens_the_directory_once() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            std::fs::create_dir(&model).expect("model");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            crate::bounded_open::reset_root_opens();
+            let (mesh, skeleton, _clips, _mat) =
+                load_skinned_mesh_complete(&model, &json).expect("skinned");
+            assert_eq!(crate::bounded_open::root_open_count(), 1);
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+            assert_eq!(skeleton.joints.len(), 1);
+        }
+
+        #[test]
+        fn skinned_load_charges_the_external_buffer_once() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            std::fs::create_dir(&model).expect("model");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            let len = std::fs::metadata(model.join("mesh.bin"))
+                .expect("meta")
+                .len();
+            let root = crate::gltf_external::ModelRoot::open(&model).expect("open");
+            let mut budget = crate::gltf_external::ExternalBudget::new(len * 2 - 1);
+            let (mesh, _, _, _) =
+                load_skinned_mesh_with_budget(&root, &mut budget, &json).expect("one charge");
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+            let root = crate::gltf_external::ModelRoot::open(&model).expect("open");
+            let mut tight = crate::gltf_external::ExternalBudget::new(len - 1);
+            let err = load_skinned_mesh_with_budget(&root, &mut tight, &json).expect_err("under");
+            assert!(err.to_string().contains("limit is"), "{err}");
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn skinned_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            write_model(&swapped, [9.0, 9.0, 9.0]);
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                std::fs::rename(&model_hook, &hold).expect("hold");
+                std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+            }));
+            let (mesh, _, _, _) = load_skinned_mesh_complete(&model, &json).expect("skinned");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+        }
+
+        #[test]
+        fn image_view_without_its_buffer_is_an_error() {
+            let json = br#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"byteLength": 4}],
+                "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+                "images": [{"bufferView": 0, "mimeType": "image/png"}]
+            }"#;
+            let parsed = Gltf::from_slice(json).expect("gltf");
+            let image = parsed.document.images().next().expect("image");
+            let dir = tempfile::tempdir().expect("tempdir");
+            let root = crate::gltf_external::ModelRoot::open(dir.path()).expect("open");
+            let mut budget = crate::gltf_external::ExternalBudget::new(64);
+            let err = decode_image_from_gltf(&root, image.source(), Some(&[]), &mut budget)
+                .expect_err("missing buffer");
+            assert!(err.to_string().contains("has no buffer"), "{err}");
+        }
+
+        fn glb_with_bin(json: &str, bin: &[u8]) -> Vec<u8> {
+            let mut json_bytes = json.as_bytes().to_vec();
+            while json_bytes.len() % 4 != 0 {
+                json_bytes.push(b' ');
+            }
+            let mut bin_bytes = bin.to_vec();
+            while bin_bytes.len() % 4 != 0 {
+                bin_bytes.push(0);
+            }
+            let total = (12 + 8 + json_bytes.len() + 8 + bin_bytes.len()) as u32;
+            let mut out = Vec::new();
+            out.extend_from_slice(b"glTF");
+            out.extend_from_slice(&2u32.to_le_bytes());
+            out.extend_from_slice(&total.to_le_bytes());
+            out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"JSON");
+            out.extend_from_slice(&json_bytes);
+            out.extend_from_slice(&(bin_bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"BIN\0");
+            out.extend_from_slice(&bin_bytes);
+            out
+        }
+
+        fn triangle_bin() -> Vec<u8> {
+            let mut bin = Vec::new();
+            for position in [[0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]] {
+                for value in position {
+                    bin.extend(value.to_le_bytes());
+                }
+            }
+            for _ in 0..3 {
+                for value in [0f32, 0.0, 1.0] {
+                    bin.extend(value.to_le_bytes());
+                }
+            }
+            for index in [0u16, 1, 2] {
+                bin.extend(index.to_le_bytes());
+            }
+            bin
+        }
+
+        fn triangle_glb() -> Vec<u8> {
+            let bin = triangle_bin();
+            let json = format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{"byteLength": {}}}],
+                    "bufferViews": [
+                        {{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 36, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 72, "byteLength": 6}}
+                    ],
+                    "accessors": [
+                        {{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]}},
+                        {{"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                        {{"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}}
+                    ],
+                    "images": [{{"uri": "a.png"}}, {{"uri": "b.png"}}],
+                    "textures": [{{"source": 0}}, {{"source": 1}}],
+                    "materials": [{{
+                        "pbrMetallicRoughness": {{"baseColorTexture": {{"index": 0}}}},
+                        "normalTexture": {{"index": 1}}
+                    }}],
+                    "meshes": [{{"primitives": [{{
+                        "attributes": {{"POSITION": 0, "NORMAL": 1}},
+                        "indices": 2,
+                        "material": 0
+                    }}]}}]
+                }}"#,
+                bin.len()
+            );
+            glb_with_bin(&json, &bin)
+        }
+
+        fn write_png(path: &std::path::Path, pixel: [u8; 4]) {
+            let image = image::RgbaImage::from_pixel(1, 1, image::Rgba(pixel));
+            image.save(path).expect("png");
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn glb_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            write_png(&model.join("a.png"), [10, 20, 30, 255]);
+            write_png(&model.join("b.png"), [1, 2, 3, 255]);
+            write_png(&swapped.join("a.png"), [90, 90, 90, 255]);
+            write_png(&swapped.join("b.png"), [90, 90, 90, 255]);
+            let glb = triangle_glb();
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                std::fs::rename(&model_hook, &hold).expect("hold");
+                std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+            }));
+            let (_mesh, mat) = load_from_glb(&model, &glb).expect("glb");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            let base = mat.base_color_texture.expect("base");
+            assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn skinned_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            let json = write_model(&model, [1.0, 2.0, 3.0]);
+            write_model(&swapped, [9.0, 9.0, 9.0]);
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                // A held directory handle does not share delete, so the
+                // directory cannot be renamed while the load holds it.
+                let renamed = std::fs::rename(&model_hook, &hold);
+                if renamed.is_ok() {
+                    std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+                }
+                assert!(renamed.is_err(), "held directory was renamed");
+            }));
+            let (mesh, _, _, _) = load_skinned_mesh_complete(&model, &json).expect("skinned");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            assert_eq!(mesh.vertices[0].position, [1.0, 2.0, 3.0]);
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn glb_load_keeps_the_opened_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let swapped = dir.path().join("swapped");
+            std::fs::create_dir(&model).expect("model");
+            std::fs::create_dir(&swapped).expect("swapped");
+            write_png(&model.join("a.png"), [10, 20, 30, 255]);
+            write_png(&model.join("b.png"), [1, 2, 3, 255]);
+            write_png(&swapped.join("a.png"), [90, 90, 90, 255]);
+            write_png(&swapped.join("b.png"), [90, 90, 90, 255]);
+            let glb = triangle_glb();
+            let model_hook = model.clone();
+            let swapped_hook = swapped.clone();
+            let hold = dir.path().join("hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_root_open(Box::new(move || {
+                // A held directory handle does not share delete, so the
+                // directory cannot be renamed while the load holds it.
+                let renamed = std::fs::rename(&model_hook, &hold);
+                if renamed.is_ok() {
+                    std::fs::rename(&swapped_hook, &model_hook).expect("swap");
+                }
+                assert!(renamed.is_err(), "held directory was renamed");
+            }));
+            let (_mesh, mat) = load_from_glb(&model, &glb).expect("glb");
+            let opens = crate::bounded_open::root_open_count();
+            crate::bounded_open::reset_root_opens();
+            assert_eq!(opens, 1);
+            let base = mat.base_color_texture.expect("base");
+            assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
+        }
+
+        #[cfg_attr(not(windows), allow(dead_code))]
+        fn triangle_glb_tex_subdir() -> Vec<u8> {
+            let bin = triangle_bin();
+            let json = format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{"byteLength": {}}}],
+                    "bufferViews": [
+                        {{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 36, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 72, "byteLength": 6}}
+                    ],
+                    "accessors": [
+                        {{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]}},
+                        {{"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                        {{"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}}
+                    ],
+                    "images": [{{"uri": "tex/a.png"}}, {{"uri": "tex/b.png"}}],
+                    "textures": [{{"source": 0}}, {{"source": 1}}],
+                    "materials": [{{
+                        "pbrMetallicRoughness": {{"baseColorTexture": {{"index": 0}}}},
+                        "normalTexture": {{"index": 1}}
+                    }}],
+                    "meshes": [{{"primitives": [{{
+                        "attributes": {{"POSITION": 0, "NORMAL": 1}},
+                        "indices": 2,
+                        "material": 0
+                    }}]}}]
+                }}"#,
+                bin.len()
+            );
+            glb_with_bin(&json, &bin)
+        }
+
+        #[test]
+        fn glb_image_uri_read_stops_at_per_image_cap() {
+            let cap = crate::image_limits::MAX_IMAGE_ALLOC;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            std::fs::create_dir(&model).expect("model");
+            let big = std::fs::File::create(model.join("a.png")).expect("create");
+            big.set_len(cap + 1).expect("len");
+            drop(big);
+            write_png(&model.join("b.png"), [1, 2, 3, 255]);
+            let glb = triangle_glb();
+            let err = load_from_glb(&model, &glb).expect_err("image cap");
+            let chain = format!("{err:#}");
+            assert!(chain.contains(&format!("limit is {cap}")), "{chain}");
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn glb_load_keeps_intermediate_uri_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let tex = model.join("tex");
+            let swapped_tex = dir.path().join("swapped_tex");
+            std::fs::create_dir_all(&model).expect("model");
+            std::fs::create_dir_all(&tex).expect("tex");
+            std::fs::create_dir_all(&swapped_tex).expect("swapped");
+            write_png(&tex.join("a.png"), [10, 20, 30, 255]);
+            write_png(&tex.join("b.png"), [1, 2, 3, 255]);
+            write_png(&swapped_tex.join("a.png"), [90, 90, 90, 255]);
+            write_png(&swapped_tex.join("b.png"), [90, 90, 90, 255]);
+            let glb = triangle_glb_tex_subdir();
+            let tex_hook = tex.clone();
+            let swapped_hook = swapped_tex.clone();
+            let hold = dir.path().join("tex_hold");
+            let fired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let renamed_ok = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let fired_hook = std::sync::Arc::clone(&fired);
+            let renamed_hook = std::sync::Arc::clone(&renamed_ok);
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_uri_directory_open(Box::new(move || {
+                fired_hook.store(true, std::sync::atomic::Ordering::SeqCst);
+                let renamed = std::fs::rename(&tex_hook, &hold);
+                if renamed.is_ok() {
+                    std::fs::rename(&swapped_hook, &tex_hook).expect("swap");
+                    renamed_hook.store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+            }));
+            let loaded = load_from_glb(&model, &glb);
+            // `reset_root_opens` clears the hook slot. The flags above are
+            // not that slot, so a hook that never ran still fails here.
+            crate::bounded_open::reset_root_opens();
+            assert!(
+                fired.load(std::sync::atomic::Ordering::SeqCst),
+                "uri directory hook did not fire"
+            );
+            assert!(
+                !renamed_ok.load(std::sync::atomic::Ordering::SeqCst),
+                "held uri directory was renamed"
+            );
+            let (_mesh, mat) = loaded.expect("glb");
+            let base = mat.base_color_texture.expect("base");
+            assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
+            let normal = mat.normal_texture.expect("normal");
+            assert_eq!(&normal.rgba8[..4], &[1, 2, 3, 255]);
+        }
+    }
 }
+
+#[cfg(feature = "gltf")]
+pub(crate) mod bounded_open;
+
+#[cfg(feature = "gltf")]
+pub mod gltf_external;
 
 pub struct AssetManifest;
 

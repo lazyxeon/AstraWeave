@@ -48,7 +48,7 @@ mod gltf_tests {
     fn test_load_missing_buffer_gltf() {
         let path = fixture_path("missing_buffer.gltf");
         let bytes = fs::read(&path).expect("Failed to read missing_buffer.gltf");
-        let result = load_first_mesh_and_material(&bytes);
+        let result = load_first_mesh_and_material(std::path::Path::new("."), &bytes);
         assert!(result.is_err(), "GLTF with missing buffer should fail");
     }
 
@@ -74,7 +74,8 @@ mod gltf_tests {
     fn test_validate_mesh_vertex_counts() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Just validate consistency, not specific counts
         assert!(!mesh.positions.is_empty(), "Mesh should have vertices");
@@ -100,7 +101,8 @@ mod gltf_tests {
     fn test_validate_mesh_index_counts() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         assert!(!mesh.indices.is_empty(), "Mesh should have indices");
         assert_eq!(
@@ -115,7 +117,8 @@ mod gltf_tests {
     fn test_validate_uv_coordinates() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for (i, uv) in mesh.texcoords.iter().enumerate() {
             // Allow slight overflow for tiling textures, but ensure reasonable range
@@ -143,7 +146,7 @@ mod gltf_tests {
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
         // This tests error handling - the demo_plane.gltf might have issues
-        match load_first_mesh_and_material(&bytes) {
+        match load_first_mesh_and_material(std::path::Path::new("."), &bytes) {
             Ok((mesh, _)) => {
                 for (i, normal) in mesh.normals.iter().enumerate() {
                     // Validate normals are at least finite
@@ -179,7 +182,8 @@ mod gltf_tests {
     fn test_validate_indices_within_bounds() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         let vertex_count = mesh.positions.len() as u32;
         for (i, &index) in mesh.indices.iter().enumerate() {
@@ -198,7 +202,8 @@ mod gltf_tests {
     fn test_validate_material_base_color() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (_, material) = load_first_mesh_and_material(&bytes).expect("Failed to load material");
+        let (_, material) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load material");
 
         assert_eq!(
             material.base_color_factor,
@@ -212,7 +217,8 @@ mod gltf_tests {
     fn test_validate_material_pbr_factors() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (_, material) = load_first_mesh_and_material(&bytes).expect("Failed to load material");
+        let (_, material) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load material");
 
         // Just validate they're in valid range [0,1]
         assert!(
@@ -248,7 +254,8 @@ mod gltf_tests {
     fn test_validate_positions_valid_floats() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for pos in &mesh.positions {
             assert!(pos[0].is_finite(), "Position X should be finite");
@@ -262,7 +269,8 @@ mod gltf_tests {
     fn test_validate_tangent_w_component() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for tangent in &mesh.tangents {
             assert!(
@@ -282,7 +290,7 @@ mod gltf_tests {
             return;
         }
         let bytes = fs::read(&path).expect("Failed to read bed.glb");
-        let result = load_first_mesh_and_material(&bytes);
+        let result = load_first_mesh_and_material(std::path::Path::new("."), &bytes);
         match result {
             Ok((mesh, _mat)) => {
                 assert!(
@@ -306,7 +314,8 @@ mod gltf_tests {
     fn test_validate_triangle_winding() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Check that indices form valid triangles
         assert_eq!(
@@ -376,7 +385,8 @@ mod gltf_tests {
     fn test_validate_mesh_bounds() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Calculate bounding box
         let mut min = [f32::MAX; 3];
@@ -448,6 +458,64 @@ mod gltf_tests {
         if attempted == 0 {
             eprintln!("⚠ No real GLB assets found (Git LFS objects may not be pulled) — skipping assertion");
         }
+    }
+
+    #[test]
+    fn image_view_past_its_buffer_is_an_error() {
+        let mut bin = Vec::new();
+        for value in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in [0.0f32, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0] {
+            bin.extend_from_slice(&value.to_le_bytes());
+        }
+        for index in [0u32, 1, 2] {
+            bin.extend_from_slice(&index.to_le_bytes());
+        }
+        assert_eq!(bin.len(), 84);
+        let json = r#"{
+            "asset": {"version": "2.0"},
+            "buffers": [{"byteLength": 128}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": 0, "byteLength": 36},
+                {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                {"buffer": 0, "byteOffset": 72, "byteLength": 12},
+                {"buffer": 0, "byteOffset": 100, "byteLength": 16}
+            ],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]},
+                {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+                {"bufferView": 2, "componentType": 5125, "count": 3, "type": "SCALAR"}
+            ],
+            "images": [{"bufferView": 3, "mimeType": "image/png"}],
+            "textures": [{"source": 0}],
+            "materials": [{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2, "material": 0}]}]
+        }"#;
+        let bytes = glb(json, &bin);
+        let err =
+            load_first_mesh_and_material(std::path::Path::new("."), &bytes).expect_err("view");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("outside its buffer"), "{msg}");
+    }
+
+    fn glb(json: &str, bin: &[u8]) -> Vec<u8> {
+        let mut json_bytes = json.as_bytes().to_vec();
+        while json_bytes.len() % 4 != 0 {
+            json_bytes.push(b' ');
+        }
+        let total = 12 + 8 + json_bytes.len() + 8 + bin.len();
+        let mut out = Vec::with_capacity(total);
+        out.extend_from_slice(&0x4654_6C67u32.to_le_bytes());
+        out.extend_from_slice(&2u32.to_le_bytes());
+        out.extend_from_slice(&(total as u32).to_le_bytes());
+        out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x4E4F_534Au32.to_le_bytes());
+        out.extend_from_slice(&json_bytes);
+        out.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+        out.extend_from_slice(&0x004E_4942u32.to_le_bytes());
+        out.extend_from_slice(bin);
+        out
     }
 }
 

@@ -1,0 +1,123 @@
+name: Asset Windows mutant
+
+# These jobs apply one mutant on a Windows runner. A green run is a verified
+# runtime kill: the asset tests ran, at least one test failed, and the log
+# contains `test result: FAILED`. A passing suite, a compile failure, and a
+# run that does not execute tests all exit non-zero.
+
+on:
+  pull_request:
+    paths:
+      - "astraweave-asset/**"
+      - ".github/workflows/asset-windows-mutant.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  hold-noop:
+    name: Hold no-op mutant
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Drop the held directory and require a runtime kill
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("astraweave-asset/src/bounded_open.rs")
+          text = path.read_text(encoding="utf-8")
+          start = text.index("fn hold_directory(")
+          brace = text.index("{", start)
+          end = text.index("\n}", brace)
+          body = text[brace + 1 : end]
+          if "held.push(file)" not in body:
+              raise SystemExit("hold_directory does not push")
+          text = text[: brace + 1] + "\n    drop((root, file));\n    Ok(())\n" + text[end:]
+          path.write_text(text, encoding="utf-8")
+          PY
+          set +e
+          cargo test --locked -p astraweave-asset --lib -- \
+            directory_past_the_handle_budget_is_refused \
+            repeated_nested_uri_keeps_one_intermediate_handle \
+            glb_load_keeps_intermediate_uri_directory \
+            > hold-noop-test.log 2>&1
+          status=$?
+          set -e
+          cat hold-noop-test.log
+          if [ "$status" -eq 0 ]; then
+            echo "hold no-op mutant survived"
+            exit 1
+          fi
+          if ! grep -q "test result: FAILED" hold-noop-test.log; then
+            echo "hold no-op patch did not reach a runtime test failure"
+            exit 1
+          fi
+          if ! grep -E "test result: FAILED\\..*[1-9][0-9]* failed" hold-noop-test.log; then
+            echo "hold no-op patch did not fail a test"
+            exit 1
+          fi
+          echo "hold no-op mutant killed"
+
+  dot-component:
+    name: Kept dot-component mutant
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Rust CI setup
+        uses: ./.github/actions/rust-ci-setup
+
+      - name: Keep a dot component and require a runtime kill
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("astraweave-asset/src/bounded_open.rs")
+          text = path.read_text(encoding="utf-8")
+          start = text.index("fn relative_names(")
+          end = text.index("fn directory_flags(", start)
+          body = text[start:end]
+          old = "Component::CurDir => {}"
+          if body.count(old) != 1:
+              raise SystemExit(f"expected one CurDir skip, found {body.count(old)}")
+          body = body.replace(old, 'Component::CurDir => names.push(".".into()),', 1)
+          path.write_text(text[:start] + body + text[end:], encoding="utf-8")
+          PY
+          set +e
+          cargo test --locked -p astraweave-asset --lib -- leading_dot_component_loads_the_file > dot-component-test.log 2>&1
+          status=$?
+          set -e
+          cat dot-component-test.log
+          if [ "$status" -eq 0 ]; then
+            echo "kept dot-component mutant survived"
+            exit 1
+          fi
+          if ! grep -q "test result: FAILED" dot-component-test.log; then
+            echo "kept dot-component patch did not reach a runtime test failure"
+            exit 1
+          fi
+          if ! grep -E "test result: FAILED\\..*[1-9][0-9]* failed" dot-component-test.log; then
+            echo "kept dot-component patch did not fail a test"
+            exit 1
+          fi
+          echo "kept dot-component mutant killed"

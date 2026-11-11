@@ -213,30 +213,70 @@ pub fn import_model(
     Vec<gltf::image::Data>,
 )> {
     let path = confine_existing(&asset_dir(), path)?;
-    validate_model_file(&path)?;
-    gltf::import(&path).with_context(|| format!("import {}", path.display()))
+    import_validated_model(&path)
+}
+
+/// The bytes and directory handle come from `read_model_file`, which calls
+/// `bounded_open::read_path`. One load opens the model directory once, and
+/// that handle is used for the container read, every sibling URI, and every
+/// image URI. A hard-linked model is deliberately refused.
+fn read_model_bytes(path: &Path) -> Result<(Vec<u8>, astraweave_asset::gltf_external::ModelRoot)> {
+    astraweave_asset::gltf_loader::read_model_file(path, MAX_MODEL_BYTES)
+}
+
+fn import_validated_model(
+    path: &Path,
+) -> Result<(
+    gltf::Document,
+    Vec<gltf::buffer::Data>,
+    Vec<gltf::image::Data>,
+)> {
+    let (bytes, root) = read_model_bytes(path)?;
+    validate_model_bytes(path, &bytes)?;
+    // Parse the bytes just read. `gltf::import` would open the path again and
+    // `Glb::from_reader` would allocate `declared - 12` from that second file.
+    astraweave_asset::gltf_loader::reject_short_glb_header(&bytes)?;
+    // One load opens the model directory once, and that handle is used for the
+    // container read, every sibling URI, and every image URI. File type and
+    // size come from the opened handle. `Glb::from_reader` stays off this path.
+    astraweave_asset::gltf_external::load_jailed_gltf_with_root(&root, &bytes, MAX_MODEL_BYTES)
+        .with_context(|| format!("import {}", path.display()))
 }
 
 pub fn validate_model_file(path: &Path) -> Result<()> {
-    regular_file(path, MAX_MODEL_BYTES)?;
-    let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    if bytes.len() as u64 > MAX_MODEL_BYTES {
-        bail!("model {} exceeds {MAX_MODEL_BYTES} bytes", path.display());
-    }
-    let json = model_json(path, &bytes)?;
+    let (bytes, _root) = read_model_bytes(path)?;
+    validate_model_bytes(path, &bytes)
+}
+
+fn validate_model_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    let json = model_json(path, bytes)?;
     let mut uris = Vec::new();
     collect_uris(&json, &mut uris);
-    if uris.len() > 64 {
+    if uris.len() > astraweave_asset::gltf_external::MAX_EXTERNAL_URIS {
         bail!("model {} has too many external uris", path.display());
     }
     let parent = path.parent().context("model has no directory")?;
+    let mut external_bytes = 0u64;
     for uri in uris {
         check_relative_uri(&uri)?;
-        let sibling = parent.join(&uri);
-        regular_file(&sibling, MAX_MODEL_BYTES).with_context(|| format!("external uri {uri}"))?;
-        if !sibling.starts_with(parent) {
-            bail!("uri {uri} escapes the model directory");
+        if uri.starts_with("data:") {
+            continue;
         }
+        let sibling = parent.join(&uri);
+        let meta = regular_file(&sibling, MAX_MODEL_BYTES)
+            .with_context(|| format!("external uri {uri}"))?;
+        external_bytes = external_bytes
+            .checked_add(meta.len())
+            .context("external byte total")?;
+        if external_bytes > MAX_MODEL_BYTES {
+            bail!(
+                "model {} external bytes exceed {MAX_MODEL_BYTES}",
+                path.display()
+            );
+        }
+        // `symlink_metadata` on the final path does not see a symlink directory
+        // above it. The canonical path has to stay inside the model directory.
+        confine_existing(parent, &sibling).with_context(|| format!("external uri {uri}"))?;
     }
     Ok(())
 }
@@ -284,6 +324,9 @@ fn collect_uris(value: &serde_json::Value, out: &mut Vec<String>) {
 }
 
 fn check_relative_uri(uri: &str) -> Result<()> {
+    if uri.starts_with("data:") {
+        return Ok(());
+    }
     if uri.is_empty() || uri.len() > 240 {
         bail!("gltf uri length is not allowed");
     }
@@ -575,6 +618,211 @@ mod tests {
             "{}",
             validate_model_file(&path).unwrap_err()
         );
+    }
+
+    #[test]
+    fn padded_short_glb_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("short.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("shorter than the 12-byte header"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn oversized_declared_length_is_rejected_before_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("over.glb");
+        let mut bytes = b"glTF".to_vec();
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(&2_000_012u32.to_le_bytes());
+        bytes.extend_from_slice(&2u32.to_le_bytes());
+        bytes.extend_from_slice(b"JSON");
+        bytes.extend_from_slice(b"{}");
+        assert_eq!(bytes.len(), 22);
+        fs::write(&path, &bytes).unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            err.to_string().contains("exceeds the 22 bytes available"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn external_bin_and_image_import_beside_the_model() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("box.bin"), b"box!").unwrap();
+        // 1x1 RGBA PNG, pixels 9, 8, 7, 6. The runtime image crate has no png
+        // encoder; the bytes are the file the glTF importer reads.
+        let png: &[u8] = &[
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 224, 228,
+            96, 103, 3, 0, 0, 85, 0, 31, 173, 202, 66, 241, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66,
+            96, 130,
+        ];
+        fs::write(dir.path().join("tex.png"), png).unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [{"uri": "box.bin", "byteLength": 4}],
+                "images": [{"uri": "tex.png"}]
+            }"#,
+        )
+        .unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let bytes = fs::read(&path).unwrap();
+        let slice_err = gltf::import_slice(&bytes).unwrap_err();
+        assert!(
+            slice_err.to_string().contains("external reference"),
+            "{slice_err}"
+        );
+        let (_doc, buffers, images) = import_validated_model(&path).unwrap();
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert_eq!(images.len(), 1);
+        assert_eq!((images[0].width, images[0].height), (1, 1));
+        assert_eq!(&images[0].pixels[..4], &[9, 8, 7, 6]);
+    }
+
+    #[test]
+    fn external_reads_respect_total_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hero.gltf");
+        let big = 20 * 1024 * 1024;
+        for name in ["a.bin", "b.bin"] {
+            let file = fs::File::create(dir.path().join(name)).unwrap();
+            file.set_len(big).unwrap();
+        }
+        fs::write(
+            &path,
+            r#"{
+                "asset": {"version": "2.0"},
+                "buffers": [
+                    {"uri": "a.bin", "byteLength": 4},
+                    {"uri": "b.bin", "byteLength": 4}
+                ]
+            }"#,
+        )
+        .unwrap();
+        let err = validate_model_file(&path).unwrap_err();
+        assert!(err.to_string().contains("exceed"), "{err}");
+    }
+
+    #[test]
+    fn hard_linked_model_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(&path, b"{}").unwrap();
+        fs::hard_link(&path, dir.path().join("other.gltf")).unwrap();
+        let err = read_model_bytes(&path).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("hero.gltf"), "{msg}");
+        assert!(msg.contains("more than one link"), "{msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_model_file_is_read_once() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.gltf");
+        fs::write(&real, b"{}").unwrap();
+        let link = dir.path().join("hero.gltf");
+        symlink(&real, &link).unwrap();
+        let (bytes, _root) = read_model_bytes(&link).unwrap();
+        assert_eq!(bytes, b"{}");
+    }
+
+    /// Props import goes through `import_validated_model`. A FIFO is refused
+    /// without waiting for a peer.
+    #[cfg(unix)]
+    #[test]
+    fn prop_import_rejects_a_fifo_before_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("pipe.gltf");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(status.success(), "mkfifo");
+        let started = std::time::Instant::now();
+        let err = import_validated_model(&path).unwrap_err();
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "import_validated_model opened the fifo"
+        );
+        let msg = format!("{err:#}");
+        assert!(msg.contains("not a regular file"), "{msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_symlink_uri_does_not_escape() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("loot.bin"), b"loot").unwrap();
+        symlink(outside.path(), dir.path().join("sub")).unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"sub/loot.bin","byteLength":4}]}"#,
+        )
+        .unwrap();
+        let err = validate_model_file(&path).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("escapes"), "{msg}");
+    }
+
+    #[test]
+    fn data_uri_stays_in_memory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hero.gltf");
+        fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"data:application/octet-stream;base64,Ym94IQ==","byteLength":4}]}"#,
+        )
+        .unwrap();
+        assert!(
+            validate_model_file(&path).is_ok(),
+            "{}",
+            validate_model_file(&path).unwrap_err()
+        );
+        let (_doc, buffers, images) = import_validated_model(&path).unwrap();
+        assert_eq!(&buffers[0].0[..], b"box!");
+        assert!(images.is_empty());
+
+        fs::write(
+            &path,
+            r#"{"asset":{"version":"2.0"},"buffers":[{"uri":"file:box.bin","byteLength":1}]}"#,
+        )
+        .unwrap();
+        let err = validate_model_file(&path).unwrap_err();
+        assert!(err.to_string().contains("relative"), "{err}");
     }
 
     #[test]
