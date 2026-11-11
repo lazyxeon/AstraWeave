@@ -396,7 +396,15 @@ pub fn html_parsing_sink(src: &str) -> Option<String> {
 
 pub fn html_parsing_problems(src: &str) -> BTreeSet<String> {
     let owned = src.to_string();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| scan_measured(&owned))) {
+    recover(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || scan_measured(&owned),
+    )))
+}
+
+fn recover(
+    result: Result<(BTreeSet<String>, u64), Box<dyn std::any::Any + Send>>,
+) -> BTreeSet<String> {
+    match result {
         Ok((problems, _)) => problems,
         Err(_) => {
             let mut out = BTreeSet::new();
@@ -500,7 +508,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
         }
         match &tokens[i] {
             Tok::Dot | Tok::Opt => {
-                note_dot(&tokens, i, &stringish, out);
+                note_dot(&tokens, i, &stringish, out, steps, limit);
                 if matches!(tokens.get(i + 1), Some(Tok::Ident(_))) {
                     i = i.saturating_add(2);
                     continue;
@@ -508,7 +516,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             }
             Tok::LBrack if prev_is_value(&tokens, i) => {
                 if let Some(end) = mate[i] {
-                    note_computed(&tokens, i, end, &stringish, out);
+                    note_computed(&tokens, i, end, &stringish, out, steps, limit);
                     i = end + 1;
                     continue;
                 }
@@ -561,7 +569,8 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
                 out.insert(format!("bare assign {name}"));
             }
             Tok::LParen if i > 0 && matches!(tokens.get(i - 1), Some(Tok::RParen)) => {
-                note_grouped_call(&tokens, &mate, i - 1, i, &stringish, out);
+                let mut walk = Walk { steps, limit };
+                note_grouped_call(&tokens, &mate, i - 1, i, &stringish, out, &mut walk);
             }
             _ => {}
         }
@@ -569,7 +578,14 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
     }
 }
 
-fn note_dot(tokens: &[Tok], dot: usize, stringish: &BTreeSet<String>, out: &mut BTreeSet<String>) {
+fn note_dot(
+    tokens: &[Tok],
+    dot: usize,
+    stringish: &BTreeSet<String>,
+    out: &mut BTreeSet<String>,
+    steps: &mut u64,
+    limit: u64,
+) {
     let Some(Tok::Ident(name)) = tokens.get(dot + 1) else {
         return;
     };
@@ -612,12 +628,12 @@ fn note_dot(tokens: &[Tok], dot: usize, stringish: &BTreeSet<String>, out: &mut 
             out.insert("member call href".to_string());
             return;
         }
-        note_member_call(name, tokens, paren, stringish, out);
+        note_member_call(name, tokens, paren, stringish, out, steps, limit);
     } else if assign_follows(tokens, after) {
         if receiver_is("location") && name == "href" {
             out.insert("member assign href".to_string());
         } else if name == "textContent" {
-            if !inside_function(tokens, dot, "setText") {
+            if !inside_function(tokens, dot, "setText", steps, limit) {
                 out.insert("member assign textContent".to_string());
             }
         } else if !allowed(MEMBER_ASSIGN, name) {
@@ -659,6 +675,8 @@ fn note_computed(
     end: usize,
     stringish: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
+    steps: &mut u64,
+    limit: u64,
 ) {
     let key = classify_key(&tokens[open + 1..end]);
     let after = end + 1;
@@ -678,7 +696,9 @@ fn note_computed(
     }
     if call {
         match key {
-            Key::Static(name) => note_member_call(&name, tokens, paren, stringish, out),
+            Key::Static(name) => {
+                note_member_call(&name, tokens, paren, stringish, out, steps, limit);
+            }
             _ => {
                 out.insert("computed call".to_string());
             }
@@ -689,7 +709,7 @@ fn note_computed(
         match key {
             Key::Static(name) => {
                 if name == "textContent" {
-                    if !inside_function(tokens, open, "setText") {
+                    if !inside_function(tokens, open, "setText", steps, limit) {
                         out.insert("member assign textContent".to_string());
                     }
                 } else if !allowed(MEMBER_ASSIGN, &name) {
@@ -709,9 +729,11 @@ fn note_member_call(
     paren: usize,
     stringish: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
+    steps: &mut u64,
+    limit: u64,
 ) {
     if name == "setAttribute" || name == "setAttributeNS" {
-        note_set_attribute(tokens, paren, out);
+        note_set_attribute(tokens, paren, out, steps, limit);
         return;
     }
     if name == "createElement" {
@@ -837,7 +859,13 @@ fn call_arg(tokens: &[Tok], paren: usize, want: i32) -> Vec<Tok> {
     parts
 }
 
-fn note_set_attribute(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) {
+fn note_set_attribute(
+    tokens: &[Tok],
+    paren: usize,
+    out: &mut BTreeSet<String>,
+    steps: &mut u64,
+    limit: u64,
+) {
     match first_arg(tokens, paren) {
         Arg::Static(attr) => {
             let lower = attr.to_ascii_lowercase();
@@ -845,7 +873,7 @@ fn note_set_attribute(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) 
                 out.insert(format!("attribute {attr}"));
                 return;
             }
-            if allowed(URL_ATTR, &lower) && !url_value_allowed(tokens, paren) {
+            if allowed(URL_ATTR, &lower) && !url_value_allowed(tokens, paren, steps, limit) {
                 out.insert(format!("attribute {attr}"));
             }
         }
@@ -855,7 +883,7 @@ fn note_set_attribute(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) 
     }
 }
 
-fn url_value_allowed(tokens: &[Tok], paren: usize) -> bool {
+fn url_value_allowed(tokens: &[Tok], paren: usize, steps: &mut u64, limit: u64) -> bool {
     if value_has_script_scheme(tokens, paren) {
         return false;
     }
@@ -868,7 +896,7 @@ fn url_value_allowed(tokens: &[Tok], paren: usize) -> bool {
             return true;
         }
     }
-    if inside_function(tokens, paren, "el") {
+    if inside_function(tokens, paren, "el", steps, limit) {
         return true;
     }
     let mut folded = String::new();
@@ -925,14 +953,15 @@ fn safe_url_literal(value: &str) -> bool {
         || !flat.contains(':')
 }
 
-fn inside_function(tokens: &[Tok], at: usize, name: &str) -> bool {
+fn inside_function(tokens: &[Tok], at: usize, name: &str, steps: &mut u64, limit: u64) -> bool {
     let mut depth = 0i32;
     let mut i = at;
     let mut spins = 0usize;
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i > 0 {
         spins = spins.saturating_add(1);
-        if past_cap(spins, cap) {
+        *steps = steps.saturating_add(1);
+        if past_cap(spins, cap) || past_limit(*steps, limit) {
             return false;
         }
         i = i.saturating_sub(1);
@@ -940,7 +969,7 @@ fn inside_function(tokens: &[Tok], at: usize, name: &str) -> bool {
             Tok::RBrace => depth += 1,
             Tok::LBrace => {
                 if depth == 0 {
-                    if brace_is_function(tokens, i, name) {
+                    if brace_is_function(tokens, i, name, steps, limit) {
                         return true;
                     }
                 } else {
@@ -953,7 +982,13 @@ fn inside_function(tokens: &[Tok], at: usize, name: &str) -> bool {
     false
 }
 
-fn brace_is_function(tokens: &[Tok], brace: usize, name: &str) -> bool {
+fn brace_is_function(
+    tokens: &[Tok],
+    brace: usize,
+    name: &str,
+    steps: &mut u64,
+    limit: u64,
+) -> bool {
     if brace == 0 || !matches!(tokens.get(brace - 1), Some(Tok::RParen)) {
         return false;
     }
@@ -963,7 +998,8 @@ fn brace_is_function(tokens: &[Tok], brace: usize, name: &str) -> bool {
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     loop {
         spins = spins.saturating_add(1);
-        if past_cap(spins, cap) {
+        *steps = steps.saturating_add(1);
+        if past_cap(spins, cap) || past_limit(*steps, limit) {
             return false;
         }
         match &tokens[i] {
@@ -1215,6 +1251,11 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
     Some((ch, next))
 }
 
+struct Walk<'a> {
+    steps: &'a mut u64,
+    limit: u64,
+}
+
 fn note_grouped_call(
     tokens: &[Tok],
     mate: &[Option<usize>],
@@ -1222,6 +1263,7 @@ fn note_grouped_call(
     call: usize,
     stringish: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
+    walk: &mut Walk<'_>,
 ) {
     let Some(open) = mate[close] else {
         out.insert("indirect call".to_string());
@@ -1240,7 +1282,7 @@ fn note_grouped_call(
         return;
     }
     if let [Tok::Ident(_), Tok::Dot, Tok::Ident(name)] | [Tok::Dot, Tok::Ident(name)] = interior {
-        note_member_call(name, tokens, call, stringish, out);
+        note_member_call(name, tokens, call, stringish, out, walk.steps, walk.limit);
         return;
     }
     out.insert("indirect call".to_string());
@@ -1548,7 +1590,7 @@ impl<'a> Lx<'a> {
                 self.charge(start);
                 continue;
             }
-            if c == b'/' && regex_here(out.last(), regex_ready) {
+            if c == b'/' && regex_here(out.last(), regex_ready, keyword_member(&out)) {
                 let next = skip_regex(self.src, self.i + 1);
                 if next > b.len()
                     || next == self.i + 1
@@ -1753,13 +1795,24 @@ fn control_keyword(name: &str) -> bool {
     matches!(name, "if" | "for" | "while" | "switch" | "with" | "catch")
 }
 
-fn regex_here(prev: Option<&Tok>, ready: bool) -> bool {
+fn keyword_member(out: &[Tok]) -> bool {
+    let Some(Tok::Ident(name)) = out.last() else {
+        return false;
+    };
+    keyword(name)
+        && matches!(
+            out.get(out.len().wrapping_sub(2)),
+            Some(Tok::Dot | Tok::Opt)
+        )
+}
+
+fn regex_here(prev: Option<&Tok>, ready: bool, member: bool) -> bool {
     if ready {
         return true;
     }
     match prev {
         None => true,
-        Some(Tok::Ident(name)) if keyword(name) => true,
+        Some(Tok::Ident(name)) if keyword(name) => !member,
         Some(
             Tok::Ident(_)
             | Tok::Num
@@ -3197,6 +3250,81 @@ mod class_tests {
         sink(&cat(&["<!-->", "<script>eval(1)</script>"]));
         sink(&cat(&["<!--->", "<script>eval(1)</script>"]));
         sink(&cat(&["<!-- --!>", "<script>eval(1)</script>"]));
+        for sample in [
+            "<!--> <script>foo(1)</script> -->",
+            "<!---> <script>foo(1)</script> -->",
+            "<!-- --!> <script>foo(1)</script> -->",
+        ] {
+            let problems = html_parsing_problems(sample);
+            assert!(problems.contains("bare foo"), "{sample} -> {problems:?}");
+            assert!(
+                !problems.iter().any(|item| item.contains("failed closed")),
+                "{sample} -> {problems:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_keyword_member_divisor_stays_a_call() {
+        for sample in [
+            "obj.return / document.write(1) / 1",
+            "obj?.delete / document.write(1) / 1",
+        ] {
+            let problems = html_parsing_problems(sample);
+            assert!(
+                problems.contains("member call write"),
+                "{sample} -> {problems:?}"
+            );
+            assert!(
+                !problems.iter().any(|item| item.contains("failed closed")),
+                "{sample} -> {problems:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn many_text_assignments_fail_closed_in_linear_time() {
+        let sample = "x.textContent=1;".repeat(8_000);
+        let started = std::time::Instant::now();
+        let (problems, steps) = scan_measured(&sample);
+        assert!(
+            started.elapsed().as_millis() < 1000,
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(
+            problems.iter().any(|item| item.contains("failed closed")),
+            "{problems:?}"
+        );
+        let limit = (sample.len() as u64).saturating_mul(8).saturating_add(64);
+        assert!(steps <= limit.saturating_mul(2), "{steps} > {limit}");
+    }
+
+    #[test]
+    fn a_data_scheme_attribute_is_a_sink() {
+        let problems = html_parsing_problems("<a href=\"data:text/html,x\"></a>");
+        assert!(problems.contains("attribute href"), "{problems:?}");
+    }
+
+    #[test]
+    fn markup_names_are_case_insensitive() {
+        let script = html_parsing_problems("<SCRIPT>foo(1)</SCRIPT>");
+        assert!(script.contains("bare foo"), "{script:?}");
+        let handler = html_parsing_problems("<img ONERROR=\"foo(1)\">");
+        assert!(handler.contains("attribute ONERROR"), "{handler:?}");
+        let srcdoc = html_parsing_problems("<div SRCDOC=\"x\"></div>");
+        assert!(srcdoc.contains("attribute srcdoc"), "{srcdoc:?}");
+        let href = html_parsing_problems("<a HREF=\"javascript:x\"></a>");
+        assert!(href.contains("attribute HREF"), "{href:?}");
+    }
+
+    #[test]
+    fn a_panic_during_scan_fails_closed() {
+        let got = recover(std::panic::catch_unwind(|| -> (BTreeSet<String>, u64) {
+            panic!("scan")
+        }));
+        assert!(got.contains("scan failed closed"), "{got:?}");
+        assert_eq!(got.len(), 1);
     }
 
     #[test]
@@ -3351,6 +3479,7 @@ mod mutant_tests {
         let mut steps = 5u64;
         scan_js("eval(1)", &mut out, &mut steps, 5);
         assert!(out.contains("bare eval"), "{out:?} steps={steps}");
+        assert!(out.contains("scan failed closed"), "{out:?} steps={steps}");
 
         assert!(allowed(MEMBER_CALL, "push"));
         assert!(!allowed(MEMBER_CALL, "write"));
@@ -3554,12 +3683,17 @@ mod mutant_tests {
         assert!(!safe_url_literal("data:x"));
         assert!(control_keyword("if") && control_keyword("for") && control_keyword("catch"));
         assert!(!control_keyword("function"));
-        assert!(regex_here(None, false));
-        assert!(regex_here(Some(&Tok::Ident("if".into())), false));
-        assert!(!regex_here(Some(&Tok::Ident("foo".into())), false));
-        assert!(regex_here(Some(&Tok::Ident("foo".into())), true));
-        assert!(!regex_here(Some(&Tok::Num), false));
-        assert!(regex_here(Some(&Tok::Assign), false));
+        assert!(regex_here(None, false, false));
+        assert!(regex_here(Some(&Tok::Ident("if".into())), false, false));
+        assert!(!regex_here(Some(&Tok::Ident("if".into())), false, true));
+        assert!(!regex_here(Some(&Tok::Ident("foo".into())), false, false));
+        assert!(regex_here(Some(&Tok::Ident("foo".into())), true, true));
+        assert!(!regex_here(Some(&Tok::Num), false, false));
+        assert!(regex_here(Some(&Tok::Assign), false, false));
+        assert!(keyword_member(&[Tok::Dot, Tok::Ident("return".into())]));
+        assert!(keyword_member(&[Tok::Opt, Tok::Ident("delete".into())]));
+        assert!(!keyword_member(&[Tok::Ident("return".into())]));
+        assert!(!keyword_member(&[Tok::Dot, Tok::Ident("write".into())]));
         let ret = lex_of("return a", u64::MAX / 8).0;
         assert!(prev_is_keyword(&ret, 1));
         assert!(!prev_is_keyword(&ret, 0));
@@ -3825,8 +3959,8 @@ mod mutant_tests {
             .unwrap();
         lines.push(format!(
             "IN setText {} el {}",
-            inside_function(&fn_toks, at, "setText"),
-            inside_function(&fn_toks, at, "el")
+            inside_function(&fn_toks, at, "setText", &mut 0, u64::MAX),
+            inside_function(&fn_toks, at, "el", &mut 0, u64::MAX)
         ));
         lines.push(format!(
             "ELPARAM {}",

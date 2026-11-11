@@ -1411,11 +1411,22 @@ fn parse_start_tag(s: &str) -> StartTag {
 /// controls), turn spaces into hyphens, and drop everything else — including
 /// line breaks, so a break does not become a hyphen. Hyphens are not collapsed
 /// and the string is not trimmed, so `Map / Residue` becomes `map--residue`
-/// and a leading space becomes a leading hyphen.
+/// and a leading space becomes a leading hyphen. Capital sigma follows
+/// Unicode Final_Sigma, so a word-final `Σ` becomes `ς`.
 pub fn github_slug(heading: &str) -> String {
+    let chars: Vec<char> = heading.chars().collect();
     let mut out = String::with_capacity(heading.len());
-    for c in heading.chars() {
-        for lower in c.to_lowercase() {
+    for (i, &c) in chars.iter().enumerate() {
+        let folded: Vec<char> = if c == 'Σ' {
+            if final_sigma(&chars, i) {
+                vec!['ς']
+            } else {
+                vec!['σ']
+            }
+        } else {
+            c.to_lowercase().collect()
+        };
+        for lower in folded {
             if is_unicode_word(lower) {
                 out.push(lower);
             } else if lower == ' ' || lower == '-' {
@@ -1424,6 +1435,65 @@ pub fn github_slug(heading: &str) -> String {
         }
     }
     out
+}
+
+fn final_sigma(chars: &[char], index: usize) -> bool {
+    preceded_by_cased(chars, index) && !followed_by_cased(chars, index)
+}
+
+fn preceded_by_cased(chars: &[char], index: usize) -> bool {
+    let mut j = index;
+    while j > 0 {
+        j -= 1;
+        let c = chars[j];
+        if case_ignorable(c) {
+            continue;
+        }
+        return cased(c);
+    }
+    false
+}
+
+fn followed_by_cased(chars: &[char], index: usize) -> bool {
+    let mut j = index + 1;
+    while j < chars.len() {
+        let c = chars[j];
+        if case_ignorable(c) {
+            j += 1;
+            continue;
+        }
+        return cased(c);
+    }
+    false
+}
+
+fn cased(c: char) -> bool {
+    c.is_uppercase() || c.is_lowercase()
+}
+
+fn case_ignorable(c: char) -> bool {
+    matches!(
+        c,
+        '\'' | '.'
+            | ':'
+            | '\u{00B7}'
+            | '\u{02D7}'
+            | '\u{05F4}'
+            | '\u{2018}'
+            | '\u{2019}'
+            | '\u{2024}'
+            | '\u{2027}'
+            | '\u{FE13}'
+            | '\u{FE52}'
+            | '\u{FE55}'
+            | '\u{FF07}'
+            | '\u{FF0E}'
+            | '\u{FF1A}'
+    ) || ('\u{0300}'..='\u{036F}').contains(&c)
+        || ('\u{1AB0}'..='\u{1AFF}').contains(&c)
+        || ('\u{1DC0}'..='\u{1DFF}').contains(&c)
+        || ('\u{20D0}'..='\u{20FF}').contains(&c)
+        || ('\u{FE20}'..='\u{FE2F}').contains(&c)
 }
 
 fn is_unicode_word(c: char) -> bool {
@@ -1720,10 +1790,47 @@ mod tests {
     }
 
     #[test]
-    fn github_slug_lowercases_sigma_one_character_at_a_time() {
-        assert_eq!(github_slug("ΑΣ"), "ασ");
-        assert_eq!(github_slug("ΣΑΣ x"), "σασ-x");
+    fn github_slug_uses_final_sigma() {
+        assert_eq!(github_slug("ΑΣ"), "ας");
+        assert_eq!(github_slug("ΣΑΣ x"), "σας-x");
+        assert_eq!(github_slug("Σ"), "σ");
+        assert_eq!(github_slug("aΣb"), "aσb");
+        assert_eq!(github_slug("aΣ"), "aς");
+        assert_eq!(github_slug("ΣΣ"), "σς");
+        assert_eq!(github_slug("aΣ x"), "aς-x");
+        assert_eq!(github_slug("aΣ\u{0301}b"), "aσ\u{0301}b");
+        assert_eq!(github_slug("aΣ\u{0301}"), "aς\u{0301}");
+        assert_eq!(github_slug("a'Σb"), "aσb");
+        assert_eq!(github_slug("a.Σb"), "aσb");
+        assert_eq!(github_slug("a:Σb"), "aσb");
         assert_eq!(github_slug("a-b"), "a-b");
+    }
+
+    #[test]
+    fn select_and_anchors_are_case_insensitive() {
+        assert!(anchor_ids_in_chunks(&["<SELECT><a id=\"8-invariants\"></a></SELECT>"]).is_empty());
+        assert!(anchor_ids_in_chunks(&["<select><a id=\"8-invariants\"></a></SELECT>"]).is_empty());
+        assert_eq!(
+            anchor_ids_in_chunks(&["<A ID=\"8-invariants\"></A>"]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_longer_name_does_not_end_select() {
+        assert_eq!(
+            anchor_ids_in_chunks(&[
+                "<select><a id=\"hidden\"></a></selecting><a id=\"still\"></a></select><a id=\"8-invariants\"></a>"
+            ]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_end_tag_quote_hides_an_anchor_after_an_interior_gt() {
+        assert!(
+            anchor_ids_in_chunks(&["</div title=\"> <a id=\"8-invariants\"></a>\">"]).is_empty()
+        );
     }
 
     #[test]
