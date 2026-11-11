@@ -172,12 +172,12 @@ class _MarkedList(list):
     yaml_line = 1
 
 
-# Libyaml when it is present. Both bases reject tags outside the safe schema.
-_SAFE_LOADER_BASE = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
-
-
-class _MarkedLoader(_SAFE_LOADER_BASE):
-    """SafeLoader that records the line of each mapping, key, and sequence."""
+def _require_csafe_loader() -> type:
+    """The scan binding. Import fails when libyaml is absent."""
+    base = getattr(yaml, "CSafeLoader", None)
+    if base is None:
+        raise RuntimeError("libyaml CSafeLoader is required")
+    return base
 
 
 def _construct_marked_map(loader: yaml.SafeLoader, node: yaml.Node) -> _MarkedDict:
@@ -205,29 +205,51 @@ def _construct_marked_seq(loader: yaml.SafeLoader, node: yaml.Node) -> _MarkedLi
     return seq
 
 
-_MarkedLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_marked_map,
-)
-_MarkedLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_SEQUENCE_TAG,
-    _construct_marked_seq,
-)
+def _marked_loader(base: type) -> type:
+    """One SafeLoader subclass that records mapping and sequence lines."""
+
+    class Loader(base):
+        """Safe loader that records the line of each mapping, key, and sequence."""
+
+    Loader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        _construct_marked_map,
+    )
+    Loader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_SEQUENCE_TAG,
+        _construct_marked_seq,
+    )
+    return Loader
 
 
-def load_workflow_yaml(text: str) -> tuple[object, str | None]:
-    """Parse workflow YAML with one SafeLoader pass.
+# Libyaml only. A pure SafeLoader accepts a different set of scalars.
+_SAFE_LOADER_BASE = _require_csafe_loader()
+_MarkedLoader = _marked_loader(_SAFE_LOADER_BASE)
+_PureSafeMarkedLoader = _marked_loader(yaml.SafeLoader)
 
-    The base is libyaml's ``CSafeLoader`` when those bindings are present,
-    and ``SafeLoader`` otherwise. Both reject tags outside the safe schema.
-    Invalid YAML is a violation, not a pass. A plain scalar's style is
-    stored as null so the two bindings record the same style.
-    """
+
+def _load_marked(text: str, loader: type) -> tuple[object, str | None]:
     try:
-        marked = yaml.load(text, _MarkedLoader)  # noqa: S506 — SafeLoader subclass
+        marked = yaml.load(text, loader)  # noqa: S506 — SafeLoader subclass
     except yaml.YAMLError as exc:
         return None, str(exc).splitlines()[0]
     return marked, None
+
+
+def load_workflow_yaml(text: str) -> tuple[object, str | None]:
+    """Parse workflow YAML with one CSafeLoader pass.
+
+    The binding is libyaml's ``CSafeLoader``. The module fails to import
+    when that binding is missing. A pure ``SafeLoader`` is not this pass.
+    The two bindings parse every scanned file to the same marked tree.
+    A tab after a key, a tab before a trailing comment, and a tab inside
+    a flow mapping parse here and fail on ``SafeLoader``. A lone surrogate
+    escape fails here and parses on ``SafeLoader``. Both reject tags
+    outside the safe schema. Invalid YAML is a violation, not a pass.
+    A plain scalar's style is stored as null so the two bindings record
+    the same style. There is no earlier ``safe_load`` pass.
+    """
+    return _load_marked(text, _MarkedLoader)
 
 
 def _iter_uses(node: object):
@@ -585,11 +607,7 @@ def _is_upload_only(job: dict) -> bool:
 
 
 def _exact_upload_permissions(perms: object) -> bool:
-    if (
-        not isinstance(perms, dict)
-        or getattr(perms, "duplicate_keys", None)
-        or len(perms) != len(_UPLOAD_PERMISSIONS)
-    ):
+    if not isinstance(perms, dict) or getattr(perms, "duplicate_keys", None):
         return False
     normalized: dict[str, object] = {}
     for key, value in perms.items():
@@ -671,6 +689,21 @@ CODECOV_EVENT_MSG = (
 )
 TOP_PERMISSIONS_MSG = "workflow must set top-level permissions to {}"
 JOB_CONTENTS_READ_MSG = "job must set permissions to contents: read"
+EDITOR_CI_JOB_KEYS_MSG = (
+    "editor-ci job keys must be name, permissions, runs-on, "
+    "timeout-minutes, continue-on-error, and steps"
+)
+DUPLICATE_MAPPING_KEY_MSG = "repeated mapping key"
+_EDITOR_CI_JOB_KEYS = frozenset(
+    {
+        "name",
+        "permissions",
+        "runs-on",
+        "timeout-minutes",
+        "continue-on-error",
+        "steps",
+    }
+)
 DOCKER_DIGEST_MSG = "docker action must be pinned with @sha256"
 _SHA_REF_RE = re.compile(r"[0-9a-f]{40}")
 _DOCKER_PIN_RE = re.compile(r"^docker://\S+@sha256:[0-9a-f]{64}$")
@@ -2069,7 +2102,9 @@ def least_privilege_permission_violations(text: str, *, path: str = "") -> list[
     contents: read. A repeated key on a job permissions map fails,
     including when the last value is contents: read. The map is exactly
     one contents: read entry. An extra scope, a different case, or
-    padding fails.
+    padding fails. The editor-ci job's keys are exactly name, permissions,
+    runs-on, timeout-minutes, continue-on-error, and steps. A different
+    case or any other key fails.
     """
     if Path(path).name not in _LEAST_PRIVILEGE_WORKFLOWS:
         return []
@@ -2090,6 +2125,9 @@ def least_privilege_permission_violations(text: str, *, path: str = "") -> list[
     job_lines = getattr(jobs, "key_lines", {})
     for job_id, job in jobs.items():
         job_line = int(job_lines.get(job_id, 1))
+        if Path(path).name == "editor-ci.yml" and job_id == "editor-ci":
+            if not _editor_ci_job_keys_exact(job):
+                violations.append(f"{prefix}{job_line}: {EDITOR_CI_JOB_KEYS_MSG}")
         job_perms = job.get("permissions", _MISSING) if isinstance(job, dict) else _MISSING
         exact = (
             isinstance(job, dict)
@@ -2106,6 +2144,41 @@ def least_privilege_permission_violations(text: str, *, path: str = "") -> list[
             entry = int(getattr(job, "key_lines", {}).get("permissions", job_line))
         violations.append(f"{prefix}{entry}: {JOB_CONTENTS_READ_MSG}")
     return violations
+
+
+def _editor_ci_job_keys_exact(job: object) -> bool:
+    """The editor-ci job's keys are the canonical set, including case."""
+    if not isinstance(job, dict):
+        return False
+    return set(job) == _EDITOR_CI_JOB_KEYS
+
+
+def _collect_duplicate_mappings(node: object, prefix: str, found: list[str]) -> None:
+    if isinstance(node, dict):
+        if getattr(node, "duplicate_keys", None):
+            line = int(getattr(node, "yaml_line", 1))
+            found.append(f"{prefix}{line}: {DUPLICATE_MAPPING_KEY_MSG}")
+        for value in node.values():
+            _collect_duplicate_mappings(value, prefix, found)
+    elif isinstance(node, list):
+        for item in node:
+            _collect_duplicate_mappings(item, prefix, found)
+
+
+def duplicate_mapping_key_violations(text: str, *, path: str = "") -> list[str]:
+    """Any repeated key on any mapping fails.
+
+    The walk covers the workflow mapping, every job, every step, and nested
+    maps. A repeated job id and a repeated step key fail. Invalid YAML
+    fails the check. This check runs on every scanned workflow and composite.
+    """
+    prefix = f"{path}: " if path else ""
+    doc, err = load_workflow_yaml(text)
+    if err:
+        return [f"{prefix}1: {err}"]
+    found: list[str] = []
+    _collect_duplicate_mappings(doc, prefix, found)
+    return found
 
 
 def kani_version_violations(text: str, *, path: str = "") -> list[str]:
@@ -2448,9 +2521,7 @@ def coverage_report_publish_violations(
             violations.append(f"{prefix}{_step_line(step)}: {ARCHIVE_MSG}")
         _key, name = _ci_item(_mapping(body), "name")
         plain_producer = (
-            allowed is not None
-            and _is_named_action(step, "actions/upload-artifact")
-            and isinstance(name, str)
+            _is_named_action(step, "actions/upload-artifact")
             and name == allowed
             and _archive_is_default(step)
         )
@@ -2994,6 +3065,7 @@ _POLICY_SURFACE_CHECKS = (
     "checkout_persist_credentials_violations",
     "kani_action_sha_violations",
     "llvm_cov_pin_violations",
+    "duplicate_mapping_key_violations",
 )
 
 
@@ -9562,7 +9634,11 @@ jobs:
             messages = check(on_dup, path=name)
             _pin, policy = scan_action_surface(on_dup, f".github/workflows/{name}")
             self.assertEqual(endings(messages), [TOP_PERMISSIONS_MSG], name)
-            self.assertEqual(endings(policy), [TOP_PERMISSIONS_MSG], name)
+            self.assertEqual(
+                endings(policy),
+                [TOP_PERMISSIONS_MSG, DUPLICATE_MAPPING_KEY_MSG],
+                name,
+            )
             name_dup = text.replace("name: ", "name: Other\nname: ", 1)
             self.assertNotEqual(name_dup, text, name)
             doc, err = load_workflow_yaml(name_dup)
@@ -9572,7 +9648,11 @@ jobs:
             messages = check(name_dup, path=name)
             _pin, policy = scan_action_surface(name_dup, f".github/workflows/{name}")
             self.assertEqual(endings(messages), [TOP_PERMISSIONS_MSG], name)
-            self.assertEqual(endings(policy), [TOP_PERMISSIONS_MSG], name)
+            self.assertEqual(
+                endings(policy),
+                [TOP_PERMISSIONS_MSG, DUPLICATE_MAPPING_KEY_MSG],
+                name,
+            )
             if "\nenv:\n" not in text:
                 continue
             env_dup = text.replace(
@@ -9586,7 +9666,11 @@ jobs:
             messages = check(env_dup, path=name)
             _pin, policy = scan_action_surface(env_dup, f".github/workflows/{name}")
             self.assertEqual(endings(messages), [TOP_PERMISSIONS_MSG], name)
-            self.assertEqual(endings(policy), [TOP_PERMISSIONS_MSG], name)
+            self.assertEqual(
+                endings(policy),
+                [TOP_PERMISSIONS_MSG, DUPLICATE_MAPPING_KEY_MSG],
+                name,
+            )
 
         job_anchor = (
             "    permissions:\n"
@@ -9616,6 +9700,31 @@ jobs:
             "padded-read": (
                 "    permissions:\n"
                 "      contents: 'read '\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "prefix-re": (
+                "    permissions:\n"
+                "      contents: re\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "prefix-r": (
+                "    permissions:\n"
+                "      contents: r\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "prefix-rea": (
+                "    permissions:\n"
+                "      contents: rea\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "empty-contents": (
+                "    permissions:\n"
+                "      contents: ''\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "contents-WRITE": (
+                "    permissions:\n"
+                "      contents: WRITE\n"
                 "    runs-on: ubuntu-latest\n"
             ),
         }
@@ -9846,6 +9955,370 @@ jobs:
                 fut = pool.submit(_pinned_report_hit_count, publish_path, printable)
                 inflight[fut] = (publish_path, expected + extra)
             drain(pool, inflight, 0)
+
+    def test_repeated_mapping_keys_fail_on_every_surface(self) -> None:
+        """A repeated job id, a repeated step key, and a case-variant job key fail.
+
+        The job-id repeat keeps the canonical job. The step repeat keeps the
+        canonical uses. Both are outside the root duplicate-key arm. The
+        editor-ci job also rejects a different case of permissions and any
+        other key.
+        """
+        rows = (
+            ("coverage.yml", "coverage"),
+            ("aw-editor-tests.yml", "coverage"),
+            ("kani.yml", "kani-ecs"),
+            ("editor-ci.yml", "editor-ci"),
+            ("ci.yml", ""),
+        )
+        for name, job_id in rows:
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, name)
+            if not job_id:
+                job_id = next(iter(doc["jobs"]))
+            needle = f"  {job_id}:\n"
+            self.assertIn(needle, text, name)
+            injected = (
+                f"  {job_id}:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    permissions: write-all\n"
+                "    steps:\n"
+                "      - run: echo injected\n"
+            )
+            mutant = text.replace(needle, injected + needle, 1)
+            parsed, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, name)
+            self.assertFalse(getattr(parsed, "duplicate_keys", None), name)
+            self.assertEqual(parsed["jobs"].duplicate_keys, [job_id], name)
+            hits = duplicate_mapping_key_violations(mutant, path=name)
+            self.assertEqual(
+                [hit.split(": ", 2)[2] for hit in hits],
+                [DUPLICATE_MAPPING_KEY_MSG],
+                name,
+            )
+            _pin, policy = scan_action_surface(mutant, f".github/workflows/{name}")
+            self.assertIn(DUPLICATE_MAPPING_KEY_MSG, " ".join(policy), name)
+            uses = re.search(r"(?m)^(?P<indent> +)uses: \S", text)
+            self.assertIsNotNone(uses, name)
+            indent = uses.group("indent")
+            stepped = text[: uses.start()] + f"{indent}uses: evil/x@v1\n" + text[uses.start() :]
+            parsed, err = load_workflow_yaml(stepped)
+            self.assertIsNone(err, name)
+            self.assertTrue(
+                any(
+                    "uses" in (getattr(step, "duplicate_keys", None) or [])
+                    for _job_id, _job, step in _iter_steps(parsed)
+                ),
+                name,
+            )
+            hits = duplicate_mapping_key_violations(stepped, path=name)
+            self.assertEqual(
+                [hit.split(": ", 2)[2] for hit in hits],
+                [DUPLICATE_MAPPING_KEY_MSG],
+                name,
+            )
+
+        editor = (WORKFLOWS / "editor-ci.yml").read_text(encoding="utf-8")
+        anchor = "    permissions:\n      contents: read\n"
+        self.assertEqual(editor.count(anchor), 1)
+        cased = editor.replace(
+            anchor,
+            anchor
+            + "    Permissions:\n      contents: write\n      id-token: write\n",
+            1,
+        )
+        messages = least_privilege_permission_violations(cased, path="editor-ci.yml")
+        self.assertEqual(
+            [hit.split(": ", 2)[2] for hit in messages],
+            [EDITOR_CI_JOB_KEYS_MSG],
+        )
+        replaced = editor.replace(
+            "    permissions:\n",
+            "    Permissions:\n",
+            1,
+        )
+        self.assertNotEqual(replaced, editor)
+        messages = least_privilege_permission_violations(replaced, path="editor-ci.yml")
+        self.assertEqual(
+            [hit.split(": ", 2)[2] for hit in messages],
+            [EDITOR_CI_JOB_KEYS_MSG, JOB_CONTENTS_READ_MSG],
+        )
+        unknown = editor.replace(
+            "    runs-on: ubuntu-latest\n",
+            "    env:\n      TOKEN: injected\n    runs-on: ubuntu-latest\n",
+            1,
+        )
+        self.assertEqual(editor.count("    runs-on: ubuntu-latest\n"), 1)
+        messages = least_privilege_permission_violations(unknown, path="editor-ci.yml")
+        self.assertEqual(
+            [hit.split(": ", 2)[2] for hit in messages],
+            [EDITOR_CI_JOB_KEYS_MSG],
+        )
+
+    def test_every_root_and_locked_job_key_repeat_fails(self) -> None:
+        """Repeating each root key and each locked job key fails that arm."""
+
+        def prepend_root(text: str, key: str) -> str:
+            match = re.search(rf"(?m)^{re.escape(key)}:", text)
+            self.assertIsNotNone(match, key)
+            if key == "jobs":
+                block = (
+                    "jobs:\n"
+                    "  injected:\n"
+                    "    runs-on: ubuntu-latest\n"
+                    "    permissions: write-all\n"
+                    "    steps:\n"
+                    "      - run: echo injected\n"
+                )
+            elif key == "on":
+                block = "on: [pull_request]\n"
+            elif key == "permissions":
+                block = "permissions: write-all\n"
+            elif key == "defaults":
+                block = "defaults:\n  run:\n    shell: pwsh\n"
+            else:
+                block = f"{key}: injected\n"
+            return text[: match.start()] + block + text[match.start() :]
+
+        def root_spellings(doc: object) -> list[str]:
+            spellings: list[str] = []
+            for key in doc:
+                if key is True:
+                    spellings.append("on")
+                elif isinstance(key, str):
+                    spellings.append(key)
+                else:
+                    self.fail(repr(key))
+            return spellings
+
+        root_files = (
+            "coverage.yml",
+            "aw-editor-tests.yml",
+            "kani.yml",
+            "editor-ci.yml",
+        )
+        for name in root_files:
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, name)
+            check = (
+                coverage_permission_violations
+                if name in ("coverage.yml", "aw-editor-tests.yml")
+                else least_privilege_permission_violations
+            )
+            for key in root_spellings(doc):
+                mutant = prepend_root(text, key)
+                parsed, err = load_workflow_yaml(mutant)
+                self.assertIsNone(err, f"{name}-{key}")
+                expected = True if key == "on" else key
+                self.assertIn(expected, parsed.duplicate_keys, f"{name}-{key}")
+                messages = check(mutant, path=name)
+                self.assertIn(TOP_PERMISSIONS_MSG, " ".join(messages), f"{name}-{key}")
+                dupes = duplicate_mapping_key_violations(mutant, path=name)
+                self.assertIn(DUPLICATE_MAPPING_KEY_MSG, " ".join(dupes), f"{name}-{key}")
+
+        job_rows = (
+            ("kani.yml", "kani-ecs"),
+            ("kani.yml", "kani-math"),
+            ("kani.yml", "kani-sdk"),
+            ("kani.yml", "kani-core"),
+            ("editor-ci.yml", "editor-ci"),
+        )
+        for name, job_id in job_rows:
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, name)
+            job = doc["jobs"][job_id]
+            for key in job:
+                self.assertIsInstance(key, str, f"{name}-{job_id}")
+                line = job.key_lines[key]
+                if key == "steps":
+                    block = "    steps:\n      - run: echo injected\n"
+                elif key == "permissions":
+                    block = "    permissions: write-all\n"
+                elif key == "runs-on":
+                    block = "    runs-on: self-hosted\n"
+                elif key == "timeout-minutes":
+                    block = "    timeout-minutes: 1\n"
+                elif key == "continue-on-error":
+                    block = "    continue-on-error: false\n"
+                else:
+                    block = f"    {key}: injected\n"
+                lines = text.splitlines(keepends=True)
+                lines.insert(line - 1, block)
+                mutant = "".join(lines)
+                parsed, err = load_workflow_yaml(mutant)
+                self.assertIsNone(err, f"{name}-{job_id}-{key}")
+                parsed_job = parsed["jobs"][job_id]
+                self.assertIn(key, parsed_job.duplicate_keys, f"{name}-{job_id}-{key}")
+                messages = least_privilege_permission_violations(mutant, path=name)
+                self.assertIn(
+                    JOB_CONTENTS_READ_MSG,
+                    " ".join(messages),
+                    f"{name}-{job_id}-{key}",
+                )
+                dupes = duplicate_mapping_key_violations(mutant, path=name)
+                self.assertIn(
+                    DUPLICATE_MAPPING_KEY_MSG,
+                    " ".join(dupes),
+                    f"{name}-{job_id}-{key}",
+                )
+
+    def test_repeated_defaults_reports_each_arm(self) -> None:
+        """A repeated defaults key fails the root arm and the run-context arm."""
+        prefix = "defaults:\n  run:\n    shell: pwsh\ndefaults: {}\n"
+        for name, check in (
+            ("coverage.yml", coverage_permission_violations),
+            ("aw-editor-tests.yml", coverage_permission_violations),
+            ("kani.yml", least_privilege_permission_violations),
+            ("editor-ci.yml", least_privilege_permission_violations),
+        ):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            self.assertEqual(text.count("\ndefaults:"), 0, name)
+            self.assertEqual(text.count("permissions: {}\n"), 1, name)
+            perm_line = text.splitlines().index("permissions: {}") + 1 + 4
+            mutant = prefix + text
+            parsed, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, name)
+            self.assertEqual(parsed.duplicate_keys, ["defaults"], name)
+            self.assertEqual(
+                check(mutant, path=name),
+                [f"{name}: {perm_line}: {TOP_PERMISSIONS_MSG}"],
+                name,
+            )
+            self.assertEqual(
+                duplicate_mapping_key_violations(mutant, path=name),
+                [f"{name}: 1: {DUPLICATE_MAPPING_KEY_MSG}"],
+                name,
+            )
+            if name in _RUN_CONTEXT_WORKFLOWS:
+                self.assertEqual(
+                    run_context_violations(mutant, path=name),
+                    [f"{name}: 4: {RUN_CONTEXT_MSG}"],
+                    name,
+                )
+            else:
+                self.assertEqual(run_context_violations(mutant, path=name), [], name)
+
+    def test_invalid_yaml_is_a_parse_violation(self) -> None:
+        """An unparseable locked file, workflow, and composite fail the scan."""
+        rows = (
+            ".github/workflows/coverage.yml",
+            ".github/workflows/ci.yml",
+            ".github/actions/rust-ci-setup/action.yml",
+        )
+        for rel in rows:
+            text = (ROOT / rel).read_text(encoding="utf-8") + "\n\t- [\n"
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(doc, rel)
+            self.assertIsNotNone(err, rel)
+            self.assertEqual(
+                duplicate_mapping_key_violations(text, path=rel),
+                [f"{rel}: 1: {err}"],
+                rel,
+            )
+            pin, policy = scan_action_surface(text, rel)
+            self.assertTrue(any(err in item for item in pin + policy), rel)
+
+    def test_csafe_loader_is_the_scan_binding(self) -> None:
+        """The scan uses CSafeLoader. SafeLoader disagrees on tab and surrogate forms.
+
+        Every scanned file has the same marked tree under both bindings.
+        """
+        self.assertIs(_SAFE_LOADER_BASE, yaml.CSafeLoader)
+        saved_loader = yaml.CSafeLoader
+        try:
+            del yaml.CSafeLoader
+            with self.assertRaises(RuntimeError):
+                _require_csafe_loader()
+        finally:
+            yaml.CSafeLoader = saved_loader
+        accepted = {
+            "tab-after-key": "key:\tvalue\n",
+            "tab-before-comment": "key: value\t# note\n",
+            "tab-in-flow": "key: {a:\tb}\n",
+        }
+        for label, text in accepted.items():
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, label)
+            self.assertIsNotNone(doc, label)
+            _pure, pure_err = _load_marked(text, _PureSafeMarkedLoader)
+            self.assertIsNotNone(pure_err, label)
+        surrogate = '"\\ud800"\n'
+        _doc, err = load_workflow_yaml(surrogate)
+        self.assertIsNotNone(err)
+        pure, pure_err = _load_marked(surrogate, _PureSafeMarkedLoader)
+        self.assertIsNone(pure_err)
+        self.assertEqual(pure, "\ud800")
+
+        def fingerprint(node: object, seen: dict | None = None) -> object:
+            if seen is None:
+                seen = {}
+            if isinstance(node, (dict, list)):
+                ident = id(node)
+                if ident in seen:
+                    return seen[ident]
+            if isinstance(node, dict):
+                out: dict = {}
+                seen[id(node)] = out
+                out["line"] = getattr(node, "yaml_line", None)
+                out["dupes"] = list(getattr(node, "duplicate_keys", []) or [])
+                out["lines"] = list(getattr(node, "key_lines", {}).items())
+                out["style"] = list(getattr(node, "scalar_style", {}).items())
+                out["items"] = [
+                    (fingerprint(key, seen), fingerprint(value, seen))
+                    for key, value in node.items()
+                ]
+                return out
+            if isinstance(node, list):
+                out = {"line": getattr(node, "yaml_line", None), "items": []}
+                seen[id(node)] = out
+                out["items"] = [fingerprint(item, seen) for item in node]
+                return out
+            return node
+
+        for path in github_action_surfaces():
+            text = path.read_text(encoding="utf-8")
+            rel = path.relative_to(ROOT).as_posix()
+            csafe, csafe_err = load_workflow_yaml(text)
+            pure, pure_err = _load_marked(text, _PureSafeMarkedLoader)
+            self.assertEqual(csafe_err, pure_err, rel)
+            self.assertIsNone(csafe_err, rel)
+            self.assertEqual(fingerprint(csafe), fingerprint(pure), rel)
+
+    def test_missing_permissions_and_cased_producer_name_are_exact(self) -> None:
+        """A removed permissions map and a cased producer name have exact lists."""
+        editor = (WORKFLOWS / "editor-ci.yml").read_text(encoding="utf-8")
+        anchor = "    permissions:\n      contents: read\n"
+        self.assertEqual(editor.count(anchor), 1)
+        removed = editor.replace(anchor, "", 1)
+        self.assertEqual(
+            least_privilege_permission_violations(removed, path="editor-ci.yml"),
+            [
+                f"editor-ci.yml: 29: {EDITOR_CI_JOB_KEYS_MSG}",
+                f"editor-ci.yml: 29: {JOB_CONTENTS_READ_MSG}",
+            ],
+        )
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        producer = (
+            "      - name: Upload coverage XML\n"
+            "        uses: actions/upload-artifact@"
+            "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        with:\n"
+            "          name: coverage-xml\n"
+        )
+        self.assertEqual(text.count(producer), 1)
+        renamed = text.replace(producer, producer.replace("coverage-xml", "Coverage-XML", 1), 1)
+        pin, policy = scan_action_surface(renamed, "coverage.yml")
+        self.assertEqual(
+            pin + policy,
+            [
+                f"coverage.yml: 41: {COVERAGE_JOB_END_MSG}",
+                f"coverage.yml: 41: {PINNED_REPORT_MSG}",
+                f"coverage.yml: 1: {PINNED_REPORT_MSG}",
+            ],
+        )
 
 
 if __name__ == "__main__":
