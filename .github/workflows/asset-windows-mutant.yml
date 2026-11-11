@@ -1,11 +1,15 @@
 name: Asset Windows mutant
 
-# The held-directory no-op and the kept "." name are applied on a Windows
-# runner. The asset tests that cover those paths must fail. A green run means
-# a mutant survived.
+# These jobs apply one mutant on a Windows runner. A green run is a verified
+# runtime kill: the asset tests ran, at least one test failed, and the log
+# contains `test result: FAILED`. A passing suite, a compile failure, and a
+# run that does not execute tests all exit non-zero.
 
 on:
   pull_request:
+    paths:
+      - "astraweave-asset/**"
+      - ".github/workflows/asset-windows-mutant.yml"
   workflow_dispatch:
 
 concurrency:
@@ -23,11 +27,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
 
-      - name: Drop the held directory and run the killers
+      - name: Drop the held directory and require a runtime kill
         shell: bash
         run: |
           set -euo pipefail
@@ -48,15 +54,24 @@ jobs:
           cargo test --locked -p astraweave-asset --lib -- \
             directory_past_the_handle_budget_is_refused \
             repeated_nested_uri_keeps_one_intermediate_handle \
-            glb_load_keeps_intermediate_uri_directory
+            glb_load_keeps_intermediate_uri_directory \
+            > hold-noop-test.log 2>&1
           status=$?
           set -e
+          cat hold-noop-test.log
           if [ "$status" -eq 0 ]; then
             echo "hold no-op mutant survived"
             exit 1
           fi
-          echo "hold no-op mutant killed: cargo test exited $status"
-          exit "$status"
+          if ! grep -q "test result: FAILED" hold-noop-test.log; then
+            echo "hold no-op patch did not reach a runtime test failure"
+            exit 1
+          fi
+          if ! grep -E "test result: FAILED\\..*[1-9][0-9]* failed" hold-noop-test.log; then
+            echo "hold no-op patch did not fail a test"
+            exit 1
+          fi
+          echo "hold no-op mutant killed"
 
   dot-component:
     name: Kept dot-component mutant
@@ -65,11 +80,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
 
-      - name: Keep a dot component and run the killer
+      - name: Keep a dot component and require a runtime kill
         shell: bash
         run: |
           set -euo pipefail
@@ -96,8 +113,11 @@ jobs:
             exit 1
           fi
           if ! grep -q "test result: FAILED" dot-component-test.log; then
-            echo "kept dot-component patch did not reach the runtime test"
+            echo "kept dot-component patch did not reach a runtime test failure"
             exit 1
           fi
-          echo "kept dot-component mutant killed: cargo test exited $status"
-          exit "$status"
+          if ! grep -E "test result: FAILED\\..*[1-9][0-9]* failed" dot-component-test.log; then
+            echo "kept dot-component patch did not fail a test"
+            exit 1
+          fi
+          echo "kept dot-component mutant killed"
