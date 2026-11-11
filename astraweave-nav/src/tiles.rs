@@ -60,6 +60,26 @@ fn set_search_step_cap(cap: Option<u32>) {
     SEARCH_STEP_CAP_OVERRIDE.with(|cell| cell.set(cap));
 }
 
+#[cfg(test)]
+std::thread_local! {
+    static HEAP_CAP_OVERRIDE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+}
+
+fn heap_capacity() -> usize {
+    #[cfg(test)]
+    {
+        if let Some(cap) = HEAP_CAP_OVERRIDE.with(|cell| cell.get()) {
+            return cap.min(MAX_NODES);
+        }
+    }
+    MAX_NODES
+}
+
+#[cfg(test)]
+fn set_heap_capacity(cap: Option<usize>) {
+    HEAP_CAP_OVERRIDE.with(|cell| cell.set(cap));
+}
+
 /// Advance a scan cursor by one.
 fn step_index(index: usize) -> usize {
     index + 1
@@ -930,7 +950,7 @@ impl NavTiles {
 
     /// Push one open node. A full heap is a give-up: the entry is not stored.
     fn heap_push(&self, scratch: &mut NavScratch, f: u32, node: u32) -> bool {
-        if scratch.heap_len as usize >= MAX_NODES {
+        if scratch.heap_len as usize >= heap_capacity() {
             return false;
         }
         let mut i = scratch.heap_len as usize;

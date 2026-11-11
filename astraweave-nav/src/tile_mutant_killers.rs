@@ -5,9 +5,9 @@
 
 use super::{
     adjacent_tile, build_slot, cos_deg, dist2_milli, hash_sources, manhattan, mix, normal_y,
-    portal_id, slot_overlaps, tri_normal, CoverSite, NavChange, NavChangeKind, NavScratch,
-    NavTiles, Portal, Slot, SourceTri, TileSideBuffer, TileTri, Triangle, Vec3, MAX_NODES,
-    MAX_TRIS, TILE_SIZE_M,
+    portal_id, slot_overlaps, tri_normal, tris_share, CoverSite, NavChange, NavChangeKind,
+    NavScratch, NavTiles, Portal, Slot, SourceTri, TileSideBuffer, TileTri, Triangle, Vec3,
+    MAX_NODES, MAX_TRIS, TILE_SIZE_M,
 };
 
 fn up_tri(origin: Vec3) -> [Vec3; 3] {
@@ -42,6 +42,9 @@ fn normal_y_is_the_unit_up_component() {
     assert_eq!(normal_y(n).to_bits(), 1_056_613_476);
     assert_eq!(normal_y(Vec3::splat(1.0e-8)), 0.0);
     assert_ne!(normal_y(n), 1.0);
+    // Length squared is exactly 1e-12, so the cutoff is strict.
+    let edge = Vec3::new(0.0, 1.0e-6, 0.0);
+    assert!(normal_y(edge) > 0.0);
 }
 
 #[test]
@@ -61,6 +64,8 @@ fn slot_overlap_uses_tile_edges() {
     assert!(!slot_overlaps(1, 0, &west));
     let east = NavChange::new(1, 0, [70_000, 0, 0], [70_000, 0, 0], NavChangeKind::Brush);
     assert!(!slot_overlaps(1, 0, &east));
+    let across = NavChange::new(1, 0, [40_000, 0, 0], [40_000, 0, 0], NavChangeKind::Brush);
+    assert!(slot_overlaps(1, 0, &across));
     let north = NavChange::new(1, 0, [32_000, 0, -1], [32_000, 0, -1], NavChangeKind::Brush);
     assert!(!slot_overlaps(1, 0, &north));
     let south = NavChange::new(
@@ -72,11 +77,36 @@ fn slot_overlap_uses_tile_edges() {
     );
     assert!(!slot_overlaps(1, 0, &south));
     assert!(!slot_overlaps(1, 2, &inside));
+    let deep = NavChange::new(
+        1,
+        0,
+        [32_000, 0, 2_000],
+        [32_000, 0, 2_000],
+        NavChangeKind::Brush,
+    );
+    assert!(slot_overlaps(1, 0, &deep));
+    let mid = NavChange::new(
+        1,
+        0,
+        [32_000, 0, 40_000],
+        [32_000, 0, 40_000],
+        NavChangeKind::Brush,
+    );
+    assert!(slot_overlaps(1, 1, &mid));
+    let past = NavChange::new(
+        1,
+        0,
+        [32_000, 0, 100_000],
+        [32_000, 0, 100_000],
+        NavChangeKind::Brush,
+    );
+    assert!(!slot_overlaps(1, 1, &past));
 }
 
 #[test]
 fn adjacent_tiles_share_one_axis_step() {
     assert!(adjacent_tile(2, 0, 1, 0));
+    assert!(adjacent_tile(0, 2, 0, 1));
     assert!(!adjacent_tile(0, 0, 2, 0));
     assert!(!adjacent_tile(0, 0, 1, 1));
     assert!(!adjacent_tile(1, 1, 1, 1));
@@ -109,7 +139,7 @@ fn portal_id_and_mix_are_not_constants() {
 #[test]
 fn build_slot_keeps_flat_triangles_and_caps_neighbors() {
     let mut slot = Slot::empty();
-    let up = up_tri(Vec3::new(2.0, 4.0, 6.0));
+    let up = up_tri(Vec3::new(3.0, 4.0, 6.0));
     let down = [
         Vec3::new(2.0, 0.0, 6.0),
         Vec3::new(3.0, 0.0, 6.0),
@@ -120,10 +150,7 @@ fn build_slot_keeps_flat_triangles_and_caps_neighbors() {
     slot.sources[1] = SourceTri { verts: down };
     let built = build_slot(&slot, 0.4, 1.0);
     assert_eq!(built.1, 1);
-    assert_eq!(
-        built.2[0].center,
-        Vec3::new(2.0 + 1.0 / 3.0, 4.0, 6.0 + 1.0 / 3.0)
-    );
+    assert_eq!(built.2[0].center, Vec3::new(10.0 / 3.0, 4.0, 19.0 / 3.0));
 
     let mut fan = Slot::empty();
     fan.source_count = 10;
@@ -143,6 +170,64 @@ fn build_slot_keeps_flat_triangles_and_caps_neighbors() {
     for n in 0..fan_built.2[0].neighbor_count {
         assert_ne!(fan_built.2[0].neighbors[n as usize], 0);
     }
+}
+
+#[test]
+fn build_slot_does_not_write_past_a_full_later_triangle() {
+    let mut slot = Slot::empty();
+    slot.source_count = 10;
+    for i in 0..8 {
+        let z = -0.2 - i as f32 * 0.1;
+        slot.sources[i] = SourceTri {
+            verts: [
+                Vec3::new(0.0, 0.0, 0.0),
+                Vec3::new(1.0, 0.0, 0.0),
+                Vec3::new(0.5, 0.0, z),
+            ],
+        };
+    }
+    slot.sources[8] = SourceTri {
+        verts: [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(0.2, 0.0, 0.5),
+        ],
+    };
+    slot.sources[9] = SourceTri {
+        verts: [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 0.0),
+        ],
+    };
+    let built = build_slot(&slot, 0.4, 0.5);
+    assert_eq!(built.1, 10);
+    assert_eq!(built.2[9].neighbor_count, 8);
+    assert_eq!(built.2[8].neighbor_count, 0);
+}
+
+#[test]
+fn tris_share_uses_a_height_difference_and_squared_xz() {
+    let raised = |third_x: f32| TileTri {
+        verts: [
+            Vec3::new(0.0, 1.0, 0.0),
+            Vec3::new(1.0, 1.0, 0.0),
+            Vec3::new(third_x, 1.0, 1.0),
+        ],
+        ..TileTri::empty()
+    };
+    assert!(tris_share(&raised(0.0), &raised(1.0), 0.4));
+
+    let shift = 1.0e-4;
+    let near = |x: f32, z: f32| TileTri {
+        verts: [
+            Vec3::new(x, 0.0, z),
+            Vec3::new(x + 1.0, 0.0, z),
+            Vec3::new(x, 0.0, z + 1.0),
+        ],
+        ..TileTri::empty()
+    };
+    assert!(tris_share(&near(0.0, 0.0), &near(shift, 0.0), 0.4));
 }
 
 #[test]
@@ -359,6 +444,226 @@ fn heap_push_gives_up_on_the_385th_entry() {
     assert_eq!(scratch.heap_len as usize, MAX_NODES);
 }
 
+struct HeapCapReset;
+
+impl Drop for HeapCapReset {
+    fn drop(&mut self) {
+        super::set_heap_capacity(None);
+    }
+}
+
+fn live_at(center: Vec3, neighbors: &[u16]) -> TileTri {
+    let mut tri = TileTri::empty();
+    tri.live = true;
+    tri.center = center;
+    tri.neighbor_count = neighbors.len() as u8;
+    for (index, neighbor) in neighbors.iter().enumerate() {
+        tri.neighbors[index] = *neighbor;
+    }
+    tri
+}
+
+fn pop_order(items: &[(u32, u32)]) -> Vec<u32> {
+    let tiles = NavTiles::new(0.4, 45.0);
+    let mut scratch = NavScratch::new();
+    for &(cost, node) in items {
+        assert!(tiles.heap_push(&mut scratch, cost, node));
+    }
+    let mut got = Vec::new();
+    for _ in 0..items.len() {
+        got.push(tiles.heap_pop(&mut scratch));
+    }
+    assert_eq!(scratch.heap_len, 0);
+    got
+}
+
+#[test]
+fn search_step_cap_is_65536() {
+    let _reset = StepCapReset;
+    super::set_search_step_cap(None);
+    assert_eq!(super::search_step_cap(), 65_536);
+}
+
+#[test]
+fn path_search_stops_when_the_open_set_is_empty() {
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    tiles.slot_count = 2;
+    tiles.slots[0].occupied = true;
+    tiles.slots[0].tri_count = 1;
+    tiles.slots[0].tris[0] = live_at(Vec3::ZERO, &[]);
+    tiles.slots[1].occupied = true;
+    tiles.slots[1].tri_count = 1;
+    tiles.slots[1].tris[0] = live_at(Vec3::new(5.0, 0.0, 0.0), &[]);
+    let mut scratch = NavScratch::new();
+    assert_eq!(
+        tiles.query_path(&mut scratch, Vec3::ZERO, Vec3::new(5.0, 0.0, 0.0)),
+        0
+    );
+    assert_eq!(scratch.waypoint_len, 0);
+}
+
+#[test]
+fn path_search_survives_a_stamp_wrap() {
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    tiles.slot_count = 1;
+    tiles.slots[0].occupied = true;
+    tiles.slots[0].tri_count = 2;
+    tiles.slots[0].tris[0] = live_at(Vec3::ZERO, &[1]);
+    tiles.slots[0].tris[1] = live_at(Vec3::new(1.0, 0.0, 0.0), &[0]);
+    let mut scratch = NavScratch::new();
+    scratch.stamp = u32::MAX;
+    let n = tiles.query_path(&mut scratch, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
+    assert!(n > 0);
+    assert!(scratch.waypoint_len > 0);
+}
+
+#[test]
+fn a_portal_crossing_records_the_portal_id() {
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    tiles.slot_count = 2;
+    tiles.slots[0].occupied = true;
+    tiles.slots[0].tri_count = 1;
+    tiles.slots[0].tris[0] = live_at(Vec3::ZERO, &[]);
+    tiles.slots[1].occupied = true;
+    tiles.slots[1].tri_count = 1;
+    tiles.slots[1].tris[0] = live_at(Vec3::new(1.0, 0.0, 0.0), &[]);
+    tiles.portal_count = 1;
+    tiles.portals[0] = Portal {
+        a_slot: 0,
+        a_tri: 0,
+        b_slot: 1,
+        b_tri: 0,
+        id: 7,
+        x_milli: 0,
+        z_milli: 0,
+        live: true,
+    };
+    let mut scratch = NavScratch::new();
+    let n = tiles.query_path(&mut scratch, Vec3::ZERO, Vec3::new(1.0, 0.0, 0.0));
+    assert!(n > 0);
+    assert_eq!(scratch.portal_len, 1);
+    assert_eq!(scratch.portal_ids[0], 7);
+    let mut back = NavScratch::new();
+    let back_n = tiles.query_path(&mut back, Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO);
+    assert!(back_n > 0);
+    assert_eq!(back.portal_len, 1);
+    assert_eq!(back.portal_ids[0], 7);
+}
+
+#[test]
+fn a_portal_does_not_leave_a_different_triangle() {
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    tiles.slot_count = 2;
+    tiles.slots[0].occupied = true;
+    tiles.slots[0].tri_count = 2;
+    tiles.slots[0].tris[0] = live_at(Vec3::ZERO, &[]);
+    tiles.slots[0].tris[1] = live_at(Vec3::new(0.0, 0.0, 2.0), &[]);
+    tiles.slots[1].occupied = true;
+    tiles.slots[1].tri_count = 1;
+    tiles.slots[1].tris[0] = live_at(Vec3::new(4.0, 0.0, 0.0), &[]);
+    tiles.portal_count = 1;
+    tiles.portals[0] = Portal {
+        a_slot: 1,
+        a_tri: 0,
+        b_slot: 0,
+        b_tri: 1,
+        id: 8,
+        x_milli: 0,
+        z_milli: 0,
+        live: true,
+    };
+    let mut scratch = NavScratch::new();
+    assert_eq!(
+        tiles.query_path(&mut scratch, Vec3::ZERO, Vec3::new(4.0, 0.0, 0.0)),
+        0
+    );
+    assert_eq!(scratch.waypoint_len, 0);
+    assert_eq!(scratch.portal_len, 0);
+}
+
+#[test]
+fn dropped_triangle_push_returns_no_path() {
+    let _reset = HeapCapReset;
+    super::set_heap_capacity(Some(1));
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    tiles.slot_count = 1;
+    tiles.slots[0].occupied = true;
+    tiles.slots[0].tri_count = 4;
+    tiles.slots[0].tris[0] = live_at(Vec3::ZERO, &[1, 2]);
+    tiles.slots[0].tris[1] = live_at(Vec3::new(1.0, 0.0, 0.0), &[3]);
+    tiles.slots[0].tris[2] = live_at(Vec3::new(0.0, 0.0, 1.0), &[]);
+    tiles.slots[0].tris[3] = live_at(Vec3::new(10.0, 0.0, 0.0), &[]);
+    let mut scratch = NavScratch::new();
+    assert_eq!(
+        tiles.query_path(&mut scratch, Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0)),
+        0
+    );
+    assert_eq!(scratch.waypoint_len, 0);
+}
+
+#[test]
+fn dropped_portal_push_returns_no_path() {
+    let _reset = HeapCapReset;
+    super::set_heap_capacity(Some(1));
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    tiles.slot_count = 1;
+    tiles.slots[0].occupied = true;
+    tiles.slots[0].tri_count = 4;
+    tiles.slots[0].tris[0] = live_at(Vec3::ZERO, &[1]);
+    tiles.slots[0].tris[1] = live_at(Vec3::new(1.0, 0.0, 0.0), &[3]);
+    tiles.slots[0].tris[2] = live_at(Vec3::new(0.0, 0.0, 1.0), &[]);
+    tiles.slots[0].tris[3] = live_at(Vec3::new(10.0, 0.0, 0.0), &[]);
+    tiles.portal_count = 1;
+    tiles.portals[0] = Portal {
+        a_slot: 0,
+        a_tri: 0,
+        b_slot: 0,
+        b_tri: 2,
+        id: 9,
+        x_milli: 0,
+        z_milli: 0,
+        live: true,
+    };
+    let mut scratch = NavScratch::new();
+    assert_eq!(
+        tiles.query_path(&mut scratch, Vec3::ZERO, Vec3::new(10.0, 0.0, 0.0)),
+        0
+    );
+    assert_eq!(scratch.waypoint_len, 0);
+}
+
+#[test]
+fn heap_parent_subtracts_before_dividing() {
+    let tiles = NavTiles::new(0.4, 45.0);
+    let mut scratch = NavScratch::new();
+    for (cost, node) in [(1u32, 0u32), (4, 1), (2, 2)] {
+        assert!(tiles.heap_push(&mut scratch, cost, node));
+    }
+    assert_eq!(scratch.heap_len, 3);
+    assert_eq!(&scratch.heap_f[..3], &[1, 4, 2]);
+    assert_eq!(&scratch.heap_n[..3], &[0, 1, 2]);
+}
+
+#[test]
+fn heap_parent_and_tie_break_keep_pop_order() {
+    assert_eq!(
+        pop_order(&[(1, 0), (4, 5), (4, 5), (0, 1), (2, 3)]),
+        vec![1, 0, 3, 5, 5]
+    );
+    assert_eq!(
+        pop_order(&[(3, 1), (2, 0), (2, 2), (3, 2)]),
+        vec![0, 2, 1, 2]
+    );
+    assert_eq!(
+        pop_order(&[(4, 3), (2, 5), (4, 3), (4, 5), (4, 0), (2, 2), (2, 2)]),
+        vec![2, 2, 5, 0, 3, 3, 5]
+    );
+    assert_eq!(
+        pop_order(&[(1, 2), (1, 1), (2, 3), (2, 3), (0, 4), (1, 4), (2, 1)]),
+        vec![4, 1, 2, 4, 1, 3, 3]
+    );
+}
+
 #[test]
 fn commits_count_accepted_buffers() {
     let mut tiles = NavTiles::new(0.4, 45.0);
@@ -385,6 +690,37 @@ fn commits_count_accepted_buffers() {
     ));
     assert!(tiles.commit_tick() >= 1);
     assert_eq!(tiles.commits(), 2);
+}
+
+#[test]
+fn commit_with_nothing_accepted_does_not_rebuild() {
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    assert_eq!(
+        tiles.ingest(&[Triangle::new(
+            Vec3::new(1.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 1.0),
+        )]),
+        1
+    );
+    tiles.prev_portal_len = 9;
+    assert_eq!(tiles.commit_tick(), 0);
+    assert_eq!(tiles.prev_portal_len, 9);
+}
+
+#[test]
+fn one_occupied_tile_builds_no_portal() {
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    assert_eq!(
+        tiles.ingest(&[Triangle::new(
+            Vec3::new(1.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 1.0),
+        )]),
+        1
+    );
+    tiles.rebuild_portals_and_sites();
+    assert_eq!(tiles.portal_count, 0);
 }
 
 #[test]
@@ -528,6 +864,46 @@ fn record_portal_requires_the_full_endpoint_pair() {
         tiles.portals[0].a_tri = a_tri;
         tiles.portals[0].b_slot = b_slot;
         tiles.portals[0].b_tri = b_tri;
+        let mut miss = NavScratch::new();
+        tiles.record_portal(&mut miss, left, right);
+        assert_eq!(miss.portal_len, 0);
+    }
+
+    // One reverse-side field matches and the other three do not.
+    for portal in [
+        Portal {
+            a_slot: 1,
+            a_tri: 9,
+            b_slot: 9,
+            b_tri: 9,
+            id: 3,
+            x_milli: 0,
+            z_milli: 0,
+            live: true,
+        },
+        Portal {
+            a_slot: 1,
+            a_tri: 2,
+            b_slot: 9,
+            b_tri: 9,
+            id: 4,
+            x_milli: 0,
+            z_milli: 0,
+            live: true,
+        },
+        Portal {
+            a_slot: 9,
+            a_tri: 9,
+            b_slot: 9,
+            b_tri: 1,
+            id: 5,
+            x_milli: 0,
+            z_milli: 0,
+            live: true,
+        },
+    ] {
+        tiles.portal_count = 1;
+        tiles.portals[0] = portal;
         let mut miss = NavScratch::new();
         tiles.record_portal(&mut miss, left, right);
         assert_eq!(miss.portal_len, 0);

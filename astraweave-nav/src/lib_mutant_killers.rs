@@ -26,6 +26,14 @@ fn degenerate_triangles_are_the_ones_with_no_area() {
     let flat = flat(Vec3::ZERO);
     assert!(!flat.is_degenerate());
     assert!(Triangle::new(Vec3::ZERO, Vec3::ZERO, Vec3::ZERO).is_degenerate());
+    // Area is exactly the 1e-6 cutoff, so `<` keeps it and `<=` rejects it.
+    let boundary = Triangle::new(
+        Vec3::ZERO,
+        Vec3::new(0.001, 0.0, 0.0),
+        Vec3::new(0.0, 0.0, f32::from_bits(0.002f32.to_bits() - 1)),
+    );
+    assert_eq!(boundary.area().to_bits(), 1e-6_f32.to_bits());
+    assert!(!boundary.is_degenerate());
     let baked = NavMesh::bake(
         &[Triangle::new(Vec3::ZERO, Vec3::ZERO, Vec3::ZERO), flat],
         0.4,
@@ -123,6 +131,19 @@ fn astar_prefers_the_shorter_center_path() {
 }
 
 #[test]
+fn astar_heuristic_adds_the_remaining_distance() {
+    // The near start is a longer route. Multiplying the heuristic by the
+    // g-score pops that route first; adding the remaining distance does not.
+    let tris = vec![
+        tri(0, Vec3::new(0.0, 0.0, 0.0), vec![1, 2]),
+        tri(1, Vec3::new(9.0, 0.0, 0.0), vec![0, 3]),
+        tri(2, Vec3::new(0.0, 0.1, 0.0), vec![0, 3]),
+        tri(3, Vec3::new(10.0, 0.0, 0.0), vec![1, 2]),
+    ];
+    assert_eq!(astar_tri(&tris, 0, 3), vec![0, 1, 3]);
+}
+
+#[test]
 fn path_crosses_a_dirty_region_only_when_both_exist() {
     let mut mesh = NavMesh::bake(&[flat(Vec3::ZERO)], 0.4, 60.0);
     assert!(!mesh.path_crosses_dirty_region(&[Vec3::ZERO]));
@@ -195,6 +216,63 @@ fn partial_rebake_drops_a_link_whose_vertices_moved() {
     assert_eq!(nav.tris[0].verts[0], Vec3::new(10.0, 0.0, 10.0));
     assert!(nav.tris[1].neighbors.is_empty());
     assert!(!nav.tris[0].neighbors.contains(&1));
+}
+
+#[test]
+fn partial_rebake_keeps_a_triangle_whose_replacement_has_no_area() {
+    let original = flat(Vec3::ZERO);
+    let mut nav = NavMesh::bake(&[original.clone()], 0.4, 60.0);
+    let before = nav.tris[0].verts;
+    nav.invalidate_region(Aabb::new(Vec3::new(-1.0, -1.0, -1.0), Vec3::ONE));
+    let _ = nav.partial_rebake(&[Triangle::new(
+        Vec3::new(5.0, 0.0, 5.0),
+        Vec3::new(5.0, 0.0, 5.0),
+        Vec3::new(5.0, 0.0, 5.0),
+    )]);
+    assert_eq!(nav.tris[0].verts, before);
+}
+
+#[test]
+fn partial_rebake_keeps_a_link_between_clean_triangles() {
+    let tris = vec![
+        flat(Vec3::ZERO),
+        Triangle::new(
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.5, 0.0, -1.0),
+        ),
+        flat(Vec3::new(20.0, 0.0, 20.0)),
+    ];
+    let mut nav = NavMesh::bake(&tris, 0.4, 60.0);
+    assert!(nav.tris[0].neighbors.contains(&1));
+    nav.invalidate_region(Aabb::new(
+        Vec3::new(19.0, -1.0, 19.0),
+        Vec3::new(22.0, 1.0, 22.0),
+    ));
+    let _ = nav.partial_rebake(&tris);
+    assert!(nav.tris[0].neighbors.contains(&1));
+    assert!(nav.tris[1].neighbors.contains(&0));
+}
+
+#[test]
+fn partial_rebake_relinks_both_directions_of_a_dirty_edge() {
+    let tris = vec![
+        flat(Vec3::ZERO),
+        Triangle::new(
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(0.5, 0.0, -1.0),
+        ),
+    ];
+    let mut nav = NavMesh::bake(&tris, 0.4, 60.0);
+    assert_eq!(nav.tris[0].neighbors, vec![1]);
+    nav.invalidate_region(Aabb::new(
+        Vec3::new(0.2, -1.0, 0.2),
+        Vec3::new(0.8, 1.0, 0.8),
+    ));
+    let _ = nav.partial_rebake(&tris);
+    assert!(nav.tris[0].neighbors.contains(&1));
+    assert!(nav.tris[1].neighbors.contains(&0));
 }
 
 #[test]
