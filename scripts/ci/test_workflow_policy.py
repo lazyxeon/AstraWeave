@@ -600,19 +600,25 @@ def _permission_value_violations(
 ) -> list[tuple[int, str]]:
     key_lines = getattr(perms, "key_lines", {})
     if isinstance(perms, str):
-        if perms in {"write", "write-all"}:
+        if perms.strip().casefold() in _WRITE_LEVELS:
             return [(line, COVERAGE_WRITE_MSG)]
         return [(line, TOP_PERMISSIONS_MSG)]
     if not isinstance(perms, dict):
         return [(line, TOP_PERMISSIONS_MSG)]
     found: list[tuple[int, str]] = []
     for key, value in perms.items():
-        value_text = value if isinstance(value, str) else ""
+        value_text = value if isinstance(value, str) else None
         entry_line = int(key_lines.get(key, line))
-        if value_text == "write-all" or (value_text == "write" and key != "id-token"):
+        if value_text in _EXACT_PERMISSION_LEVELS:
+            continue
+        if key == "id-token" and value_text == "write":
+            if not allow_id_token:
+                found.append((entry_line, COVERAGE_ID_TOKEN_JOB_MSG))
+            continue
+        if isinstance(value_text, str) and value_text.strip().casefold() in _WRITE_LEVELS:
             found.append((entry_line, COVERAGE_WRITE_MSG))
-        elif key == "id-token" and value_text == "write" and not allow_id_token:
-            found.append((entry_line, COVERAGE_ID_TOKEN_JOB_MSG))
+            continue
+        found.append((entry_line, PERMISSION_LEVEL_MSG))
     return found
 
 
@@ -625,6 +631,10 @@ CODECOV_FILES_PIN_MSG = "codecov step must set files to the pinned report path"
 CODECOV_OIDC_MSG = "codecov step must set use_oidc: true"
 CODECOV_CONTINUE_MSG = "codecov job or step must not set continue-on-error"
 COVERAGE_WRITE_MSG = "coverage workflow must not grant write permissions"
+PERMISSION_LEVEL_MSG = "permission value must be exactly read or none"
+EDITOR_TEST_PERMISSIONS_MSG = "editor test permissions must be exactly contents: read"
+_EXACT_PERMISSION_LEVELS = frozenset({"read", "none"})
+_WRITE_LEVELS = frozenset({"write", "write-all"})
 COVERAGE_ID_TOKEN_JOB_MSG = "id-token: write is only allowed on a job that runs codecov"
 CODECOV_UPLOAD_JOB_MSG = "codecov action must run only in an upload job"
 CODECOV_TOKEN_MSG = "codecov step must not set a token input or a secrets reference"
@@ -1877,8 +1887,12 @@ def _download_step_key_violations(job: dict) -> list[int]:
 def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     """Parsed permissions for coverage.yml and aw-editor-tests.yml.
 
-    Top-level permissions must be {}. A missing key fails. write-all, and any
-    permission value write, fail, including a flow mapping or a quoted key.
+    Top-level permissions must be {}. A missing key fails. A permission
+    value must be exactly read or none. id-token may be exactly write on
+    the upload job. Any other value fails, including a different case,
+    padding, or quotes, a flow mapping, or a quoted key. write and
+    write-all, including those spellings, report the write message. The
+    editor test job's permissions map is exactly contents: read.
     The upload job's keys are exactly name, needs, permissions, runs-on,
     timeout-minutes, and steps. needs is the job coverage, as that string
     or as [coverage]. The coverage job's keys are name, permissions,
@@ -1925,7 +1939,11 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     if perms is _MISSING or perms is None:
         violations.append(f"{prefix}{top_line}: {TOP_PERMISSIONS_MSG}")
     elif isinstance(perms, str):
-        message = COVERAGE_WRITE_MSG if perms in {"write", "write-all"} else TOP_PERMISSIONS_MSG
+        message = (
+            COVERAGE_WRITE_MSG
+            if perms.strip().casefold() in _WRITE_LEVELS
+            else TOP_PERMISSIONS_MSG
+        )
         violations.append(f"{prefix}{top_line}: {message}")
     elif isinstance(perms, dict):
         if len(perms) != 0:
@@ -2015,6 +2033,11 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
         if not _steps_equal_ordered(editor_steps, _EDITOR_TEST_STEPS):
             line = int(job_lines.get("test", 1))
             violations.append(f"{prefix}{line}: {EDITOR_TEST_STEPS_MSG}")
+        if isinstance(editor, dict) and not _producer_permissions_exact(editor):
+            perm_line = int(
+                getattr(editor, "key_lines", {}).get("permissions", job_lines.get("test", 1))
+            )
+            violations.append(f"{prefix}{perm_line}: {EDITOR_TEST_PERMISSIONS_MSG}")
     expected_jobs = _COVERAGE_JOB_IDS.get(workflow)
     if expected_jobs is not None and set(jobs) != expected_jobs:
         violations.append(f"{prefix}1: {COVERAGE_JOB_SET_MSG}")
@@ -4357,7 +4380,10 @@ jobs:
         )
         self.assertEqual(
             coverage_permission_violations(actions, path="aw-editor-tests.yml"),
-            [f"aw-editor-tests.yml: {actions_line}: {COVERAGE_WRITE_MSG}"],
+            [
+                f"aw-editor-tests.yml: {actions_line}: {COVERAGE_WRITE_MSG}",
+                f"aw-editor-tests.yml: {actions_line - 2}: {EDITOR_TEST_PERMISSIONS_MSG}",
+            ],
         )
         quoted = text.replace("contents: read", 'contents: "write"', 1)
         self.assertTrue(coverage_permission_violations(quoted, path="coverage.yml"))
@@ -4382,7 +4408,10 @@ jobs:
         )
         self.assertEqual(
             coverage_permission_violations(other_job, path="aw-editor-tests.yml"),
-            [f"aw-editor-tests.yml: {other_line}: {COVERAGE_ID_TOKEN_JOB_MSG}"],
+            [
+                f"aw-editor-tests.yml: {other_line}: {COVERAGE_ID_TOKEN_JOB_MSG}",
+                f"aw-editor-tests.yml: {other_line - 2}: {EDITOR_TEST_PERMISSIONS_MSG}",
+            ],
         )
         top = text.replace("permissions: {}", "permissions:\n  id-token: write", 1)
         self.assertIn(
@@ -8901,6 +8930,178 @@ jobs:
                 setup.write_text(held, encoding="utf-8")
             if sibling.exists():
                 sibling.unlink()
+
+    def test_editor_test_permissions_are_an_exact_map(self) -> None:
+        """Editor test permissions are exactly contents: read.
+
+        A value that is not the scalar read or none fails. Case, padding,
+        quotes, and an expression are separate spellings. id-token write on this job is
+        not the upload-job exception.
+        """
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        anchor = (
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ${{ matrix.os }}\n"
+        )
+        self.assertEqual(editor.count(anchor), 1)
+        self.assertEqual(
+            coverage_permission_violations(editor, path="aw-editor-tests.yml"),
+            [],
+        )
+        cases = {
+            "case": "      contents: WRITE\n",
+            "case-capital": "      contents: Write\n",
+            "padding": '      contents: "write "\n',
+            "quoting": '      contents: "WRITE"\n',
+            "quoting-single": "      contents: 'write'\n",
+            "expression": "      contents: ${{ 'write' }}\n",
+            "read-case": "      contents: READ\n",
+            "read-padding": '      contents: "read "\n',
+            "extra-read": "      contents: read\n      actions: read\n",
+            "extra-write-case": "      contents: read\n      actions: Write\n",
+            "none": "      contents: none\n",
+        }
+        write_cases = {
+            "case",
+            "case-capital",
+            "padding",
+            "quoting",
+            "quoting-single",
+            "extra-write-case",
+        }
+        level_cases = {"read-case", "read-padding", "expression"}
+        for label, body in cases.items():
+            mutant = editor.replace(anchor, "    permissions:\n" + body + "    runs-on: ${{ matrix.os }}\n", 1)
+            self.assertNotEqual(mutant, editor, label)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, label)
+            perms = doc["jobs"]["test"]["permissions"]
+            if label == "extra-read":
+                self.assertEqual(perms.get("contents"), "read", label)
+                self.assertEqual(perms.get("actions"), "read", label)
+            elif label == "extra-write-case":
+                self.assertEqual(perms.get("actions"), "Write", label)
+            elif label == "padding":
+                self.assertEqual(perms.get("contents"), "write ", label)
+            elif label == "read-padding":
+                self.assertEqual(perms.get("contents"), "read ", label)
+            elif label == "quoting":
+                self.assertEqual(perms.get("contents"), "WRITE", label)
+            elif label == "quoting-single":
+                self.assertEqual(perms.get("contents"), "write", label)
+            elif label == "expression":
+                self.assertEqual(perms.get("contents"), "${{ 'write' }}", label)
+            elif label == "none":
+                self.assertEqual(perms.get("contents"), "none", label)
+            messages = " ".join(coverage_permission_violations(mutant, path="aw-editor-tests.yml"))
+            _pin, policy = scan_action_surface(mutant, ".github/workflows/aw-editor-tests.yml")
+            scanned = messages + " " + " ".join(policy)
+            self.assertIn(EDITOR_TEST_PERMISSIONS_MSG, scanned, label)
+            if label in write_cases:
+                self.assertIn(COVERAGE_WRITE_MSG, scanned, label)
+            if label in level_cases:
+                self.assertIn(PERMISSION_LEVEL_MSG, scanned, label)
+            if label in {"extra-read", "none"}:
+                self.assertNotIn(COVERAGE_WRITE_MSG, messages, label)
+                self.assertNotIn(PERMISSION_LEVEL_MSG, messages, label)
+
+    def test_printable_name_range_is_pinned(self) -> None:
+        """Every non-surrogate scalar outside 0x20-0x7E fails closed.
+
+        The form check sees both edges of both pinned names. The publish
+        path does too, on the two producer workflows and on other.yml, for
+        the control, format, and separator classes and for other sampled
+        scalars. U+00AD, U+2003, and U+001C through U+001E are explicit rows.
+        A space or tilde in the middle of a name is accepted.
+        """
+        import unicodedata
+
+        bases = (("coverage.yml", "coverage-xml"), ("aw-editor-tests.yml", "aw-editor-lcov"))
+        explicit = ("\u00ad", "\u2003", "\u001c", "\u001d", "\u001e")
+        publish_paths = (("coverage.yml", 1), ("aw-editor-tests.yml", 1), ("other.yml", 0))
+
+        def yaml_scalar(name: str) -> str:
+            pieces: list[str] = []
+            for char in name:
+                code = ord(char)
+                if 0x20 <= code <= 0x7E and char not in '\\"':
+                    pieces.append(char)
+                elif code <= 0xFFFF:
+                    pieces.append(f"\\u{code:04x}")
+                else:
+                    pieces.append(f"\\U{code:08x}")
+            return '"' + "".join(pieces) + '"'
+
+        def publish(path: str, names: list[str]) -> list[str]:
+            parts = ["name: t\non: push\njobs:\n"]
+            for index, name in enumerate(names):
+                parts.append(
+                    f"  e{index}:\n"
+                    "    runs-on: ubuntu-latest\n"
+                    "    steps:\n"
+                    "      - uses: actions/upload-artifact@"
+                    "cf430e030ddbb5b0abf93d22962f4752f3646cd9\n"
+                    "        with:\n"
+                    f"          name: {yaml_scalar(name)}\n"
+                    "          path: out\n"
+                )
+            return coverage_report_publish_violations("".join(parts), path=path)
+
+        for _path, base in bases:
+            explicit_names = [
+                edged for char in explicit for edged in (char + base, base + char)
+            ]
+            for name in explicit_names:
+                self.assertTrue(_name_form_rejected(name), name)
+                self.assertTrue(_could_be_pinned_report_name(name, "other.yml"), name)
+            for publish_path, extra in publish_paths:
+                hits = publish(publish_path, explicit_names)
+                pinned = sum(PINNED_REPORT_MSG in hit for hit in hits)
+                self.assertEqual(pinned, len(explicit_names) + extra, (publish_path, base))
+            middle_space = base[:4] + " " + base[4:]
+            middle_tilde = base[:4] + "~" + base[4:]
+            for name in (middle_space, middle_tilde):
+                self.assertFalse(_name_form_rejected(name), repr(name))
+                self.assertEqual(publish("other.yml", [name]), [], repr(name))
+
+        for code in range(0x110000):
+            if 0xD800 <= code <= 0xDFFF:
+                continue
+            char = chr(code)
+            if 0x20 <= code <= 0x7E:
+                for _path, base in bases:
+                    name = base[:4] + char + base[4:]
+                    self.assertFalse(_name_form_rejected(name), hex(code))
+                continue
+            for _path, base in bases:
+                self.assertTrue(_name_form_rejected(char + base), hex(code))
+                self.assertTrue(_name_form_rejected(base + char), hex(code))
+
+        publish_codes: list[int] = []
+        categories: set[str] = set()
+        for code in range(0x110000):
+            if 0xD800 <= code <= 0xDFFF or 0x20 <= code <= 0x7E:
+                continue
+            category = unicodedata.category(chr(code))
+            if category in {"Cc", "Cf", "Zs", "Zl", "Zp"} or code % 256 == 0:
+                publish_codes.append(code)
+                categories.add(category)
+        self.assertTrue({"Cc", "Cf", "Zs", "Zl", "Zp"} <= categories)
+        for code in (0xAD, 0x2003, 0x1C, 0x1D, 0x1E):
+            self.assertIn(code, publish_codes)
+        for path, base in bases:
+            names = [
+                edged
+                for code in publish_codes
+                for edged in (chr(code) + base, base + chr(code))
+            ]
+            for publish_path, extra in ((path, 1), ("other.yml", 0)):
+                for start in range(0, len(names), 2000):
+                    chunk = names[start : start + 2000]
+                    hits = publish(publish_path, chunk)
+                    pinned = sum(PINNED_REPORT_MSG in hit for hit in hits)
+                    self.assertEqual(pinned, len(chunk) + extra, publish_path)
 
 
 if __name__ == "__main__":

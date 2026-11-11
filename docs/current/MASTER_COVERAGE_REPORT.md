@@ -333,8 +333,8 @@ Kani uses CBMC bounded model checking. Math proofs use concrete representative i
 
 **Render remaining MISSED** (5 in v2 run):
 - `environment.rs:61`: `replace - with +` in `get_sun_position` — azimuth sign inversion
-- `environment.rs:67`: `replace < with ==` and `replace < with <=` in `get_sun_position` — boundary condition in sun hemisphere check
-- `renderer.rs:3292`: `replace set_weather with ()` — requires GPU context for full validation
+- `environment.rs:69`: `replace < with ==` and `replace < with <=` in `get_sun_position` — boundary condition in sun hemisphere check
+- `renderer.rs:6950`: `replace set_weather with ()` — requires GPU context for full validation
 - `biome_transition.rs:96`: `replace < with <=` in `EasingFunction::apply` — boundary condition at t=1.0
 
 **Wave 3 remediation commits**: `cd6475df`, `9db0d3be`, `c7d573fb`, `bfb94e46`, `57a14600`.
