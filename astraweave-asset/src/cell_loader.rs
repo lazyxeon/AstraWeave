@@ -226,18 +226,27 @@ pub async fn load_asset(asset_ref: &AssetRef, assets_root: &Path) -> Result<Vec<
 
     match asset_ref.kind {
         AssetKind::Mesh => {
-            let bytes = fs::read(&asset_path)
-                .await
-                .context(format!("Failed to load mesh: {}", asset_path.display()))?;
-            // Additional validation for mesh formats
+            // Same worker rule as textures. `read_capped_file` is synchronous.
+            let path = asset_path.clone();
+            let label = asset_path.display().to_string();
+            let bytes = tokio::task::spawn_blocking(move || {
+                crate::read_capped_file(&path, crate::MAX_GLTF_BUFFER)
+            })
+            .await
+            .context("mesh read task")?
+            .with_context(|| format!("Failed to load mesh: {label}"))?;
             validate_mesh_format(&bytes, &asset_ref.path)?;
             Ok(bytes)
         }
         AssetKind::Texture => {
-            let bytes = fs::read(&asset_path)
+            // `load_asset` runs on a tokio worker. The capped read is
+            // synchronous, so it must not occupy that worker.
+            let path = asset_path.clone();
+            let label = asset_path.display().to_string();
+            let bytes = tokio::task::spawn_blocking(move || crate::read_limited_image_bytes(&path))
                 .await
-                .context(format!("Failed to load texture: {}", asset_path.display()))?;
-            // Additional validation for texture formats
+                .context("texture read task")?
+                .with_context(|| format!("Failed to load texture: {label}"))?;
             validate_texture_format(&bytes, &asset_ref.path)?;
             Ok(bytes)
         }
@@ -809,6 +818,44 @@ mod tests {
     async fn test_async_cell_loading_nonexistent() {
         let result = load_cell_from_ron(Path::new("nonexistent.ron")).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn load_asset_rejects_a_mesh_over_256_mib() {
+        let root = TempDir::new().expect("tempdir");
+        let cap = crate::MAX_GLTF_BUFFER;
+        let path = root.path().join("huge.glb");
+        let file = std::fs::File::create(&path).expect("create");
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let asset = AssetRef::new("huge.glb", AssetKind::Mesh);
+        let err = load_asset(&asset, root.path())
+            .await
+            .expect_err("mesh over 256 MiB must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_asset_rejects_a_texture_over_64_mib() {
+        let root = TempDir::new().expect("tempdir");
+        let cap = crate::image_limits::MAX_IMAGE_ALLOC;
+        let path = root.path().join("huge.bin");
+        let file = std::fs::File::create(&path).expect("create");
+        file.set_len(cap + 1).expect("set_len");
+        drop(file);
+        let asset = AssetRef::new("huge.bin", AssetKind::Texture);
+        let err = load_asset(&asset, root.path())
+            .await
+            .expect_err("texture over 64 MiB must be rejected");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains(&cap.to_string()) && msg.contains(&(cap + 1).to_string()),
+            "{msg}"
+        );
     }
 
     #[test]

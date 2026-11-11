@@ -286,6 +286,26 @@ pub use skinning_gpu::{JointPaletteHandle, JointPaletteManager, SKINNING_GPU_SHA
 #[cfg(test)]
 mod renderer_tests;
 
+// Default `cargo test` does not enable `gltf-assets`. This still runs then.
+#[cfg(test)]
+mod gltf_feature_link {
+    #[test]
+    fn gltf_assets_enables_image_and_textures() {
+        let manifest: toml::Value =
+            toml::from_str(include_str!("../Cargo.toml")).expect("manifest");
+        let features = manifest
+            .get("features")
+            .and_then(|value| value.get("gltf-assets"))
+            .and_then(|value| value.as_array())
+            .expect("gltf-assets feature");
+        let names: Vec<&str> = features.iter().filter_map(|value| value.as_str()).collect();
+        assert!(
+            names.contains(&"image") && names.contains(&"textures"),
+            "{names:?}"
+        );
+    }
+}
+
 // libvulkan 1.4.341 SIGSEGVs in vkSetDebugUtilsObjectNameEXT when several
 // threads load every Mesa ICD. Lavapipe alone does not. Linux lib tests
 // compile this module; integration tests include it from tests/support.
