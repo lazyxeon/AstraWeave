@@ -27,13 +27,17 @@
 # A failure to remove the temp directory cannot change the exit or the
 # recorded output. A failed download retries with backoff.
 #
-# One node process reads the downloaded bytes once. It hashes those bytes
-# and compares the hash to the pinned checksum before any mkdir, chmod, or
+# The shell hashes the downloaded bytes with /usr/bin/sha256sum or
+# /usr/bin/shasum and compares that digest to the pinned constant before
+# node reads the archive. A mismatch exits 1. Node then reads those bytes
+# once and compares its digest to the same pin before any mkdir, chmod, or
 # write. A mismatch exits before a member is written. When the hash matches,
 # the process accepts the release layout and writes only the one binary at
 # the expected name. LICENSE and README.md may be present and are not
-# written. A size or checksum field that is not plain octal is refused. A
-# non-zero name prefix is refused. Links, devices, extra names, a leading
+# written. A size or mode field is refused unless every byte is an octal
+# digit or a trailing NUL. A space-padded size is refused. A checksum field
+# is the same, plus the ustar trailer of a NUL followed by spaces. A
+# high-bit size is refused. A non-zero name prefix is refused. Links, devices, extra names, a leading
 # slash, and ".." are refused, and nothing is written. After that write, an
 # lstat walk rejects a symlink or any entry that is not a regular file or a
 # directory. Cleanup does not chmod a symbolic link, including when the temp
@@ -177,9 +181,6 @@ case "$host_kernel" in
     fail_closed "node is required to match the action tool-cache arch"
     ;;
 esac
-if [ ! -x "$NODE_BIN" ]; then
-  fail_closed "node is required to match the action tool-cache arch"
-fi
 if [ -z "${RUNNER_TOOL_CACHE:-}" ]; then
   fail_closed "RUNNER_TOOL_CACHE is unset"
 fi
@@ -292,6 +293,21 @@ sha256_file() {
   "$NODE_BIN" -e 'const fs=require("fs"),crypto=require("crypto");const h=crypto.createHash("sha256");h.update(fs.readFileSync(process.argv[1]));process.stdout.write(h.digest("hex"));' "$1"
 }
 
+# Hash the archive in the shell before node reports a digest. Absolute
+# paths only. sha256sum is preferred; shasum covers a Darwin host that
+# does not ship sha256sum.
+shell_sha256() {
+  local out
+  if [ -x /usr/bin/sha256sum ]; then
+    out="$(/usr/bin/sha256sum -- "$1")" || return 1
+  elif [ -x /usr/bin/shasum ]; then
+    out="$(/usr/bin/shasum -a 256 -- "$1")" || return 1
+  else
+    return 1
+  fi
+  printf '%s\n' "${out%%[[:space:]]*}"
+}
+
 # One regular file. lstat does not follow a link, and a link count above 1
 # is another name for the same inode.
 plain_binary() {
@@ -346,21 +362,18 @@ function finish(code, reason) {
 }
 let buf;
 try { buf = zlib.gunzipSync(raw); } catch (e) { finish(2, ""); }
-function plainOctal(header, start, length) {
+function plainOctal(header, start, length, posixTrailer) {
   const bytes = header.subarray(start, start + length);
-  let i = 0;
-  while (i < bytes.length && bytes[i] === 32) i++;
-  if (i >= bytes.length) return 0;
-  if (bytes[i] === 0) {
-    for (let j = i; j < bytes.length; j++) if (bytes[j] !== 0) return null;
-    return 0;
-  }
   let value = 0;
   let saw = false;
-  for (; i < bytes.length; i++) {
+  for (let i = 0; i < bytes.length; i++) {
     const c = bytes[i];
-    if (c === 0 || c === 32) {
-      for (let j = i; j < bytes.length; j++) if (bytes[j] !== 0 && bytes[j] !== 32) return null;
+    if (c === 0) {
+      for (let j = i; j < bytes.length; j++) {
+        if (bytes[j] === 0) continue;
+        if (posixTrailer && bytes[j] === 32) continue;
+        return null;
+      }
       return saw ? value : 0;
     }
     if (c < 48 || c > 55) return null;
@@ -406,7 +419,7 @@ while (fault === 0 && off + 512 <= buf.length) {
   if (zero) { sawEnd = true; break; }
   let sum = 0;
   for (let i = 0; i < 512; i++) sum += (i >= 148 && i < 156) ? 32 : h[i];
-  const recorded = plainOctal(h, 148, 8);
+  const recorded = plainOctal(h, 148, 8, true);
   if (recorded === null || recorded !== sum) { faultAt(2, ""); break; }
   const uname = fieldName(h);
   if (uname === null || uname.length === 0 || dangerous(uname) || prefixLength(h) !== 0) {
@@ -414,11 +427,11 @@ while (fault === 0 && off + 512 <= buf.length) {
     break;
   }
   const typ = h[156];
-  const size = plainOctal(h, 124, 12);
-  if (size === null || size < 0) { faultAt(2, ""); break; }
+  const size = plainOctal(h, 124, 12, false);
+  if (size === null) { faultAt(2, ""); break; }
   const slash = uname.charAt(uname.length - 1) === "/";
   const directoryLike = typ === 53 || ((typ === 0 || typ === 48) && slash);
-  const perm = plainOctal(h, 100, 8);
+  const perm = plainOctal(h, 100, 8, false);
   if (perm === null) { faultAt(2, ""); break; }
   if (directoryLike) {
     if (size !== 0) { faultAt(1, "special"); break; }
@@ -429,7 +442,6 @@ while (fault === 0 && off + 512 <= buf.length) {
   if (!(typ === 0 || typ === 48)) { faultAt(1, "special"); break; }
   const blocks = Math.ceil(size / 512);
   const dataOff = off + 512;
-  if (dataOff + size > buf.length) { faultAt(2, ""); break; }
   const bytes = Buffer.from(buf.subarray(dataOff, dataOff + size));
   members.push({ name: uname, dir: false, perm: perm, bytes: bytes });
   off += 512 * (1 + blocks);
@@ -567,6 +579,12 @@ fi
 
 release_root="${filename%.tar.gz}"
 want="$(pinned_sha256 "$filename")"
+shell_got="$(shell_sha256 "$tmp/pkg.tar.gz")" || fail_closed "could not hash the archive"
+if [ "${#want}" -ne 64 ] || [ "$shell_got" != "$want" ]; then
+  trap - ERR
+  builtin printf 'sccache checksum mismatch for %s\n' "$filename" >&2
+  exit 1
+fi
 stage_status=0
 stage_out="$(read_archive "$tmp/pkg.tar.gz" stage "${release_root}/${binary_name}" "$want" "$MKTEMP_BIN" "$tmp")" || stage_status=$?
 got="${stage_out%%$'\n'*}"

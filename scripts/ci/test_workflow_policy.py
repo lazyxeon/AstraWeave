@@ -30,6 +30,35 @@ import yaml
 from contextlib import contextmanager
 from pathlib import Path
 
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Reject a repeated mapping key. The safe loader would keep the last one."""
+
+
+def _construct_unique_mapping(loader: yaml.SafeLoader, node: yaml.Node, deep: bool = False) -> dict:
+    mapping: dict = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise yaml.constructor.ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found a duplicate key",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
+def _load_policy_yaml(text: str) -> object:
+    return yaml.load(text, Loader=_UniqueKeyLoader)  # noqa: S506
+
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
@@ -864,6 +893,86 @@ def _bind_fetch_node(script: Path, replacement: Path) -> None:
     _bind_tool(script, _NODE_BIND, replacement)
 
 
+def _bind_node_preload(script: Path, work: Path, preload: str) -> None:
+    """Run the real node, with a preload on -e so a test can hook fs."""
+    patch = work / "bin" / "preload.js"
+    patch.parent.mkdir(parents=True, exist_ok=True)
+    patch.write_text(preload, encoding="utf-8")
+    real = shlex.quote(_fixture_node())
+    quoted = shlex.quote(str(patch))
+    _write_exe(
+        work / "bin",
+        "node",
+        "#!/bin/sh\n"
+        f"if [ \"$1\" = -e ]; then exec {real} -r {quoted} \"$@\"; fi\n"
+        f"exec {real} \"$@\"\n",
+    )
+    _bind_fetch_node(script, work / "bin" / "node")
+
+
+_FS_PLANT = r"""
+const fs = require("fs");
+const path = require("path");
+const plant = process.env.AW_PLANT || "";
+const outside = process.env.AW_OUTSIDE || "";
+const log = process.env.AW_CHMOD_LOG || "";
+if (log) {
+  const origChmod = fs.chmodSync;
+  fs.chmodSync = function (p, mode) {
+    fs.appendFileSync(log, "chmod " + String(mode) + "\n");
+    return origChmod.call(fs, p, mode);
+  };
+  const origClose = fs.closeSync;
+  fs.closeSync = function (fd) {
+    let mode = "";
+    try { mode = String(fs.fstatSync(fd).mode & 511); } catch (e) { mode = "err"; }
+    const result = origClose.call(fs, fd);
+    fs.appendFileSync(log, "mode " + mode + "\n");
+    return result;
+  };
+}
+if (plant === "file" || plant === "symlink" || plant === "rootlink") {
+  const origMk = fs.mkdirSync;
+  fs.mkdirSync = function (p, opts) {
+    const result = origMk.call(fs, p, opts);
+    if (plant === "rootlink") {
+      fs.rmSync(p, { recursive: true, force: true });
+      fs.symlinkSync(outside, p);
+    } else if (plant === "file") {
+      fs.writeFileSync(path.join(p, "sccache"), "PLANTED");
+    } else if (plant === "symlink") {
+      fs.symlinkSync(outside, path.join(p, "sccache"));
+    }
+    return result;
+  };
+}
+if (plant === "hardlink") {
+  const origOpen = fs.openSync;
+  let opened = "";
+  fs.openSync = function (p, flags, mode) {
+    opened = String(p);
+    return origOpen.call(fs, p, flags, mode);
+  };
+  const origClose = fs.closeSync;
+  fs.closeSync = function (fd) {
+    const result = origClose.call(fs, fd);
+    if (opened) {
+      try { fs.linkSync(opened, opened + ".alias"); } catch (e) {}
+    }
+    return result;
+  };
+}
+if (plant === "realpath") {
+  const orig = fs.realpathSync;
+  fs.realpathSync = function (p) {
+    const resolved = orig.call(fs, p);
+    if (path.basename(String(p)).startsWith("sccache-v")) return "/outside/not-contained";
+    return resolved;
+  };
+}
+"""
+
+
 def _write_stage_planter(work: Path, plant: str) -> None:
     """Node shim that runs the real interpreter, then edits the staged tree."""
     real = shlex.quote(_fixture_node())
@@ -1205,7 +1314,7 @@ def _plain_assignment(word: str) -> bool:
 _FETCH_NAME_RE = re.compile(r"(?<![A-Za-z0-9_])fetch_sccache")
 _BRACED_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _SIMPLE_VAR_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)")
-_INTERPRETERS = frozenset({"bash", "sh", "python", "python3", "node", "source", "."})
+_INTERPRETERS = frozenset({"bash", "sh", "python", "python3", "node"})
 
 
 class _PolicyScanError(Exception):
@@ -1490,7 +1599,6 @@ def _raw_words(command: str) -> list[str]:
     return words
 
 
-_ARRAY_COMMAND_RE = re.compile(r"""^["']?\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\}["']?$""")
 _HEREDOC_RE = re.compile(r"<<\s*-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?")
 
 
@@ -1516,8 +1624,6 @@ def _script_arg_nonliteral(token: str) -> bool:
 
 def _argv0_nonliteral(token: str) -> bool:
     if token in {"[", "[[", "]", "]]"}:
-        return False
-    if _ARRAY_COMMAND_RE.fullmatch(token):
         return False
     if token.startswith("$") or token.startswith("`"):
         return True
@@ -1549,8 +1655,8 @@ def _unclosed_quote(text: str) -> bool:
     return bool(quote)
 
 
-def _logical_shell_lines(body: str) -> list[str]:
-    """Join continuations and quoted newlines, and drop heredoc bodies."""
+def _logical_shell_lines(body: str, *, keep_heredoc: bool = False) -> list[str]:
+    """Join continuations and quoted newlines. Heredoc bodies stay when asked."""
     lines: list[str] = []
     buf = ""
     pending = False
@@ -1559,6 +1665,8 @@ def _logical_shell_lines(body: str) -> list[str]:
         if heredoc is not None:
             if raw.strip() == heredoc:
                 heredoc = None
+            elif keep_heredoc:
+                lines.append(raw)
             continue
         visible = raw
         if not pending and not _unclosed_quote(buf):
@@ -1735,7 +1843,6 @@ _SHELL_KEYWORDS = frozenset(
 )
 
 
-_ENUMERATED_COMMANDS = frozenset({'"${args[@]}"'})
 _ARRAY_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+=")
 
 
@@ -1760,6 +1867,7 @@ def _command_v_literal(command: str) -> bool:
 
 _DENIED_ARGV0 = frozenset(
     {
+        ".",
         "alias",
         "builtin",
         "coproc",
@@ -1774,7 +1882,9 @@ _DENIED_ARGV0 = frozenset(
         "popd",
         "pushd",
         "ruby",
+        "source",
         "sudo",
+        "time",
         "timeout",
         "xargs",
     }
@@ -1847,12 +1957,11 @@ def _compound_hostile(command: str) -> bool:
 def _command_indirection(command: str) -> bool:
     """Fail closed unless argv0 is on the allowlist.
 
-    An exact body never reaches this check. command is allowed only as
-    command -v of a literal. eval, sudo, timeout, and input redirects are not
-    on the allowlist.
+    An exact body never reaches this check. A path argv0 is refused.
+    command is allowed only as command -v of a literal. source, a dot
+    command, time, eval, sudo, timeout, a bare interpreter, and an
+    input redirect are refused.
     """
-    if _normalized_command(command) in _ENUMERATED_COMMANDS:
-        return False
     if re.search(r"(^|\s)CDPATH=", command):
         return True
     if "<<" in command or "<(" in command or "<<<" in command:
@@ -1863,6 +1972,11 @@ def _command_indirection(command: str) -> bool:
         return True
     if re.search(r"(^|[^<])<\s", command) or re.search(r"(^|[^<])<[\"']", command):
         return True
+    if re.search(
+        r"(?:^|[\s;|&])[A-Za-z_][A-Za-z0-9_]*=[\"']?(?:\$\(|`)",
+        command,
+    ):
+        return True
     try:
         words = shlex.split(command, posix=True)
     except ValueError:
@@ -1872,8 +1986,10 @@ def _command_indirection(command: str) -> bool:
     argv0 = _first_argv0(command)
     if argv0 is None:
         return False
-    if argv0 in _SHELL_KEYWORDS or argv0 in {"{", "time"}:
-        return _compound_hostile(command) if argv0 != "time" else False
+    if argv0 == "time":
+        return True
+    if argv0 in _SHELL_KEYWORDS or argv0 == "{":
+        return _compound_hostile(command)
     base = argv0.rsplit("/", 1)[-1]
     if base == "command":
         return not _command_v_literal(command)
@@ -1881,25 +1997,27 @@ def _command_indirection(command: str) -> bool:
         return True
     if _BARE_ARGV0.fullmatch(argv0) is None:
         return True
-    literal_path = "/" in argv0 or argv0.startswith(".")
+    if "/" in argv0 or argv0.startswith("."):
+        return True
     if (
         base not in _ARGV0_ALLOW
         and base not in _INTERPRETERS
         and not base.endswith("bash")
-        and not literal_path
     ):
         return True
-    if literal_path and _mentions_scripts_ci(argv0):
-        return True
     if base in _INTERPRETERS or base.endswith("bash"):
-        if "-c" in words or "-e" in words:
-            return True
+        operand = None
         for word in words[1:]:
-            if word.startswith("-") and word != "-":
-                continue
-            if _script_arg_nonliteral(word):
+            if word.startswith("--"):
                 return True
+            if word.startswith("-") and word != "-":
+                if any(flag in word[1:] for flag in ("c", "e")):
+                    return True
+                continue
+            operand = word
             break
+        if operand is None or _script_arg_nonliteral(operand):
+            return True
     return False
 
 
@@ -1935,7 +2053,7 @@ def _fetch_changes_directory(body: str) -> bool:
 
 def _normalized_body(body: str) -> str:
     lines: list[str] = []
-    for raw_line in _logical_shell_lines(body):
+    for raw_line in _logical_shell_lines(body, keep_heredoc=True):
         command = _strip_shell_comment(raw_line).strip()
         if command:
             lines.append(_normalized_command(command))
@@ -1947,11 +2065,101 @@ def _exact_entry(entry: str) -> str:
     return _normalized_command(text)
 
 
-_EXACT_BODIES = {_exact_entry(item) for item in _ALLOWED_SCRIPTS_CI_LINES}
+_REVIEWED_EXACT_BODIES: frozenset[str] = frozenset((
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
+    'channel=$(grep -v \'^[[:space:]]*#\' .github/rust-nightly-channel | tr -d \'[:space:]\')\nif [ -z "$channel" ]; then\necho "rust-nightly-channel is empty"\nexit 1\nfi\necho "channel=$channel" >> "$GITHUB_OUTPUT"\necho "AW_NIGHTLY=$channel" >> "$GITHUB_ENV"\necho "Pinned nightly: $channel"',
+    'set -euo pipefail\nif [ "${{ github.event_name }}" != "pull_request" ]; then\n{\necho "run=true"\necho "reason=non-pull-request"\necho "full=true"\necho "packages="\n} >> "$GITHUB_OUTPUT"\nelse\npython3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope aravath-determinism --github-output "$GITHUB_OUTPUT"\nfi\ncat "$GITHUB_OUTPUT"',
+    'sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev libasound2-dev',
+    'host=$(rustc -vV | sed -n \'s/^host: //p\')\ncase "$host" in\nx86_64-*)\necho "RUSTFLAGS=-C target-cpu=x86-64 -C target-feature=-fma" >> "$GITHUB_ENV"\n;;\naarch64-*)\necho "aarch64 uses the default baseline CPU (target-cpu=native is forbidden)."\n;;\n*)\necho "unsupported host $host" >&2\nexit 1\n;;\nesac',
+    'set -euo pipefail\nif [ "${{ github.event_name }}" != "pull_request" ]; then\n{\necho "run=true"\necho "reason=non-pull-request"\necho "full=true"\necho "packages="\n} >> "$GITHUB_OUTPUT"\nelse\npython3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope aravath --github-output "$GITHUB_OUTPUT"\nfi\ncat "$GITHUB_OUTPUT"',
+    'sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libudev-dev libasound2-dev mesa-vulkan-drivers libvulkan1',
+    'mkdir -p dist/aravath_greybox/assets\ncp target/dist/aravath_greybox.exe dist/aravath_greybox/\ncp -a assets/aravath dist/aravath_greybox/assets/\ncp docs/current/ARAVATH_WINDOWS_README.txt dist/aravath_greybox/README.txt\ncp LICENSE dist/aravath_greybox/LICENSE\ntest -f dist/aravath_greybox/aravath_greybox.exe\ntest -f dist/aravath_greybox/README.txt\ntest -f dist/aravath_greybox/LICENSE\ntest -f dist/aravath_greybox/assets/aravath/models/AnimationLibrary_Godot_Standard.gltf\ntest -f dist/aravath_greybox/assets/aravath/textures/grass_diff_1k.jpg\ntest -f dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb\nsig=$(head -c 4 dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb)\ntest "$sig" = "glTF"\nfind dist/aravath_greybox -maxdepth 3 -type d -o -type f | sort',
+    './aravath_greybox.exe --smoke-test --no-volumetrics',
+    './aravath_greybox.exe --smoke-test --volumetrics',
+    'set -euo pipefail\ntest -f aravath_greybox/aravath_greybox.exe\ntest -f aravath_greybox/SHA256SUMS.txt\ntest -f aravath_greybox/aravath_greybox.cdx.json\nzip -r aravath_greybox-windows.zip aravath_greybox\nnotes=$(cat <<EOF\nRolling Windows build of the Aravath greybox from \\`${GITHUB_SHA}\\`.\nExtract the whole zip and start \\`aravath_greybox.exe\\` from the extracted folder. Saves and logs go to \\`%LOCALAPPDATA%\\\\Aravath\\`. \\`SHA256SUMS.txt\\` covers the files in this zip. \\`aravath_greybox.cdx.json\\` is the CycloneDX SBOM.\nThis release is a prerelease. Chrome and SmartScreen can still warn until the file is signed with a publicly trusted certificate and has download reputation. See \\`docs/current/ARAVATH_DISTRIBUTION.md\\`.\n)\nif gh release view aravath-greybox >/dev/null 2>&1; then\ngh release upload aravath-greybox aravath_greybox-windows.zip --clobber\ngh release edit aravath-greybox --prerelease --target "$GITHUB_SHA" --notes "$notes"\nelse\ngh release create aravath-greybox aravath_greybox-windows.zip --prerelease --target "$GITHUB_SHA" --title "Aravath greybox" --notes "$notes"\nfi',
+    'set -euo pipefail\ncargo run -p astraweave-assets -- fetch --quiet --json --manifest assets/asset_manifest.toml --provider polyhaven > assets_summary.json\nFAILED=$(jq -r \'.failed\' assets_summary.json)\nif [ "$FAILED" != "0" ]; then\necho "Asset fetch reported $FAILED failures" >&2\njq \'.assets[] | select(.status == "failed")\' assets_summary.json >&2\nexit 1\nfi',
+    'sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev',
+    'sudo apt-get update\nsudo apt-get install -y pkg-config libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libudev-dev libasound2-dev',
+    'sudo apt-get update\nsudo apt-get install -y pkg-config libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libudev-dev libasound2-dev',
+    "set -euo pipefail\nif command -v pwsh >/dev/null; then\npwsh -NoLogo -Command '$PSVersionTable.PSVersion.ToString()'\nexit 0\nfi\nsudo apt-get update\nsudo apt-get install -y powershell\ncommand -v pwsh\npwsh -NoLogo -Command '$PSVersionTable.PSVersion.ToString()'",
+    'pwsh -File scripts/export_benchmark_jsonl.ps1 -Verbose',
+    'sudo apt-get update\nsudo apt-get install -y python3 python3-pip\npython3 -m pip install --upgrade pip\npython3 -m pip install pandas matplotlib seaborn',
+    'sudo apt-get update\nsudo apt-get install -y jq\nbash scripts/export_benchmark_history.sh || true',
+    'pwsh -File scripts/check_benchmark_thresholds.ps1 -ShowDetails',
+    'echo "=== gh-pages contents ==="\nfind gh-pages -type f | head -30\necho ""\nif [ -d gh-pages/graphs ]; then\nCOUNT=$(ls gh-pages/graphs | wc -l)\nif [ "$COUNT" -gt 0 ]; then\necho "Found $COUNT graph(s) to be deployed";\nelse\necho "Warning: No graphs were generated";\nfi\nelse\necho "Warning: gh-pages/graphs directory not found";\nfi\nif [ -f gh-pages/benchmark-data/history.jsonl ]; then\nLINES=$(wc -l < gh-pages/benchmark-data/history.jsonl)\necho "benchmark-data/history.jsonl: $LINES entries"\nelse\necho "Warning: No benchmark-data/history.jsonl"\nfi\nif [ -f gh-pages/static-data/history.jsonl ]; then\necho "static-data/history.jsonl: present"\nelse\necho "Warning: No static-data/history.jsonl"\nfi\ncat > gh-pages/README.md << \'EOF\'\nLive performance telemetry dashboard for the AstraWeave AI-native game engine.\n**View Dashboard**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/\n- 30-day performance trends\n- System filtering (ECS, AI, Physics, Terrain, Input)\n- Interactive d3.js charts\n- Regression detection\nUpdated nightly via GitHub Actions from Criterion benchmark results.\nLast Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")',
+    'echo "### Benchmark Dashboard Updated ✅" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Dashboard URL**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\nif [ -f target/benchmark-data/history.jsonl ]; then\nENTRY_COUNT=$(wc -l < target/benchmark-data/history.jsonl)\necho "**Benchmark Entries**: $ENTRY_COUNT" >> $GITHUB_STEP_SUMMARY\nfi\nif [ -d gh-pages/graphs ]; then\nGRAPH_COUNT=$(ls gh-pages/graphs | wc -l)\necho "**Static Graphs Generated**: $GRAPH_COUNT" >> $GITHUB_STEP_SUMMARY\nfi\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Last Updated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY',
+    'sudo apt-get update -q\nsudo apt-get install -y -q mesa-vulkan-drivers vulkan-tools bc jq coreutils',
+    'export BENCHMARK_RESULTS_DIR="benchmark_results/shard-${{ matrix.shard_index }}"\nexport VERBOSE="true"\n./.github/scripts/benchmark-runner.sh --shard-index "${{ matrix.shard_index }}" --shard-count 16',
+    'set -euo pipefail\nmkdir -p benchmark_results\nresult_files=()\nstatus_files=()\ntiming_files=()\nif [ -d benchmark-shards ]; then\nmapfile -d \'\' result_files < <(find benchmark-shards -name benchmarks.json -print0 | sort -z)\nmapfile -d \'\' status_files < <(find benchmark-shards -name package-status.json -print0 | sort -z)\nmapfile -d \'\' timing_files < <(find benchmark-shards -name timings.tsv -print0 | sort -z)\nfi\nif [ "${#result_files[@]}" -gt 0 ]; then\njq -s \'add\' "${result_files[@]}" > benchmark_results/benchmarks.json\nelse\necho \'[]\' > benchmark_results/benchmarks.json\nfi\nif [ "${#status_files[@]}" -gt 0 ]; then\njq -s \'add\' "${status_files[@]}" > benchmark_results/package-status.json\nelse\necho \'[]\' > benchmark_results/package-status.json\nfi\nprintf \'package\\telapsed_seconds\\texecution_status\\tcollection_status\\tbenchmark_count\\n\' > benchmark_results/timings.tsv\nfor timing_file in "${timing_files[@]}"; do\ntail -n +2 "$timing_file" >> benchmark_results/timings.tsv\ndone\n: > benchmark_results/missing-shards.txt\nfor shard_index in {0..15}; do\nif ! find benchmark-shards -mindepth 1 -maxdepth 1 -type d -name "*-shard-${shard_index}" -print -quit 2>/dev/null |\ngrep -q .; then\necho "shard-${shard_index}" >> benchmark_results/missing-shards.txt\nfi\ndone\npackage_count=$(jq \'length\' benchmark_results/package-status.json)\nunique_package_count=$(jq \'[.[].package] | unique | length\' benchmark_results/package-status.json)\ncollected_package_count=$(jq \'[.[] | select(.collection_status == "collected")] | length\' benchmark_results/package-status.json)\nexception_count=$(jq \'[.[] | select(.collection_status == "exception")] | length\' benchmark_results/package-status.json)\nno_output_failure_count=$(jq \'[.[] | select( .execution_status != "success" and .benchmark_count == 0 )] | length\' benchmark_results/package-status.json)\nfailed_package_count=$(jq \'[.[] | select( .execution_status != "success" or (.collection_status != "collected" and .collection_status != "exception") )] | length\' benchmark_results/package-status.json)\nbenchmark_count=$(jq \'length\' benchmark_results/benchmarks.json)\ncollection_accounted_count=$((collected_package_count + exception_count))\nnamed_accounting_exception_count=$((exception_count + no_output_failure_count))\noutcome_accounted_count=$((collected_package_count + named_accounting_exception_count))\nrecord_accounted_count=$unique_package_count\njq -r \'.[] | select( .execution_status != "success" or (.collection_status != "collected" and .collection_status != "exception") ) | "\\(.package): execution=\\(.execution_status), collection=\\(.collection_status), results=\\(.benchmark_count), elapsed=\\(.elapsed_seconds)s"\' benchmark_results/package-status.json > benchmark_results/failed-packages.txt\ncomplete=false\nif [ "${#result_files[@]}" -eq 16 ] &&\n[ "${#status_files[@]}" -eq 16 ] &&\n[ "${#timing_files[@]}" -eq 16 ] &&\n[ "$package_count" -eq 53 ] &&\n[ "$unique_package_count" -eq 53 ]; then\ncomplete=true\nfi\nhealthy=false\nif [ "$complete" = true ] &&\n[ "$failed_package_count" -eq 0 ] &&\n[ "$collection_accounted_count" -eq 53 ]; then\nhealthy=true\nfi\n{\necho "=== Benchmark Aggregation Summary ==="\necho "Shard result files: ${#result_files[@]}/16"\necho "Shard status files: ${#status_files[@]}/16"\necho "Shard timing files: ${#timing_files[@]}/16"\necho "Package records: $package_count (unique: $unique_package_count; expected: 53)"\necho "Package records accounted for: $record_accounted_count/53"\necho "Packages with collected results: $collected_package_count"\necho "Named collection exceptions: $exception_count"\necho "Named no-output execution failures: $no_output_failure_count"\necho "Packages with Criterion output or collection exception: $collection_accounted_count/53"\necho "Outcome accounting: $collected_package_count collected + $named_accounting_exception_count named accounting exceptions = $outcome_accounted_count/53"\necho "Failed packages: $failed_package_count"\necho "Benchmark results collected: $benchmark_count"\necho "Complete: $complete"\necho "Healthy: $healthy"\nif [ -s benchmark_results/missing-shards.txt ]; then\necho ""\necho "Missing shard artifacts:"\ncat benchmark_results/missing-shards.txt\nfi\nif [ -s benchmark_results/failed-packages.txt ]; then\necho ""\necho "Named failures:"\ncat benchmark_results/failed-packages.txt\nfi\n} | tee benchmark_results/aggregation-summary.txt\necho "complete=$complete" >> "$GITHUB_OUTPUT"\necho "healthy=$healthy" >> "$GITHUB_OUTPUT"\necho "package_count=$package_count" >> "$GITHUB_OUTPUT"\necho "record_accounted_count=$record_accounted_count" >> "$GITHUB_OUTPUT"\necho "collection_accounted_count=$collection_accounted_count" >> "$GITHUB_OUTPUT"\necho "failed_package_count=$failed_package_count" >> "$GITHUB_OUTPUT"\necho "benchmark_count=$benchmark_count" >> "$GITHUB_OUTPUT"',
+    'echo "=== Benchmark Validation ==="\nif [ ! -f "benchmark_results/benchmarks.json" ]; then\necho "❌ No benchmark results file found"\necho "Contents of benchmark_results directory:"\nls -la benchmark_results/ || echo "Directory doesn\'t exist"\nexit 1\nfi\nif ! jq empty benchmark_results/benchmarks.json 2>/dev/null; then\necho "❌ Invalid JSON in benchmark results"\necho "JSON content:"\ncat benchmark_results/benchmarks.json\nexit 1\nfi\nresult_count=$(jq \'. | length\' benchmark_results/benchmarks.json)\nif [ "$result_count" -eq 0 ]; then\necho "❌ No benchmark results collected"\necho "JSON content:"\ncat benchmark_results/benchmarks.json\nexit 1\nfi\nif ! jq -e \'.[0] | has("name") and has("value") and has("unit")\' benchmark_results/benchmarks.json >/dev/null 2>&1; then\necho "❌ Benchmark results missing required fields (name, value, unit)"\njq \'.[0]\' benchmark_results/benchmarks.json\nexit 1\nfi\necho "✅ Validation passed: $result_count benchmark results collected"\necho ""\necho "=== Complete Results ==="\njq -r \'.[] | "\\(.name): \\(.value) \\(.unit)"\' benchmark_results/benchmarks.json\necho ""\necho "=== Performance Analysis ==="\nmin_time=$(jq \'[.[].value] | min\' benchmark_results/benchmarks.json)\nmax_time=$(jq \'[.[].value] | max\' benchmark_results/benchmarks.json)\navg_time=$(jq \'[.[].value] | add / length\' benchmark_results/benchmarks.json)\necho "Fastest operation: ${min_time} ns"\necho "Slowest operation: ${max_time} ns"\necho "Average time: ${avg_time} ns"',
+    'if (!(Get-Command pwsh -ErrorAction SilentlyContinue)) {\nWrite-Host "Installing PowerShell..."\nsudo apt-get update\nsudo apt-get install -y powershell\n}\nWrite-Host "=== Running Threshold Validation ===" -ForegroundColor Cyan\n& ./scripts/check_benchmark_thresholds.ps1 `\n-BenchmarkJsonPath "benchmark_results/benchmarks.json" `\n-ThresholdsJsonPath ".github/benchmark_thresholds.json" `\n-ShowDetails',
+    'Write-Host "=== Strict Threshold Validation (Main Branch) ===" -ForegroundColor Red\n& ./scripts/check_benchmark_thresholds.ps1 `\n-BenchmarkJsonPath "benchmark_results/benchmarks.json" `\n-ThresholdsJsonPath ".github/benchmark_thresholds.json" `\n-Strict `\n-ShowDetails',
+    'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools bc jq coreutils',
+    'Write-Host "=== Checking for Performance Regressions ===" -ForegroundColor Cyan\n& ./scripts/check_benchmark_thresholds.ps1 `\n-BenchmarkJsonPath "benchmark_results/benchmarks.json" `\n-ThresholdsJsonPath ".github/benchmark_thresholds.json" `\n-Strict `\n-ShowDetails\n$exitCode = $LASTEXITCODE\nif ($exitCode -ne 0) {\nWrite-Host "Regressions detected (exit code $exitCode)" -ForegroundColor Red\necho "has_regressions=true" >> $env:GITHUB_OUTPUT\n$results = Get-Content "benchmark_results/benchmarks.json" | ConvertFrom-Json\n$thresholds = Get-Content ".github/benchmark_thresholds.json" | ConvertFrom-Json\n$regressions = @()\nforeach ($result in $results) {\n$threshold = $thresholds.benchmarks.($result.name)\nif ($threshold -and $result.value -gt $threshold.max_allowed) {\n$overPercent = [math]::Round((($result.value - $threshold.max_allowed) / $threshold.max_allowed) * 100, 1)\n$regressions += "- **$($result.name)**: $($result.value) ns (baseline: $($threshold.baseline) ns, max: $($threshold.max_allowed) ns, **+$overPercent% over limit**)"\n}\n}\n$regressionList = $regressions -join "`n"\n$lines = @(\n\'## Performance Regression Detected\'\n\'\'\n\'Automated benchmark validation found performance regressions in the following benchmarks:\'\n\'\'\n$regressionList\n\'\'\n\'**Commit**: ${{ github.sha }}\'\n(\'**Branch**: \' + $env:GITHUB_REF_NAME)\n\'**Workflow**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\'\n\'\'\n\'### Action Required\'\n\'\'\n\'1. Review the regression in the workflow run linked above.\'\n\'2. Investigate the cause.\'\n\'3. Fix the regression, or update the threshold with a written reason.\'\n\'\'\n\'Default max regression is 50% slower than baseline.\'\n\'\'\n\'This issue was created by the Benchmark Regression Alerts workflow.\'\n)\nSet-Content -Path regression_report.md -Value $lines -Encoding utf8\n} else {\nWrite-Host "No regressions detected" -ForegroundColor Green\necho "has_regressions=false" >> $env:GITHUB_OUTPUT\n}',
+    'bash scripts/export_benchmark_history.sh\nmkdir -p docs/benchmark_data\nif [ -f "docs/benchmark_data/benchmark_history.jsonl" ]; then\necho "✅ Benchmark history exported successfully"\necho " Lines: $(wc -l < docs/benchmark_data/benchmark_history.jsonl)"\nelse\necho "⚠️ Export script completed but no history file generated"\necho " This is normal if no gh-pages branch exists yet"\nfi',
+    'set -euo pipefail\nif [ "${{ github.event_name }}" != "pull_request" ]; then\n{\necho "docs_only=false"\necho "full=true"\necho "packages="\necho "reason=non-pull-request"\n} >> "$GITHUB_OUTPUT"\nelif ! git rev-parse --verify --quiet \'HEAD^1\' >/dev/null; then\n{\necho "docs_only=false"\necho "full=true"\necho "packages="\necho "reason=missing-merge-parent"\n} >> "$GITHUB_OUTPUT"\nelse\npython3 scripts/ci/affected_crates.py --base "HEAD^1" --head HEAD --github-output "$GITHUB_OUTPUT"\nfi',
+    'set -euo pipefail\nversion=$(grep -m1 \'rust-version\' Cargo.toml | sed \'s/.*"\\(.*\\)".*/\\1/\')\nif [ -z "$version" ]; then\necho "rust-version is missing from the workspace Cargo.toml" >&2\nexit 1\nfi\necho "version=$version" >> "$GITHUB_OUTPUT"\necho "MSRV $version"',
+    'set -euo pipefail\nif [ "$AW_CI_FULL" = "true" ]; then\ncargo check --locked --workspace ${AW_CI_EXCLUDES}\nelse\nIFS=\',\' read -ra pkgs <<< "$AW_CI_PACKAGES"\nargs=(cargo check --locked)\nfor pkg in "${pkgs[@]}"; do\nif [ -n "$pkg" ]; then\nargs+=(-p "$pkg")\nfi\ndone\n"${args[@]}"\nfi',
+    'cargo build --locked -p veilweaver_slice_loader\ntimeout 120s make smoke-veilweaver',
+    'echo "Testing hello_companion demo..."\ntimeout 10s cargo run --release -p hello_companion || echo "Demo completed or timed out as expected"',
+    'echo "Testing IPC loopback example..."\ncargo run --release -p ipc_loopback --bin server &\nSERVER_PID=$!\nsleep 2\ntimeout 5s cargo run --release -p ipc_loopback --bin client || echo "IPC test completed"\nkill $SERVER_PID 2>/dev/null || true',
+    'sudo apt-get update && sudo apt-get install -y libasound2-dev libudev-dev',
+    'cd tools/astraweave-assets\necho "## Code Coverage Report" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\nif [ -f coverage/cobertura.xml ]; then\nCOVERAGE=$(grep -oP \'line-rate="\\K[0-9.]+\' coverage/cobertura.xml | head -1 | awk \'{printf "%.1f", $1*100}\')\necho "**Overall Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "Target: 80%+ (Production Ready)" >> $GITHUB_STEP_SUMMARY\nif (( $(echo "$COVERAGE >= 80" | bc -l) )); then\necho "✅ **Status:** PASS (meets target)" >> $GITHUB_STEP_SUMMARY\nelse\necho "⚠️ **Status:** Below target (needs improvement)" >> $GITHUB_STEP_SUMMARY\nfi\nelse\necho "⚠️ Coverage data not generated" >> $GITHUB_STEP_SUMMARY\nfi',
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build',
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev',
+    'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools time',
+    'echo "## Build Performance Profile" > performance.md\necho "Generated on: $(date)" >> performance.md\necho "" >> performance.md\necho "### Clean Build Timing (Core Components)" >> performance.md\necho \'```\' >> performance.md\ncargo clean\n/usr/bin/time -v cargo build -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tee build-timing.txt\ncat build-timing.txt >> performance.md\necho \'```\' >> performance.md\necho "" >> performance.md\necho "### Release Build Timing (Core Components)" >> performance.md\necho \'```\' >> performance.md\ncargo clean\n/usr/bin/time -v cargo build --release -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tee release-timing.txt\ncat release-timing.txt >> performance.md\necho \'```\' >> performance.md',
+    'host=$(rustc -vV | sed -n \'s/^host: //p\')\ncase "$host" in\nx86_64-*)\necho "RUSTFLAGS=-C target-cpu=x86-64" >> "$GITHUB_ENV"\n;;\naarch64-*)\necho "aarch64 uses the default baseline CPU (target-cpu=native is forbidden)."\n;;\n*)\necho "unsupported host $host" >&2\nexit 1\n;;\nesac',
+    'node <<\'JS\'\nconst fs = require("fs");\nconst path = require("path");\nconst root = process.env.CARGO_TARGET_DIR || "target";\nconst core = JSON.parse(fs.readFileSync(path.join(root, "replay-hash.json"), "utf8"));\nconst combat = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-combat.json"), "utf8"));\nconst gameplay = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-gameplay-qa.json"), "utf8"));\nconst causal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-causal.json"), "utf8"));\nconst traversal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-traversal.json"), "utf8"));\nconst localsim = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-localsim.json"), "utf8"));\nconst greybox = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-greybox.json"), "utf8"));\nconst quests = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-quests.json"), "utf8"));\nconst persist = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-persist.json"), "utf8"));\nconst seen = new Set(core.map((row) => row.case));\nconst merged = core.slice();\nfor (const row of combat.concat(gameplay, causal, traversal, localsim, greybox, quests, persist)) {\nif (seen.has(row.case)) {\nconsole.error(`duplicate replay case ${row.case}`);\nprocess.exit(1);\n}\nseen.add(row.case);\nmerged.push(row);\n}\nconst required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"];\nconst names = new Set(merged.map((row) => row.case));\nfor (const name of required) {\nif (!names.has(name)) {\nconsole.error(`missing required case ${name}`);\nprocess.exit(1);\n}\n}\nfs.writeFileSync(path.join(root, "replay-hash.json"), JSON.stringify(merged, null, 2) + "\\n");\nconsole.log("merged", merged.map((row) => `${row.case} ${row.sha256}`).join("\\n"));',
+    'python3 - <<\'PY\'\nimport json\nimport sys\nfrom pathlib import Path\nrequired = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"}\nroot = Path("replay-artifacts")\nfiles = sorted(root.glob("*/replay-hash.json"))\nprint(f"artifacts: {[str(p) for p in files]}")\nif len(files) != 3:\nprint(f"expected 3 replay-hash artifacts, found {len(files)}")\nsys.exit(1)\nby_os = {}\nfor path in files:\nos_name = path.parent.name.removeprefix("replay-hash-")\nrows = json.loads(path.read_text(encoding="utf-8"))\nby_os[os_name] = {row["case"]: row["sha256"] for row in rows}\ncases = set()\nfor digests in by_os.values():\ncases.update(digests)\nfailed = False\nfor case in sorted(cases | required):\ndigests = {os_name: mapping.get(case) for os_name, mapping in sorted(by_os.items())}\npresent = {value for value in digests.values() if value is not None}\nmissing = [os_name for os_name, value in digests.items() if value is None]\nif missing or len(present) != 1:\nprint(f"MISMATCH {case}: {digests}")\nif case in required:\nfailed = True\nelse:\nprint(f"{case} differs and is not a required case")\nelse:\ndigest = next(iter(present))\nprint(f"OK {case} {digest}")\nif failed:\nsys.exit(1)',
+    'curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz\nsudo mv mdbook /usr/local/bin/\nmdbook --version',
+    'curl -sSL "https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz" | tar -xz && sudo mv mdbook-mermaid /usr/local/bin/ && mdbook-mermaid --version',
+    'chmod +x docs/scripts/generate-sitemap.sh || true\ndocs/scripts/generate-sitemap.sh docs/book || echo "Sitemap generation had issues"',
+    'curl -sSL https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz | tar -xz\n./lychee docs/book/**/*.html --exclude localhost --exclude 127.0.0.1 --exclude "file://" --format markdown --output link-report.md || true\nif [ -f link-report.md ]; then\necho "### Link Check Report" >> $GITHUB_STEP_SUMMARY\ncat link-report.md >> $GITHUB_STEP_SUMMARY\nfi',
+    'python - <<\'PY\'\nimport json, pathlib, sys\nsummary_path = pathlib.Path("coverage/summary.json")\nif not summary_path.exists():\nsys.exit("coverage/summary.json not found")\ndata = json.loads(summary_path.read_text())\nfiles = [\nentry for entry in data["data"][0]["files"]\nif "tools\\\\aw_editor" in entry["filename"]\nor "tools/aw_editor" in entry["filename"]\n]\nif not files:\nsys.exit("coverage summary missing aw_editor entries")\ndef collect(metric):\ncovered = sum(f["summary"][metric]["covered"] for f in files)\ntotal = sum(f["summary"][metric]["count"] for f in files)\npercent = (covered / total * 100) if total else 0.0\nreturn covered, total, percent\nline_cov, line_total, line_pct = collect("lines")\nfn_cov, fn_total, fn_pct = collect("functions")\nregion_cov, region_total, region_pct = collect("regions")\nwith open("${{ github.step_summary }}", "a", encoding="utf-8") as fh:\nfh.write("## aw_editor Coverage\\n\\n")\nfh.write(f"- Lines: {line_pct:.2f}% ({line_cov}/{line_total})\\n")\nfh.write(f"- Functions: {fn_pct:.2f}% ({fn_cov}/{fn_total})\\n")\nfh.write(f"- Regions: {region_pct:.2f}% ({region_cov}/{region_total})\\n")',
+    'sudo apt-get update\nsudo apt-get install -y heaptrack mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev',
+    'echo "RUST_BACKTRACE=${RUST_BACKTRACE:-unset}"\necho "RUST_LIB_BACKTRACE=${RUST_LIB_BACKTRACE:-unset}"\nunset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\nmkdir -p target\ncargo test -p astraweave-render --all-features --test frame_alloc --no-run --message-format=json > target/frame-alloc-build.json\nbin=$(python3 scripts/ci/frame_alloc_test_executable.py target/frame-alloc-build.json)\ntest -x "$bin"\necho "heaptrack binary=$bin"\nheaptrack -o target/frame-alloc-heaptrack "$bin" --exact draw_into_allocates_nothing_after_warmup --nocapture',
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev',
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake libudev-dev',
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake',
+    'echo "::group::Parsing validation results"\ncheck_validation() {\nlocal file=$1\nlocal name=$2\nif [ -f "$file" ]; then\npassed=$(jq -r \'.results[0].passed // false\' "$file")\nerror_count=$(jq -r \'.results[0].errors | length\' "$file")\nwarning_count=$(jq -r \'.results[0].warnings | length\' "$file")\necho "${name}_passed=${passed}" >> $GITHUB_OUTPUT\necho "${name}_errors=${error_count}" >> $GITHUB_OUTPUT\necho "${name}_warnings=${warning_count}" >> $GITHUB_OUTPUT\nif [ "$passed" = "true" ]; then\necho "✅ ${name}: PASS (${warning_count} warnings)"\nelse\necho "❌ ${name}: FAIL (${error_count} errors, ${warning_count} warnings)"\nfi\nelse\necho "⚠️ ${name}: No validation results found"\necho "${name}_passed=false" >> $GITHUB_OUTPUT\nfi\n}\ncheck_validation "validation-grassland.json" "grassland"\ncheck_validation "validation-mountain.json" "mountain"\ncheck_validation "validation-desert.json" "desert"\ncheck_validation "validation-all.json" "all_materials"\necho "::endgroup::"',
+    'echo "## 🎨 Material Validation Summary" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "| Material | Status | Errors | Warnings |" >> $GITHUB_STEP_SUMMARY\necho "|----------|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY\nadd_summary_row() {\nlocal file=$1\nlocal name=$2\nif [ -f "$file" ]; then\npassed=$(jq -r \'.results[0].passed // false\' "$file")\nerror_count=$(jq -r \'.results[0].errors | length\' "$file")\nwarning_count=$(jq -r \'.results[0].warnings | length\' "$file")\nif [ "$passed" = "true" ]; then\nstatus="✅ PASS"\nelse\nstatus="❌ FAIL"\nfi\necho "| ${name} | ${status} | ${error_count} | ${warning_count} |" >> $GITHUB_STEP_SUMMARY\nelse\necho "| ${name} | ⚠️ NO RESULTS | - | - |" >> $GITHUB_STEP_SUMMARY\nfi\n}\nadd_summary_row "validation-grassland.json" "Grassland Demo"\nadd_summary_row "validation-mountain.json" "Mountain Demo"\nadd_summary_row "validation-desert.json" "Desert Demo"\nadd_summary_row "validation-all.json" "All Materials"\necho "" >> $GITHUB_STEP_SUMMARY\necho "### 📊 Details" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "See artifacts below for full validation reports (JSON format)." >> $GITHUB_STEP_SUMMARY',
+    'echo "::group::Checking overall validation status"\nfailed=false\nfor file in validation-*.json; do\nif [ -f "$file" ]; then\npassed=$(jq -r \'.results[0].passed // false\' "$file")\nif [ "$passed" != "true" ]; then\nfailed=true\necho "❌ Validation failed: $file"\njq -r \'.results[0].errors[]\' "$file" || true\nfi\nfi\ndone\nif [ "$failed" = "true" ]; then\necho "::error::Material validation failed. See artifacts for details."\nexit 1\nelse\necho "✅ All material validations passed!"\nfi\necho "::endgroup::"',
+    'if [ -f mutants-ecs-results/mutants.json ]; then\necho "## Mutation Testing: astraweave-ecs" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\nTOTAL=$(jq \'.total_mutants\' mutants-ecs-results/mutants.json)\nKILLED=$(jq \'.killed\' mutants-ecs-results/mutants.json)\nSURVIVED=$(jq \'.survived\' mutants-ecs-results/mutants.json)\nTIMEOUT=$(jq \'.timeout\' mutants-ecs-results/mutants.json)\nif [ "$TOTAL" -gt 0 ]; then\nSCORE=$((KILLED * 100 / TOTAL))\necho "| Metric | Count |" >> $GITHUB_STEP_SUMMARY\necho "|--------|-------|" >> $GITHUB_STEP_SUMMARY\necho "| Total Mutants | $TOTAL |" >> $GITHUB_STEP_SUMMARY\necho "| Killed | $KILLED |" >> $GITHUB_STEP_SUMMARY\necho "| Survived | $SURVIVED |" >> $GITHUB_STEP_SUMMARY\necho "| Timeout | $TIMEOUT |" >> $GITHUB_STEP_SUMMARY\necho "| **Mutation Score** | **${SCORE}%** |" >> $GITHUB_STEP_SUMMARY\nfi\nfi',
+    'outcomes=mutants-ai-results/mutants.out/outcomes.json\npython3 scripts/ci/mutation_ai_outcomes.py --verify-shard "$outcomes"',
+    'outcomes=mutants-ai-results/mutants.out/outcomes.json\nif [ -f "$outcomes" ]; then\necho "## Mutation Testing: astraweave-ai" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\ncounts=$(python3 scripts/ci/mutation_ai_outcomes.py "$outcomes") || exit 1\neval "$counts"\n: "${DECIDED:?}" "${SCORE:?}"\necho "| Metric | Count |" >> $GITHUB_STEP_SUMMARY\necho "|--------|-------|" >> $GITHUB_STEP_SUMMARY\necho "| Caught | $CAUGHT |" >> $GITHUB_STEP_SUMMARY\necho "| Missed | $MISSED |" >> $GITHUB_STEP_SUMMARY\necho "| Timeout | $TIMEOUT |" >> $GITHUB_STEP_SUMMARY\necho "| Cap OOM (excluded) | $CAP_OOM |" >> $GITHUB_STEP_SUMMARY\nif [ "$DECIDED" -gt 0 ]; then\necho "| **Shard score** | **${SCORE}%** (${CAUGHT}/${DECIDED}, target 70%) |" >> $GITHUB_STEP_SUMMARY\nelse\necho "::error::astraweave-ai shard has no caught or missed mutants after cap-OOM exclusion (timeouts ${TIMEOUT})"\nexit 1\nfi\nelse\necho "::error::missing astraweave-ai outcomes at $outcomes"\nexit 1\nfi',
+    'echo "## 🧬 Mutation Testing Summary" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "| Crate | Status | Notes |" >> $GITHUB_STEP_SUMMARY\necho "|-------|--------|-------|" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-ecs | ${{ needs.mutants-ecs.result == \'success\' && \'✅\' || \'⚠️\' }} | P0 Core |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-core | ${{ needs.mutants-core.result == \'success\' && \'✅\' || \'⚠️\' }} | P0 Core |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-behavior | ${{ needs.mutants-behavior.result == \'success\' && \'✅\' || \'⚠️\' }} | P1 AI |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-nav | ${{ needs.mutants-nav.result == \'success\' && \'✅\' || \'⚠️\' }} | P1 Infra |" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\nif [ "${{ needs.mutants-ai.result }}" = "skipped" ]; then\necho "| astraweave-ai | skipped | P1 AI not selected |" >> "$GITHUB_STEP_SUMMARY"\nelif [ "${{ needs.mutants-ai.result }}" != "success" ]; then\necho "::error::astraweave-ai matrix did not succeed (result=${{ needs.mutants-ai.result }}); partial shards must not pass the gate"\nexit 1\nelse\nmapfile -t ai_files < <(find all-results -type f -name outcomes.json | sort | grep \'/mutants-ai-results-\' || true)\necho "astraweave-ai shard files: ${#ai_files[@]}"\nprintf \'%s\\n\' "${ai_files[@]}"\nif [ "${#ai_files[@]}" -ne 8 ]; then\necho "::error::Expected 8 astraweave-ai shard outcomes, found ${#ai_files[@]}"\nexit 1\nfi\ncounts=$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}") || exit 1\neval "$counts"\n: "${DECIDED:?}" "${SCORE:?}"\nif [ "$DECIDED" -le 0 ]; then\necho "::error::astraweave-ai has no caught or missed mutants after cap-OOM exclusion (timeouts ${TIMEOUT})"\nexit 1\nfi\necho "| astraweave-ai | ${SCORE}% | P1 AI, 8 shards, caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, cap-OOM ${CAP_OOM}, target 70% |" >> "$GITHUB_STEP_SUMMARY"\necho "" >> "$GITHUB_STEP_SUMMARY"\necho "astraweave-ai combined score: ${SCORE}% (target 70%). Caught ${CAUGHT}, missed ${MISSED}, timeout ${TIMEOUT}, cap-OOM excluded ${CAP_OOM}." >> "$GITHUB_STEP_SUMMARY"\nif [ "$SCORE" -lt 70 ]; then\necho "::error::astraweave-ai mutation score ${SCORE}% is below the 70% target"\nexit 1\nfi\nfi\necho "" >> "$GITHUB_STEP_SUMMARY"\necho "**Target**: 80%+ mutation score on P0, 70%+ on P1" >> "$GITHUB_STEP_SUMMARY"\necho "" >> "$GITHUB_STEP_SUMMARY"\necho "Detailed results available in workflow artifacts." >> "$GITHUB_STEP_SUMMARY"',
+    'set -euo pipefail\nif [ "${{ github.event_name }}" != "pull_request" ]; then\n{\necho "run=true"\necho "reason=non-pull-request"\necho "full=true"\necho "packages="\n} >> "$GITHUB_OUTPUT"\nelse\npython3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope net --github-output "$GITHUB_OUTPUT"\nfi\ncat "$GITHUB_OUTPUT"',
+    'sudo apt-get update\nsudo apt-get install -y libx11-dev libxcursor-dev libxrandr-dev libxi-dev libasound2-dev mesa-vulkan-drivers libvulkan1 libudev-dev pkg-config',
+    'mark() {\nif [ "$1" = "success" ]; then\nprintf \'%s\' "✅"\nelse\nprintf \'%s\' "❌"\nfi\n}\n{\necho "## PBR Test Summary"\necho\necho "### Tested Components:"\necho "- $(mark "${{ steps.quiet.outcome }}") CountingAlloc (alloc, alloc_zeroed, realloc)"\necho "- $(mark "${{ steps.floor.outcome }}") draw_into allocation floor (lavapipe)"\necho "- $(mark "${{ steps.fallback.outcome }}") streamed fallback floor (lavapipe)"\necho "- $(mark "${{ steps.render.outcome }}") astraweave-render (core PBR)"\necho "- $(mark "${{ steps.terrain.outcome }}") Terrain material system (Phase PBR-F)"\necho "- $(mark "${{ steps.advanced.outcome }}") Advanced materials (Phase PBR-E)"\necho\necho "See job logs for detailed test results."\n} >> "$GITHUB_STEP_SUMMARY"',
+    'echo "## 📜 WGSL Shaders" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "### Shader Files:" >> $GITHUB_STEP_SUMMARY\nfor shader in shaders/*.wgsl; do\nlines=$(wc -l < "$shader" 2>/dev/null || echo "?")\necho "- \\`$(basename $shader)\\` (${lines} lines)" >> $GITHUB_STEP_SUMMARY\ndone',
+    'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools',
+    'set -euo pipefail\nif [ "${{ github.event_name }}" != "pull_request" ]; then\n{\necho "run=true"\necho "reason=non-pull-request"\necho "full=true"\necho "packages="\n} >> "$GITHUB_OUTPUT"\nelse\npython3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope render-device --github-output "$GITHUB_OUTPUT"\nfi\ncat "$GITHUB_OUTPUT"',
+    'sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev',
+    'sudo apt-get update\nsudo apt-get install -y pkg-config libudev-dev',
+    'set +e\nP0_CRATES=(\nastraweave-ecs\nastraweave-physics\nastraweave-core\nastraweave-ai\nastraweave-nav\n)\nP1_CRATES=(\nastraweave-net\nastraweave-asset\nastraweave-memory\nastraweave-context\n)\nP2_CRATES=(\nastraweave-behavior\nastraweave-prompts\nastraweave-embeddings\n)\necho "=== Running ASan on ${#P0_CRATES[@]}+${#P1_CRATES[@]}+${#P2_CRATES[@]} crates ==="\nP0_FAILED=0\nP0_PASSED=0\nADVISORY_FAILED=0\nADVISORY_PASSED=0\nFAILED_LIST=""\nfor crate in "${P0_CRATES[@]}"; do\necho ""\necho "::group::[P0 CRITICAL] Testing $crate with ASan"\nif RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test -p "$crate" --target x86_64-unknown-linux-gnu --lib -- --test-threads=1; then\necho "✅ $crate passed ASan"\nP0_PASSED=$((P0_PASSED + 1))\nelse\necho "❌ $crate FAILED ASan (P0 critical — will fail job)"\nP0_FAILED=$((P0_FAILED + 1))\nFAILED_LIST="$FAILED_LIST - ❌ **$crate** (P0 Critical)\\n"\nfi\necho "::endgroup::"\ndone\nfor crate in "${P1_CRATES[@]}" "${P2_CRATES[@]}"; do\necho ""\necho "::group::[Advisory] Testing $crate with ASan"\nif RUSTFLAGS="-Zsanitizer=address" cargo +$AW_NIGHTLY test -p "$crate" --target x86_64-unknown-linux-gnu --lib -- --test-threads=1; then\necho "✅ $crate passed ASan"\nADVISORY_PASSED=$((ADVISORY_PASSED + 1))\nelse\necho "⚠️ $crate had ASan failures (advisory — not blocking)"\nADVISORY_FAILED=$((ADVISORY_FAILED + 1))\nFAILED_LIST="$FAILED_LIST - ⚠️ $crate (Advisory)\\n"\nfi\necho "::endgroup::"\ndone\necho "## ASan Full Suite Results" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "| Tier | Passed | Failed |" >> $GITHUB_STEP_SUMMARY\necho "|------|--------|--------|" >> $GITHUB_STEP_SUMMARY\necho "| P0 Critical | $P0_PASSED | $P0_FAILED |" >> $GITHUB_STEP_SUMMARY\necho "| Advisory (P1+P2) | $ADVISORY_PASSED | $ADVISORY_FAILED |" >> $GITHUB_STEP_SUMMARY\nif [ -n "$FAILED_LIST" ]; then\necho "" >> $GITHUB_STEP_SUMMARY\necho "### Failed Crates" >> $GITHUB_STEP_SUMMARY\necho -e "$FAILED_LIST" >> $GITHUB_STEP_SUMMARY\nfi\necho ""\necho "=== ASan Full Suite Summary ==="\necho "P0 crates: ${#P0_CRATES[@]} (passed: $P0_PASSED, failed: $P0_FAILED)"\necho "Advisory crates: $(( ${#P1_CRATES[@]} + ${#P2_CRATES[@]} )) (passed: $ADVISORY_PASSED, failed: $ADVISORY_FAILED)"\nif [ "$P0_FAILED" -gt 0 ]; then\necho "❌ P0 critical crate(s) failed ASan — failing job"\nexit 1\nfi\necho "✅ All P0 crates passed ASan"',
+    'if [ ! -f scripts/tsan_suppressions.txt ]; then\necho "::error::scripts/tsan_suppressions.txt is missing — commit it to the repo"\nexit 1\nfi\necho "✅ TSan suppressions file found ($(wc -l < scripts/tsan_suppressions.txt) lines)"',
+    'echo "Checking for non-deterministic HashMap iteration in source code..."\necho "(HashMap iteration order is non-deterministic — use BTreeMap instead)"\necho ""\nSEARCH_DIRS=""\nfor d in astraweave-ecs/src astraweave-physics/src astraweave-weaving/src astraweave-terrain/src astraweave-ai/src astraweave-core/src astraweave-nav/src astraweave-gameplay/src; do\n[ -d "$d" ] && SEARCH_DIRS="$SEARCH_DIRS $d"\ndone\nif [ -z "$SEARCH_DIRS" ]; then\necho "⚠️ No source directories found to scan"\nexit 0\nfi\nFOUND=$(grep -rn "use std::collections::HashMap" --include="*.rs" $SEARCH_DIRS 2>/dev/null | head -30 || true)\nif [ -n "$FOUND" ]; then\necho "⚠️ HashMap imports found in determinism-critical code:"\necho "$FOUND"\necho ""\necho "Consider migrating to BTreeMap for deterministic iteration."\necho "## Determinism: HashMap Audit" >> $GITHUB_STEP_SUMMARY\necho \'```\' >> $GITHUB_STEP_SUMMARY\necho "$FOUND" >> $GITHUB_STEP_SUMMARY\necho \'```\' >> $GITHUB_STEP_SUMMARY\nelse\necho "✅ No HashMap imports found in critical paths"\nfi',
+    'echo "=== Sanitizer Workflow Summary ==="\necho ""\necho "source-integrity: ${{ needs.source-integrity.result }}"\necho "asan-critical: ${{ needs.asan-critical.result }}"\necho "asan-full: ${{ needs.asan-full.result }}"\necho "leak-sanitizer: ${{ needs.leak-sanitizer.result }}"\necho "thread-sanitizer: ${{ needs.thread-sanitizer.result }}"\necho "determinism: ${{ needs.determinism.result }}"\necho ""\necho "## Sanitizer Workflow Summary" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "| Job | Result | Blocking? |" >> $GITHUB_STEP_SUMMARY\necho "|-----|--------|-----------|" >> $GITHUB_STEP_SUMMARY\nresult_icon() {\ncase "$1" in\nsuccess) echo "✅ Pass" ;;\nfailure) echo "❌ Fail" ;;\nskipped) echo "⏭️ Skipped" ;;\ncancelled) echo "🚫 Cancelled" ;;\n*) echo "❓ $1" ;;\nesac\n}\necho "| Source Integrity | $(result_icon "${{ needs.source-integrity.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| ASan (Critical) | $(result_icon "${{ needs.asan-critical.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| ASan (Full) | $(result_icon "${{ needs.asan-full.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| LeakSanitizer | $(result_icon "${{ needs.leak-sanitizer.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| ThreadSanitizer | $(result_icon "${{ needs.thread-sanitizer.result }}") | No (advisory) |" >> $GITHUB_STEP_SUMMARY\necho "| Determinism | $(result_icon "${{ needs.determinism.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "_Run triggered by: \\`${{ github.event_name }}\\` at $(date -u)_" >> $GITHUB_STEP_SUMMARY\nFAILED=0\nif [ "${{ needs.source-integrity.result }}" = "failure" ]; then\necho "❌ Source integrity check FAILED (cargo-mutants artifacts detected)"\nFAILED=1\nfi\nif [ "${{ needs.asan-critical.result }}" = "failure" ]; then\necho "❌ ASan critical crates FAILED"\nFAILED=1\nfi\nif [ "${{ needs.asan-full.result }}" = "failure" ]; then\necho "❌ ASan full suite FAILED"\nFAILED=1\nfi\nif [ "${{ needs.leak-sanitizer.result }}" = "failure" ]; then\necho "❌ LeakSanitizer FAILED"\nFAILED=1\nfi\nif [ "${{ needs.determinism.result }}" = "failure" ]; then\necho "❌ Determinism validation FAILED"\nFAILED=1\nfi\nif [ "${{ needs.thread-sanitizer.result }}" = "failure" ]; then\necho "⚠️ ThreadSanitizer had failures (advisory — not blocking)"\nfi\nif [ "$FAILED" -eq 1 ]; then\necho ""\necho "❌ One or more critical sanitizer jobs failed"\nexit 1\nfi\necho ""\necho "✅ All critical sanitizer checks passed"',
+    'cat > c_harness.c << \'EOF\'\nstatic void cb(const char* s){ if(s) fprintf(stderr, "SNAP:%s\\n", s); }\nint main(){\nstruct AWVersion v = aw_version();\nprintf("%u.%u.%u\\n", v.major, v.minor, v.patch);\n// lightly exercise world and callback\nstruct AWWorld w = aw_world_create();\naw_world_set_snapshot_callback(w, cb);\naw_world_tick(w, 0.016f);\naw_world_destroy(w);\nreturn 0;\n}\ncc -I. -L target/release -Wl,-rpath,\'$ORIGIN/target/release\' -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm\nLD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt\nVER=$(awk \' /^\\[package\\]/ { in_pkg=1; next } /^\\[/ { in_pkg=0 } in_pkg && /^version[[:space:]]*=[[:space:]]*"/ { sub(/^version[[:space:]]*=[[:space:]]*"/, "") sub(/".*/, "") print exit } \' astraweave-sdk/Cargo.toml)\nOUT=$(head -n1 harness_out.txt)\necho "SDK Crate Version: $VER; Runtime: $OUT"\ntest "$OUT" = "$VER"',
+    "mkdir -p cmake_example\ncat > cmake_example/CMakeLists.txt << 'EOF'\ncmake_minimum_required(VERSION 3.15)\nproject(aw_cmake_example C)\nadd_executable(aw_cmake_example main.c)\ntarget_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)\ntarget_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)\nif(UNIX)\ntarget_link_libraries(aw_cmake_example PRIVATE astraweave_sdk pthread dl m)\nelse()\ntarget_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)\nendif()\ncat > cmake_example/main.c << 'EOF'\nint main(){ struct AWWorld w = aw_world_create(); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; }\ncmake -S cmake_example -B cmake_build\ncmake --build cmake_build --config Release\nLD_LIBRARY_PATH=target/release ./cmake_build/aw_cmake_example",
+    'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
+    'log="target/gpu-skip-reasons.txt"\nif [ -s "$log" ]; then\n{\necho "## GPU tests skipped"\necho\necho "These tests did not execute. A line here is a skip, not a pass."\necho\n} >> "$GITHUB_STEP_SUMMARY"\nwhile IFS= read -r line; do\necho "- ${line}" >> "$GITHUB_STEP_SUMMARY"\necho "::warning title=GPU test skipped::$line"\necho "$line"\ndone < "$log"\nfi',
+    'if grep -q "rust-version" Cargo.toml; then\nMSRV=$(grep "rust-version" Cargo.toml | cut -d\'"\' -f2)\nelse\nMSRV=$(grep "channel" rust-toolchain.toml | cut -d\'"\' -f2)\nfi\necho "MSRV=$MSRV" >> $GITHUB_ENV\necho "Detected MSRV: $MSRV"',
+    'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools time',
+    'echo "=== Compilation Performance for ${{ matrix.toolchain }} ===" > perf-${{ matrix.toolchain }}.txt\necho "" >> perf-${{ matrix.toolchain }}.txt\ncargo clean\necho "Clean build:" >> perf-${{ matrix.toolchain }}.txt\n/usr/bin/time -f "Real: %E, User: %U, System: %S, Memory: %M KB" cargo build --release -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tail -1 >> perf-${{ matrix.toolchain }}.txt\necho "Incremental build:" >> perf-${{ matrix.toolchain }}.txt\n/usr/bin/time -f "Real: %E, User: %U, System: %S, Memory: %M KB" cargo build --release -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tail -1 >> perf-${{ matrix.toolchain }}.txt',
+))
+
+_EXACT_BODIES = (
+    frozenset(_exact_entry(item) for item in _ALLOWED_SCRIPTS_CI_LINES)
+    | _REVIEWED_EXACT_BODIES
+)
 
 
 def _pwsh_indirect(body: str) -> bool:
-    return re.search(r"(^|[\n;])\s*&(\s|$)", body) is not None
+    if re.search(r"(^|[\n;])\s*&(\s|$)", body) is not None:
+        return True
+    return re.search(r"(?i)(?:^|[\s;])(?:Invoke-Expression|iex)(?:\s|$)", body) is not None
 
 
 def _run_body_violations(
@@ -1974,11 +2182,11 @@ def _run_body_violations(
     if shell is not None and shell != "bash" and not _body_has_fetch_pin(body):
         violations.append(f"{label} shell is not bash or pwsh")
         return violations
-    if (
-        normalized in _EXACT_BODIES
-        and not workdir
-        and not _fetch_changes_directory(body)
-    ):
+    directory_changed = _body_has_fetch_pin(body) and _fetch_changes_directory(body)
+    if normalized in _EXACT_BODIES and directory_changed:
+        violations.append(f"{label} fetch step sets working-directory")
+        return violations
+    if normalized in _EXACT_BODIES and (not workdir or (normalized, workdir) in _EXACT_WORKDIRS):
         return []
     visible = "\n".join(
         _strip_shell_comment(line).strip() for line in _logical_shell_lines(body)
@@ -2001,49 +2209,6 @@ def _run_body_violations(
                 violations.append(f"{label} could not classify the command")
                 return violations
     return violations
-
-
-def _record_live_exact_bodies() -> None:
-    """Keep the live steps that use a refused command class.
-
-    A probe that is not one of those bodies still fails closed. The set is
-    the normalized text of those steps, not a prefix of them.
-    """
-    for _name, text in _sccache_policy_texts():
-        try:
-            data = yaml.safe_load(text)
-        except yaml.YAMLError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        bundles: list[list[object]] = []
-        runs = data.get("runs")
-        if isinstance(runs, dict) and isinstance(runs.get("steps"), list):
-            bundles.append(runs["steps"])
-        jobs = data.get("jobs")
-        if isinstance(jobs, dict):
-            for job in jobs.values():
-                if isinstance(job, dict) and isinstance(job.get("steps"), list):
-                    bundles.append(job["steps"])
-        for steps in bundles:
-            for step in steps:
-                if not isinstance(step, dict) or not isinstance(step.get("run"), str):
-                    continue
-                body = step["run"]
-                shell = step.get("shell")
-                workdir = step.get("working-directory")
-                found = _run_body_violations(
-                    "live",
-                    body,
-                    {},
-                    workdir if isinstance(workdir, str) else "",
-                    shell if isinstance(shell, str) else None,
-                )
-                if found:
-                    _EXACT_BODIES.add(_normalized_body(body))
-
-
-_record_live_exact_bodies()
 
 
 def _string_env(value: object, where: str) -> dict[str, str]:
@@ -2103,6 +2268,144 @@ _FETCH_JOB_ENV_ALLOW = frozenset(
     }
 )
 
+# Keys a fetch-job run may append to GITHUB_ENV. Startup keys are never here.
+_GITHUB_ENV_KEYS = frozenset(
+    {
+        "AW_GPU_SKIP_IF_UNAVAILABLE",
+        "AW_GPU_SKIP_LOG",
+        "AW_NIGHTLY",
+        "CARGO_INCREMENTAL",
+        "MSRV",
+        "RUSTC_WRAPPER",
+        "RUSTFLAGS",
+        "SCCACHE_CACHE_SIZE",
+        "SCCACHE_GHA_ENABLED",
+        "SCCACHE_GHA_RW_MODE",
+        "SCCACHE_IDLE_TIMEOUT",
+    }
+)
+_STARTUP_ENV_KEY = re.compile(
+    r"^(?:BASH_ENV|ENV|SHELLOPTS|BASHOPTS|BASH_FUNC_.*|LD_.*|NODE_OPTIONS|PATH|"
+    r"GCONV_PATH|IFS|CDPATH|PYTHONPATH|PERL5OPT|RUBYOPT|DYLD_.*)$"
+)
+_ENV_REDIRECT = re.compile(
+    r"(?:>>|>)\s*['\"]?\$\{?GITHUB_(ENV|PATH)\b|"
+    r"[|]\s*tee(?:\s+-a)?\s+['\"]?\$\{?GITHUB_(ENV|PATH)\b"
+)
+_EXACT_WORKDIRS: frozenset[tuple[str, str]] = frozenset(
+    (
+        (
+            "./aravath_greybox.exe --smoke-test --no-volumetrics",
+            "dist/aravath_greybox",
+        ),
+        (
+            "./aravath_greybox.exe --smoke-test --volumetrics",
+            "dist/aravath_greybox",
+        ),
+    )
+)
+_PRE_FETCH_STEPS: frozenset[str] = frozenset((
+    'uses:dtolnay/rust-toolchain@master{components=${{ inputs.components }},toolchain=${{ inputs.toolchain }}}',
+    'run:bash::sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
+    'run:bash::if ! command -v cmake >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then\nbrew install pkg-config cmake\nfi',
+    'uses:actions/checkout@v7{fetch-depth=0}',
+    'uses:dtolnay/rust-toolchain@1.89.0',
+    'run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools bc jq coreutils',
+    'uses:actions/checkout@v7',
+    'run:::sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev',
+    'run:::brew install pkg-config cmake',
+    'run:::echo "Windows dependencies managed via vcpkg"',
+    'uses:actions/checkout@v7{lfs=True}',
+    'uses:./.github/actions/rust-nightly{components=rustfmt, clippy, rust-src, rust-analyzer}',
+    'uses:dtolnay/rust-toolchain@master{components=rustfmt, clippy, rust-src, rust-analyzer,toolchain=${{ github.event.inputs.toolchain_version || matrix.toolchain }}}',
+    'run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
+    'uses:dtolnay/rust-toolchain@master{toolchain=${{ matrix.toolchain }}}',
+    'run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools time',
+))
+_REMOTE_USES_RE = re.compile(r"^[^./\s][^/\s]*(?:/[^/\s@]+)+@\S+$")
+
+
+def _env_file_write_violations(label: str, body: str) -> list[str]:
+    violations: list[str] = []
+    for line in body.splitlines():
+        match = _ENV_REDIRECT.search(line)
+        if match is None:
+            continue
+        kind = match.group(1) or match.group(2)
+        if kind == "PATH":
+            violations.append(f"{label} writes GITHUB_PATH")
+            continue
+        keys = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)=", line)
+        if not keys:
+            violations.append(f"{label} writes GITHUB_ENV")
+            continue
+        for key in keys:
+            if _STARTUP_ENV_KEY.fullmatch(key) or key not in _GITHUB_ENV_KEYS:
+                violations.append(f"{label} writes {key}")
+    return violations
+
+
+def _pre_fetch_key(step: dict) -> str:
+    if "uses" in step and "run" in step:
+        return "mixed"
+    if "uses" in step:
+        uses = step.get("uses")
+        if not isinstance(uses, str):
+            return "uses:invalid"
+        target = uses.strip().split()[0]
+        if "with" not in step:
+            return "uses:" + target
+        with_value = step.get("with")
+        if not isinstance(with_value, dict):
+            return "uses:bad-with"
+        parts = [f"{key}={with_value[key]}" for key in sorted(with_value)]
+        return "uses:" + target + "{" + ",".join(parts) + "}"
+    run = step.get("run")
+    if not isinstance(run, str):
+        return "unclassified"
+    shell = step.get("shell") if isinstance(step.get("shell"), str) else ""
+    workdir = (
+        step.get("working-directory")
+        if isinstance(step.get("working-directory"), str)
+        else ""
+    )
+    return "run:" + shell + ":" + workdir + ":" + _normalized_body(run)
+
+
+def _classify_uses(label: str, uses: object, known_actions: frozenset[str]) -> None:
+    if not isinstance(uses, str) or not uses.strip():
+        raise _PolicyScanError(f"{label} uses")
+    text = uses.strip().split()[0]
+    local = text.startswith("./") or text.startswith(".github/")
+    if (
+        text.startswith("/")
+        or text.startswith("../")
+        or (not local and not _REMOTE_USES_RE.match(text))
+    ):
+        raise _PolicyScanError(f"{label} uses")
+    if not local:
+        return
+    path = text[2:] if text.startswith("./") else text
+    if (
+        not path
+        or "://" in path
+        or path.startswith("../")
+        or "/../" in f"/{path}"
+        or path.endswith("/..")
+    ):
+        raise _PolicyScanError(f"{label} uses")
+    if path.endswith(("/action.yml", "/action.yaml")):
+        candidate = path
+    else:
+        candidate = path.rstrip("/") + "/action.yml"
+    alt = ""
+    if candidate.endswith(".yml"):
+        alt = candidate[:-4] + "yaml"
+    elif candidate.endswith(".yaml"):
+        alt = candidate[:-5] + "yml"
+    if candidate not in known_actions and alt not in known_actions:
+        raise _PolicyScanError(f"{label} uses")
+
 
 def _fetch_shell_env_violations(where: str, env: dict[str, str]) -> list[str]:
     return [
@@ -2135,22 +2438,6 @@ def _env_names_scripts_ci(where: str, env: dict[str, str]) -> list[str]:
     return violations
 
 
-def _local_action_file(uses: object) -> str | None:
-    if not isinstance(uses, str):
-        return None
-    text = uses.strip().split()[0] if uses.strip() else ""
-    relative = text.startswith("./") or text.startswith(".github/")
-    if text.startswith("./"):
-        text = text[2:]
-    if not relative:
-        return None
-    if not text or "://" in text:
-        return None
-    if text.endswith(("/action.yml", "/action.yaml")):
-        return text
-    return text.rstrip("/") + "/action.yml"
-
-
 def _scan_step(
     label: str,
     step: object,
@@ -2173,15 +2460,8 @@ def _scan_step(
     violations.extend(_env_names_scripts_ci(label, step_env))
     if "with" in step:
         violations.extend(_with_violations(label, step.get("with")))
-    local_action = _local_action_file(step.get("uses")) if "uses" in step else None
-    if local_action is not None and local_action not in known_actions:
-        alt = (
-            local_action[:-4] + "yaml"
-            if local_action.endswith(".yml")
-            else local_action[:-5] + "yml"
-        )
-        if alt not in known_actions:
-            raise _PolicyScanError(f"{label} uses")
+    if "uses" in step:
+        _classify_uses(label, step.get("uses"), known_actions)
     shell = default_shell
     if "shell" in step:
         shell = _optional_string(step.get("shell"), f"{label} shell")
@@ -2289,6 +2569,20 @@ def _scan_document(
                 continue
             step_env = _string_env(step.get("env"), step_label)
             violations.extend(_fetch_shell_env_violations(step_label, step_env))
+        seen_fetch: set[str] = set()
+        for step_label, step, _job_env, _job_shell, job_id in indexed:
+            if job_id not in fetch_jobs or not isinstance(step, dict):
+                continue
+            run = step.get("run")
+            if isinstance(run, str):
+                violations.extend(_env_file_write_violations(step_label, run))
+            if job_id in seen_fetch:
+                continue
+            if isinstance(run, str) and _body_has_fetch_pin(run):
+                seen_fetch.add(job_id)
+                continue
+            if _pre_fetch_key(step) not in _PRE_FETCH_STEPS:
+                violations.append(f"{step_label} is not an allowlisted pre-fetch step")
     return violations, found
 
 
@@ -2305,7 +2599,7 @@ def sccache_fetch_run_violations(
     found = 0
     for label, text in texts:
         try:
-            data = yaml.safe_load(text)
+            data = _load_policy_yaml(text)
         except yaml.YAMLError:
             violations.append(f"{label}: could not classify the workflow")
             continue
@@ -3253,12 +3547,13 @@ if [ "$1" = "-p" ] && [ "$2" = "process.platform" ]; then
 fi
 exit 1
 """
+        body = b"archive-bytes"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
-            script = _script_copy(work)
+            script = _script_pinned_to(work, hashlib.sha256(body).hexdigest())
             _write_exe(work / "bin", "node", node)
             _bind_fetch_node(script, work / "bin" / "node")
-            with _fixed_body_server(b"archive-bytes", status=200) as server:
+            with _fixed_body_server(body, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
                     work,
@@ -5261,7 +5556,7 @@ exit 0
         )
         self.assertNotIn("symlink or non-regular", result.stderr)
 
-    def test_sccache_prefetch_installs_a_space_padded_size(self) -> None:
+    def test_sccache_prefetch_rejects_a_space_padded_size(self) -> None:
         _filename, arch, root = self._release_root()
         payload = b"#!/bin/sh\necho sccache 0.19.0\n"
         field = f"{len(payload):o}".encode().rjust(11, b" ") + b"\0"
@@ -5272,15 +5567,13 @@ exit 0
         blob = _gzip_tar([directory, member, _pad_block(payload)])
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
             result, output = _fetch_blob(work, blob)
-            marker = work / "tool-cache" / "sccache" / "0.19.0" / f"{arch}.complete"
-            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(output, "available=true\n")
-            self.assertTrue(marker.is_file())
-            self.assertEqual(cached.read_bytes(), payload)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="could not extract the archive"
+        )
 
-    def test_sccache_prefetch_reader_accepts_a_blank_size(self) -> None:
+    def test_sccache_prefetch_reader_rejects_a_blank_size(self) -> None:
         _filename, _arch, root = self._release_root()
         member = _ustar_header(
             root.encode() + b"/sccache", 48, 0, size_field=b" " * 12
@@ -5288,7 +5581,43 @@ exit 0
         blob = _gzip_tar([member])
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
+
+    def test_sccache_prefetch_reader_accepts_a_nul_padded_size(self) -> None:
+        _filename, _arch, root = self._release_root()
+        member = _ustar_header(
+            root.encode() + b"/sccache", 48, 0, size_field=b"\0" * 12
+        )
+        blob = _gzip_tar([member, b"\0" * 1024])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
             self.assertEqual(_reader_status(work, blob), 0)
+
+    def test_sccache_prefetch_reader_rejects_a_high_bit_size(self) -> None:
+        _filename, arch, root = self._release_root()
+        payload = b"H" * 80
+        field = bytes([0x80]) + b"\0" * 11
+        directory = _ustar_header(root.encode() + b"/", 53, 0)
+        member = _ustar_header(
+            root.encode() + b"/sccache", 48, 80, size_field=field
+        )
+        blob = _gzip_tar([directory, member, _pad_block(payload)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="could not extract the archive"
+        )
+
+    def test_sccache_prefetch_reader_rejects_a_non_octal_checksum(self) -> None:
+        _filename, _arch, root = self._release_root()
+        header = bytearray(_ustar_header(root.encode() + b"/sccache", 48, 0))
+        header[148:156] = b"xxxxxxxx"
+        blob = _gzip_tar([bytes(header)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
 
     def test_sccache_prefetch_reader_rejects_a_trailing_size_byte(self) -> None:
         _filename, arch, root = self._release_root()
@@ -6949,6 +7278,535 @@ exit 1
                 )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(output, "available=true\n")
+
+    def test_sccache_prefetch_shell_hash_rejects_a_lying_node(self) -> None:
+        filename, arch = _host_sccache_filename()
+        pin = PINNED_SCCACHE_SHA256[filename]
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = b"not-the-pinned-release"
+            staged = work / "staged"
+            binary = staged / filename[: -len(".tar.gz")]
+            binary.mkdir(parents=True)
+            planted = binary / "sccache"
+            planted.write_text("#!/bin/sh\necho SWAPPED\n", encoding="utf-8")
+            planted.chmod(0o755)
+            member = hashlib.sha256(planted.read_bytes()).hexdigest()
+            node = (
+                "#!/bin/sh\n"
+                'if [ "$1" = -p ] && [ "$2" = process.arch ]; then printf \'%s\\n\' x64; exit 0; fi\n'
+                'if [ "$1" = -p ] && [ "$2" = process.platform ]; then printf \'%s\\n\' linux; exit 0; fi\n'
+                "for arg in \"$@\"; do\n"
+                "  if [ \"$arg\" = stage ]; then\n"
+                f"    printf '%s\\n' {shlex.quote(pin)} {shlex.quote(member)} {shlex.quote(str(staged))}\n"
+                "    exit 0\n"
+                "  fi\n"
+                "done\n"
+                "exit 1\n"
+            )
+            _write_exe(work / "bin", "node", node)
+            script = _script_copy(work)
+            _bind_fetch_node(script, work / "bin" / "node")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    attempts="1",
+                    delay="0",
+                )
+            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertNotIn("available=true", output)
+        self.assertFalse(cached.exists())
+
+    def test_sccache_prefetch_mismatched_malformed_archive_exits_1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            script = _script_copy(work)
+            with _fixed_body_server(b"not-a-gzip-archive", status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    attempts="1",
+                    delay="0",
+                )
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("checksum mismatch", result.stderr)
+        self.assertEqual(output, "")
+
+    def test_sccache_prefetch_refuses_a_leading_backslash_name(self) -> None:
+        _filename, arch, root = self._release_root()
+        member = _ustar_header(b"\\evil", 48, 0)
+        blob = _gzip_tar([member])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 1)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self,
+            result,
+            output,
+            work,
+            arch,
+            message="archive has a symlink or non-regular entry",
+        )
+
+    def test_sccache_prefetch_refuses_a_non_octal_mode(self) -> None:
+        _filename, arch, root = self._release_root()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        directory = _ustar_header(root.encode() + b"/", 53, 0)
+        member = _ustar_header(
+            root.encode() + b"/sccache",
+            48,
+            len(payload),
+            mode_field=b"xxxxxxxx",
+        )
+        blob = _gzip_tar([directory, member, _pad_block(payload)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            self.assertEqual(_reader_status(work, blob), 2)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="could not extract the archive"
+        )
+
+    def test_sccache_prefetch_refuses_a_duplicate_binary_member(self) -> None:
+        _filename, arch, root = self._release_root()
+        first = b"#!/bin/sh\necho one\n"
+        second = b"#!/bin/sh\necho two\n"
+        directory = _ustar_header(root.encode() + b"/", 53, 0)
+        one = _ustar_header(root.encode() + b"/sccache", 48, len(first))
+        two = _ustar_header(root.encode() + b"/sccache", 48, len(second))
+        blob = _gzip_tar(
+            [directory, one, _pad_block(first), two, _pad_block(second)]
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self, result, output, work, arch, message="archive has no sccache binary"
+        )
+
+    def test_sccache_prefetch_write_flags_refuse_a_planted_file(self) -> None:
+        filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            outside = work / "outside-target"
+            outside.write_bytes(b"OUTSIDE\n")
+            _bind_node_preload(script, work, _FS_PLANT)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"AW_PLANT": "file", "AW_OUTSIDE": str(outside)},
+                )
+            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+            self.assertNotEqual(output, "available=true\n")
+            self.assertFalse(cached.exists())
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sccache_prefetch_write_flags_refuse_a_planted_symlink(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            outside = work / "outside-target"
+            outside.write_bytes(b"OUTSIDE\n")
+            _bind_node_preload(script, work, _FS_PLANT)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"AW_PLANT": "symlink", "AW_OUTSIDE": str(outside)},
+                )
+            self.assertEqual(outside.read_bytes(), b"OUTSIDE\n")
+            self.assertNotEqual(output, "available=true\n")
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sccache_prefetch_refuses_a_hardlinked_write(self) -> None:
+        _filename, arch = _host_sccache_filename()
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _bind_node_preload(script, work, _FS_PLANT)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"AW_PLANT": "hardlink"},
+                )
+            cached = work / "tool-cache" / "sccache" / "0.19.0" / arch / "sccache"
+            self.assertNotEqual(output, "available=true\n")
+            self.assertFalse(cached.exists())
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("symlink or non-regular", result.stderr)
+
+    def test_sccache_prefetch_refuses_a_linked_release_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            outside = work / "outside-dir"
+            outside.mkdir()
+            _bind_node_preload(script, work, _FS_PLANT)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"AW_PLANT": "rootlink", "AW_OUTSIDE": str(outside)},
+                )
+            self.assertEqual(list(outside.iterdir()), [])
+            self.assertNotEqual(output, "available=true\n")
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sccache_prefetch_refuses_a_realpath_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            _bind_node_preload(script, work, _FS_PLANT)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                    extra_env={"AW_PLANT": "realpath"},
+                )
+        self.assertNotEqual(output, "available=true\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sccache_prefetch_fchmod_keeps_the_member_mode(self) -> None:
+        old = os.umask(0o077)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                work = Path(tmp)
+                blob = _valid_sccache_archive(work)
+                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                log = work / "modes"
+                _bind_node_preload(script, work, _FS_PLANT)
+                with _fixed_body_server(blob, status=200) as server:
+                    port = server.server_address[1]
+                    result, output = _run_fetch(
+                        work,
+                        script=script,
+                        base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                        extra_env={"AW_CHMOD_LOG": str(log)},
+                    )
+                logged = log.read_text(encoding="utf-8") if log.exists() else ""
+        finally:
+            os.umask(old)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(output, "available=true\n")
+        self.assertIn("chmod 493\n", logged)
+        self.assertIn("mode 493\n", logged)
+
+    def test_sccache_prefetch_refuses_a_symlink_mktemp_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            outside = work / "outside-dir"
+            outside.mkdir()
+            link = work / "stage-link"
+            _write_exe(
+                work / "bin",
+                "mktemp",
+                "#!/bin/sh\n"
+                'if [ "$1" = -d ] && [ -n "$2" ]; then\n'
+                f"  ln -sfn {shlex.quote(str(outside))} {shlex.quote(str(link))}\n"
+                f"  printf '%s\\n' {shlex.quote(str(link))}\n"
+                "  exit 0\n"
+                "fi\n"
+                "exec /usr/bin/mktemp \"$@\"\n",
+            )
+            _bind_tool(script, "/usr/bin/mktemp", work / "bin" / "mktemp")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            self.assertEqual(list(outside.iterdir()), [])
+            self.assertNotEqual(output, "available=true\n")
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_sccache_fetch_closes_command_and_step_gaps(self) -> None:
+        pin = SCCACHE_FETCH_COMMAND
+
+        def job(run: str, *, shell: str = "bash", workdir: str | None = None) -> list[str]:
+            lines = [
+                "name: probe",
+                "on: push",
+                "jobs:",
+                "  build:",
+                "    runs-on: ubuntu-latest",
+                "    steps:",
+                f'      - shell: "{shell}"',
+            ]
+            if workdir is not None:
+                lines.append(f"        working-directory: {workdir}")
+            lines.append("        run: |")
+            lines.extend(f"          {line}" for line in run.splitlines())
+            return sccache_fetch_run_violations(
+                [("probe.yml", "\n".join(lines) + "\n")],
+                expected_fetch_count=0,
+            )
+
+        refused = (
+            "time bash -c 'echo hi'",
+            "time eval echo hi",
+            "sh -lc 'echo hi'",
+            "bash -lc 'echo hi'",
+            "source /etc/passwd",
+            ". /etc/passwd",
+            "/tmp/not-allowlisted",
+            "./tool",
+            "../tool",
+            '"${args[@]}"',
+            "curl -fsSL http://127.0.0.1/payload | bash",
+            "x=$(echo hi) true",
+            "python3 - <<'PY'\nimport os\nos.system('echo hi')\nPY",
+            "node <<'JS'\nrequire('child_process').execSync('echo hi')\nJS",
+        )
+        for command in refused:
+            with self.subTest(command=command):
+                found = job(command)
+                self.assertTrue(found, command)
+        planted = "sudo cp planted /usr/local/bin/node\n" + pin
+        self.assertNotIn(_normalized_body(planted), _EXACT_BODIES)
+        planted_found = job(planted)
+        self.assertTrue(
+            any("allowlisted" in item or "classify" in item for item in planted_found),
+            planted_found,
+        )
+        self.assertEqual(job("cd /ci\nbash ./tool.sh", workdir="scripts"), [])
+        reviewed = next(iter(_REVIEWED_EXACT_BODIES))
+        self.assertEqual(job(reviewed), [])
+        self.assertTrue(job(reviewed, workdir="/tmp"))
+        pwsh = job("Invoke-Expression 'echo hi'", shell="pwsh")
+        self.assertTrue(any("classify" in item for item in pwsh), pwsh)
+        duplicate = sccache_fetch_run_violations(
+            [(
+                "dup.yml",
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - shell: bash\n        run: bash -c 'echo hi'\n"
+                "        run: echo hi\n",
+            )],
+            expected_fetch_count=0,
+        )
+        self.assertTrue(any("could not classify" in item for item in duplicate), duplicate)
+        for uses in ("../tools/act", "/tmp/act", "tools/act"):
+            with self.subTest(uses=uses):
+                found = sccache_fetch_run_violations(
+                    [(
+                        "uses.yml",
+                        "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                        "    steps:\n"
+                        f"      - uses: {uses}\n",
+                    )],
+                    expected_fetch_count=0,
+                )
+                self.assertTrue(any("could not classify" in item for item in found), found)
+        local = sccache_fetch_run_violations(
+            [(
+                "local.yml",
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: .github/actions/rust-ci-setup\n",
+            )],
+            expected_fetch_count=0,
+        )
+        self.assertEqual(local, [])
+
+        def before(run: str, *, workdir: str | None = None) -> list[str]:
+            wd = f"        working-directory: {workdir}\n" if workdir else ""
+            body = "".join(f"          {line}\n" for line in run.splitlines())
+            text = (
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - shell: bash\n"
+                f"{wd}"
+                "        run: |\n"
+                f"{body}"
+                "      - shell: bash\n"
+                f"        run: {pin}\n"
+            )
+            return sccache_fetch_run_violations([("prior.yml", text)], expected_fetch_count=1)
+
+        priors = (
+            "python3 tools/plant.py",
+            "printf '%s\n' '#!/bin/sh' 'echo SWAPPED' > /usr/local/bin/node",
+            "cp \"$GITHUB_WORKSPACE/planted.sh\" \"$(printf 'fetch_\\163ccache_release.sh')\"",
+            "cd scripts\ncd ci\ncp \"$GITHUB_WORKSPACE/planted.sh\" \"$(printf 'fetch_\\163ccache_release.sh')\"",
+            "cp planted.sh $'fetch_\\163ccache_release.sh'",
+            "printf '%s\n' 'BASH_ENV=/tmp/hook.sh' >> \"$GITHUB_ENV\"",
+            "echo BASH_ENV=/tmp/payload.sh >> \"$GITHUB_ENV\"",
+            "echo LD_PRELOAD=/tmp/x.so >> \"$GITHUB_ENV\"",
+            "echo PATH=/tmp/hook >> \"$GITHUB_PATH\"",
+        )
+        for command in priors:
+            with self.subTest(prior=command):
+                found = before(command)
+                self.assertTrue(found, (command, found))
+        found = before(
+            "cp \"$GITHUB_WORKSPACE/planted.sh\" \"$(printf 'fetch_\\163ccache_release.sh')\"",
+            workdir="scripts/ci",
+        )
+        self.assertTrue(any("pre-fetch" in item for item in found), found)
+        allowed = before("echo RUSTC_WRAPPER=sccache >> \"$GITHUB_ENV\"")
+        # The echo is not an enumerated pre-fetch step, so it is refused for that
+        # reason. The key itself is not a startup-key violation when it is the
+        # only assignment on a later step.
+        later = sccache_fetch_run_violations(
+            [(
+                "later.yml",
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - shell: bash\n"
+                f"        run: {pin}\n"
+                "      - shell: bash\n"
+                "        run: echo RUSTC_WRAPPER=sccache >> \"$GITHUB_ENV\"\n",
+            )],
+            expected_fetch_count=1,
+        )
+        self.assertEqual(later, [])
+        self.assertTrue(allowed)
+
+    def test_sccache_policy_kills_the_remaining_one_edit_arms(self) -> None:
+        """One fixture per arm a one-edit sweep can drop and still pass the rest."""
+        pin = SCCACHE_FETCH_COMMAND
+
+        def run(body: str, *, fetch: int = 0) -> list[str]:
+            text = (
+                "name: probe\non: push\njobs:\n  build:\n"
+                "    runs-on: ubuntu-latest\n    steps:\n"
+                "      - shell: bash\n        run: |\n"
+            )
+            text += "".join(f"          {line}\n" for line in body.splitlines())
+            return sccache_fetch_run_violations(
+                [("probe.yml", text)], expected_fetch_count=fetch
+            )
+
+        def document(text: str) -> list[str]:
+            return sccache_fetch_run_violations(
+                [("probe.yml", text)], expected_fetch_count=0
+            )
+
+        refused = {
+            "exact-prefix": "channel=$(grep -v '^[[:space:]]*#' .github/rust-nightly-channel | tr -d '[:space:]')",
+            "unclosed-quote": 'echo "unterminated',
+            "dollar-argv0": "$TOOL",
+            "folded-backslash": "echo scripts\\ci/tool.sh",
+            "keyword-eval": "if true; then eval echo hi; fi",
+            "cd-destination": "cd scripts/ci\necho hi",
+            "unknown-argv0": "wget http://127.0.0.1/x",
+            "heredoc": "cat <<EOF\nhi\nEOF",
+            "function": "echo() { echo hi; }",
+            "brace": "echo {a,b}",
+            "redirect": "cat < /etc/passwd",
+            "interpreter-e": "python3 -e 'print(1)'",
+            "path-argv0": "/bin/echo hi",
+            "unescaped-name": "echo scr\\ipts/ci/tool.sh",
+            "brace-name": "echo {scripts,other}/ci/tool.sh",
+            "command-v-space": "command -v 'has space'",
+            "command-v-bracket": "command -v 'a[b'",
+            "glob-argv0": "./bin*/echo hi",
+        }
+        for name, body in refused.items():
+            with self.subTest(arm=name):
+                found = run(body)
+                self.assertTrue(found, name)
+                if name in {"dollar-argv0", "glob-argv0"}:
+                    self.assertTrue(any("allowlisted" in item for item in found), found)
+        self.assertEqual(run("printf '%s\\n' ok"), [])
+        self.assertEqual(run("python3 ok\\n.py"), [])
+        self.assertEqual(run("echo **/ci/tool.sh"), [])
+        echoed = run("echo " + pin)
+        self.assertTrue(any("allowlisted" in item for item in echoed), echoed)
+        self.assertFalse(any("found 1" in item for item in echoed), echoed)
+        self.assertEqual(_string_env({"A": None}, "probe")["A"], "")
+        self.assertIn(
+            ".github/actions/demo/action.yaml",
+            _policy_names(
+                [
+                    ".github/actions/demo/action.yaml",
+                    ".github/workflows/probe.yml",
+                ]
+            ),
+        )
+        expanded = document(
+            "name: probe\non: push\njobs:\n  build:\n"
+            "    runs-on: ubuntu-latest\n    env:\n"
+            "      FOO: scripts\n    steps:\n"
+            "      - shell: bash\n        run: echo ${FOO}/ci/tool.sh\n"
+        )
+        self.assertTrue(any("allowlisted" in item for item in expanded), expanded)
+        nested = document(
+            "name: probe\non: push\njobs:\n  build:\n"
+            "    runs-on: ubuntu-latest\n    env:\n      X:\n        - a\n"
+            "    steps:\n      - shell: bash\n        run: echo hi\n"
+        )
+        self.assertTrue(any("could not classify" in item for item in nested), nested)
+        extra_defaults = document(
+            "name: probe\non: push\ndefaults:\n  run:\n    shell: bash\n"
+            "  extra: 1\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - run: echo hi\n"
+        )
+        self.assertTrue(
+            any("could not classify" in item for item in extra_defaults), extra_defaults
+        )
+        with_path = document(
+            "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - uses: actions/checkout@v7\n        with:\n"
+            '          path: "{scripts,x}/ci/tool.sh"\n'
+        )
+        with_escape = document(
+            "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - uses: actions/checkout@v7\n        with:\n"
+            '          path: "scr\\\\ipts/ci/tool.sh"\n'
+        )
+        self.assertTrue(any("allowlisted" in item for item in with_escape), with_escape)
+        cd_var = document(
+            "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+            "    steps:\n      - shell: bash\n        run: |\n"
+            "          FOO=scripts\n          cd $FOO/ci\n"
+        )
+        self.assertTrue(any("allowlisted" in item for item in cd_var), cd_var)
+        self.assertTrue(any("allowlisted" in item for item in with_path), with_path)
+        for label, text in (
+            ("steps", "name: probe\non: push\nruns:\n  using: composite\n  steps: echo\n"),
+            ("jobs", "name: probe\non: push\njobs: []\n"),
+            (
+                "shell",
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n      - shell: 1\n        run: echo hi\n",
+            ),
+            ("root", "- a\n"),
+        ):
+            with self.subTest(shape=label):
+                found = document(text)
+                self.assertTrue(any("could not classify" in item for item in found), found)
+        moved = run(f"FOO=bar cd /tmp\n{pin}", fetch=1)
+        self.assertTrue(any("working-directory" in item for item in moved), moved)
 
 
 if __name__ == "__main__":
