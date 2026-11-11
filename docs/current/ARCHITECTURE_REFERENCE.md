@@ -582,7 +582,7 @@ cargo +nightly miri test -p astraweave-ecs --lib -- --test-threads=1
 - `astraweave-ecs/tests/mutation_resistant_comprehensive_tests.rs` — BlobVec, Entity bit encoding, EntityAllocator proof mirrors
 - `astraweave-sdk/src/lib_kani.rs` — C ABI function proofs
 
-**CI**: `.github/workflows/kani.yml` (uses `model-checking/kani-github-action@v1`)
+**CI**: `.github/workflows/kani.yml` (uses `model-checking/kani-github-action` commit `69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237`, `# v1`)
 
 **Running locally**:
 ```bash

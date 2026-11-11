@@ -260,7 +260,7 @@ Full details: [MIRI_VALIDATION_REPORT.md](MIRI_VALIDATION_REPORT.md)
 
 **Scope**: 4 crates, ~71 proof harnesses
 **Status**: Clean — all proofs verified
-**CI**: Weekly (Sunday 3:00 AM UTC) via `model-checking/kani-github-action@v1`
+**CI**: Weekly (Sunday 3:00 AM UTC) via `model-checking/kani-github-action` commit `69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237` (`# v1`)
 
 | Crate | Proofs | Properties Verified |
 |-------|--------|---------------------|
@@ -328,14 +328,14 @@ Kani uses CBMC bounded model checking. Math proofs use concrete representative i
 | **Wave 3 Total** | | **463** | **22** | **3** | **1** | **95.5%** |
 
 **Terrain remaining MISSED** (4 in latest v4 run):
-- `heightmap.rs:152–153`: `replace - with +` and `replace - with /` in `Heightmap::sample_bilinear` — bilinear interpolation weight calculations require exact-value regression tests
-- All 4 are arithmetic operator mutations in interpolation weight computation
+- `heightmap.rs:152–153`: `replace - with +` and `replace - with /` on the neighbour-index clamps `(x0 + 1).min(self.resolution - 1)` and `(z0 + 1).min(self.resolution - 1)` in `Heightmap::sample_bilinear`. `Heightmap::new` and `Heightmap::from_data` reject a resolution above 32769. For every resolution from 2 through 32769, `(resolution as f32) - 1.001` is strictly below `resolution - 1`, so `x0 + 1` and `z0 + 1` are already at most `resolution - 1` and the `min` does not change the index. Resolution 32770 is the first value where that subtraction rounds to `resolution - 1`, `x0 + 1` is `resolution`, and both replacements read past the edge. The constructor rejects it.
+- All 4 are those neighbour-index clamp mutants. The interpolation weights at `:163–166` are a different site.
 
 **Render remaining MISSED** (5 in v2 run):
-- `environment.rs:61`: `replace - with +` in `get_sun_position` — azimuth sign inversion
-- `environment.rs:67`: `replace < with ==` and `replace < with <=` in `get_sun_position` — boundary condition in sun hemisphere check
-- `renderer.rs:3292`: `replace set_weather with ()` — requires GPU context for full validation
-- `biome_transition.rs:96`: `replace < with <=` in `EasingFunction::apply` — boundary condition at t=1.0
+- `environment.rs:63`: `replace - with +` in `get_sun_position` — full-period shift. `current_time - 12.0` becomes `current_time + 12.0`, which adds 2π to the azimuth over the reals. In `f32`, `sin` and `cos` still change by rounding, by at most about 1.4e-6. Not equivalent. The current sun-position assertions use tolerances of about `1e-3` and wider, so they do not detect that delta.
+- `environment.rs:69`: `replace < with ==` and `replace < with <=` in `get_sun_position` — boundary condition in sun hemisphere check
+- `renderer.rs:6950`: `replace set_weather with ()` — requires GPU context for full validation
+- `biome_transition.rs:96`: `replace < with <=` in `EasingFunction::apply` — EaseInOut boundary at `t < 0.5`. Both branches return 0.5 at `t = 0.5`, so this mutant is equivalent.
 
 **Wave 3 remediation commits**: `cd6475df`, `9db0d3be`, `c7d573fb`, `bfb94e46`, `57a14600`.
 

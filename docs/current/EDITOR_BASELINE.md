@@ -6,7 +6,7 @@ with the shared configuration in `llvm-cov.toml` and by inspecting the crates an
 
 ## CI and Instrumentation
 - `.github/workflows/editor-ci.yml` now enforces `cargo fmt`, `cargo clippy`, `cargo check`, headless smoke tests, and publishes the `cargo llvm-cov` artifact on every PR touching the editor (see `.github/workflows/editor-ci.yml:1`).  
-  The job uploads both the LCOV file and the HTML report plus a summary extracted from `coverage/summary.json` so coverage deltas are always reviewable (`.github/workflows/editor-ci.yml:63-90`).
+  The job uploads both the LCOV file and the HTML report plus a summary extracted from `coverage/summary.json` so coverage deltas are always reviewable (`.github/workflows/editor-ci.yml:69-112`).
 - The root `llvm-cov.toml` forces `--all-features`, disables early aborts, and filters generated/test-only paths so measurements stay comparable to the north-star targets (`llvm-cov.toml:1-16`).
 
 ## Coverage Snapshot (`cargo llvm-cov` on Windows, Rust 1.89.0)
