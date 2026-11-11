@@ -1429,6 +1429,216 @@ pub mod gltf_loader {
         }
     }
 
+    #[cfg(test)]
+    mod survivor_tests {
+        use super::*;
+
+        struct Scripted {
+            steps: std::collections::VecDeque<std::io::Result<Vec<u8>>>,
+        }
+
+        impl std::io::Read for Scripted {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if buf.is_empty() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "empty read",
+                    ));
+                }
+                let Some(step) = self.steps.pop_front() else {
+                    return Ok(0);
+                };
+                let bytes = step?;
+                let n = bytes.len().min(buf.len());
+                buf[..n].copy_from_slice(&bytes[..n]);
+                Ok(n)
+            }
+        }
+
+        fn scripted(steps: Vec<std::io::Result<Vec<u8>>>) -> Scripted {
+            Scripted {
+                steps: steps.into(),
+            }
+        }
+
+        fn twelve() -> Vec<u8> {
+            (1..=12).collect()
+        }
+
+        #[test]
+        fn header_read_stops_when_the_buffer_is_full() {
+            let mut reader = scripted(vec![Ok(twelve())]);
+            let mut buf = [0u8; 12];
+            let n = read_header_or_eof(&mut reader, &mut buf).expect("full");
+            assert_eq!(n, 12);
+            assert_eq!(buf.as_slice(), twelve().as_slice());
+        }
+
+        #[test]
+        fn header_read_retries_an_interrupted_read() {
+            let interrupted = Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "interrupted",
+            ));
+            let mut reader = scripted(vec![interrupted, Ok(twelve())]);
+            let mut buf = [0u8; 12];
+            let n = read_header_or_eof(&mut reader, &mut buf).expect("retry");
+            assert_eq!(n, 12);
+            assert_eq!(buf.as_slice(), twelve().as_slice());
+        }
+
+        #[test]
+        fn header_read_returns_a_different_error() {
+            let other = Err(std::io::Error::other("other"));
+            let mut reader = scripted(vec![other, Ok(twelve())]);
+            let mut buf = [0u8; 12];
+            let err = read_header_or_eof(&mut reader, &mut buf).expect_err("other");
+            assert_eq!(err.kind(), std::io::ErrorKind::Other);
+        }
+
+        fn le_u16(value: u16) -> [u8; 2] {
+            value.to_le_bytes()
+        }
+
+        fn image(format: gltf::image::Format, pixels: Vec<u8>) -> gltf::image::Data {
+            gltf::image::Data {
+                pixels,
+                format,
+                width: 1,
+                height: 1,
+            }
+        }
+
+        #[test]
+        fn wide_gltf_pixels_convert_to_rgba8() {
+            let gray = image(gltf::image::Format::R16, le_u16(0x4000).to_vec());
+            assert_eq!(
+                rgba_from_gltf_image(&gray).expect("r16").rgba8,
+                vec![0x40, 0x40, 0x40, 255]
+            );
+            let mut la = Vec::new();
+            la.extend(le_u16(0x4000));
+            la.extend(le_u16(0x1000));
+            let gray_alpha = image(gltf::image::Format::R16G16, la);
+            assert_eq!(
+                rgba_from_gltf_image(&gray_alpha).expect("r16g16").rgba8,
+                vec![0x40, 0x40, 0x40, 0x10]
+            );
+            let mut rgb = Vec::new();
+            rgb.extend(le_u16(0x0100));
+            rgb.extend(le_u16(0x0200));
+            rgb.extend(le_u16(0x0300));
+            let color = image(gltf::image::Format::R16G16B16, rgb);
+            assert_eq!(
+                rgba_from_gltf_image(&color).expect("r16g16b16").rgba8,
+                vec![1, 2, 3, 255]
+            );
+            let mut rgba16 = Vec::new();
+            rgba16.extend(le_u16(0x0100));
+            rgba16.extend(le_u16(0x0200));
+            rgba16.extend(le_u16(0x0300));
+            rgba16.extend(le_u16(0x0400));
+            let color_alpha = image(gltf::image::Format::R16G16B16A16, rgba16);
+            assert_eq!(
+                rgba_from_gltf_image(&color_alpha)
+                    .expect("r16g16b16a16")
+                    .rgba8,
+                vec![1, 2, 3, 4]
+            );
+            let mut rgb32 = Vec::new();
+            // 0.5048828125. Its second byte is not its first, so reading
+            // `start * 1` instead of `start + 1` changes the channel.
+            rgb32.extend([0u8, 64, 1, 63]);
+            for value in [1.5f32, -0.25] {
+                rgb32.extend(value.to_le_bytes());
+            }
+            let floats = image(gltf::image::Format::R32G32B32FLOAT, rgb32);
+            assert_eq!(
+                rgba_from_gltf_image(&floats).expect("rgb32").rgba8,
+                vec![129, 255, 0, 255]
+            );
+            let mut rgba32 = Vec::new();
+            for value in [0.5f32, 0.0, 1.0, 0.25] {
+                rgba32.extend(value.to_le_bytes());
+            }
+            let floats_alpha = image(gltf::image::Format::R32G32B32A32FLOAT, rgba32);
+            assert_eq!(
+                rgba_from_gltf_image(&floats_alpha).expect("rgba32").rgba8,
+                vec![128, 0, 255, 64]
+            );
+            let short = image(gltf::image::Format::R16G16B16, vec![1]);
+            let err = rgba_from_gltf_image(&short).expect_err("short");
+            assert!(err.to_string().contains("not a whole pixel"), "{err}");
+        }
+
+        fn animation_glb() -> Vec<u8> {
+            let json = r#"{
+                "asset":{"version":"2.0"},
+                "skins":[{"joints":[0]}],
+                "nodes":[{"name":"bone"}],
+                "animations":[{
+                    "name":"bounce",
+                    "samplers":[{"input":0,"output":1,"interpolation":"LINEAR"}],
+                    "channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]
+                }],
+                "accessors":[
+                    {"bufferView":0,"componentType":5126,"count":2,"type":"SCALAR","min":[0.0],"max":[1.0]},
+                    {"bufferView":1,"componentType":5126,"count":2,"type":"VEC3"}
+                ],
+                "bufferViews":[
+                    {"buffer":0,"byteOffset":0,"byteLength":8},
+                    {"buffer":0,"byteOffset":8,"byteLength":24}
+                ],
+                "buffers":[{"byteLength":32}]
+            }"#;
+            let mut json_bytes = json.as_bytes().to_vec();
+            while json_bytes.len() % 4 != 0 {
+                json_bytes.push(b' ');
+            }
+            let mut bin = Vec::new();
+            bin.extend(0.0f32.to_le_bytes());
+            bin.extend(1.0f32.to_le_bytes());
+            for value in [0.0f32, 0.0, 0.0, 0.0, 1.0, 0.0] {
+                bin.extend(value.to_le_bytes());
+            }
+            let total = (12 + 8 + json_bytes.len() + 8 + bin.len()) as u32;
+            let mut out = Vec::new();
+            out.extend_from_slice(b"glTF");
+            out.extend_from_slice(&2u32.to_le_bytes());
+            out.extend_from_slice(&total.to_le_bytes());
+            out.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"JSON");
+            out.extend_from_slice(&json_bytes);
+            out.extend_from_slice(&(bin.len() as u32).to_le_bytes());
+            out.extend_from_slice(b"BIN\0");
+            out.extend_from_slice(&bin);
+            out
+        }
+
+        #[test]
+        fn glb_animation_load_returns_the_named_clip() {
+            let glb = animation_glb();
+            assert!(container_is_glb(&glb));
+            assert!(!container_is_glb(b"glTF"));
+            assert!(!container_is_glb(br#"{"asset":{"version":"2.0"}}"#));
+            let skeleton = Skeleton {
+                joints: Vec::new(),
+                root_indices: Vec::new(),
+            };
+            let clips = load_animations(std::path::Path::new("."), &glb, &skeleton).expect("clips");
+            assert_eq!(clips.len(), 1);
+            assert_eq!(clips[0].name, "bounce");
+            assert_eq!(clips[0].channels.len(), 1);
+            match &clips[0].channels[0].data {
+                ChannelData::Translation(values) => {
+                    assert_eq!(values.len(), 2);
+                    assert_eq!(values[1], [0.0, 1.0, 0.0]);
+                }
+                _ => panic!("expected a translation channel"),
+            }
+        }
+    }
+
     #[inline]
     fn normalize_q(mut q: [f32; 4]) -> [f32; 4] {
         let len = (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]).sqrt();

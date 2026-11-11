@@ -145,9 +145,9 @@ fn lexical_absolute(path: &Path) -> std::io::Result<std::path::PathBuf> {
         return Ok(path.to_path_buf());
     }
     let cwd = std::env::current_dir()?;
-    if path.as_os_str().is_empty() || path == Path::new(".") {
-        return Ok(cwd);
-    }
+    // `join` of an empty path leaves the directory unchanged, and
+    // `normalize_lexical` drops a current-directory component. Both `""` and
+    // `"."` therefore resolve to the current directory without a separate arm.
     Ok(normalize_lexical(&cwd.join(path)))
 }
 
@@ -247,7 +247,7 @@ fn subject(noun: &str, path: &Path) -> String {
     }
 }
 
-fn not_regular_open(err: &std::io::Error) -> bool {
+pub(crate) fn not_regular_open(err: &std::io::Error) -> bool {
     err.kind() == std::io::ErrorKind::InvalidInput && err.to_string().contains("not a regular file")
 }
 
@@ -404,8 +404,9 @@ fn directory_flags() -> rustix::fs::OFlags {
     use rustix::fs::OFlags;
     // Linux opens each directory component with O_PATH so a load still works
     // when an ancestor is not readable. Other Unix keeps a read-only directory
-    // open, which is the portable equivalent. `open_flag_masks_match_the_target_bits`
-    // pins each mask, including this other-Unix arm, to the bit value for the target.
+    // open. `open_flag_masks_match_the_target_bits` pins the Linux mask on
+    // x86, x86_64, aarch64, and arm, and the other-Unix mask on macOS and iOS.
+    // On any other target that test only checks that `O_RDONLY` is zero.
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC
@@ -832,8 +833,11 @@ fn open_at(parent: &File, name: &std::ffi::OsStr, kind: RelativeOpen) -> std::io
     const STATUS_STOPPED_ON_SYMLINK: i32 = 0x8000_002Du32 as i32;
 
     let mut units: Vec<u16> = name.encode_wide().collect();
-    // One path segment. A colon, NUL, or separator is not a component name.
+    // One path segment. A colon, NUL, separator, or a reserved `.` / `..`
+    // name is not a component name.
+    let reserved = units == [u16::from(b'.')] || units == [u16::from(b'.'), u16::from(b'.')];
     if units.is_empty()
+        || reserved
         || units.len() > (u16::MAX as usize) / 2
         || units.iter().any(|unit| {
             *unit == 0
@@ -1850,9 +1854,16 @@ mod tests {
         assert!(status.success(), "mkfifo");
         let root = dir.path().to_path_buf();
         let display = std::path::PathBuf::from("textures/pipe.bin");
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = ran.clone();
         assert_not_regular_without_blocking(move || {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
             read_under(&root, Path::new("textures/pipe.bin"), 64, "", &display).map(|_| ())
         });
+        assert!(
+            ran.load(std::sync::atomic::Ordering::Relaxed),
+            "the non-blocking check did not run the open"
+        );
     }
 
     /// A FIFO used as an intermediate must fail before a writer connects.
@@ -1870,9 +1881,16 @@ mod tests {
         assert!(status.success(), "mkfifo");
         let root = dir.path().to_path_buf();
         let display = std::path::PathBuf::from("mid/leaf.bin");
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = ran.clone();
         assert_not_regular_without_blocking(move || {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
             read_under(&root, Path::new("mid/leaf.bin"), 64, "", &display).map(|_| ())
         });
+        assert!(
+            ran.load(std::sync::atomic::Ordering::Relaxed),
+            "the non-blocking check did not run the open"
+        );
     }
 
     #[cfg(unix)]
@@ -3030,6 +3048,27 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn windows_file_id_from_two_real_files_is_distinct() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let left_path = dir.path().join("a.bin");
+        let right_path = dir.path().join("b.bin");
+        std::fs::write(&left_path, b"left").expect("left");
+        std::fs::write(&right_path, b"right").expect("right");
+        super::FILE_ID_BYTES.with(|cell| cell.borrow_mut().clear());
+        super::FILE_ID_ERROR.with(|cell| cell.take());
+        let left = File::open(&left_path).expect("open left");
+        let right = File::open(&right_path).expect("open right");
+        let left_id = windows_file_id(&left).expect("left id");
+        let right_id = windows_file_id(&right).expect("right id");
+        assert_eq!(left_id.file_id.len(), 16);
+        assert_eq!(right_id.file_id.len(), 16);
+        assert_ne!(left_id.file_id, [0; 16], "{left_id:?}");
+        assert_ne!(right_id.file_id, [0; 16], "{right_id:?}");
+        assert_ne!(left_id, right_id, "{left_id:?} {right_id:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn open_at_refuses_a_name_with_a_separator_or_a_colon() {
         use std::os::windows::ffi::OsStringExt;
         let dir = tempfile::tempdir().expect("tempdir");
@@ -3045,6 +3084,8 @@ mod tests {
             std::ffi::OsString::from("sub\\ok.bin"),
             std::ffi::OsString::from("sub/ok.bin"),
             std::ffi::OsString::from_wide(&[b'o' as u16, b'k' as u16, 0, b'x' as u16]),
+            std::ffi::OsString::from("."),
+            std::ffi::OsString::from(".."),
         ];
         for name in &rejected {
             let err = open_at(
@@ -3077,5 +3118,132 @@ mod tests {
         let mut bytes = Vec::new();
         std::io::Read::read_to_end(&mut file, &mut bytes).expect("read");
         assert_eq!(bytes, b"ok");
+    }
+
+    fn error_kind(err: &anyhow::Error) -> Option<std::io::ErrorKind> {
+        err.chain()
+            .find_map(|cause| cause.downcast_ref::<std::io::Error>().map(|io| io.kind()))
+    }
+
+    fn assert_keeps_not_found(err: &anyhow::Error) {
+        let msg = format!("{err:#}");
+        assert!(!msg.contains("not a regular file"), "{msg}");
+        assert_eq!(error_kind(err), Some(std::io::ErrorKind::NotFound), "{msg}");
+    }
+
+    #[test]
+    fn not_regular_open_needs_both_the_kind_and_the_message() {
+        let both = std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a regular file");
+        let kind_only = std::io::Error::new(std::io::ErrorKind::InvalidInput, "other");
+        let message_only = std::io::Error::new(std::io::ErrorKind::NotFound, "not a regular file");
+        assert!(not_regular_open(&both));
+        assert!(!not_regular_open(&kind_only));
+        assert!(!not_regular_open(&message_only));
+    }
+
+    #[test]
+    fn directory_of_a_bare_name_is_the_current_directory() {
+        assert_eq!(directory_of(Path::new("file.bin")), Path::new("."));
+        assert_eq!(directory_of(Path::new("dir/file.bin")), Path::new("dir"));
+    }
+
+    #[test]
+    fn empty_and_dot_paths_are_the_current_directory() {
+        let cwd = std::env::current_dir().expect("cwd");
+        assert_eq!(lexical_absolute(Path::new("")).expect("empty"), cwd);
+        assert_eq!(lexical_absolute(Path::new(".")).expect("dot"), cwd);
+        assert_eq!(
+            lexical_absolute(Path::new("a/../b")).expect("nested"),
+            cwd.join("b")
+        );
+    }
+
+    #[test]
+    fn missing_parent_after_resolve_keeps_its_error_class() {
+        let _guard = ClearResolveHook;
+        let parent = tempfile::tempdir().expect("parent");
+        let jail = parent.path().join("jail");
+        std::fs::create_dir(&jail).expect("jail");
+        let model = jail.join("model.gltf");
+        std::fs::write(&model, b"gltf").expect("write");
+        let jail_hook = jail.clone();
+        let parked = parent.path().join("parked");
+        AFTER_RESOLVE.with(|cell| {
+            *cell.borrow_mut() = Some(Box::new(move || {
+                std::fs::rename(&jail_hook, &parked).expect("park");
+            }));
+        });
+        let err = read_path(&model, 64, "").expect_err("missing parent");
+        assert_keeps_not_found(&err);
+    }
+
+    #[test]
+    fn unresolved_missing_parent_keeps_its_error_class() {
+        let missing = std::env::temp_dir()
+            .join("astraweave-missing-parent-guard")
+            .join("file.bin");
+        let err = read_unresolved(&missing, 64, "").expect_err("missing");
+        assert_keeps_not_found(&err);
+    }
+
+    #[test]
+    fn missing_root_keeps_its_error_class() {
+        let missing = std::env::temp_dir().join("astraweave-missing-root-guard");
+        let err = read_under(&missing, Path::new("a.bin"), 64, "", Path::new("a.bin"))
+            .expect_err("missing");
+        assert_keeps_not_found(&err);
+    }
+
+    #[test]
+    fn missing_leaf_keeps_its_error_class() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let err = read_under(
+            dir.path(),
+            Path::new("missing.bin"),
+            64,
+            "",
+            Path::new("missing.bin"),
+        )
+        .expect_err("leaf");
+        assert_keeps_not_found(&err);
+    }
+
+    fn component_text(path: &str) -> Vec<String> {
+        windows_final_components(&utf16(path))
+            .unwrap_or_else(|| panic!("components {path}"))
+            .into_iter()
+            .map(|part| String::from_utf16(&part).unwrap_or_else(|_| panic!("utf16 {path}")))
+            .collect()
+    }
+
+    #[test]
+    fn final_path_components_keep_the_prefix_shape() {
+        assert!(windows_final_components(&[]).is_none());
+        assert_eq!(
+            component_text(r"\\?\C:\jail\a.bin"),
+            vec![r"\\?\C:", "jail", "a.bin"]
+        );
+        assert_eq!(
+            component_text(r"C:\jail\a.bin"),
+            vec!["C:", "jail", "a.bin"]
+        );
+        assert_eq!(
+            component_text(r"\\server\share\jail\a.bin"),
+            vec![r"\\server", "share", "jail", "a.bin"]
+        );
+        assert_eq!(
+            component_text(r"\\?\UNC\server\share\jail\a.bin"),
+            vec![r"\\?\UNC", "server", "share", "jail", "a.bin"]
+        );
+        assert_eq!(
+            component_text(r"\\?\UNC/server/share/a.bin"),
+            vec![r"\\?\UNC", "server", "share", "a.bin"]
+        );
+        assert!(windows_final_path_is_under(
+            r"\\server\share\jail",
+            r"\\server\share\jail\a.bin"
+        ));
+        assert!(windows_final_components(&utf16(r"C:\jail\..\a.bin")).is_none());
+        assert!(windows_final_components(&utf16(r"C:\jail\.\a.bin")).is_none());
     }
 }

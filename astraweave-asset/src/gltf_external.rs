@@ -211,10 +211,7 @@ fn open_model_dir(base: &Path) -> Result<crate::bounded_open::OpenedRoot> {
     let base = model_base(base);
     match crate::bounded_open::OpenedRoot::open(base) {
         Ok(root) => Ok(root),
-        Err(err)
-            if err.kind() == std::io::ErrorKind::InvalidInput
-                && err.to_string().contains("not a regular file") =>
-        {
+        Err(err) if crate::bounded_open::not_regular_open(&err) => {
             bail!("{} is not a regular file", base.display())
         }
         Err(err) => Err(err).with_context(|| format!("open {}", base.display())),
@@ -389,6 +386,58 @@ fn decode_gltf_image(bytes: &[u8]) -> Result<gltf::image::Data> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decoded_base64_len_covers_padding_and_short_groups() {
+        assert_eq!(decoded_base64_len("").expect("empty"), 0);
+        assert_eq!(decoded_base64_len("YQ==").expect("one"), 1);
+        assert_eq!(decoded_base64_len("YWI=").expect("two"), 2);
+        assert_eq!(decoded_base64_len("YWJj").expect("three"), 3);
+        assert_eq!(decoded_base64_len("YQ").expect("short two"), 1);
+        assert_eq!(decoded_base64_len("YWI").expect("short three"), 2);
+        // Six and seven characters make `len / 4` at least 1, so `* 3`
+        // and `/ 3` no longer return the same length.
+        assert_eq!(decoded_base64_len("YWJjYQ").expect("short six"), 4);
+        assert_eq!(decoded_base64_len("YWJjYWI").expect("short seven"), 5);
+        assert_eq!(decoded_base64_len("YWJjYQ==").expect("eight"), 4);
+        for encoded in ["YQ=", "Y===", "==", "Y", "===="] {
+            let err = decoded_base64_len(encoded).expect_err(encoded);
+            assert!(err.to_string().contains("not base64"), "{encoded}: {err}");
+        }
+    }
+
+    fn error_kind(err: &anyhow::Error) -> Option<std::io::ErrorKind> {
+        err.chain()
+            .find_map(|cause| cause.downcast_ref::<std::io::Error>().map(|io| io.kind()))
+    }
+
+    #[test]
+    fn missing_model_dir_keeps_its_error_class() {
+        let missing = std::env::temp_dir().join("astraweave-missing-model-dir");
+        let err = open_model_dir(&missing).expect_err("missing");
+        let msg = format!("{err:#}");
+        assert!(!msg.contains("not a regular file"), "{msg}");
+        assert_eq!(
+            error_kind(&err),
+            Some(std::io::ErrorKind::NotFound),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn file_used_as_model_dir_is_refused_without_the_open_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let file = dir.path().join("file.bin");
+        std::fs::write(&file, b"x").expect("write");
+        let err = open_model_dir(&file).expect_err("file");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("is not a regular file"), "{msg}");
+        assert!(
+            err.chain()
+                .all(|cause| cause.downcast_ref::<std::io::Error>().is_none()),
+            "{msg}"
+        );
+    }
 
     const HOSTILE: &[&str] = &[
         "file:///etc/passwd",
