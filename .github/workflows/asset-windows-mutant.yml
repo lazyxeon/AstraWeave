@@ -83,15 +83,20 @@ jobs:
           old = "Component::CurDir => {}"
           if body.count(old) != 1:
               raise SystemExit(f"expected one CurDir skip, found {body.count(old)}")
-          body = body.replace(old, 'Component::CurDir => names.push(".".into())', 1)
+          body = body.replace(old, 'Component::CurDir => names.push(".".into()),', 1)
           path.write_text(text[:start] + body + text[end:], encoding="utf-8")
           PY
           set +e
-          cargo test --locked -p astraweave-asset --lib -- leading_dot_component_loads_the_file
+          cargo test --locked -p astraweave-asset --lib -- leading_dot_component_loads_the_file > dot-component-test.log 2>&1
           status=$?
           set -e
+          cat dot-component-test.log
           if [ "$status" -eq 0 ]; then
             echo "kept dot-component mutant survived"
+            exit 1
+          fi
+          if ! grep -q "test result: FAILED" dot-component-test.log; then
+            echo "kept dot-component patch did not reach the runtime test"
             exit 1
           fi
           echo "kept dot-component mutant killed: cargo test exited $status"
