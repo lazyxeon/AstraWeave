@@ -119,5 +119,5 @@ The list is exhaustive; the architecture map is the canonical reference.
   — consolidated synthesis (2,500+ lines, version-controlled).
 * [Subsystem traces](https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture)
   under `docs/architecture/`. The `CLAUDE.md` table lists 31. The "13 traces" figure is the original campaign.
-* [Benchmark dashboard](https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/)
+* [Benchmark dashboard](../dashboard/benchmark_dashboard/index.html)
   — performance measurements.

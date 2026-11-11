@@ -524,21 +524,7 @@ Or for self-hosted analytics, use Umami.
 
 ### Task 3.5: Automated Link Checking in CI
 
-**Add to `.github/workflows/docs.yml`**:
-```yaml
-- name: Check for broken links
-  run: |
-    curl -sSL https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-    ./lychee docs/book/**/*.html --exclude localhost --format markdown > link-report.md
-  continue-on-error: true
-
-- name: Upload link report
-  uses: actions/upload-artifact@v4
-  if: always()
-  with:
-    name: link-report
-    path: link-report.md
-```
+The check that runs is "Check for broken links" in `.github/workflows/docs.yml`. That step pins the checker by version and sha256 and exits with the checker's status. The link-check job's token is `contents: read`. Deploy writes GitHub Pages from a later job.
 
 **Effort**: 30 minutes
 

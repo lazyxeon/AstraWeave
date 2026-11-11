@@ -668,5 +668,5 @@ debug_renderer.draw_offmesh_links(&navmesh, Color::CYAN);
 ## API Reference
 
 For complete API documentation, see:
-- [astraweave_nav API docs](https://docs.rs/astraweave-nav)
+- [astraweave_nav API docs](../api/astraweave_nav/index.html)
 - [Recast & Detour](https://github.com/recastnavigation/recastnavigation)

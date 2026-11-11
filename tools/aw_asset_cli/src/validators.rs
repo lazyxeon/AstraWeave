@@ -397,10 +397,16 @@ pub fn validate_material_toml(path: &Path) -> Result<ValidationResult> {
 
     // Check for required sections based on material type
     if let Some(table) = parsed.as_table() {
-        // Check for terrain materials (Phase PBR-F) FIRST - they have "layers" array
-        if table.contains_key("layers") {
+        // Terrain materials (Phase PBR-F) use `[[layers]]`, an array of tables.
+        // `arrays.toml` uses `[layers]` as a name-to-index table. That is not a material.
+        if table.get("layers").is_some_and(|value| value.is_array()) {
             result.info("Detected as terrain material (Phase PBR-F)");
             validate_terrain_material_structure(table, &mut result);
+        } else if let Some(layers) = table.get("layers").filter(|value| value.is_table()) {
+            result.info("Detected as texture array index map");
+            if let Some(map) = layers.as_table() {
+                validate_texture_array_index_map(map, &mut result);
+            }
         }
         // Check for biome materials - they have "biome" field and "layer" array
         else if table.contains_key("biome") {
@@ -440,6 +446,30 @@ fn validate_biome_material_structure(
                     validate_material_layer(layer_table, i, result);
                 }
             }
+        }
+    }
+}
+
+fn validate_texture_array_index_map(
+    layers: &toml::map::Map<String, toml::Value>,
+    result: &mut ValidationResult,
+) {
+    let mut seen = std::collections::BTreeSet::new();
+    for (name, value) in layers {
+        let Some(index) = value.as_integer() else {
+            result.error(format!(
+                "Texture array index '{name}' must be a non-negative integer"
+            ));
+            continue;
+        };
+        if index < 0 || index > 31 {
+            result.error(format!(
+                "Texture array index '{name}' must be an integer from 0 through 31"
+            ));
+            continue;
+        }
+        if !seen.insert(index) {
+            result.error(format!("Texture array index {index} is duplicated"));
         }
     }
 }
@@ -689,6 +719,55 @@ mod tests {
         assert!(!is_power_of_two(3));
         assert!(!is_power_of_two(100));
         assert!(!is_power_of_two(1023));
+    }
+
+    fn write_index_map(label: &str, body: &str) -> std::path::PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("aw_arrays_{label}_{}.toml", std::process::id()));
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn array_index_map_is_not_a_terrain_material() {
+        let path = write_index_map("ok", "[layers]\ngrass = 0\nrock = 31\n");
+        let result = validate_material_toml(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(result.passed, "{:?}", result.errors);
+        assert!(result.errors.is_empty());
+        assert!(result
+            .info
+            .iter()
+            .any(|line| line.contains("texture array index map")));
+    }
+
+    #[test]
+    fn array_index_map_rejects_non_integers_negatives_and_duplicates() {
+        let cases = [
+            (
+                "text",
+                "[layers]\ngrass = \"0\"\n",
+                "must be a non-negative integer",
+            ),
+            ("negative", "[layers]\ngrass = -1\n", "0 through 31"),
+            (
+                "duplicate",
+                "[layers]\ngrass = 0\nrock = 0\n",
+                "is duplicated",
+            ),
+            ("past_pack", "[layers]\ngrass = 32\n", "0 through 31"),
+        ];
+        for (label, body, needle) in cases {
+            let path = write_index_map(label, body);
+            let result = validate_material_toml(&path).unwrap();
+            let _ = std::fs::remove_file(&path);
+            assert!(!result.passed, "{label}");
+            assert!(
+                result.errors.iter().any(|line| line.contains(needle)),
+                "{label}: {:?}",
+                result.errors
+            );
+        }
     }
 
     #[test]

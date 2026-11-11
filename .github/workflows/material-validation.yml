@@ -43,76 +43,63 @@ jobs:
     
     - name: Validate terrain materials (grassland)
       id: validate-grassland
-      continue-on-error: true
       run: |
-        echo "::group::Validating grassland_demo.toml"
+        set -euo pipefail
         cargo run -p aw_asset_cli --release -- validate \
           assets/materials/terrain/grassland_demo.toml \
-          --format json \
-          --output validation-grassland.json
-        echo "::endgroup::"
-    
+          --format json > validation-grassland.json
+
     - name: Validate terrain materials (mountain)
       id: validate-mountain
-      continue-on-error: true
       run: |
-        echo "::group::Validating mountain_demo.toml"
+        set -euo pipefail
         cargo run -p aw_asset_cli --release -- validate \
           assets/materials/terrain/mountain_demo.toml \
-          --format json \
-          --output validation-mountain.json
-        echo "::endgroup::"
-    
+          --format json > validation-mountain.json
+
     - name: Validate terrain materials (desert)
       id: validate-desert
-      continue-on-error: true
       run: |
-        echo "::group::Validating desert_demo.toml"
+        set -euo pipefail
         cargo run -p aw_asset_cli --release -- validate \
           assets/materials/terrain/desert_demo.toml \
-          --format json \
-          --output validation-desert.json
-        echo "::endgroup::"
-    
+          --format json > validation-desert.json
+
     - name: Validate all materials (directory scan)
       id: validate-all
-      continue-on-error: true
       run: |
-        echo "::group::Validating all materials in assets/materials/"
+        set -euo pipefail
         cargo run -p aw_asset_cli --release -- validate \
           assets/materials/ \
-          --format json \
-          --output validation-all.json \
-          --recursive
-        echo "::endgroup::"
+          --format json > validation-all.json
     
     - name: Parse validation results
       id: parse-results
       run: |
+        set -euo pipefail
         echo "::group::Parsing validation results"
-        
-        # Function to check validation status
+
+        # JSON is a non-empty array of {passed, errors, warnings}.
         check_validation() {
           local file=$1
           local name=$2
-          
-          if [ -f "$file" ]; then
-            passed=$(jq -r '.results[0].passed // false' "$file")
-            error_count=$(jq -r '.results[0].errors | length' "$file")
-            warning_count=$(jq -r '.results[0].warnings | length' "$file")
-            
-            echo "${name}_passed=${passed}" >> $GITHUB_OUTPUT
-            echo "${name}_errors=${error_count}" >> $GITHUB_OUTPUT
-            echo "${name}_warnings=${warning_count}" >> $GITHUB_OUTPUT
-            
-            if [ "$passed" = "true" ]; then
-              echo "✅ ${name}: PASS (${warning_count} warnings)"
-            else
-              echo "❌ ${name}: FAIL (${error_count} errors, ${warning_count} warnings)"
-            fi
+
+          if [ ! -f "$file" ]; then
+            echo "::error::${name}: validation report is missing"
+            exit 1
+          fi
+          passed=$(jq -e -r 'if type == "array" and length > 0 and all(.[]; .passed == true) then "true" else "false" end' "$file")
+          error_count=$(jq -e -r '[.[].errors[]] | length' "$file")
+          warning_count=$(jq -e -r '[.[].warnings[]] | length' "$file")
+
+          echo "${name}_passed=${passed}" >> "$GITHUB_OUTPUT"
+          echo "${name}_errors=${error_count}" >> "$GITHUB_OUTPUT"
+          echo "${name}_warnings=${warning_count}" >> "$GITHUB_OUTPUT"
+
+          if [ "$passed" = "true" ]; then
+            echo "${name}: PASS (${warning_count} warnings)"
           else
-            echo "⚠️ ${name}: No validation results found"
-            echo "${name}_passed=false" >> $GITHUB_OUTPUT
+            echo "${name}: FAIL (${error_count} errors, ${warning_count} warnings)"
           fi
         }
         
@@ -126,7 +113,8 @@ jobs:
     
     - name: Generate validation summary
       run: |
-        echo "## 🎨 Material Validation Summary" >> $GITHUB_STEP_SUMMARY
+        set -euo pipefail
+        echo "## Material Validation Summary" >> "$GITHUB_STEP_SUMMARY"
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| Material | Status | Errors | Warnings |" >> $GITHUB_STEP_SUMMARY
         echo "|----------|--------|--------|----------|" >> $GITHUB_STEP_SUMMARY
@@ -135,22 +123,22 @@ jobs:
         add_summary_row() {
           local file=$1
           local name=$2
-          
-          if [ -f "$file" ]; then
-            passed=$(jq -r '.results[0].passed // false' "$file")
-            error_count=$(jq -r '.results[0].errors | length' "$file")
-            warning_count=$(jq -r '.results[0].warnings | length' "$file")
-            
-            if [ "$passed" = "true" ]; then
-              status="✅ PASS"
-            else
-              status="❌ FAIL"
-            fi
-            
-            echo "| ${name} | ${status} | ${error_count} | ${warning_count} |" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "| ${name} | ⚠️ NO RESULTS | - | - |" >> $GITHUB_STEP_SUMMARY
+
+          if [ ! -f "$file" ]; then
+            echo "::error::${name}: validation report is missing"
+            exit 1
           fi
+          passed=$(jq -e -r 'if type == "array" and length > 0 and all(.[]; .passed == true) then "true" else "false" end' "$file")
+          error_count=$(jq -e -r '[.[].errors[]] | length' "$file")
+          warning_count=$(jq -e -r '[.[].warnings[]] | length' "$file")
+
+          if [ "$passed" = "true" ]; then
+            status="PASS"
+          else
+            status="FAIL"
+          fi
+
+          echo "| ${name} | ${status} | ${error_count} | ${warning_count} |" >> "$GITHUB_STEP_SUMMARY"
         }
         
         add_summary_row "validation-grassland.json" "Grassland Demo"
@@ -174,27 +162,29 @@ jobs:
     
     - name: Check validation status
       run: |
-        echo "::group::Checking overall validation status"
-        
-        # Check if any validation failed
-        failed=false
-        
-        for file in validation-*.json; do
-          if [ -f "$file" ]; then
-            passed=$(jq -r '.results[0].passed // false' "$file")
-            if [ "$passed" != "true" ]; then
-              failed=true
-              echo "❌ Validation failed: $file"
-              jq -r '.results[0].errors[]' "$file" || true
-            fi
+        set -euo pipefail
+        files=(
+          validation-grassland.json
+          validation-mountain.json
+          validation-desert.json
+          validation-all.json
+        )
+        for file in "${files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "::error::missing validation report: $file"
+            exit 1
           fi
         done
-        
-        if [ "$failed" = "true" ]; then
+        failed=0
+        for file in "${files[@]}"; do
+          if ! jq -e 'type == "array" and length > 0 and all(.[]; .passed == true)' "$file" >/dev/null; then
+            failed=1
+            echo "::error::Validation failed: $file"
+            jq -r '.[] | select(.passed != true) | .asset_path + ": " + (.errors | join("; "))' "$file"
+          fi
+        done
+        if [ "$failed" -ne 0 ]; then
           echo "::error::Material validation failed. See artifacts for details."
           exit 1
-        else
-          echo "✅ All material validations passed!"
         fi
-        
-        echo "::endgroup::"
+        echo "All material validations passed."

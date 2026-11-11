@@ -138,7 +138,7 @@ Always use the latest drivers for optimal performance:
 
 #### Intel
 
-- [Intel Graphics Drivers](https://www.intel.com/content/www/us/en/download-center/home.html)
+- Install the current Intel graphics driver. On Linux, Mesa is usually already installed.
 - Linux: Mesa drivers (usually pre-installed)
 
 ## Platform-Specific Notes

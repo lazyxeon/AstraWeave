@@ -249,7 +249,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 | Texture compression (offline) | `astraweave-asset-pipeline/src/texture.rs` (`compress_bc7`, `compress_astc`) | In-design (no caller) | — |
 | Texture compression (CLI) | `tools/aw_asset_cli/src/main.rs:298+` (`process_texture` shells out to `toktx`/`basisu`), `tools/aw_asset_cli/src/texture_baker.rs` | Active | The CLI does NOT call `astraweave-asset-pipeline`; it implements its own compression by invoking external CLI tools. |
 | Asset validation | `astraweave-asset-pipeline/src/validator.rs` (`AssetValidator`) | In-design (no caller) | — |
-| Asset validation (CLI) | `tools/aw_asset_cli/src/validators.rs` (`validate_texture`, `validate_ktx2_mipmaps`, `validate_material_toml`) + `validators_original.rs` | Active | The CLI has its own validator family, parallel to the pipeline crate's. |
+| Asset validation (CLI) | `tools/aw_asset_cli/src/validators.rs` (`validate_texture`, `validate_ktx2_mipmaps`, `validate_material_toml`) + `validators_original.rs` | Active | The CLI has its own validator family, parallel to the pipeline crate's. `validate_material_toml` treats a `[[layers]]` array as a terrain material. A `[layers]` table is a texture-array index map (`arrays.toml`): each value has to be a unique integer from 0 through 31, and the table is not checked as a terrain material. |
 | Mesh format validation | `cell_loader::validate_mesh_format`/`validate_texture_format` (magic-number, cell_loader.rs:272-308); `gltf_loader::load_gltf_bytes` (header check, lib.rs:303) | Both Active | Two lightweight validators in the same crate for overlapping purposes (cell-load path vs generic glTF entry). |
 
 ### Naming collisions
@@ -350,7 +350,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 ## 10. Testing & Validation
 
 - **Unit tests:** Extensive in-module `#[cfg(test)]` blocks: `lib.rs` (glTF/GUID/DB/watcher), `cell_loader.rs:315-841` (RON round-trip, magic validation, async load), `nanite_preprocess.rs:717-941` (AABB, meshlet gen, LOD hierarchy, QEM), pipeline `mesh.rs`/`texture.rs`/`validator.rs`.
-- **Mutation testing:** `astraweave-asset/src/mutation_tests.rs` (~33 KB) — explicitly boundary/operator/constant mutation-killers. `astraweave-asset` is in the `sanitizers.yml` P1 array (per ARCHITECTURE_MAP.md:815).
+- **Mutation testing:** `astraweave-asset/src/mutation_tests.rs` (~33 KB) — explicitly boundary/operator/constant mutation-killers. `astraweave-asset` is in the `sanitizers.yml` P1 array (per ARCHITECTURE_MAP.md:831).
 - **Fuzzing:** `astraweave-asset/fuzz/` member present (declares the crate as a dep).
 - **Benchmarks:** `astraweave-asset-pipeline` declares `benches/pipeline_adversarial` (Cargo.toml). (Render-side Nanite/residency benches live in `astraweave-render/benches/`, using their own types.)
 - **Manual validation:** glTF loaders are exercised by `examples/visual_3d`, `hello_companion`, `veilweaver_demo`; meshlet preprocess by `examples/nanite_demo`.

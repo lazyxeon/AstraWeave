@@ -88,7 +88,7 @@
     </div>
     <div class="astra-actions" style="justify-content:center;margin-top:1.5rem;">
       <a class="astra-button astra-button--primary" href="https://lazyxeon.github.io/AstraWeave/architecture/">Open the workspace map</a>
-      <a class="astra-button astra-button--secondary" href="https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/">Open the benchmark dashboard</a>
+      <a class="astra-button astra-button--secondary" href="dashboard/benchmark_dashboard/index.html">Open the benchmark dashboard</a>
     </div>
   </section>
   <section class="astra-proof-strip" aria-label="Where the figures live">

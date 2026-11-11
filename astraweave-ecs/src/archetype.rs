@@ -102,6 +102,13 @@ pub struct Archetype {
     change_ticks: HashMap<TypeId, Vec<u32>>,
 }
 
+/// `row < len` and `row <= len` differ only when `row == len`.
+/// A row from the parallel entity list is below the tick column, and
+/// `swap_remove(len)` is out of range. The `<=` mutant is excluded.
+fn row_in_column(row: usize, len: usize) -> bool {
+    row < len
+}
+
 impl Archetype {
     /// Create a new archetype with Box storage (legacy mode).
     ///
@@ -400,7 +407,7 @@ impl Archetype {
 
         // Keep change_ticks parallel: swap_remove from each tick column
         for ticks in self.change_ticks.values_mut() {
-            if row < ticks.len() {
+            if row_in_column(row, ticks.len()) {
                 ticks.swap_remove(row);
             }
         }
@@ -1139,5 +1146,91 @@ mod tests {
         assert_eq!(storage.get_entity_archetype(e0), Some(arch_id));
         // Verify e1 is gone
         assert_eq!(storage.get_entity_archetype(e1), None);
+    }
+
+    #[test]
+    fn remove_entity_components_drops_the_row_and_keeps_the_others() {
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new(ArchetypeId(0), sig);
+
+        let first = unsafe { Entity::from_raw(1) };
+        let middle = unsafe { Entity::from_raw(2) };
+        let last = unsafe { Entity::from_raw(3) };
+        for (entity, hp) in [(first, 10), (middle, 20), (last, 30)] {
+            let mut data = HashMap::new();
+            data.insert(
+                TypeId::of::<Health>(),
+                Box::new(Health(hp)) as Box<dyn std::any::Any + Send + Sync>,
+            );
+            archetype.add_entity(entity, data);
+        }
+
+        archetype.remove_entity_components(last);
+        assert!(archetype.entity_index.get(last).is_none());
+        assert_eq!(archetype.entities_vec(), &[first, middle]);
+        assert_eq!(archetype.get::<Health>(first).map(|h| h.0), Some(10));
+        assert_eq!(archetype.get::<Health>(middle).map(|h| h.0), Some(20));
+
+        archetype.remove_entity_components(first);
+        assert!(archetype.entity_index.get(first).is_none());
+        assert_eq!(archetype.entities_vec(), &[middle]);
+        assert_eq!(archetype.get::<Health>(middle).map(|h| h.0), Some(20));
+    }
+
+    #[test]
+    fn remove_entity_components_keeps_tick_columns_parallel() {
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new(ArchetypeId(0), sig);
+        let first = unsafe { Entity::from_raw(1) };
+        let middle = unsafe { Entity::from_raw(2) };
+        let last = unsafe { Entity::from_raw(3) };
+        for (entity, hp, tick) in [(first, 10, 11_u32), (middle, 20, 22), (last, 30, 33)] {
+            let mut data = HashMap::new();
+            data.insert(
+                TypeId::of::<Health>(),
+                Box::new(Health(hp)) as Box<dyn std::any::Any + Send + Sync>,
+            );
+            archetype.add_entity_with_tick(entity, data, tick);
+        }
+
+        archetype.remove_entity_components(first);
+        assert_eq!(archetype.entities_vec(), &[last, middle]);
+        assert_eq!(archetype.get_change_tick::<Health>(last), Some(33));
+        assert_eq!(archetype.get_change_tick::<Health>(middle), Some(22));
+        assert!(archetype.get_change_tick::<Health>(first).is_none());
+    }
+
+    #[test]
+    fn remove_entity_components_skips_a_shorter_tick_column() {
+        use crate::component_meta::ComponentMeta;
+
+        let mut metas = HashMap::new();
+        metas.insert(TypeId::of::<Health>(), ComponentMeta::of::<Health>());
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new_with_blob(ArchetypeId(0), sig, metas);
+        let entity = unsafe { Entity::from_raw(1) };
+        archetype.add_entity_typed_raw_with_tick(entity, &[], 7);
+        archetype.remove_entity_components(entity);
+        assert!(archetype.entities_vec().is_empty());
+        assert!(archetype.get_change_tick::<Health>(entity).is_none());
+    }
+
+    #[test]
+    fn stamp_by_type_writes_the_tick_callers_read() {
+        use crate::component_meta::ComponentMeta;
+
+        let mut metas = HashMap::new();
+        metas.insert(TypeId::of::<Health>(), ComponentMeta::of::<Health>());
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new_with_blob(ArchetypeId(0), sig, metas);
+        let entity = unsafe { Entity::from_raw(1) };
+        archetype.entity_index.insert(entity);
+        archetype.entities.push(entity);
+        archetype.push_component_typed_with_tick(Health(1), 0);
+
+        archetype.stamp_change_tick_by_type(entity, TypeId::of::<Health>(), 9);
+        assert_eq!(archetype.get_change_tick::<Health>(entity), Some(9));
+        archetype.stamp_change_tick::<Health>(entity, 4);
+        assert_eq!(archetype.get_change_tick::<Health>(entity), Some(4));
     }
 }

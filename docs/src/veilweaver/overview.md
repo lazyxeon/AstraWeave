@@ -17,13 +17,12 @@ Veilweaver showcases:
 ## Current Status
 
 ```admonish info
-Veilweaver is developed in a separate repository and is currently in active development.
+The design notes are in this repository. They are not a second project checkout.
 ```
 
-The Veilweaver documentation is being migrated to this documentation site. For the latest information:
+The reference notes live in this repository:
 
-- **GitHub Repository**: [Games-VEILWEAVER](https://github.com/lazyxeon/Games-VEILWEAVER)
-- **Design Documents**: Located in `docs/archive/projects/veilweaver/`
+- **Design documents**: [docs/archive/projects/veilweaver](https://github.com/lazyxeon/AstraWeave/tree/main/docs/archive/projects/veilweaver)
 
 This page is an engine-facing reference overview, not a canon authority. Canon narrative, geography, and worldbuilding for the current workspace live in `docs/Veilweaver/`.
 
@@ -54,20 +53,9 @@ Three prototype biome slices showcase terrain systems. These are reference-imple
 2. **Echo Grove** - Forest exploration zone
 3. **Fractured Cliffs** - Vertical traversal challenges
 
-## Getting Started with Veilweaver
-
-```bash
-# Clone the Veilweaver repository
-git clone https://github.com/lazyxeon/Games-VEILWEAVER.git
-
-# Build and run
-cd Games-VEILWEAVER
-cargo run --release
-```
-
 ## Additional Documentation
 
-For detailed Veilweaver documentation, see the [Games-VEILWEAVER repository](https://github.com/lazyxeon/Games-VEILWEAVER):
+Design notes for the reference implementation are in [docs/archive/projects/veilweaver](https://github.com/lazyxeon/AstraWeave/tree/main/docs/archive/projects/veilweaver):
 
 - Game mechanics guide
 - AI integration deep-dive

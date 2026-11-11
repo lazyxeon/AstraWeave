@@ -42,6 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+      
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
       
@@ -63,12 +68,15 @@ jobs:
         run: |
           cargo mutants \
             --package astraweave-ecs \
+            --features alloc-counter \
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-ecs-results \
-            --json
-        continue-on-error: true
+            --json \
+            --cargo-test-arg=-- \
+            --cargo-test-arg=--test-threads=1
       
       - name: Generate mutation report
+        if: always()
         run: |
           if [ -f mutants-ecs-results/mutants.json ]; then
             echo "## Mutation Testing: astraweave-ecs" >> $GITHUB_STEP_SUMMARY
@@ -92,6 +100,7 @@ jobs:
           fi
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-ecs-results
@@ -105,6 +114,11 @@ jobs:
     if: github.event.inputs.crates == 'p0' || github.event.inputs.crates == 'astraweave-core' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v7
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -130,9 +144,9 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-core-results \
             --json
-        continue-on-error: true
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-core-results
@@ -151,6 +165,11 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v7
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -184,7 +203,6 @@ jobs:
             --shard ${{ matrix.shard }}/8 \
             --output mutants-ai-results \
             --json
-        continue-on-error: true
       
       - name: Verify astraweave-ai shard outcomes
         if: always()
@@ -238,6 +256,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+      
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
       
@@ -262,9 +285,9 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-behavior-results \
             --json
-        continue-on-error: true
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-behavior-results
@@ -278,6 +301,11 @@ jobs:
     if: github.event.inputs.crates == 'p1' || github.event.inputs.crates == 'astraweave-nav' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v7
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -303,9 +331,9 @@ jobs:
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-nav-results \
             --json
-        continue-on-error: true
       
       - name: Upload mutation results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-nav-results
@@ -326,7 +354,6 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           path: all-results
-        continue-on-error: true
       
       - name: Generate summary report
         run: |
