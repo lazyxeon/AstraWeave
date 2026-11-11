@@ -24,6 +24,8 @@ name: Sanitizers
 on:
   push:
     branches: [main, develop]
+  pull_request:
+    branches: [main]
   schedule:
     # Full sanitizer suite nightly. Not on pull requests.
     - cron: '0 3 * * *'
@@ -97,7 +99,9 @@ jobs:
     # (force_full_suite defers to asan-full which covers a superset of these crates).
     # Previously excluded schedule runs; removed that exclusion so critical crates
     # always receive a fast sanity check on every nightly run in addition to asan-full.
-    if: "!(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)"
+    # Pull requests run ThreadSanitizer only. workflow_dispatch is not
+    # available to the integration that opens pull requests (HTTP 403).
+    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
     env:
       # Disable leak detection here — the dedicated LSan job handles it.
       # abort_on_error=0 lets the test harness report per-test results.
@@ -361,7 +365,8 @@ jobs:
             -- --test-threads=1
 
   # ──────────────────────────────────────────────────────
-  # ThreadSanitizer. Schedule, or workflow_dispatch with force_full_suite.
+  # ThreadSanitizer. Pull requests, the nightly schedule, or
+  # workflow_dispatch with force_full_suite.
   # A step failure fails this job. The summary fails the workflow when this job fails.
   # ──────────────────────────────────────────────────────
   thread-sanitizer:
@@ -369,7 +374,7 @@ jobs:
     needs: [source-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
     env:
       # Suppressions file is committed at scripts/tsan_suppressions.txt
       TSAN_OPTIONS: suppressions=scripts/tsan_suppressions.txt:second_deadlock_stack=1
@@ -396,28 +401,34 @@ jobs:
 
       - name: Run TSan on astraweave-ai
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
+          # Target rustflags only. A global RUSTFLAGS value also sanitizes
+          # host crates such as cfg-if, and the host sysroot's core is not
+          # rebuilt, so rustc reports an ABI mismatch (exit 101).
+          cargo +$AW_NIGHTLY test \
             -p astraweave-ai \
             -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
+            --config 'target.x86_64-unknown-linux-gnu.rustflags=["-Zsanitizer=thread"]' \
             --lib \
             -- --test-threads=1
 
       - name: Run TSan on astraweave-coordination
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
+          cargo +$AW_NIGHTLY test \
             -p astraweave-coordination \
             -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
+            --config 'target.x86_64-unknown-linux-gnu.rustflags=["-Zsanitizer=thread"]' \
             --lib \
             -- --test-threads=1
 
       - name: Run TSan on astraweave-ecs
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
+          cargo +$AW_NIGHTLY test \
             -p astraweave-ecs \
             -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
+            --config 'target.x86_64-unknown-linux-gnu.rustflags=["-Zsanitizer=thread"]' \
             --lib \
             -- --test-threads=1
 
