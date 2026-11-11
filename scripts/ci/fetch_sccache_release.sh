@@ -42,13 +42,16 @@
 #
 # Workflow steps start this script with /usr/bin/env -i and an absolute bash
 # --noprofile --norc. Darwin uses /bin/bash. Every other OS uses
-# /usr/bin/bash. The command passes PATH, HOME, GITHUB_OUTPUT, and
-# RUNNER_TOOL_CACHE. The job environment and the step shell are trusted
-# until /usr/bin/env starts. PATH still selects curl, mktemp, rm, chmod,
-# mkdir, sleep, and cygpath. tar is /usr/bin/tar, cp is /usr/bin/cp, and
-# node is an absolute path, not a PATH lookup. curl's first argument is
-# -q, so it does not read a curlrc. --release-base is for the policy test
-# harness. Workflows call this script with no arguments.
+# /usr/bin/bash. The command passes HOME, GITHUB_OUTPUT, RUNNER_TOOL_CACHE,
+# and RUNNER_OS. It does not pass PATH. The job environment and the step
+# shell are trusted until /usr/bin/env starts. curl, mktemp, rm, chmod,
+# mkdir, sleep, tar, and cp are absolute paths for Darwin, Linux, or
+# Windows Git Bash. cygpath is an absolute path and runs only when
+# RUNNER_OS is Windows. A missing tool fails closed. Nothing is resolved
+# from PATH. node is an absolute path. echo and printf are shell builtins.
+# curl's first argument is -q, so it does not read a curlrc.
+# --release-base is for the policy test harness. Workflows call this
+# script with no arguments.
 # SCCACHE_READER_CHECK, when set, runs the archive reader on that path and
 # exits with the reader's status. The fetch command does not pass it.
 # -E runs the ERR trap inside functions and command substitutions.
@@ -71,8 +74,8 @@ write_output() {
 
 fail_closed() {
   echo "sccache prefetch failed: $*" >&2 || true
-  if [ -n "$dest" ]; then
-    rm -rf "$dest" "${dest}.complete" || true
+  if [ -n "$dest" ] && [ -n "${RM_BIN:-}" ]; then
+    "$RM_BIN" -rf "$dest" "${dest}.complete" || true
   fi
   write_output "available=false" || true
   exit 0
@@ -81,8 +84,8 @@ fail_closed() {
 # A closed pipe delivers SIGPIPE. Remove a partial install and exit 141
 # before a marker or available=true can count as success.
 on_sigpipe() {
-  if [ -n "$dest" ]; then
-    rm -rf "$dest" "${dest}.complete" || true
+  if [ -n "$dest" ] && [ -n "${RM_BIN:-}" ]; then
+    "$RM_BIN" -rf "$dest" "${dest}.complete" || true
   fi
   exit 141
 }
@@ -212,9 +215,67 @@ if ! pinned_sha256 "$filename" >/dev/null; then
   fail_closed "no pinned checksum for ${filename}"
 fi
 
+# First executable in the argument list. Arguments are absolute paths.
+# A relative path is skipped. PATH is not searched. A miss returns 1.
+pick_tool() {
+  local _aw_pick
+  for _aw_pick in "$@"; do
+    case "$_aw_pick" in
+      /*) ;;
+      *) continue ;;
+    esac
+    if [ -x "$_aw_pick" ]; then
+      printf '%s\n' "$_aw_pick"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Darwin uses /bin for rm, chmod, mkdir, sleep, and cp, and /usr/bin for
+# curl, mktemp, and tar. Linux uses /usr/bin, then /bin. Windows Git Bash
+# uses /usr/bin with and without .exe. curl may live under /mingw64/bin.
+# cygpath runs only when RUNNER_OS is Windows, by an absolute path.
+case "$node_platform" in
+  darwin)
+    CURL_BIN="$(pick_tool /usr/bin/curl)" || fail_closed "curl is missing"
+    MKTEMP_BIN="$(pick_tool /usr/bin/mktemp)" || fail_closed "mktemp is missing"
+    RM_BIN="$(pick_tool /bin/rm /usr/bin/rm)" || fail_closed "rm is missing"
+    CHMOD_BIN="$(pick_tool /bin/chmod /usr/bin/chmod)" || fail_closed "chmod is missing"
+    MKDIR_BIN="$(pick_tool /bin/mkdir /usr/bin/mkdir)" || fail_closed "mkdir is missing"
+    SLEEP_BIN="$(pick_tool /bin/sleep /usr/bin/sleep)" || fail_closed "sleep is missing"
+    TAR_BIN="$(pick_tool /usr/bin/tar /bin/tar)" || fail_closed "tar is missing"
+    CP_BIN="$(pick_tool /bin/cp /usr/bin/cp)" || fail_closed "cp is missing"
+    ;;
+  win32)
+    CURL_BIN="$(pick_tool /mingw64/bin/curl.exe /usr/bin/curl.exe /usr/bin/curl)" || fail_closed "curl is missing"
+    MKTEMP_BIN="$(pick_tool /usr/bin/mktemp /usr/bin/mktemp.exe)" || fail_closed "mktemp is missing"
+    RM_BIN="$(pick_tool /usr/bin/rm /usr/bin/rm.exe)" || fail_closed "rm is missing"
+    CHMOD_BIN="$(pick_tool /usr/bin/chmod /usr/bin/chmod.exe)" || fail_closed "chmod is missing"
+    MKDIR_BIN="$(pick_tool /usr/bin/mkdir /usr/bin/mkdir.exe)" || fail_closed "mkdir is missing"
+    SLEEP_BIN="$(pick_tool /usr/bin/sleep /usr/bin/sleep.exe)" || fail_closed "sleep is missing"
+    TAR_BIN="$(pick_tool /usr/bin/tar /usr/bin/tar.exe)" || fail_closed "tar is missing"
+    CP_BIN="$(pick_tool /usr/bin/cp /usr/bin/cp.exe)" || fail_closed "cp is missing"
+    ;;
+  linux)
+    CURL_BIN="$(pick_tool /usr/bin/curl)" || fail_closed "curl is missing"
+    MKTEMP_BIN="$(pick_tool /usr/bin/mktemp)" || fail_closed "mktemp is missing"
+    RM_BIN="$(pick_tool /usr/bin/rm /bin/rm)" || fail_closed "rm is missing"
+    CHMOD_BIN="$(pick_tool /usr/bin/chmod /bin/chmod)" || fail_closed "chmod is missing"
+    MKDIR_BIN="$(pick_tool /usr/bin/mkdir /bin/mkdir)" || fail_closed "mkdir is missing"
+    SLEEP_BIN="$(pick_tool /usr/bin/sleep /bin/sleep)" || fail_closed "sleep is missing"
+    TAR_BIN="$(pick_tool /usr/bin/tar /bin/tar)" || fail_closed "tar is missing"
+    CP_BIN="$(pick_tool /usr/bin/cp /bin/cp)" || fail_closed "cp is missing"
+    ;;
+  *)
+    fail_closed "unsupported platform ${node_platform}"
+    ;;
+esac
+
 tool_cache="$RUNNER_TOOL_CACHE"
-if command -v cygpath >/dev/null 2>&1; then
-  tool_cache="$(cygpath -u "$RUNNER_TOOL_CACHE")"
+if [ "${RUNNER_OS:-}" = "Windows" ]; then
+  CYGPATH_BIN="$(pick_tool /usr/bin/cygpath.exe /usr/bin/cygpath)" || fail_closed "cygpath is missing"
+  tool_cache="$("$CYGPATH_BIN" -u "$RUNNER_TOOL_CACHE")" || fail_closed "could not convert the tool cache path"
 fi
 
 sha256_file() {
@@ -265,7 +326,7 @@ restore_tree() {
   if [ -L "$1" ]; then
     return 0
   fi
-  chmod u+rwx "$1" 2>/dev/null || true
+  "$CHMOD_BIN" u+rwx "$1" 2>/dev/null || true
   local child
   shopt -s nullglob dotglob
   for child in "$1"/*; do
@@ -275,7 +336,7 @@ restore_tree() {
     if [ -d "$child" ]; then
       restore_tree "$child"
     else
-      chmod u+rwx "$child" 2>/dev/null || true
+      "$CHMOD_BIN" u+rwx "$child" 2>/dev/null || true
     fi
   done
   shopt -u nullglob dotglob
@@ -286,7 +347,7 @@ cleanup_tmp() {
     return 0
   fi
   restore_tree "$tmp" || true
-  rm -rf "$tmp" || true
+  "$RM_BIN" -rf "$tmp" || true
 }
 
 if [ -n "${SCCACHE_READER_CHECK:-}" ]; then
@@ -295,22 +356,22 @@ if [ -n "${SCCACHE_READER_CHECK:-}" ]; then
   exit "$reader_status"
 fi
 
-tmp="$(mktemp -d)" || fail_closed "could not create a temp directory"
+tmp="$("$MKTEMP_BIN" -d)" || fail_closed "could not create a temp directory"
 trap cleanup_tmp EXIT
 
 download_archive() {
   local attempt=1 delay="$DELAY"
   while [ "$attempt" -le "$ATTEMPTS" ]; do
     # -q is first so curl does not read a curlrc from HOME or CURL_HOME.
-    if curl -q -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.tar.gz" "$url"; then
+    if "$CURL_BIN" -q -fsSL --retry 0 --connect-timeout 20 --max-time 180 -o "$tmp/pkg.tar.gz" "$url"; then
       return 0
     fi
-    rm -f "$tmp/pkg.tar.gz"
+    "$RM_BIN" -f "$tmp/pkg.tar.gz"
     if [ "$attempt" -eq "$ATTEMPTS" ]; then
       return 1
     fi
     echo "sccache prefetch attempt ${attempt}/${ATTEMPTS} failed; retrying in ${delay}s" >&2
-    sleep "$delay"
+    "$SLEEP_BIN" "$delay"
     delay=$((delay * 2))
     attempt=$((attempt + 1))
   done
@@ -338,9 +399,9 @@ if [ "$member_status" -ne 0 ]; then
   fail_closed "could not extract the archive"
 fi
 
-rm -rf "$tmp/extract"
-mkdir -p "$tmp/extract" || fail_closed "could not create the extract directory"
-/usr/bin/tar -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
+"$RM_BIN" -rf "$tmp/extract"
+"$MKDIR_BIN" -p "$tmp/extract" || fail_closed "could not create the extract directory"
+"$TAR_BIN" -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
 
 if ! plain_tree "$tmp/extract"; then
   fail_closed "archive has a symlink or non-regular entry"
@@ -360,10 +421,10 @@ if ! plain_binary "$inner/$binary_name"; then
 fi
 
 dest="${tool_cache}/sccache/${clean_version}/${node_arch}"
-rm -rf "$dest" "${dest}.complete"
+"$RM_BIN" -rf "$dest" "${dest}.complete"
 if ! {
-  mkdir -p "$dest" \
-    && /usr/bin/cp "${inner}/${binary_name}" "${dest}/${binary_name}"
+  "$MKDIR_BIN" -p "$dest" \
+    && "$CP_BIN" "${inner}/${binary_name}" "${dest}/${binary_name}"
 }; then
   fail_closed "could not install sccache into the tool cache"
 fi
@@ -383,7 +444,7 @@ fi
 echo "sccache ${VERSION} cached at ${dest}" || true
 write_output "available=true"
 if ! printf '' > "${dest}.complete"; then
-  rm -rf "$dest" "${dest}.complete" || true
+  "$RM_BIN" -rf "$dest" "${dest}.complete" || true
   if [ -n "${GITHUB_OUTPUT:-}" ]; then
     printf 'available=false\n' > "$GITHUB_OUTPUT" || true
   fi
