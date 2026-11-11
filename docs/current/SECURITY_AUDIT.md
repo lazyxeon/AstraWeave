@@ -254,7 +254,7 @@ Terrain RON and JSON readers (`astraweave-terrain/src/zone_scatter.rs` around th
 
 ### Unsafe on this path
 
-On Windows, the `unsafe` calls in `astraweave-asset` are `GetFinalPathNameByHandleW` (`bounded_open.rs:652-694`), `GetFileInformationByHandle` (`bounded_open.rs:709-765`), and `GetFileInformationByHandleEx` (`bounded_open.rs:783-827`). Final-path components compare as exact UTF-16 units. `final_path` runs for each component of the resolved root and for the opened file. The opened file stays under the resolved root. A file with more than one link is refused, and the error names the file. `meshopt` is C++ and is why the asset test binary links `libstdc++`. That is a build dependency, not an `unsafe` block on the loader path.
+On Windows, the `unsafe` calls in `astraweave-asset` are `GetFinalPathNameByHandleW` in `bounded_open::final_path`, `GetFileInformationByHandle` in `bounded_open::windows_by_handle`, and `GetFileInformationByHandleEx` in `bounded_open::windows_reparse_tag`. Final-path components compare as exact UTF-16 units. `final_path` runs for each component of the resolved root and for the opened file. The opened file stays under the resolved root. A file with more than one link is refused, and the error names the file. `meshopt` is C++ and is why the asset test binary links `libstdc++`. That is a build dependency, not an `unsafe` block on the loader path.
 
 ---
 
