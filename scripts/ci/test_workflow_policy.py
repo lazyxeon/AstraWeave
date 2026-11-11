@@ -7,6 +7,7 @@ wrapper. It does not dispatch a workflow.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import io
 import http.server
@@ -1153,19 +1154,35 @@ def _shell_words(text: str) -> list[str] | None:
     return words
 
 
+# Spaces and tabs collapse. A newline, semicolon, ampersand, pipe, or
+# backslash is rejected. One walk owns both decisions, and the sets stay
+# disjoint, so a separator cannot be collapsed away.
+_PIN_COLLAPSE_CHARS = frozenset(" \t")
+_PIN_REJECT_CHARS = frozenset("\n;&|\\")
+
+
 def _is_pinned_prefetch_run(run: str) -> bool:
     """The only pinned prefetch is the canonical clean-env command.
 
     `env -i`, then PATH, HOME, GITHUB_OUTPUT, and RUNNER_TOOL_CACHE, each
     exactly `"$NAME"`, then `bash --noprofile --norc` and the script.
-    One trailing newline is ignored. Any other newline, or `;`, `&`, `|`,
-    or a backslash, is rejected. Only spaces and tabs are collapsed.
+    One trailing newline is ignored. The same walk collapses spaces and
+    tabs and rejects a newline, semicolon, ampersand, pipe, or backslash.
+    A rejected character is never collapsed.
     """
-    text = run[:-1] if run.endswith("\n") else run
-    if any(char in text for char in "\n;&|\\"):
+    if _PIN_COLLAPSE_CHARS & _PIN_REJECT_CHARS:
         return False
-    collapsed = re.sub(r"[ \t]+", " ", text).strip(" \t")
-    return collapsed == _PINNED_PREFETCH_RUN
+    text = run[:-1] if run.endswith("\n") else run
+    pieces: list[str] = []
+    for char in text:
+        if char in _PIN_REJECT_CHARS:
+            return False
+        if char in _PIN_COLLAPSE_CHARS:
+            if not pieces or pieces[-1] != " ":
+                pieces.append(" ")
+            continue
+        pieces.append(char)
+    return "".join(pieces).strip(" ") == _PINNED_PREFETCH_RUN
 
 
 def _without_full_line_comments(run: str) -> str:
@@ -1187,12 +1204,205 @@ def _strip_quote_glue(text: str) -> str:
     return re.sub(r"""(?<!\\)(?:''|"")""", "", text)
 
 
+def _expand_locale_quotes(text: str) -> str:
+    """Drop `$"..."` locale quotes. With no translation the quoted text remains.
+
+    An empty locale quote joins the characters on either side.
+    """
+    out: list[str] = []
+    quote: str | None = None
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            out.append(char)
+            if char == "\\" and quote != "'" and index + 1 < len(text):
+                out.append(text[index + 1])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            out.append(char)
+            index += 1
+            continue
+        if char == "$" and index + 1 < len(text) and text[index + 1] == '"':
+            end = index + 2
+            body: list[str] = []
+            while end < len(text) and text[end] != '"':
+                if text[end] == "\\" and end + 1 < len(text):
+                    body.append(text[end + 1])
+                    end += 2
+                    continue
+                body.append(text[end])
+                end += 1
+            if end >= len(text):
+                out.append(char)
+                index += 1
+                continue
+            out.extend(body)
+            index = end + 1
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def _first_unquoted_brace(text: str) -> tuple[int, int] | None:
+    """The first unquoted `{a,b}` list. Quoted braces and `${...}` are not lists."""
+    quote: str | None = None
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            if char == "\\" and quote != "'" and index + 1 < len(text):
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            continue
+        if char == "$" and index + 1 < len(text) and text[index + 1] in {"'", '"'}:
+            end_quote = text[index + 1]
+            index += 2
+            while index < len(text) and text[index] != end_quote:
+                if text[index] == "\\" and end_quote != "'" and index + 1 < len(text):
+                    index += 2
+                    continue
+                index += 1
+            index += 1
+            continue
+        if char == "{":
+            end = text.find("}", index + 1)
+            inner = text[index + 1 : end] if end != -1 else ""
+            if end != -1 and "," in inner and "{" not in inner and "}" not in inner:
+                return index, end
+        index += 1
+    return None
+
+
+def _expand_command_braces(text: str) -> list[str]:
+    """Expand unquoted comma brace lists. The unexpanded spelling is not returned."""
+    pending = [text]
+    expanded: list[str] = []
+    seen = {text}
+    while pending:
+        current = pending.pop()
+        span = _first_unquoted_brace(current)
+        if span is None:
+            if current != text:
+                expanded.append(current)
+            continue
+        start, end = span
+        for part in current[start + 1 : end].split(","):
+            nxt = current[:start] + part + current[end + 1 :]
+            if nxt not in seen:
+                seen.add(nxt)
+                pending.append(nxt)
+        if len(seen) > 32:
+            expanded.extend(item for item in pending if item != text)
+            break
+    return expanded
+
+
+def _leading_command_words(text: str) -> list[str]:
+    """The first word of each simple command, after a leading assignment."""
+    commands: list[list[str]] = []
+    current: list[str] = []
+    buf: list[str] = []
+    quote: str | None = None
+
+    def flush_word() -> None:
+        if buf:
+            current.append("".join(buf))
+            buf.clear()
+
+    def flush_command() -> None:
+        flush_word()
+        if current:
+            commands.append(list(current))
+            current.clear()
+
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if quote is not None:
+            if char == "\\" and quote != "'" and index + 1 < len(text):
+                buf.append(text[index + 1])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            else:
+                buf.append(char)
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            continue
+        if char in ";|&\n":
+            flush_command()
+            index += 1
+            continue
+        if char.isspace():
+            flush_word()
+            index += 1
+            continue
+        buf.append(char)
+        index += 1
+    flush_command()
+    leaders: list[str] = []
+    for words in commands:
+        cursor = 0
+        while cursor < len(words) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", words[cursor]):
+            cursor += 1
+        if cursor < len(words):
+            leaders.append(words[cursor])
+    return leaders
+
+
+def _unquoted_glob_names_sccache(text: str) -> bool:
+    """True when the command word is an unquoted glob of the sccache name.
+
+    The pattern must contain a literal character. A bare metacharacter is
+    arithmetic or a universal match, not a spelling of this command.
+    """
+    for pattern in _leading_command_words(text):
+        if not any(char in pattern for char in "*?["):
+            continue
+        if not any(char not in "*?[]" for char in pattern):
+            continue
+        if fnmatch.fnmatchcase("sccache", pattern) or fnmatch.fnmatchcase("sccache.exe", pattern):
+            return True
+    return False
+
+
+def _command_spelling_names_sccache(text: str) -> bool:
+    """True when locale quotes, a brace list, or a command-name glob spell sccache."""
+    spelled = _expand_locale_quotes(text)
+    if _SCCACHE_COMMAND_RE.search(_strip_quote_glue(spelled)):
+        return True
+    for alternative in _expand_command_braces(spelled):
+        if _SCCACHE_COMMAND_RE.search(_strip_quote_glue(alternative)):
+            return True
+    return _unquoted_glob_names_sccache(spelled)
+
+
 def _invokes_sccache_command(run: str) -> bool:
     """True when a run names sccache outside the pinned prefetch and the exact fallback.
 
     The stats check then requires the exact stats command. Runners, builtins,
-    quoted commands, empty quote glue, and a command split across a continued
-    line all count.
+    quoted commands, empty quote glue, locale quotes, an unquoted brace list,
+    an unquoted glob of the command name, and a command split across a
+    continued line all count.
     """
     if _is_pinned_prefetch_run(run.strip()):
         return False
@@ -1204,6 +1414,7 @@ def _invokes_sccache_command(run: str) -> bool:
     return (
         _SCCACHE_COMMAND_RE.search(text) is not None
         or _SCCACHE_COMMAND_RE.search(collapsed) is not None
+        or _command_spelling_names_sccache(text)
     )
 
 
@@ -1413,6 +1624,25 @@ def _unconditional_cargo_incremental(step: str | dict) -> bool:
 # sha256 of the raw bytes of scripts/ci/fetch_sccache_release.sh. The checker
 # accepts that file only when those bytes match. Phrase matching is not the check.
 PINNED_FETCH_SCRIPT_SHA256 = "b4796d86ec43b1ecfbcd697502024606ce63e67755fd4bd037eedfacb28c01dd"
+# sha256 of scripts/ci/test_workflow_policy.py with this assignment's hex
+# replaced by 64 zeros. The pin lives in the file it covers.
+_POLICY_CHECKER_SHA256 = "135267e9d23dc6d0ce832fcb6b3fb1b512311f9b19c067783a8ae61d80974e93"
+_POLICY_SCRIPT = "scripts/ci/test_workflow_policy.py"
+_NAMES_SCRIPT = "scripts/ci/player_facing_names.sh"
+_POLICY_PIN_RE = re.compile(
+    r'^(_POLICY_CHECKER_SHA256 = ")[0-9a-fA-F]{64}(")\s*$',
+    re.M,
+)
+_POLICY_PIN_PLACEHOLDER = "0" * 64
+# sha256 of each repository script an allowlisted earlier run executes.
+# The run text is pinned separately. These bytes are what that run can change.
+_PINNED_EARLIER_SCRIPT_SHA256 = {
+    _NAMES_SCRIPT: "8fd67de6bdc2a8f16483b99e9cbc892537c2f802f093f8472beb51363c1c2d65",
+    _POLICY_SCRIPT: _POLICY_CHECKER_SHA256,
+}
+_INVOKED_SCRIPT_RE = re.compile(
+    r"(?<![\w./-])(scripts/(?:[A-Za-z0-9._-]+/)*[A-Za-z0-9._-]+\.(?:sh|py))\b"
+)
 
 
 def sccache_checksum_source_violations(script: str | bytes) -> list[str]:
@@ -1838,7 +2068,34 @@ _EARLIER_ACTION_NAMES = frozenset(
         "./.github/actions/rust-nightly",
     }
 )
-_CHECKOUT_FORBIDDEN_WITH = frozenset({"ref", "repository", "path"})
+# Checkout inputs are case-insensitive. Keys and values are the live set.
+# Any other key or value is rejected, including ssh-key, token, and github-server-url.
+_CHECKOUT_WITH_VALUES = {
+    "fetch-depth": frozenset({"0", "1", "2"}),
+    "fetch-tags": frozenset({"false"}),
+    "lfs": frozenset({"true"}),
+    "persist-credentials": frozenset({"false"}),
+}
+# External actions before a prefetch. The ref after @ must be one of these.
+_EARLIER_ACTION_REFS = {
+    "actions/checkout": frozenset(
+        {"v7", "3d3c42e5aac5ba805825da76410c181273ba90b1"}
+    ),
+    "actions/cache": frozenset({"v6"}),
+    "actions/download-artifact": frozenset({"v8"}),
+    "dtolnay/rust-toolchain": frozenset({"master", "1.89.0"}),
+}
+# Job keys on a job that prefetches or calls rust-ci-setup. container is absent.
+_PREFETCH_JOB_KEYS = frozenset(
+    {"env", "if", "name", "needs", "runs-on", "steps", "strategy", "timeout-minutes"}
+)
+# actions/cache restores this exact path list and no other.
+_CACHE_PATH_PIN = "assets/_downloaded\n.asset_cache\n"
+_CACHE_WITH_KEYS = frozenset({"path", "key"})
+# actions/download-artifact writes this directory and no other. The default
+# destination is the workspace, so a missing path is not this pin.
+_DOWNLOAD_PATH_PIN = "assets/_downloaded"
+_DOWNLOAD_WITH_KEYS = frozenset({"name", "path"})
 
 
 def _earlier_run_sha256(run: str) -> str:
@@ -1852,23 +2109,237 @@ def _is_allowlisted_earlier_run(run: str) -> bool:
     return _earlier_run_sha256(run) in _ALLOWLISTED_EARLIER_RUN_SHA256
 
 
-def _uses_action_name(uses: object) -> str:
+def _uses_path_and_ref(uses: object) -> tuple[str, str]:
     if not isinstance(uses, str):
-        return ""
-    return uses.split("#", 1)[0].strip().split("@", 1)[0]
+        return "", ""
+    text = uses.split("#", 1)[0].strip()
+    if "@" not in text:
+        return text, ""
+    path, ref = text.split("@", 1)
+    return path.strip(), ref.strip()
+
+
+def _uses_action_name(uses: object) -> str:
+    return _uses_path_and_ref(uses)[0]
+
+
+def _lexical_local_uses(path: str) -> tuple[str, bool]:
+    """Normalize a `./` path. `..`, `.`, and a trailing slash are not canonical."""
+    if not path.startswith("./"):
+        return path, True
+    parts: list[str] = []
+    saw_dotdot = False
+    for part in path[2:].split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            saw_dotdot = True
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    normalized = "./" + "/".join(parts)
+    return normalized, (not saw_dotdot) and path == normalized
 
 
 def _is_allowlisted_earlier_uses(step: dict) -> bool:
     return _uses_action_name(step.get("uses")) in _EARLIER_ACTION_NAMES
 
 
-def _checkout_forbidden_keys(step: dict) -> list[str]:
+def _with_value_token(value: object) -> str | None:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _folded_with(step: dict) -> dict[str, object] | None:
+    """Action inputs with case folded. Duplicate names fail closed."""
+    with_block = step.get("with")
+    if with_block is None:
+        return {}
+    if not isinstance(with_block, dict):
+        return None
+    folded: dict[str, object] = {}
+    for key, value in with_block.items():
+        name = str(key).lower()
+        if name in folded:
+            return None
+        folded[name] = value
+    return folded
+
+
+def _checkout_unlisted_keys(step: dict) -> list[str]:
     if _uses_action_name(step.get("uses")) != "actions/checkout":
         return []
-    with_block = step.get("with")
-    if not isinstance(with_block, dict):
+    folded = _folded_with(step)
+    if folded is None:
+        return ["with"]
+    unlisted: list[str] = []
+    for key, value in folded.items():
+        allowed = _CHECKOUT_WITH_VALUES.get(key)
+        token = _with_value_token(value)
+        if allowed is None or token not in allowed:
+            unlisted.append(key)
+    return sorted(unlisted)
+
+
+def _earlier_action_ref_violations(path: str, step: dict) -> list[str]:
+    name = _uses_action_name(step.get("uses"))
+    allowed = _EARLIER_ACTION_REFS.get(name)
+    if allowed is None:
         return []
-    return sorted(str(key) for key in with_block if str(key) in _CHECKOUT_FORBIDDEN_WITH)
+    ref = _uses_path_and_ref(step.get("uses"))[1]
+    if ref not in allowed:
+        return [f"{path}: prefetch action ref is not pinned"]
+    return []
+
+
+def _local_uses_canonical_violations(path: str, step: dict) -> list[str]:
+    raw = _uses_action_name(step.get("uses"))
+    if not raw.startswith("./"):
+        return []
+    _normalized, canonical = _lexical_local_uses(raw)
+    if canonical:
+        return []
+    return [f"{path}: prefetch action path is not canonical"]
+
+
+def _local_action_composite_violations(
+    path: str, step: dict, texts: dict[str, str] | None
+) -> list[str]:
+    """An allowlisted local action must load as a composite."""
+    raw = _uses_action_name(step.get("uses"))
+    normalized, _canonical = _lexical_local_uses(raw)
+    if normalized not in _EARLIER_ACTION_NAMES or not normalized.startswith("./"):
+        return []
+    loaded = _load_local_action_text(normalized, texts or {})
+    using = ""
+    if loaded is not None:
+        doc = _load_workflow_yaml(loaded[1])
+        runs = doc.get("runs") if isinstance(doc, dict) else None
+        if isinstance(runs, dict):
+            using = str(runs.get("using", "")).strip().lower()
+    if using != "composite":
+        return [f"{path}: prefetch action is not a composite"]
+    return []
+
+
+def _prefetch_job_key_violations(path: str, job: dict | None) -> list[str]:
+    if not isinstance(job, dict):
+        return []
+    return [
+        f"{path}: prefetch job sets {key}"
+        for key in sorted(str(key) for key in job if str(key) not in _PREFETCH_JOB_KEYS)
+    ]
+
+
+def _raw_defaults_shell(owner: object) -> object:
+    if not isinstance(owner, dict):
+        return None
+    defaults = owner.get("defaults")
+    if not isinstance(defaults, dict):
+        return None
+    run = defaults.get("run")
+    if not isinstance(run, dict) or "shell" not in run:
+        return None
+    return run.get("shell")
+
+
+def _prefetch_shell_violations(
+    path: str, steps: list[dict], job: dict | None, doc: dict | None
+) -> list[str]:
+    """Step, job, and workflow shells are absent or exactly bash."""
+    violations: list[str] = []
+    for owner, label in ((job, "job"), (doc, "workflow")):
+        shell = _raw_defaults_shell(owner)
+        if shell is not None and shell != "bash":
+            violations.append(f"{path}: prefetch {label} shell is not bash")
+    for step in steps:
+        if isinstance(step, dict) and "shell" in step and step.get("shell") != "bash":
+            violations.append(f"{path}: prefetch step shell is not bash")
+    return violations
+
+
+def _pinned_action_path_violations(
+    path: str,
+    step: dict,
+    label: str,
+    allowed_keys: frozenset[str],
+    allowed_paths: frozenset[str],
+) -> list[str]:
+    folded = _folded_with(step)
+    if folded is None:
+        return [f"{path}: prefetch {label} path is not pinned"]
+    violations: list[str] = []
+    for key in sorted(folded):
+        if key not in allowed_keys:
+            violations.append(f"{path}: prefetch {label} sets {key}")
+    value = folded.get("path")
+    if not isinstance(value, str) or value not in allowed_paths:
+        violations.append(f"{path}: prefetch {label} path is not pinned")
+    return violations
+
+
+def _script_digest(rel: str, raw: bytes) -> str:
+    """sha256 of a pinned script. The policy file's own pin line is a placeholder."""
+    if rel == _POLICY_SCRIPT:
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeError:
+            return ""
+        normalized, count = _POLICY_PIN_RE.subn(
+            lambda match: match.group(1) + _POLICY_PIN_PLACEHOLDER + match.group(2),
+            text,
+            count=1,
+        )
+        if count != 1:
+            return ""
+        raw = normalized.encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _expected_script_sha256(rel: str) -> str | None:
+    if rel == _PREFETCH_SCRIPT:
+        return PINNED_FETCH_SCRIPT_SHA256
+    return _PINNED_EARLIER_SCRIPT_SHA256.get(rel)
+
+
+def earlier_invoked_script_violations(rel: str, raw: bytes | None) -> list[str]:
+    """The script an allowlisted earlier run executes must match its pin."""
+    expected = _expected_script_sha256(rel)
+    if expected is None or raw is None:
+        return ["prefetch invoked script is not pinned"]
+    if _script_digest(rel, raw) != expected:
+        return ["prefetch invoked script does not match the pinned source"]
+    return []
+
+
+def _pinned_script_bytes(rel: str, texts: dict[str, str] | None) -> bytes | None:
+    if texts is not None and rel in texts and isinstance(texts[rel], str):
+        return texts[rel].encode("utf-8")
+    file = ROOT / rel
+    try:
+        if file.is_file():
+            return file.read_bytes()
+    except OSError:
+        return None
+    return None
+
+
+def _earlier_invoked_script_violations(
+    path: str, run: str, texts: dict[str, str] | None
+) -> list[str]:
+    if not _is_allowlisted_earlier_run(run):
+        return []
+    violations: list[str] = []
+    for rel in sorted(set(_INVOKED_SCRIPT_RE.findall(run))):
+        for item in earlier_invoked_script_violations(rel, _pinned_script_bytes(rel, texts)):
+            violations.append(f"{path}: {item}")
+    return violations
 
 
 def _earlier_step_env_unlisted(step: dict) -> bool:
@@ -1878,7 +2349,9 @@ def _earlier_step_env_unlisted(step: dict) -> bool:
     return any(str(key).upper() not in _PREFETCH_ENV_ALLOWLIST for key in env)
 
 
-def _earlier_step_allowlist_violations(path: str, step: dict) -> list[str]:
+def _earlier_step_allowlist_violations(
+    path: str, step: dict, texts: dict[str, str] | None = None
+) -> list[str]:
     """Earlier prefetch steps must be an allowlisted run or action."""
     violations: list[str] = []
     run = step.get("run")
@@ -1886,10 +2359,28 @@ def _earlier_step_allowlist_violations(path: str, step: dict) -> list[str]:
     has_uses = isinstance(step.get("uses"), str) and str(step.get("uses")).strip() != ""
     if has_run and not _is_allowlisted_earlier_run(_step_run(step)):
         violations.append(f"{path}: prefetch run is not an allowlisted command")
+    if has_run and _is_allowlisted_earlier_run(_step_run(step)):
+        violations.extend(_earlier_invoked_script_violations(path, _step_run(step), texts))
     if has_uses and not _is_allowlisted_earlier_uses(step):
         violations.append(f"{path}: prefetch action is not allowlisted")
-    for key in _checkout_forbidden_keys(step):
+    for key in _checkout_unlisted_keys(step):
         violations.append(f"{path}: prefetch checkout sets {key}")
+    violations.extend(_earlier_action_ref_violations(path, step))
+    violations.extend(_local_uses_canonical_violations(path, step))
+    violations.extend(_local_action_composite_violations(path, step, texts))
+    action = _uses_action_name(step.get("uses"))
+    if action == "actions/cache":
+        violations.extend(
+            _pinned_action_path_violations(
+                path, step, action, _CACHE_WITH_KEYS, frozenset({_CACHE_PATH_PIN})
+            )
+        )
+    elif action == "actions/download-artifact":
+        violations.extend(
+            _pinned_action_path_violations(
+                path, step, action, _DOWNLOAD_WITH_KEYS, frozenset({_DOWNLOAD_PATH_PIN})
+            )
+        )
     if not has_run and not has_uses:
         violations.append(f"{path}: prefetch step is not allowlisted")
     if _earlier_step_env_unlisted(step):
@@ -2061,6 +2552,7 @@ def _prefetch_context_violations(
     texts: dict[str, str] | None = None,
 ) -> list[str]:
     violations: list[str] = []
+    violations.extend(_prefetch_job_key_violations(path, job))
     if _defaults_working_directory(job) or _defaults_working_directory(doc):
         violations.append(f"{path}: prefetch working directory is not the default")
     for owner in (job, doc):
@@ -2089,7 +2581,7 @@ def _prefetch_context_violations(
             violations.append(f"{path}: prefetch script is rewritten by an earlier step")
         if _earlier_env_file_unlisted(step):
             violations.append(f"{path}: prefetch env file is written by an earlier step")
-        violations.extend(_earlier_step_allowlist_violations(path, step))
+        violations.extend(_earlier_step_allowlist_violations(path, step, texts))
     return violations
 
 
@@ -2105,16 +2597,15 @@ def _prefetch_pin_violations(
         if not _is_prefetch_step(step):
             continue
         violations.extend(_prefetch_step_shape_violations(path, step))
+        violations.extend(_prefetch_shell_violations(path, steps[:index], job, doc))
         violations.extend(_prefetch_context_violations(path, steps[:index], job, doc, texts))
     return list(dict.fromkeys(violations))
 
 
 def _uses_rust_ci_setup(step: dict) -> bool:
-    uses = step.get("uses")
-    if not isinstance(uses, str):
-        return False
-    target = uses.split("#", 1)[0].strip().split("@", 1)[0]
-    return target == _RUST_CI_SETUP_USES
+    raw = _uses_action_name(step.get("uses"))
+    normalized, _canonical = _lexical_local_uses(raw)
+    return normalized == _RUST_CI_SETUP_USES
 
 
 def _composite_caller_violations(
@@ -2128,6 +2619,8 @@ def _composite_caller_violations(
     for index, step in enumerate(steps):
         if not _uses_rust_ci_setup(step):
             continue
+        violations.extend(_local_uses_canonical_violations(path, step))
+        violations.extend(_prefetch_shell_violations(path, steps[:index], job, doc))
         violations.extend(_prefetch_context_violations(path, steps[:index], job, doc, texts))
     return list(dict.fromkeys(violations))
 
@@ -2205,6 +2698,8 @@ def sccache_install_violations(texts: dict[str, str]) -> list[str]:
     violations.extend(cargo_missing)
     uses_per_file: dict[str, int] = {}
     for path, text in expanded.items():
+        if path in _PINNED_EARLIER_SCRIPT_SHA256 or path == _PREFETCH_SCRIPT:
+            continue
         if path in cargo_paths or _is_cargo_config(path):
             violations.extend(_cargo_config_violations(path, text, expanded))
             continue
@@ -6536,12 +7031,28 @@ exec {real_node} "$@"
             body = "".join(f"          {line}\n" for line in run.splitlines())
             return indent + "        run: |\n" + body
 
+        locale_empty = "sc" + "$" + '""' + "cache --zero-stats || true"
+        locale_word = "sc" + '$"' + "cache" + '" --version'
+        brace_cmd = "sc" + "{" + "c,c" + "}" + "ache --zero-stats || true"
+        glob_cmd = "sc" + "*" + " --show-stats"
+        self.assertNotIn("sccache", locale_empty)
+        self.assertNotIn("sccache", locale_word)
+        self.assertNotIn("sccache", brace_cmd)
+        self.assertNotIn("sccache", glob_cmd)
+        self.assertTrue(_invokes_sccache_command(locale_empty))
+        self.assertTrue(_invokes_sccache_command(locale_word))
+        self.assertTrue(_invokes_sccache_command(brace_cmd))
+        self.assertTrue(_invokes_sccache_command(glob_cmd))
         for label, run in (
             ("glue-or", glued_or),
             ("glue-empty", glued_empty),
             ("split-cmd", split_cmd),
             ("decoded-cmd", decoded_cmd),
             ("ansi-cmd", ansi_cmd),
+            ("locale-empty", locale_empty),
+            ("locale-word", locale_word),
+            ("brace-cmd", brace_cmd),
+            ("glob-cmd", glob_cmd),
         ):
             flagged(
                 f".github/workflows/stats-{label}.yml",
@@ -6638,6 +7149,27 @@ exec {real_node} "$@"
         self.assertTrue(_is_pinned_prefetch_run(_PINNED_PREFETCH_RUN.replace(" ", "\t", 1)))
         self.assertTrue(_is_pinned_prefetch_run(_PINNED_PREFETCH_RUN + "\n"))
         self.assertFalse(_is_pinned_prefetch_run(_PINNED_PREFETCH_RUN + "\n\n"))
+        padded = "\n" + _PINNED_PREFETCH_RUN + "\r\n\v\f"
+        self.assertFalse(_is_pinned_prefetch_run(padded))
+        self.assertEqual(padded.strip(), _PINNED_PREFETCH_RUN)
+        self.assertTrue(_is_prefetch_step({"run": padded, "shell": "bash"}))
+        self.assertEqual(
+            _prefetch_step_shape_violations(
+                ".github/workflows/pad.yml",
+                {"id": "sccache_fetch", "shell": "bash", "run": padded},
+            ),
+            [],
+        )
+        for label, char in (("cr", "\r"), ("vt", "\v"), ("ff", "\f")):
+            interior = _PINNED_PREFETCH_RUN.replace(" ", char, 1)
+            self.assertNotEqual(interior, _PINNED_PREFETCH_RUN, label)
+            self.assertFalse(_is_pinned_prefetch_run(interior), label)
+            self.assertFalse(_is_pinned_prefetch_run(interior.strip()), label)
+            shape = _prefetch_step_shape_violations(
+                f".github/workflows/pad-{label}.yml",
+                {"id": "sccache_fetch", "shell": "bash", "run": interior},
+            )
+            self.assertTrue(any("pinned prefetch" in item for item in shape), shape)
         for label, sep in (("semi", ";"), ("amp", "&"), ("pipe", "|"), ("slash", "\\")):
             broken = _PINNED_PREFETCH_RUN.replace(" bash ", sep + " bash ", 1)
             self.assertNotEqual(broken, _PINNED_PREFETCH_RUN, label)
@@ -6646,6 +7178,8 @@ exec {real_node} "$@"
             ("before-bash", _PINNED_PREFETCH_RUN.replace(" bash ", "\nbash ", 1)),
             ("after-env", _PINNED_PREFETCH_RUN.replace("env -i ", "env -i\n", 1)),
             ("between-assign", _PINNED_PREFETCH_RUN.replace('"$PATH" HOME=', '"$PATH"\nHOME=', 1)),
+            # Newline inside the command: the combined separator and collapse case.
+            ("combined-newline", _PINNED_PREFETCH_RUN.replace(" --norc ", " --norc\n", 1)),
         ):
             self.assertNotEqual(run, _PINNED_PREFETCH_RUN, label)
             self.assertFalse(_is_pinned_prefetch_run(run), label)
@@ -6766,6 +7300,308 @@ exec {real_node} "$@"
                 ),
                 f"prefetch checkout sets {key}",
             )
+        for key in ("Ref", "Path", "Repository"):
+            flagged(
+                f".github/workflows/checkout-case-{key}.yml",
+                workflow(
+                    "      - uses: actions/checkout@v7\n"
+                    "        with:\n"
+                    f"          {key}: main\n"
+                    + fetch
+                ),
+                f"prefetch checkout sets {key.lower()}",
+            )
+        flagged(
+            ".github/workflows/checkout-token.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          token: ${{ github.token }}\n"
+                + fetch
+            ),
+            "prefetch checkout sets token",
+        )
+        flagged(
+            ".github/workflows/cache-root.yml",
+            workflow(
+                "      - uses: actions/cache@v6\n"
+                "        with:\n"
+                "          path: .\n"
+                "          key: k\n"
+                + fetch
+            ),
+            "prefetch actions/cache path is not pinned",
+        )
+        flagged(
+            ".github/workflows/cache-scripts.yml",
+            workflow(
+                "      - uses: actions/cache@v6\n"
+                "        with:\n"
+                "          path: scripts/ci\n"
+                "          key: k\n"
+                + fetch
+            ),
+            "prefetch actions/cache path is not pinned",
+        )
+        flagged(
+            ".github/workflows/cache-case-path.yml",
+            workflow(
+                "      - uses: actions/cache@v6\n"
+                "        with:\n"
+                "          Path: .\n"
+                "          key: k\n"
+                + fetch
+            ),
+            "prefetch actions/cache path is not pinned",
+        )
+        flagged(
+            ".github/workflows/download-default.yml",
+            workflow("      - uses: actions/download-artifact@v8\n" + fetch),
+            "prefetch actions/download-artifact path is not pinned",
+        )
+        flagged(
+            ".github/workflows/download-root.yml",
+            workflow(
+                "      - uses: actions/download-artifact@v8\n"
+                "        with:\n"
+                "          path: .\n"
+                + fetch
+            ),
+            "prefetch actions/download-artifact path is not pinned",
+        )
+        flagged(
+            ".github/workflows/cache-extra.yml",
+            workflow(
+                "      - uses: actions/cache@v6\n"
+                "        with:\n"
+                "          path: |\n"
+                "            assets/_downloaded\n"
+                "            .asset_cache\n"
+                "          key: k\n"
+                "          lookup-only: true\n"
+                + fetch
+            ),
+            "prefetch actions/cache sets lookup-only",
+        )
+        flagged(
+            ".github/workflows/download-extra.yml",
+            workflow(
+                "      - uses: actions/download-artifact@v8\n"
+                "        with:\n"
+                "          name: polyhaven-assets\n"
+                "          path: assets/_downloaded\n"
+                "          pattern: none\n"
+                + fetch
+            ),
+            "prefetch actions/download-artifact sets pattern",
+        )
+        quiet_checkout = hits(
+            ".github/workflows/checkout-live.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          fetch-depth: 0\n"
+                "          fetch-tags: false\n"
+                "          lfs: true\n"
+                "          persist-credentials: false\n"
+                + fetch
+            ),
+        )
+        self.assertFalse(any("checkout" in item for item in quiet_checkout), quiet_checkout)
+        for depth in ("1", "2"):
+            quiet_depth = hits(
+                f".github/workflows/checkout-depth-{depth}.yml",
+                workflow(
+                    "      - uses: actions/checkout@v7\n"
+                    "        with:\n"
+                    f"          fetch-depth: {depth}\n"
+                    + fetch
+                ),
+            )
+            self.assertFalse(any("checkout" in item for item in quiet_depth), quiet_depth)
+        flagged(
+            ".github/workflows/checkout-depth.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          fetch-depth: 4\n"
+                + fetch
+            ),
+            "prefetch checkout sets fetch-depth",
+        )
+        flagged(
+            ".github/workflows/checkout-tags.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          fetch-tags: true\n"
+                + fetch
+            ),
+            "prefetch checkout sets fetch-tags",
+        )
+        flagged(
+            ".github/workflows/checkout-lfs.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          lfs: false\n"
+                + fetch
+            ),
+            "prefetch checkout sets lfs",
+        )
+        flagged(
+            ".github/workflows/checkout-lfs-case.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                '          lfs: "True"\n'
+                + fetch
+            ),
+            "prefetch checkout sets lfs",
+        )
+        flagged(
+            ".github/workflows/checkout-persist.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          persist-credentials: true\n"
+                + fetch
+            ),
+            "prefetch checkout sets persist-credentials",
+        )
+        flagged(
+            ".github/workflows/checkout-ssh.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          Ssh-Key: absent\n"
+                + fetch
+            ),
+            "prefetch checkout sets ssh-key",
+        )
+        flagged(
+            ".github/workflows/checkout-server-case.yml",
+            workflow(
+                "      - uses: actions/checkout@v7\n"
+                "        with:\n"
+                "          Github-Server-Url: https://github.com\n"
+                + fetch
+            ),
+            "prefetch checkout sets github-server-url",
+        )
+        flagged(
+            ".github/workflows/checkout-ref.yml",
+            workflow("      - uses: actions/checkout@v1\n" + fetch),
+            "prefetch action ref is not pinned",
+        )
+        node_action = "name: node\nruns:\n  using: node20\n  main: index.js\n"
+        node_found = hits(
+            ".github/workflows/node-local.yml",
+            workflow("      - uses: ./.github/actions/rust-nightly\n" + fetch),
+            {".github/actions/rust-nightly/action.yml": node_action},
+        )
+        self.assertTrue(any("not a composite" in item for item in node_found), node_found)
+        for label, uses in (
+            ("slash", "./.github/actions/rust-ci-setup" + "/"),
+            ("dotdot", "./.github/" + "actions/../actions/" + "rust-ci-setup"),
+        ):
+            flagged(
+                f".github/workflows/setup-{label}.yml",
+                workflow(f"      - uses: {uses}\n"),
+                "prefetch action path is not canonical",
+            )
+        flagged(
+            ".github/workflows/step-shell.yml",
+            workflow("      - shell: pwsh\n        run: echo ok\n" + fetch),
+            "prefetch step shell is not bash",
+        )
+        flagged(
+            ".github/workflows/step-shell-prefix.yml",
+            workflow("      - shell: bashx\n        run: echo ok\n" + fetch),
+            "prefetch step shell is not bash",
+        )
+        flagged(
+            ".github/workflows/job-shell.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    defaults:\n"
+            "      run:\n"
+            "        shell: pwsh\n"
+            "    steps:\n"
+            + fetch,
+            "prefetch job shell is not bash",
+        )
+        flagged(
+            ".github/workflows/job-shell-prefix.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    defaults:\n"
+            "      run:\n"
+            "        shell: bashx\n"
+            "    steps:\n"
+            + fetch,
+            "prefetch job shell is not bash",
+        )
+        flagged(
+            ".github/workflows/workflow-shell.yml",
+            "name: gap\n"
+            "on: push\n"
+            "defaults:\n"
+            "  run:\n"
+            "    shell: pwsh\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            + fetch,
+            "prefetch workflow shell is not bash",
+        )
+        flagged(
+            ".github/workflows/workflow-shell-prefix.yml",
+            "name: gap\n"
+            "on: push\n"
+            "defaults:\n"
+            "  run:\n"
+            "    shell: bashx\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            + fetch,
+            "prefetch workflow shell is not bash",
+        )
+        flagged(
+            ".github/workflows/job-container.yml",
+            "name: gap\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    container: ubuntu:22.04\n"
+            "    steps:\n"
+            + fetch,
+            "prefetch job sets container",
+        )
+        for rel, run in (
+            (_NAMES_SCRIPT, "bash " + _NAMES_SCRIPT),
+            (_POLICY_SCRIPT, "python3 " + _POLICY_SCRIPT),
+        ):
+            raw = (ROOT / rel).read_bytes()
+            self.assertEqual(earlier_invoked_script_violations(rel, raw), [], rel)
+            edited = earlier_invoked_script_violations(rel, raw + b"\n")
+            self.assertTrue(any("pinned source" in item for item in edited), edited)
+            found = hits(
+                ".github/workflows/edited-script.yml",
+                workflow("      - shell: bash\n        run: " + run + "\n" + fetch),
+                {rel: (raw + b"\n").decode("utf-8")},
+            )
+            self.assertTrue(any("pinned source" in item for item in found), found)
 
         link_parent = ROOT / "tools" / "aw_policy_symlink_cargo"
         try:
