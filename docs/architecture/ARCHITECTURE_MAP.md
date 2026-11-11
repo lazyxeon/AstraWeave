@@ -363,7 +363,7 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 | `add_water_aabb` registers an AABB (`lib.rs:1522`) | `astraweave-physics/src/lib.rs:1522` | `physics.md` §6 |
 | `compute_poses_stub` checks components but doesn't write poses | `astraweave-scene/src/lib.rs:941` | `animation.md` §6 |
 | ~~HMAC server verification always fails (16-byte sig vs 32-byte HMAC-SHA256 OutputSize), failure only `warn!`~~ **RESOLVED** (`561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`) — client+server unified on canonical HMAC-SHA256 (`aw-net-proto`), server verifies FIRST and kicks by default; `sign16`/`SessionKey`/`session_key_hint` deleted | `net/aw-net-server/src/lib.rs` (`on_client_msg{,_tls}`), `net/aw-net-proto/src/lib.rs` | `net_ecs.md` §6/§7; `docs/audits/net_trio_signature_remediation_findings_2026-06.md` |
-| `deserialize_ecs_world` on empty blob returns `Ok(())` silently | `astraweave-persistence-ecs/src/lib.rs:447-450` | `persistence_ecs.md` §6 |
+| `deserialize_ecs_world` on empty blob returns `Ok(())` silently | `astraweave-persistence-ecs/src/lib.rs:656-659` | `persistence_ecs.md` §6 |
 | `load_bindings` collapses every error mode to `None` | `astraweave-input/src/save.rs:16-19` | `input.md` §6 |
 | `safe_llm_invoke` has zero workspace callers (4096-char limit unreachable) | `astraweave-llm/src/llm_adapter.rs` (file labeled "stub") | `ai_pipeline.md` §6, §13.7 |
 | `LLM_CACHE_SIM_THRESH < 1.0` causes test pollution; off by default | `astraweave-llm/src/lib.rs:57-67` | `ai_pipeline.md` §6 |
@@ -651,7 +651,7 @@ Source files (.blend, .gltf, textures)
 
 ```
 ECS World
-  → serialize_ecs_world(&world) (persistence-ecs/lib.rs:278-366)
+  → serialize_ecs_world(&world) (astraweave-persistence-ecs/src/lib.rs:479-574)
   → 10 separate Query<C> passes for entity discovery (CPos/CHealth/CTeam/CAmmo/CCooldowns/CDesiredPos/CAiAgent/CPersona/CMemory, plus CLegacyId)
   → SerializedEntity { entity_raw: u64, plus 10 Option<C> fields }
   → SerializedWorld { entities, world_tick: 0 (HARDCODED — TODO) }

@@ -9,11 +9,13 @@ lifecycle_status: active
 integration_status: wired
 summary: "Created Unified Camera C.2 (52b9e711c, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, and 13 examples"
 owns: [astraweave-camera]
-doc_version: "1.2"
-last_verified_commit: 7c29b8182
+doc_version: "1.3"
+last_verified_commit: ac9587de9
 ---
 
 # Architecture Trace: Camera System
+
+> **Revision note (1.3).** The renderer and editor cites in this trace were checked against `ac9587de9`: `renderer.rs` `update_view`, `apply_camera_key`, `tick_cinematics`, and the degrees conversion; `engine_adapter.rs` `update_view` and `update_water`; the editor viewport water call; `camera.rs` camera-relative method; `freefly.rs` camera-relative method.
 
 ## Metadata
 
@@ -21,9 +23,9 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Camera System |
 | **Primary crates** | [`astraweave-camera`](../../astraweave-camera) (canonical types + FreeFly producer); consumed by [`astraweave-render`](../../astraweave-render) and [`tools/aw_editor`](../../tools/aw_editor) (OrbitCamera producer) |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-10-13 |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `ac9587de9` |
+| **Last verified date** | 2026-11-11 |
 | **Status** | Active. Unified Camera campaign (C.0→C.9) closed 2026-06-01 — single upload contract, hardened cinematics path. 1.2 adds `ThirdPersonCamera` as a third producer (world-relative `to_render_view`, camera-relative method beside it, same split as `FreeFly`). |
 | **Owner notes** | Product of the Unified Camera campaign. Canonical convention reference: [`docs/current/CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md). Campaign outcome: [`docs/audits/unified_camera_outcome_2026-06.md`](../audits/unified_camera_outcome_2026-06.md). |
 
