@@ -134,6 +134,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -164,6 +165,7 @@ CVitals.hp / poise            ecs.rs apply_hp_delta
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - The greybox sword hit uses `sword_hp` from one `run_aravath_slice` at `Greybox` startup (#275). A later hit does not build another app. Dealt damage is `40 - sword_hp`. The slice test locks the remainder at 15, so the hit deals 25. `cover_intact == false` sets `cover_broken`, and `aravath_runtime` shows `Cover broke` once for 2.5 seconds. Shield, roll, and scar injection still live in `aravath_runtime`.

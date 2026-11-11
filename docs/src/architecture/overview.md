@@ -15,7 +15,7 @@ detail on how the engine actually works, the architecture trace campaign produce
 authoritative references:
 
 * **[Interactive workspace map](https://lazyxeon.github.io/AstraWeave/architecture/)** — Cytoscape.js view of the workspace graph.
-  The member list is the root `Cargo.toml`. On this tree it has 140 unique paths.
+  The member list is the root `Cargo.toml`. On this tree it has 140 unique paths. `cargo metadata` reports 142 members because `astraweave-core` and `astract-macro` join as path dependencies.
 * **[`ARCHITECTURE_MAP.md`](https://github.com/lazyxeon/AstraWeave/blob/main/docs/architecture/ARCHITECTURE_MAP.md)** — consolidated crate notes. Header counts there are a snapshot. The long body still contains older campaign notes. The [engine status](https://github.com/lazyxeon/AstraWeave/blob/main/docs/current/ENGINE_STATUS.md) page says which sentence wins when they disagree.
 * **[Subsystem traces](https://github.com/lazyxeon/AstraWeave/tree/main/docs/architecture)** — the generated table in `CLAUDE.md` lists 31 traces. The older "13 traces" figure is the original campaign.
 

@@ -7,10 +7,10 @@ primary_crate: astraweave-fluids
 domain: physics-world
 lifecycle_status: dormant
 integration_status: example_only
-summary: "Post-W.1: SPH/voxel/simd_ops removed (−58.8K LoC). Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate; only examples consume. Water rendering successor lives in water.md. fluids.md §0.5,§0.6"
+summary: "24,509 lines of Rust under src/ at 604d35d1. FluidSystem and WaterEffectsManager remain; PcisphSystem, UnifiedSolver, and ResearchFluidSystem are gone. examples/fluids_demo and examples/weaving_playground depend on it. Water rendering successor lives in water.md."
 owns: [astraweave-fluids]
-doc_version: "2.8"
-last_verified_commit: 1640f16b
+doc_version: "2.10"
+last_verified_commit: 604d35d1
 ---
 
 # Architecture Trace: Fluids
@@ -20,12 +20,12 @@ last_verified_commit: 1640f16b
 | Field | Value |
 |---|---|
 | **System name** | Fluids (GPU PBD particle simulation + SSFR rendering + W.3+-deferred visual-effects layer + editor) — **post-W.1**: voxel-water sim, research/experimental SPH inventory, and `simd_ops` removed (§0.5) |
-| **Primary crates** | `astraweave-fluids` (19 source files / 7 WGSL shaders / ~24.2K src LoC — down from 34 src / 8 shaders / ~80.7K at F.3.S) |
-| **Document version** | 2.8 |
-| **Last verified against commit** | `1640f16b` (parent of the file-map test-count correction; that parent still says `(7)` on the `gpu_execution_tests.rs` row, and its stamp `e15d7dfa` is not an ancestor after the rebase onto `0213d1cf`). Prior `e15d7dfa` (parent of the rebase restamp; that parent already counts `gpu_execution_tests.rs` at 1,434, and its stamp `8f56554b` is not an ancestor after the rebase onto `07306de0`, and `e06b4f11` is not an ancestor after the rebase onto `99382af7`). Prior `8f56554b` (parent of the `gpu_execution_tests.rs` line-count correction; that parent still says 568). Prior `868ce83d` (parent of the GPU-skip record; that parent still returns from `try_create_test_device` with no `SKIP(gpu)` line). Prior `69422eb1` (parent of the review-gap follow-up; that parent still applies a cyclic neighbor list `particle_count` times, sets `sdf_empty_ready` before the caller submits, and drops `PollError::Timeout` in `run_step`). Prior `3855715e` (parent of the software-adapter GPU-test fix; that parent still rebuilds the empty SDF every step, walks neighbor chains without a cap, and binds accent depth read-only). Prior `4be1ca876` (`fluid_baseline_50k` flat sample; prior inventory anchor remains `7c29b8182`) |
-| **Last verified date** | 2026-10-18 |
-| **Status** | **Post-W.1 KEEP surface only; F.4.2 accent emission half landed.** This trace now scopes ONLY to (a) the deprecated PBD solver remnant + (b) the retained **F.4 GPU-particle accent substrate**. The canonical trace for the water **rendering** successor (Gerstner surface / weave-response deformation / LOD / query facade) is the NEW [`docs/architecture/water.md`](./water.md) — read it for anything about the visible water surface; this doc covers only the fluids-crate particle accent garnish that composites *over* that surface. See §0.6. W.1 (2026-06-20) removed the SPH research/experimental inventory + voxel sim + `simd_ops` (58,796 deletions). The "five parallel solver surfaces" conflict is **resolved**: `FluidSystem` (lib.rs PBD) is now the sole particle solver (`UnifiedSolver` was deleted in F.1, `ResearchFluidSystem` never existed, `PCISPHSystem` removed in W.1). Retained: the **F.4 Option-A GPU-particle accent substrate** (`FluidSystem`+`FluidRenderer`+optimization/sdf/lod/profiling/serialization/emitter; KEEP) and the **W.3+-deferred visual-effects layer + `editor.rs`** (DEFERRED, untouched). Consumers: `examples/fluids_demo` only — no game-loop crate depends on the crate, and `astraweave-water` no longer does (its `voxel` backend was removed in W.1; physics buoys against `AnalyticWater`). See §0.5. |
-| **Owner notes** | **Post-W.1 scale (2026-06-20, firsthand `wc -l`):** 19 src files, 7 WGSL shaders, 2 integration tests (`gpu_execution_tests.rs` 1,434 (the 2026-06-20 `wc -l` was 568; this head is 1,434), `mutation_resistant_comprehensive_tests.rs` 456), 2 benches (`fluids_adversarial` 1,678, `fluid_baselines` 149). Largest file is now `editor.rs` (5,823 LoC, DEFERRED); the former largest `simd_ops.rs` (39,554) was removed in W.1. The pre-W.1 forensic record below is retained as history and is recoverable at the `w0-pre-deprecation` anchor (LOCAL-ONLY since 2026-07-20 — see the §0.5 recovery note; remote tag deleted). _Historical (pre-W.1):_ Scale: 35 Rust source files, 8 WGSL compute shaders (7 in `shaders/` + 1 in `shaders/research/pcisph.wgsl`, 27.8 KB), 1 integration test file (`mutation_resistant_comprehensive_tests.rs`, 785 LoC), 1 benchmark (`fluids_adversarial`, 1,893 LoC). Largest single file is `simd_ops.rs` at 39,554 LoC (largely batch-operation surface for SIMD-friendly SPH primitives). Second largest is `editor.rs` at 5,823 LoC. The README + the audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` (v2.0, Jan 2026) document an explicit "research-grade enhancement" roadmap target of multi-solver SPH (PBD/PCISPH/DFSPH/IISPH). **Verification pass 2026-05-12 (version 1.1):** resolved 9 markers + 2 factual corrections — (a) zero unsafe blocks crate-wide (only 2 bytemuck unsafe-trait impls at `debug_viz.rs:479-480`); (b) `ResearchQualityTier` is 5-variant Low/Medium/High/Ultra/Research at `research.rs:198-213`; (c) `PhysicsConfig` (editor) has 9 fields at `editor.rs:2094-2113`; (d) `tools/aw_editor` does NOT consume `astraweave-fluids` (editor surface is forward-design only); (e) `CameraUniform` is **304 bytes** not 200 (corrected Invariant 6); (f) `FluidSystem.particle_buffers` confirmed 2-entry ping-pong at `lib.rs:414`; (g) `FluidOptimizationController` lives in `lib.rs:1433` NOT `optimization.rs` (corrected §5); (h) 8th WGSL shader discovered: `shaders/research/pcisph.wgsl`; (i) inline `#[test]` counts per file documented (140 in editor.rs, 79 in lib.rs, 78 in optimization.rs, etc., 600+ total inline tests). **Deep investigation pass 2026-05-12 (version 1.2):** closed 2 factual §11 Open Questions — (a) `ssfr_smooth.wgsl` v1 deletion confirmed via `git log --diff-filter=D`: deleted in commit `4af95b47c` "Implement rain splash particle system, shader permutation system, snow footprint stamping, and vegetation interaction system" (resolution moved to §5 file map + new §7 Decision Log entry); (b) Editor surface NOT wired into `tools/aw_editor` (workspace grep + Cargo.toml dep check both zero) — resolution captured in §5 file map editor.rs row. Resolved the new pcisph.wgsl include-path marker: `pcisph_system.rs:549` consumes it. Comprehensive shader-consumption audit confirmed all 8 WGSL shaders are consumed by Rust `include_str!` calls (`anisotropic.rs:80`, `lib.rs:366` for fluid.wgsl, `pcisph_system.rs:549`, `renderer.rs:61/65/69/370-371`, `sdf.rs:53`). Recovered Decision Log entry for SSFR shader refactor (commit `4af95b47c` "shader permutation system"). |
+| **Primary crates** | `astraweave-fluids` (19 source files / 7 WGSL shaders / 24,509 lines under `src/` — down from 34 src / 8 shaders / ~80.7K at F.3.S) |
+| **Document version** | 2.10 |
+| **Last verified against commit** | `604d35d1` (v2.9: src line count and the two example consumers). Prior `1640f16b` (parent of the file-map test-count correction; that parent still says `(7)` on the `gpu_execution_tests.rs` row, and its stamp `e15d7dfa` is not an ancestor after the rebase onto `0213d1cf`). Prior `e15d7dfa` (parent of the rebase restamp; that parent already counts `gpu_execution_tests.rs` at 1,434, and its stamp `8f56554b` is not an ancestor after the rebase onto `07306de0`, and `e06b4f11` is not an ancestor after the rebase onto `99382af7`). Prior `8f56554b` (parent of the `gpu_execution_tests.rs` line-count correction; that parent still says 568). Prior `868ce83d` (parent of the GPU-skip record; that parent still returns from `try_create_test_device` with no `SKIP(gpu)` line). Prior `69422eb1` (parent of the review-gap follow-up; that parent still applies a cyclic neighbor list `particle_count` times, sets `sdf_empty_ready` before the caller submits, and drops `PollError::Timeout` in `run_step`). Prior `3855715e` (parent of the software-adapter GPU-test fix; that parent still rebuilds the empty SDF every step, walks neighbor chains without a cap, and binds accent depth read-only). Prior `4be1ca876` (`fluid_baseline_50k` flat sample; prior inventory anchor remains `7c29b8182`) |
+| **Last verified date** | 2026-11-11 (v2.10: pre-W.1 rows outside §1 marked superseded at `604d35d1`). Prior 2026-11-09 (v2.9). |
+| **Status** | **Post-W.1 KEEP surface only; F.4.2 accent emission half landed.** This trace now scopes ONLY to (a) the deprecated PBD solver remnant + (b) the retained **F.4 GPU-particle accent substrate**. The canonical trace for the water **rendering** successor (Gerstner surface / weave-response deformation / LOD / query facade) is the NEW [`docs/architecture/water.md`](./water.md) — read it for anything about the visible water surface; this doc covers only the fluids-crate particle accent garnish that composites *over* that surface. See §0.6. W.1 (2026-06-20) removed the SPH research/experimental inventory + voxel sim + `simd_ops` (58,796 deletions). The "five parallel solver surfaces" conflict is **resolved**: `FluidSystem` (lib.rs PBD) is now the sole particle solver (`UnifiedSolver` was deleted in F.1, `ResearchFluidSystem` never existed, `PCISPHSystem` removed in W.1). Retained: the **F.4 Option-A GPU-particle accent substrate** (`FluidSystem`+`FluidRenderer`+optimization/sdf/lod/profiling/serialization/emitter; KEEP) and the **W.3+-deferred visual-effects layer + `editor.rs`** (DEFERRED, untouched). Consumers: `examples/fluids_demo` and `examples/weaving_playground` — no game-loop crate depends on the crate, and `astraweave-water` no longer does (its `voxel` backend was removed in W.1; physics buoys against `AnalyticWater`). See §0.5. |
+| **Owner notes** | **Post-W.1 scale (2026-06-20, firsthand `wc -l`):** 19 src files, 7 WGSL shaders, 2 integration tests (`gpu_execution_tests.rs` 1,434 (the 2026-06-20 `wc -l` was 568; this head is 1,434), `mutation_resistant_comprehensive_tests.rs` 456), 2 benches (`fluids_adversarial` 1,676, `fluid_baselines` 175). Largest file is now `editor.rs` (5,823 LoC, DEFERRED); the former largest `simd_ops.rs` (39,554) was removed in W.1. The pre-W.1 forensic record below is retained as history and is recoverable at the `w0-pre-deprecation` anchor (LOCAL-ONLY since 2026-07-20 — see the §0.5 recovery note; remote tag deleted). _Historical (pre-W.1):_ Scale: 35 Rust source files, 8 WGSL compute shaders (7 in `shaders/` + 1 in `shaders/research/pcisph.wgsl`, 27.8 KB), 1 integration test file (`mutation_resistant_comprehensive_tests.rs`, 785 LoC), 1 benchmark (`fluids_adversarial`, 1,893 LoC). Largest single file is `simd_ops.rs` at 39,554 LoC (largely batch-operation surface for SIMD-friendly SPH primitives). Second largest is `editor.rs` at 5,823 LoC. The README + the audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` (v2.0, Jan 2026) document an explicit "research-grade enhancement" roadmap target of multi-solver SPH (PBD/PCISPH/DFSPH/IISPH). **Verification pass 2026-05-12 (version 1.1):** resolved 9 markers + 2 factual corrections — (a) zero unsafe blocks crate-wide (only 2 bytemuck unsafe-trait impls at `debug_viz.rs:479-480`); (b) `ResearchQualityTier` is 5-variant Low/Medium/High/Ultra/Research at `research.rs:198-213`; (c) `PhysicsConfig` (editor) has 9 fields at `editor.rs:2094-2113`; (d) `tools/aw_editor` does NOT consume `astraweave-fluids` (editor surface is forward-design only); (e) `CameraUniform` is **304 bytes** not 200 (corrected Invariant 6); (f) `FluidSystem.particle_buffers` confirmed 2-entry ping-pong at `lib.rs:414`; (g) `FluidOptimizationController` lives in `lib.rs:1433` NOT `optimization.rs` (corrected §5); (h) 8th WGSL shader discovered: `shaders/research/pcisph.wgsl`; (i) inline `#[test]` counts per file documented (140 in editor.rs, 79 in lib.rs, 78 in optimization.rs, etc., 600+ total inline tests). **Deep investigation pass 2026-05-12 (version 1.2):** closed 2 factual §11 Open Questions — (a) `ssfr_smooth.wgsl` v1 deletion confirmed via `git log --diff-filter=D`: deleted in commit `4af95b47c` "Implement rain splash particle system, shader permutation system, snow footprint stamping, and vegetation interaction system" (resolution moved to §5 file map + new §7 Decision Log entry); (b) Editor surface NOT wired into `tools/aw_editor` (workspace grep + Cargo.toml dep check both zero) — resolution captured in §5 file map editor.rs row. Resolved the new pcisph.wgsl include-path marker: `pcisph_system.rs:549` consumes it. Comprehensive shader-consumption audit confirmed all 8 WGSL shaders are consumed by Rust `include_str!` calls (`anisotropic.rs:80`, `lib.rs:366` for fluid.wgsl, `pcisph_system.rs:549`, `renderer.rs:61/65/69/370-371`, `sdf.rs:53`). Recovered Decision Log entry for SSFR shader refactor (commit `4af95b47c` "shader permutation system"). |
 
 ---
 
@@ -192,28 +192,28 @@ shape as the rest of the fluids crate (still no `astraweave-*` game-loop crate d
 Provides GPU-accelerated fluid simulation through multiple coexisting solvers (PBD, PCISPH, DFSPH, IISPH per `research.rs:42-68`), plus a voxel-based volumetric water grid for terrain/building interaction (`volume_grid.rs`), plus visual effects (caustics, god rays, foam, reflections, underwater fog, waterfall, anisotropic surface — all coordinated by `WaterEffectsManager` at `water_effects.rs:1-100`), plus terrain integration (river/lake/waterfall detection from heightmaps in `terrain_integration.rs`), plus building integration (water dispensers/drains/gates/wheels in `building.rs`), plus a comprehensive editor integration layer (`editor.rs`, 5,823 LoC).
 
 **Why it exists:**
-Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo; no production game-loop crate depends on it yet." Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (Jan 2026): the system is the engine's intended path to "research-grade fluid simulation" — multi-fluid types (water/oil/honey), multi-phase interactions, non-Newtonian flows, turbulent simulations.
+Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo and examples/weaving_playground; no production game-loop crate depends on it yet." Per `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (Jan 2026): the system is the engine's intended path to "research-grade fluid simulation" — multi-fluid types (water/oil/honey), multi-phase interactions, non-Newtonian flows, turbulent simulations.
 
 **Where it primarily lives:**
-- **Core SPH/PBD simulator:** `astraweave-fluids/src/lib.rs` (3,810 LoC) — `FluidSystem` GPU pipeline with PBD compute pass (clear_grid / build_grid / predict / lambda / delta_pos / integrate / mix_dye), `Particle`/`SimParams`/`SecondaryParticle` GPU types
-- **Research solvers:** `astraweave-fluids/src/{research,pcisph_system,unified_solver}.rs` — `ResearchFluidSystem`, `PCISPHSystem`, `UnifiedSolver` parallel implementations
-- **Volumetric water grid:** `astraweave-fluids/src/{volume_grid,gpu_volume,building}.rs` — voxel-based water for terrain/building interaction (`WaterVolumeGrid`, `WaterCell`, `MaterialType`, `WaterBuildingManager`)
+- **Core SPH/PBD simulator:** **Superseded by W.1 (verified at `604d35d1`).** `lib.rs` is 4,198 lines. The PBD entry points are `compute_lambda` (`fluid.wgsl:220`) and `compute_delta_pos` (`fluid.wgsl:308`). The 2026-05-12 text that follows is historical. `astraweave-fluids/src/lib.rs` (3,810 LoC) — `FluidSystem` GPU pipeline with PBD compute pass (clear_grid / build_grid / predict / lambda / delta_pos / integrate / mix_dye), `Particle`/`SimParams`/`SecondaryParticle` GPU types
+- **Research solvers:** **Superseded by W.1 (verified at `604d35d1`).** `research.rs`, `pcisph_system.rs`, and `unified_solver.rs` are not in `src/`. The 2026-05-12 text that follows is historical. `astraweave-fluids/src/{research,pcisph_system,unified_solver}.rs` — `ResearchFluidSystem`, `PCISPHSystem`, `UnifiedSolver` parallel implementations
+- **Volumetric water grid:** **Superseded by W.1 (verified at `604d35d1`).** `volume_grid.rs`, `gpu_volume.rs`, and `building.rs` are not in `src/`. The 2026-05-12 text that follows is historical. `astraweave-fluids/src/{volume_grid,gpu_volume,building}.rs` — voxel-based water for terrain/building interaction (`WaterVolumeGrid`, `WaterCell`, `MaterialType`, `WaterBuildingManager`)
 - **Visual effects:** `astraweave-fluids/src/{caustics,foam,god_rays,water_reflections,underwater,underwater_particles,waterfall,anisotropic}.rs` plus WGSL shaders in `shaders/`
 - **Coordinator:** `astraweave-fluids/src/water_effects.rs` — `WaterEffectsManager` composes all effect systems behind `WaterQualityPreset` (Low/Medium/High/Ultra/Custom)
-- **Optimization:** `astraweave-fluids/src/{optimization,lod,profiling,simd_ops}.rs` — workgroup tuning, LOD, profiling, batch SIMD primitives
-- **Terrain hookup:** `astraweave-fluids/src/terrain_integration.rs` — `WaterBodyType` (River/Stream/Lake/Pond/Ocean/Waterfall/Aquifer), `analyze_terrain_for_water`, `DetectedWaterBody`
+- **Optimization:** **Superseded by W.1 (verified at `604d35d1`).** `optimization.rs`, `lod.rs`, and `profiling.rs` remain. `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. `astraweave-fluids/src/{optimization,lod,profiling,simd_ops}.rs` — workgroup tuning, LOD, profiling, batch SIMD primitives
+- **Terrain hookup:** **Superseded by W.1 (verified at `604d35d1`).** `terrain_integration.rs` is not in `src/`. The 2026-05-12 text that follows is historical. `astraweave-fluids/src/terrain_integration.rs` — `WaterBodyType` (River/Stream/Lake/Pond/Ocean/Waterfall/Aquifer), `analyze_terrain_for_water`, `DetectedWaterBody`
 - **Editor support:** `astraweave-fluids/src/editor.rs` (5,823 LoC) — `FluidEditorConfig`, presets, undo/redo, validation, batch operations, clipboard, animation easing, color-blind palettes
-- **SIMD primitives:** `astraweave-fluids/src/simd_ops.rs` (39,554 LoC) — Wendland C2/C4 + Cubic Spline SPH kernels, batch position/velocity/density operations, Morton-code spatial hashing
+- **SIMD primitives:** **Superseded by W.1 (verified at `604d35d1`).** `astraweave-fluids/src/simd_ops.rs` is gone. Before that deletion it was 39,554 lines of Wendland C2/C4 and Cubic Spline SPH kernels, batch position/velocity/density operations, and Morton-code spatial hashing.
 - **Renderer:** `astraweave-fluids/src/renderer.rs` — `FluidRenderer` with SSFR depth + smooth + shade + secondary-particle render pipelines
-- **WGSL shaders:** `astraweave-fluids/shaders/{anisotropic,fluid,sdf_gen,secondary,ssfr_depth,ssfr_shade,ssfr_smooth_v2}.wgsl` (7 files, 1,132 LoC total) + `astraweave-fluids/shaders/research/pcisph.wgsl` (~27.8 KB) — 8 shader files total
+- **WGSL shaders:** **Superseded by W.1 (verified at `604d35d1`).** 7 WGSL files, 1,375 lines. `shaders/research/` is not in the tree. The 2026-05-12 text that follows is historical. `astraweave-fluids/shaders/{anisotropic,fluid,sdf_gen,secondary,ssfr_depth,ssfr_shade,ssfr_smooth_v2}.wgsl` (7 files, 1,132 LoC total) + `astraweave-fluids/shaders/research/pcisph.wgsl` (~27.8 KB) — 8 shader files total
 
 **Status note (read first):**
-1. **The crate is dormant in production game-loop integration.** Workspace grep verified 2026-05-12: `examples/fluids_demo` is the ONLY consumer outside the crate itself. No production game-loop crate depends on `astraweave-fluids`.
-2. **Five parallel solver/manager surfaces coexist** with overlapping responsibilities — see §6 Conflict Map. The original `FluidSystem` (lib.rs PBD pipeline) predates the `ResearchFluidSystem` + `PCISPHSystem` + `UnifiedSolver` triad, which were added per the `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` roadmap.
-3. **`#![forbid(unsafe_code)]` is NOT declared.** The crate does not enforce no-unsafe at the lib.rs level. Verified 2026-05-12: workspace grep for the keyword `unsafe` across `astraweave-fluids/src/*.rs` returned exactly 2 matches — both at `debug_viz.rs:479-480` (`unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}`). These are standard bytemuck unsafe-trait impls (no unsafe blocks). The crate contains zero `unsafe { ... }` blocks in the surveyed 84.5K LoC.
-4. **GPU-first design.** The core `FluidSystem` constructor (`lib.rs:362`) takes `&wgpu::Device` and creates compute pipelines from `shaders/fluid.wgsl`. Most subsystems hold `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup` resources directly.
-5. **Two Cargo features:** `default = ["serde"]` (Cargo.toml:7-8) enables Serde derives on config types; `parallel = ["dep:rayon"]` (`:9`) enables Rayon-parallel CPU helpers. **Neither is feature-gated extensively in the source** — verified `parallel` mainly gates `simd_ops::parallel` namespace per bench imports at `benches/fluids_adversarial.rs:1749, :1785`.
-6. **Single integration test file: `tests/mutation_resistant_comprehensive_tests.rs` (785 LoC).** Per CLAUDE.md mutation-testing campaign convention, this is the dedicated mutation-resistance test file. There are no other integration tests in `tests/`. Inline unit tests exist in source files.
+1. **The crate is dormant in production game-loop integration.** The manifests that depend on `astraweave-fluids` are `examples/fluids_demo` and `examples/weaving_playground`. No production game-loop crate depends on `astraweave-fluids`.
+2. **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` is the particle solver that remains. The 2026-05-12 text that follows is historical. **Five parallel solver/manager surfaces coexist** with overlapping responsibilities — see §6 Conflict Map. The original `FluidSystem` (lib.rs PBD pipeline) predates the `ResearchFluidSystem` + `PCISPHSystem` + `UnifiedSolver` triad, which were added per the `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` roadmap.
+3. **Superseded by W.1 (verified at `604d35d1`).** `src/` is 24,509 lines in 19 files. The two `unsafe impl` lines at `debug_viz.rs:479-480` are still the only `unsafe` matches. The 2026-05-12 text that follows is historical. **`#![forbid(unsafe_code)]` is NOT declared.** The crate does not enforce no-unsafe at the lib.rs level. Verified 2026-05-12: workspace grep for the keyword `unsafe` across `astraweave-fluids/src/*.rs` returned exactly 2 matches — both at `debug_viz.rs:479-480` (`unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}`). These are standard bytemuck unsafe-trait impls (no unsafe blocks). The crate contains zero `unsafe { ... }` blocks in the surveyed 84.5K LoC.
+4. **GPU-first design.** The core `FluidSystem` constructor (`lib.rs:412`) takes `&wgpu::Device` and creates compute pipelines from `shaders/fluid.wgsl`. Most subsystems hold `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup` resources directly.
+5. **Superseded by W.1 (verified at `604d35d1`).** `default = []`. `serde` is an unconditional dependency. `parallel = ["dep:rayon"]` is still declared and gates nothing after `simd_ops.rs` was removed. The 2026-05-12 text that follows is historical. **Two Cargo features:** `default = ["serde"]` (Cargo.toml:7-8) enables Serde derives on config types; `parallel = ["dep:rayon"]` (`:9`) enables Rayon-parallel CPU helpers. **Neither is feature-gated extensively in the source** — verified `parallel` mainly gates `simd_ops::parallel` namespace per bench imports at `benches/fluids_adversarial.rs:1749, :1785`.
+6. **Superseded by W.1 (verified at `604d35d1`).** Integration tests are `tests/gpu_execution_tests.rs` (1,434 lines) and `tests/mutation_resistant_comprehensive_tests.rs` (456 lines). `benches/fluids_adversarial.rs` is 1,676 lines. The 2026-05-12 text that follows is historical. **Single integration test file: `tests/mutation_resistant_comprehensive_tests.rs` (785 LoC).** Per CLAUDE.md mutation-testing campaign convention, this is the dedicated mutation-resistance test file. There are no other integration tests in `tests/`. Inline unit tests exist in source files.
 7. **The audit + roadmap doc (`docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md`)** rates the current state at "Overall Current Grade: B (Good for games, insufficient for research)" and documents the gap-to-target for each subsystem.
 
 ---
@@ -226,43 +226,44 @@ Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid si
 [Host code: caller creates FluidSystem::new(&device, particle_count)]
     │
     │ FluidSystem::new
-    │ file: astraweave-fluids/src/lib.rs:362-…
+    │ file: astraweave-fluids/src/lib.rs:412
     ▼
 [FS1: Build initial particle grid]
     role: Generate `particle_count` particles in a cubic grid layout (spacing 0.5, size = cbrt(count)).
           Default `Particle { position: [x,y,z,1], velocity: [0;4], predicted_position, lambda: 0,
           density: 0, phase: 0=water, temperature: 293K, color: [0.2,0.5,0.8,1] }`.
-    file: lib.rs:370-391
+    file: lib.rs:419-440
     │
     ▼
-[FS2: Create ping-pong storage buffers + 8-stage compute pipeline]
-    role: 2× Vec<wgpu::Buffer> particle_buffers (ping-pong), secondary_particle_buffer,
+[FS2: Create the particle buffer + 7 compute pipelines]
+    role: One particle storage buffer (the vestigial ping-pong buffer was removed in F.1),
+          secondary_particle_buffer (CPU accent upload; there is no spawn pipeline),
           density_error_buffer (+ 2× staging buffers), head_pointers + next_pointers grid
           linked-list buffers, particle_flags (active/inactive), params_buffer (SimParams).
-          Eight compute pipelines: clear_grid, build_grid, predict, lambda, delta_pos,
-          integrate, mix_dye + secondary spawn (per `pub fn new` continuation lines).
-    files: lib.rs:393-…, shaders/fluid.wgsl (481 LoC, 8 compute kernels)
+          Seven compute pipelines: clear_grid, build_grid, predict, lambda, delta_pos,
+          integrate, mix_dye.
+    files: lib.rs:770-797, shaders/fluid.wgsl (649 LoC, 7 @compute entry points)
     │
     ▼
-[Game tick — caller invokes per-frame update]
+[Game tick — caller invokes per-frame update (`FluidSystem::step`, lib.rs:1252)]
     │
-    │ Per-frame caller: encode compute pass → dispatch all 8 pipelines in order
-    │ (clear_grid → build_grid → predict → iterate(lambda → delta_pos) for N iterations →
-    │ integrate → mix_dye → secondary-particle spawn check)
+    │ Per-frame caller: encode compute pass → dispatch all 7 pipelines
+    │ (predict → clear_grid → build_grid → iterate(lambda → delta_pos) for N iterations →
+    │ integrate → mix_dye)
     ▼
-[FS3a: Clear grid]
+[FS3a: Predict positions]
+    shader: shaders/fluid.wgsl (predict kernel)
+    role: predicted_position = position + velocity * dt + gravity contribution
+    │
+    ▼
+[FS3b: Clear grid]
     shader: shaders/fluid.wgsl (clear_grid kernel)
     role: Reset head_pointers grid to -1 (no particles in cells)
     │
     ▼
-[FS3b: Build grid (spatial hash)]
+[FS3c: Build grid (spatial hash)]
     shader: shaders/fluid.wgsl (build_grid kernel)
     role: Atomic-insert each particle into its grid cell linked-list via head_pointers + next_pointers
-    │
-    ▼
-[FS3c: Predict positions]
-    shader: shaders/fluid.wgsl (predict kernel)
-    role: predicted_position = position + velocity * dt + gravity contribution
     │
     ▼
 [FS3d: Iterative density correction (N iterations)]
@@ -278,10 +279,10 @@ Per `astraweave-fluids/README.md:3`: "A GPU-accelerated, research-stage fluid si
           apply XSPH viscosity smoothing; update density buffer
     │
     ▼
-[FS3f: Mix dye + Secondary particle spawn]
-    shaders: fluid.wgsl (mix_dye + secondary kernels), shaders/secondary.wgsl
-    role: Color-mixing for multi-phase visualization. Secondary spawn checks velocity/curvature
-          criteria and writes to secondary_particle_buffer + secondary_counter (foam/spray/bubble)
+[FS3f: Mix dye]
+    shader: shaders/fluid.wgsl (mix_dye kernel)
+    role: Color-mixing for multi-phase visualization. Accent particles are uploaded from
+          the CPU (`set_secondary_particles`); this pass does not spawn them.
     │
     ▼
 [FS4: Frame copy density_error to staging for async readback]
@@ -476,10 +477,10 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 | Term | Definition | Used in |
 |---|---|---|
-| **`FluidSystem`** | The original PBD-based GPU fluid simulator. Holds 8 compute pipelines + ping-pong buffers + grid-linked-list. Constructor takes `&wgpu::Device, particle_count: u32`. | `lib.rs:250-415` |
-| **`Particle`** | GPU particle: `position: [f32; 4]`, `velocity: [f32; 4]`, `predicted_position: [f32; 4]`, `lambda: f32`, `density: f32`, `phase: u32` (0=water, 1=oil, 2=custom), `temperature: f32` (Kelvin), `color: [f32; 4]`. Total 80 bytes, `bytemuck::Pod + Zeroable`. | `lib.rs:208-219` |
-| **`SimParams`** | GPU uniform: `smoothing_radius`, `target_density`, `pressure_multiplier`, `viscosity`, `surface_tension`, `gravity`, `dt`, `particle_count: u32`, grid dimensions + cell_size, `object_count: u32` + 3 f32 pad fields. Total 64 bytes. | `lib.rs:221-248` |
-| **`SecondaryParticle`** | Accent (foam/spray/splash) billboard particle: `position: vec4`, `velocity: vec4`, `info: vec4`. Total 48 bytes. **F.4.2 re-purposed `info`**: `x` = lifetime/age-alpha, **`y` = weave kind (0=Part, 1=Raise, 2=Freeze)** (was `type` 0=Foam/1=Bubble), `z` = alpha, `w` = scale. The CPU producer fills these; `secondary.wgsl` reads `info.y` for tint+shape. | `lib.rs:391`, `shaders/secondary.wgsl:32-35` |
+| **`FluidSystem`** | The original PBD-based GPU fluid simulator. Holds 7 compute pipelines + one particle buffer + grid-linked-list. Constructor takes `&wgpu::Device, particle_count: u32`. | `lib.rs:215-326`, `:412` |
+| **`Particle`** | **Superseded by W.1 (verified at `604d35d1`).** `Particle` is `lib.rs:170`. The 2026-05-12 text that follows is historical. GPU particle: `position: [f32; 4]`, `velocity: [f32; 4]`, `predicted_position: [f32; 4]`, `lambda: f32`, `density: f32`, `phase: u32` (0=water, 1=oil, 2=custom), `temperature: f32` (Kelvin), `color: [f32; 4]`. Total 80 bytes, `bytemuck::Pod + Zeroable`. | `lib.rs:208-219` |
+| **`SimParams`** | **Superseded by W.1 (verified at `604d35d1`).** `SimParams` is `lib.rs:191`. The 2026-05-12 text that follows is historical. GPU uniform: `smoothing_radius`, `target_density`, `pressure_multiplier`, `viscosity`, `surface_tension`, `gravity`, `dt`, `particle_count: u32`, grid dimensions + cell_size, `object_count: u32` + 3 f32 pad fields. Total 64 bytes. | `lib.rs:221-248` |
+| **`SecondaryParticle`** | **Superseded by W.1 (verified at `604d35d1`).** `SecondaryParticle` is `lib.rs:398`. The 2026-05-12 text that follows is historical. Accent (foam/spray/splash) billboard particle: `position: vec4`, `velocity: vec4`, `info: vec4`. Total 48 bytes. **F.4.2 re-purposed `info`**: `x` = lifetime/age-alpha, **`y` = weave kind (0=Part, 1=Raise, 2=Freeze)** (was `type` 0=Foam/1=Bubble), `z` = alpha, `w` = scale. The CPU producer fills these; `secondary.wgsl` reads `info.y` for tint+shape. | `lib.rs:391`, `shaders/secondary.wgsl:32-35` |
 | **`FluidSystem::set_secondary_particles`** (F.4.2) | `&mut self, &wgpu::Queue, &[SecondaryParticle]` — CPU accent producer uploads a live set via `write_buffer`, caps at `secondary_capacity`, records `live_secondary_count`. The accent emission path (CPU-side; no GPU emission kernel). | `lib.rs:1478-1497` |
 | **`live_secondary_count` / `secondary_capacity`** (F.4.2) | Private `FluidSystem` fields. `secondary_capacity` = slot cap of `secondary_particle_buffer` (65536); `live_secondary_count` = count actually uploaded this frame (default 0). `secondary_particle_count()` returns the live count, NOT the capacity (the F.4.0 bug). | `lib.rs:277-283`, `:1463` |
 | **`FluidRenderer::render_accents`** (F.4.2) | Standalone additive-billboard accent pass (the SSFR-chain split). Draws ONLY accents over an external HDR target + scene depth; SSFR surface passes NOT invoked. Early-returns at count 0 (zero-accent identity). | `renderer.rs:756-795` |
@@ -514,8 +515,8 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 | **`FluidLodManager` + `OptimizedLodManager`** | Distance-based LOD systems. `FluidLodConfig`, `LodLevel`, `LodUpdateResult`, `OptimizedLodConfig` companion types. `ParticleStreamingManager` + `StreamingOp` for streaming. | `lod.rs` |
 | **`FluidOptimizationController`** | Production auto-tuning controller. Composed of `WorkgroupConfig` (GPU-vendor-aware), `AdaptiveIterations`, `SimulationBudget` (frame-time budget), `TemporalCoherence` (skip resting particles), `BatchSpawner`, `OptimizationProfiler`. **Verified 2026-05-12: defined in `lib.rs:1433`**, NOT in `optimization.rs` (the previous trace location was wrong). The constituent types are in `optimization.rs`. | `lib.rs:1418-1483, :2062` |
 | **`GpuVendor`** | `#[non_exhaustive]` 5-variant: `Nvidia`, `Amd`, `Intel`, `Apple`, `Unknown` (default). Drives workgroup sizing. | `optimization.rs:53-67` |
-| **`WorkgroupConfig`** | `particle_workgroup`, `grid_workgroup`, `secondary_workgroup`. Defaults to `universal()` (64 threads). Constructors: `universal`, `nvidia`, `amd`, `apple`, `auto_detect`. | `optimization.rs:80-100+` |
-| **`MortonCode`** | Z-order curve encoding for spatial coherence sorting. | `optimization.rs:…` |
+| **`WorkgroupConfig`** | `particle_workgroup`, `grid_workgroup`, `secondary_workgroup`. Defaults to `universal()` (64 threads). Constructors: `universal` (`optimization.rs:99`), `nvidia` (`optimization.rs:108`), `amd` (`optimization.rs:117`), `intel` (`optimization.rs:126`), `apple` (`optimization.rs:135`), `for_gpu` (`optimization.rs:144`), `from_adapter_info` (`optimization.rs:156`). There is no `auto_detect`. | `optimization.rs:82-156` |
+| **`MortonCode`** | Z-order curve encoding for spatial coherence sorting. | `optimization.rs:532` |
 | **`OptimizationPreset` / `QualityTier`** | Editor-friendly optimization presets. | `optimization.rs:…` |
 | **`OptimizationStats`** | Runtime telemetry: `quality_level: f32 (0.0-1.0)`, `iterations: u32`, `resting_particles: u32`, `recommended_iterations: u32`, `under_budget: bool`. | `lib.rs:340-352` |
 | **`FluidProfiler` + `FluidTimingStats`** | Per-frame profiling capture. | `profiling.rs:1-…` |
@@ -538,21 +539,21 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 | **`PreviewHint`** | Real-time preview hint enum. | `editor.rs` |
 | **`WidgetType`** | Editor UI widget metadata for inspector generation. | `editor.rs` |
 | **`FluidAABB` + `FluidScenePlacement`** | Scene-integration types for placing fluids in 3D space. | `editor.rs` |
-| **`SIMD_BATCH_SIZE`** | Constant = 8. Drives batch sizing for SIMD-friendly SPH primitives. | `simd_ops.rs:34` |
-| **`batch_distances` / `batch_kernel_cubic` / `batch_kernel_gradient_cubic`** | Vectorized SPH primitives using glam auto-vectorization. Wendland C2/C4 + Cubic Spline kernels available. | `simd_ops.rs:42-…` |
-| **`accumulate_density_simple` / `accumulate_pressure_force` / `accumulate_viscosity_force`** | Per-particle accumulator helpers. | `simd_ops.rs` |
-| **`NEIGHBOR_OFFSETS`** | 27-element array of `[i32; 3]` 3D-neighbor offsets for grid iteration. | `simd_ops.rs` |
-| **`position_to_cell` / `cell_hash` / `position_to_morton`** | Spatial indexing helpers. | `simd_ops.rs` |
-| **`par_*` family (parallel feature)** | Rayon-parallel variants: `par_batch_kernel_cubic`, `par_compute_morton_codes`, etc. Gated on `parallel` feature flag (Cargo.toml:9). | `simd_ops::parallel` namespace |
+| **`SIMD_BATCH_SIZE`** | **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Constant = 8. Drives batch sizing for SIMD-friendly SPH primitives. | `simd_ops.rs:34` |
+| **`batch_distances` / `batch_kernel_cubic` / `batch_kernel_gradient_cubic`** | **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Vectorized SPH primitives using glam auto-vectorization. Wendland C2/C4 + Cubic Spline kernels available. | `simd_ops.rs:42-…` |
+| **`accumulate_density_simple` / `accumulate_pressure_force` / `accumulate_viscosity_force`** | **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Per-particle accumulator helpers. | `simd_ops.rs` |
+| **`NEIGHBOR_OFFSETS`** | **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. 27-element array of `[i32; 3]` 3D-neighbor offsets for grid iteration. | `simd_ops.rs` |
+| **`position_to_cell` / `cell_hash` / `position_to_morton`** | **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Spatial indexing helpers. | `simd_ops.rs` |
+| **`par_*` family (parallel feature)** | **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Rayon-parallel variants: `par_batch_kernel_cubic`, `par_compute_morton_codes`, etc. Gated on `parallel` feature flag (Cargo.toml:9). | `simd_ops::parallel` namespace |
 
 ### Terms to NOT confuse
 
 - **`SolverType` in `unified_solver.rs` vs `SolverType` in `research.rs`**: Two enums with the same name in different modules. `unified_solver::SolverType` has `Pbd / Pcisph / Dfsph / Iisph` (lowercase). `research::SolverType` has `PBD / PCISPH / DFSPH / IISPH` (UPPERCASE acronyms). The crate root re-exports `unified_solver::SolverType` via `pub use unified_solver::{... SolverType ...}` at `lib.rs:187`. Code paths using `research.rs` types must namespace explicitly.
 - **`ViscositySolverType` (`unified_solver.rs:65-73`) vs `ViscositySolver` (`research.rs:81-89`)**: Different type names. Same conceptual purpose. UPPERCASE acronyms in research path.
 - **`QualityPreset` (`unified_solver.rs:28-44`) vs `WaterQualityPreset` (`water_effects.rs:72-97`) vs `QualityTier` (`optimization.rs`) vs `ResearchQualityTier` (`research.rs`)**: Four parallel quality enums for different subsystems. They are NOT unified or aliased.
-- **`FluidSystem` (`lib.rs:250-415+`) vs `UnifiedSolver` (`unified_solver.rs`) vs `ResearchFluidSystem` (`research.rs`) vs `PCISPHSystem` (`pcisph_system.rs`)**: Four solver/manager surfaces. `FluidSystem` is the original PBD GPU pipeline. The other three are research-grade additions with overlapping responsibilities. The example consumer (`examples/fluids_demo/src/main.rs:20`) uses `FluidSystem`, NOT the unified or research variants.
-- **`Particle` (`lib.rs:208-219`, 80 bytes) vs `ResearchParticle` (`research.rs`)**: Two GPU particle layouts. Cannot be mixed.
-- **`SimParams` (`lib.rs:221-248`, 64 bytes) vs `ResearchSimParams` (`research.rs`)**: Two GPU uniform layouts. Cannot be mixed.
+- **`FluidSystem` (`lib.rs:215-326`) vs `UnifiedSolver` (`unified_solver.rs`) vs `ResearchFluidSystem` (`research.rs`) vs `PCISPHSystem` (`pcisph_system.rs`)**: Four solver/manager surfaces. `FluidSystem` is the original PBD GPU pipeline. The other three are research-grade additions with overlapping responsibilities. The example consumer (`examples/fluids_demo/src/main.rs:20`) uses `FluidSystem`, NOT the unified or research variants.
+- **`Particle` (`lib.rs:208-219`, 80 bytes) vs `ResearchParticle` (`research.rs`)**: **Superseded by W.1 (verified at `604d35d1`).** `Particle` is `lib.rs:170`. `research.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Two GPU particle layouts. Cannot be mixed.
+- **`SimParams` (`lib.rs:221-248`, 64 bytes) vs `ResearchSimParams` (`research.rs`)**: **Superseded by W.1 (verified at `604d35d1`).** `SimParams` is `lib.rs:191`. `research.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Two GPU uniform layouts. Cannot be mixed.
 - **`WaterDrain` (`building.rs`, voxel-side) renamed to `VolumetricDrain` at crate re-export (`lib.rs:90`) vs `FluidDrain` (`emitter.rs`, particle-side)**: Two distinct drain types. The lib.rs explicitly renames to disambiguate. `WaterDrain` here aliases to `VolumetricDrain` for the voxel grid; `FluidDrain` is from `emitter.rs` for particles.
 - **`WaterfallConfig` (`waterfall.rs`, particle-side) vs `TerrainWaterfallConfig` (`terrain_integration.rs::WaterfallConfig`, terrain-side)**: Two waterfall configs. The lib.rs re-exports the terrain one as `TerrainWaterfallConfig` at `:179` to disambiguate.
 - **`PhysicsConfig` (in `editor.rs`)**: NOT the physics-side `astraweave_physics::PhysicsConfig`. This is the editor-side fluid physics config defined at `editor.rs:2094-2113` with 9 fields: `smoothing_radius: f32` (0.5-5.0), `target_density: f32` (1.0-50.0), `pressure_multiplier: f32` (10.0-1000.0), `viscosity: f32` (0.0-100.0), `surface_tension: f32` (0.0-1.0), `gravity: [f32; 3]`, `iterations: u32` (1-20), `enable_vorticity: bool`, `vorticity_strength: f32` (0.0-1.0). Derives `Clone, Debug, Serialize, Deserialize`.
@@ -569,7 +570,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
-| `wgpu::Device` (host) | `FluidSystem::new(&device, particle_count)` at `lib.rs:362` | Device handle | The crate is GPU-first; every solver/renderer takes `&wgpu::Device` |
+| `wgpu::Device` (host) | `FluidSystem::new(&device, particle_count)` at `lib.rs:412` | Device handle | The crate is GPU-first; every solver/renderer takes `&wgpu::Device` |
 | `wgpu::Queue` (host) | Buffer writes (`queue.write_buffer(params_buffer, ...)`) | `SimParams` updates | Caller-driven per-frame parameter updates |
 | Terrain heightmap | `analyze_terrain_for_water(heightmap, TerrainFluidConfig)` at `terrain_integration.rs` | Heightmap data + flow detection config | Caller provides heightmap; output is `Vec<DetectedWaterBody>` |
 | Camera state | `CameraUniform { view_proj, inv_view_proj, view_inv, cam_pos, light_dir, time }` at `renderer.rs:7-16` | Camera matrices + time | 304-byte uniform (Invariant 6) consumed by all SSFR passes + `render_accents` |
@@ -586,11 +587,11 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ### Bidirectional / Coupled
 
-- **`FluidSystem` ↔ `wgpu::Device` resources**: Owns 30+ `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup`/`wgpu::BindGroupLayout` resources (`lib.rs:250-340`). The device is shared but the buffers are exclusively owned.
-- **`FluidSystem` ↔ `SdfSystem` (`lib.rs:301`)**: `FluidSystem` holds `pub sdf_system: crate::sdf::SdfSystem`. The SDF is used as boundary representation for compute pass — particles read SDF distance + normal during collision response.
+- **`FluidSystem` ↔ `wgpu::Device` resources**: **Superseded by W.1 (verified at `604d35d1`).** `Particle` is `lib.rs:170`, `SimParams` is `lib.rs:191`, and `SecondaryParticle` is `lib.rs:398`. The 2026-05-12 span `lib.rs:250-340` is historical. Owns 30+ `wgpu::Buffer`/`wgpu::ComputePipeline`/`wgpu::BindGroup`/`wgpu::BindGroupLayout` resources (`lib.rs:250-340`). The device is shared but the buffers are exclusively owned.
+- **`FluidSystem` ↔ `SdfSystem` (`lib.rs:270`)**: `FluidSystem` holds `pub sdf_system: crate::sdf::SdfSystem`. The SDF is used as boundary representation for compute pass — particles read SDF distance + normal during collision response.
 - **`WaterEffectsManager` ↔ 7 visual subsystems**: Holds optional fields for `CausticsSystem`, `FoamSystem`, `GodRaysSystem`, `WaterReflectionSystem`, `UnderwaterParticleSystem`, `WaterfallSystem`, `UnderwaterState`. Per-frame `update` cascades to each.
 - **`WaterVolumeGrid` ↔ `WaterBuildingManager`**: `WaterBuildingManager` operates on `&mut WaterVolumeGrid` (per `building.rs:9` — `use crate::volume_grid::{CellFlags, WaterVolumeGrid}`). Dispensers add water cells; drains remove; gates modify CellFlags.
-- **`FluidSystem` ↔ density_error staging buffer pipeline**: Producer-consumer pattern via `density_error_buffer` → `density_error_staging_buffers[2]` ping-pong + `staging_mapped: [bool; 2]` flags (`lib.rs:306-308`). Caller polls for async readback of convergence metrics.
+- **`FluidSystem` ↔ density_error staging buffer pipeline**: Producer-consumer pattern via `density_error_buffer` → `density_error_staging_buffers` and `staging_state: [StagingState; 2]` (`lib.rs:293`). The two-frame lag is the defined behavior (`lib.rs:1237-1247`). Caller polls for async readback of convergence metrics.
 - **`OptimizationController` ↔ `FluidSystem.iterations`**: `AdaptiveIterations` (in `OptimizationController`) reads density_error feedback and adjusts the iteration count consumed by `FluidSystem`'s PBD loop on the next frame.
 
 ---
@@ -622,7 +623,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 | File | LoC | Role | Status | Notes |
 |---|---|---|---|---|
-| `astraweave-fluids/src/lib.rs` | 4,068 (F.4.2 net +41: +42/-1) | Re-exports + `Particle` / `SimParams` / `SecondaryParticle` GPU types + `FluidSystem` original PBD GPU pipeline + `OptimizationStats`. **F.4.2 added the accent emission API**: `set_secondary_particles`, `secondary_capacity`/`live_secondary_count`, and the live `secondary_particle_count()`. `sdf_empty_ready` is armed only after the empty generate's own submit polls to `wait_finished`. | Active (KEEP — F.4 accent substrate) | The two example consumers construct `FluidSystem::new(&device, …)` (`fluids_demo` 20000, `weaving_playground` 2048). No production crate constructs `FluidSystem` directly. |
+| `astraweave-fluids/src/lib.rs` | 4,198 | Re-exports + `Particle` / `SimParams` / `SecondaryParticle` GPU types + `FluidSystem` original PBD GPU pipeline + `OptimizationStats`. **F.4.2 added the accent emission API**: `set_secondary_particles`, `secondary_capacity`/`live_secondary_count`, and the live `secondary_particle_count()`. `sdf_empty_ready` is armed only after the empty generate's own submit polls to `wait_finished`. | Active (KEEP — F.4 accent substrate) | The two example consumers construct `FluidSystem::new(&device, …)` (`fluids_demo` 20000, `weaving_playground` 2048). No production crate constructs `FluidSystem` directly. |
 | `astraweave-fluids/src/anisotropic.rs` | 415 | Anisotropic kernel surface for sharper fluid surfaces | Active (module-level) | Companion shader at `shaders/anisotropic.wgsl` (86 LoC) |
 | `astraweave-fluids/src/caustics.rs` | 728 | `CausticsProjector` + `CausticsSystem` + `CausticsUniforms` + `CausticsConfig` + `CausticSample` + `CAUSTICS_WGSL` inline-WGSL | Active (module-level) | Voronoi-pattern caustics per README |
 | `astraweave-fluids/src/debug_viz.rs` | 665 | `DebugDrawList` + `DebugLine` + `DebugPoint` + `DebugVertex` + `ParticleDebugType` + `StatsFormatter` + `WaterDebugConfig` | Active (module-level) | Debug visualization |
@@ -642,7 +643,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 | `astraweave-fluids/src/water_reflections.rs` | 593 | `WaterReflectionSystem` + `WaterReflectionConfig` + `PlanarReflection` + `ReflectionUniforms` + `SSR_WGSL` inline-WGSL | Active (module-level) | SSR + planar reflections |
 | `astraweave-fluids/src/waterfall.rs` | 1,083 | `WaterfallSystem` + `WaterfallSource` + `WaterParticle` + `WaterParticleType` + `RapidsSystem` + `GpuWaterParticle` + `WaterfallConfig` | Active (module-level) | Vertical particle rapids |
 | `astraweave-fluids/shaders/anisotropic.wgsl` | 86 | Anisotropic kernel | Active | Used by `anisotropic.rs` |
-| `astraweave-fluids/shaders/fluid.wgsl` | ~560 | 8 PBD compute kernels: `clear_grid`, `build_grid`, `predict`, `lambda`, `delta_pos`, `integrate`, `mix_dye`, secondary spawn. `neighbor_cursor` breaks a self-loop after one visit and discards a hop-capped foreign cycle. | Active | Loaded by `FluidSystem::new` via `include_str!` |
+| `astraweave-fluids/shaders/fluid.wgsl` | 649 | 7 PBD compute kernels: `clear_grid`, `build_grid`, `predict`, `lambda`, `delta_pos`, `integrate`, `mix_dye`. `neighbor_cursor` breaks a self-loop after one visit and discards a hop-capped foreign cycle. | Active | Loaded by `FluidSystem::new` via `include_str!` |
 | `astraweave-fluids/shaders/sdf_gen.wgsl` | 137 | SDF generation (Jump-Flood Algorithm) | Active | Used by `sdf.rs` |
 | `astraweave-fluids/shaders/secondary.wgsl` | 133 (was 81; rewritten at F.4.2, +71/-19) | Secondary/accent billboard shader. **F.4.2 rewrote it**: `info.y` re-purposed to weave kind (0=Part/1=Raise/2=Freeze); per-kind tint LUT (`TINT_PART`/`RAISE`/`FREEZE`, `:46-48`) + per-kind procedural shape mask (`shape_mask`, streak/teardrop/round). No texture binding. | Active (KEEP) | Used by `renderer.rs::secondary_pipeline` (both the legacy `render` draw and F.4.2 `render_accents`) |
 | `astraweave-fluids/shaders/ssfr_depth.wgsl` | 125 | SSFR depth pass | Active | Used by `renderer.rs::depth_pipeline` |
@@ -660,6 +661,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -690,7 +692,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 ### Known cognitive traps
 
 - **Trap**: Assuming `astraweave-fluids` is wired into the engine because the crate exists and is feature-rich. (The README now correctly self-describes as "research-stage" with "no production game-loop crate depends on it yet"; the prior over-claim was corrected.)
-  **What's actually true**: Verified 2026-05-12 workspace grep: only `examples/fluids_demo` consumes the crate. No production game-loop crate depends on it. The audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` documents the current state as "Overall Current Grade: B (Good for games, insufficient for research)" and lists explicit gaps.
+  **What's actually true**: Verified at `604d35d1`: `examples/fluids_demo` and `examples/weaving_playground` consume the crate. No production game-loop crate depends on it. The 2026-05-12 note named only `examples/fluids_demo`. The audit doc at `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` documents the then-current state as "Overall Current Grade: B (Good for games, insufficient for research)" and lists explicit gaps.
 - **Trap**: Choosing `astraweave_fluids::SolverType` and getting `Pbd / Pcisph / Dfsph / Iisph` (lowercase).
   **What's actually true**: That's the `unified_solver::SolverType` re-export at `lib.rs:187`. The `research::SolverType` has UPPERCASE acronyms (`PBD / PCISPH / DFSPH / IISPH`). To use the research version, fully-qualify: `astraweave_fluids::research::SolverType::PCISPH`.
 - **Trap**: Treating `FluidSystem`, `UnifiedSolver`, `ResearchFluidSystem`, and `PCISPHSystem` as substitutable.
@@ -702,7 +704,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 - **Trap**: Choosing `WaterQualityPreset` for solver quality.
   **What's actually true**: `WaterQualityPreset` (`water_effects.rs:72-97`) controls visual effects (caustics/foam/god rays). For solver quality, use `QualityPreset` (`unified_solver.rs:28-44`, with `Mobile/Console/PcHigh/PcUltra/Research`). They are different enums.
 - **Trap**: Assuming the `parallel` Cargo feature enables GPU parallelism.
-  **What's actually true**: `parallel = ["dep:rayon"]` (`Cargo.toml:9`) enables CPU-side Rayon-parallel batch primitives in `simd_ops::parallel` namespace. GPU parallelism is unconditional — the crate is GPU-first via wgpu.
+  **What's actually true**: **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. `parallel = ["dep:rayon"]` (`Cargo.toml:9`) enables CPU-side Rayon-parallel batch primitives in `simd_ops::parallel` namespace. GPU parallelism is unconditional — the crate is GPU-first via wgpu.
 - **Trap**: Looking at `lib.rs:1` and assuming `#![forbid(unsafe_code)]` is in force (like sibling AI crates).
   **What's actually true**: The fluids crate does NOT declare `#![forbid(unsafe_code)]` at line 1. The lib.rs starts with `//! # AstraWeave Fluids` doc-comment. Verified 2026-05-12: only 2 unsafe occurrences exist crate-wide — both at `debug_viz.rs:479-480` (`unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}`). No `unsafe { ... }` blocks exist.
 
@@ -720,25 +722,25 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ### Decision: Use Position-Based Dynamics (PBD) as the original GPU pipeline
 - **Date:** [Reasoning not recovered — predates the research-grade roadmap document]
-- **Status:** Active (the original `FluidSystem` PBD path in lib.rs is what the demo uses)
+- **Status:** Historical
 - **Context:** PBD is a non-iterative-pressure constraint-projection scheme well-suited to GPU compute (fast convergence, visual fidelity).
-- **Decision:** Implement PBD in `shaders/fluid.wgsl` (8 compute kernels: clear_grid, build_grid, predict, lambda, delta_pos, integrate, mix_dye, secondary).
+- **Decision:** The original write-up listed 8 compute kernels, including `secondary`. F.1 left 7 compute pipelines (`clear_grid`, `build_grid`, `predict`, `lambda`, `delta_pos`, `integrate`, `mix_dye`) and removed the ping-pong particle buffer.
 - **Alternatives considered:** [Reasoning not recovered]
 - **Consequences:** Demo runs at the PBD quality tier (B-grade per audit). Research-grade solvers exist in parallel but are not the default consumer path.
 
 ### Decision: Eight-stage compute pipeline + ping-pong buffers + grid-linked-list broadphase
 - **Date:** [Reasoning not recovered]
-- **Status:** Active
+- **Status:** Historical. F.1 left 7 compute pipelines and removed the ping-pong particle buffer. The grid-linked-list broadphase remains.
 - **Context:** PBD requires per-iteration neighbor search. GPU-friendly options include grid-cell linked lists (head + next pointers) or sorted spatial hash.
-- **Decision:** Use head-pointer / next-pointer linked list per cell (`head_pointers + next_pointers` buffers per `lib.rs:270-272`) populated by `clear_grid` + `build_grid` compute passes at the start of every step.
-- **Alternatives considered:** Sorted spatial hash (Morton code), bitonic sort — `MortonCode` type exists in `optimization.rs` and `position_to_morton` in `simd_ops.rs`, suggesting Morton-coding was prototyped, possibly for the research-grade path.
-- **Consequences:** PBD path uses linked-list; research path may use Morton. Both code paths exist in the crate.
+- **Decision:** Use head-pointer / next-pointer linked list per cell (`head_pointers` at `lib.rs:240`, `next_pointers` at `lib.rs:242`; `lib.rs:270` is `sdf_system`) populated by `clear_grid` + `build_grid` compute passes at the start of every step.
+- **Alternatives considered:** **Superseded by W.1 (verified at `604d35d1`).** `MortonCode` is `optimization.rs:532`. `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Sorted spatial hash (Morton code), bitonic sort — `MortonCode` type exists in `optimization.rs` and `position_to_morton` in `simd_ops.rs`, suggesting Morton-coding was prototyped, possibly for the research-grade path.
+- **Consequences:** **Superseded by W.1 (verified at `604d35d1`).** The linked-list broadphase remains. There is no second Morton path in `src/`. The 2026-05-12 text that follows is historical. PBD path uses linked-list; research path may use Morton. Both code paths exist in the crate.
 
 ### Decision: GPU vendor-aware workgroup sizing
 - **Date:** [Reasoning not recovered]
 - **Status:** Active (in optimization module)
 - **Context:** NVIDIA warp size = 32, AMD wave size = 64 (Wave64), Intel subgroup 8-32, Apple Silicon TBD. Optimal workgroup size depends on vendor.
-- **Decision:** `WorkgroupConfig::auto_detect()` selects from `nvidia()` / `amd()` / `apple()` / `universal()` (64 threads default) per `optimization.rs:80-…` based on `GpuVendor` detection.
+- **Decision:** **Superseded by W.1 (verified at `604d35d1`).** Selection is `WorkgroupConfig::for_gpu` at `optimization.rs:144`. There is no `auto_detect`. The 2026-05-12 text that follows is historical. `WorkgroupConfig::auto_detect()` selects from `nvidia()` / `amd()` / `apple()` / `universal()` (64 threads default) per `optimization.rs:80-…` based on `GpuVendor` detection.
 - **Alternatives considered:** [Reasoning not recovered]
 - **Consequences:** Workgroup tuning is automatic when the controller is wired in. The demo passes through `FluidOptimizationController`.
 
@@ -768,11 +770,11 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ### Decision: SIMD primitives via glam auto-vectorization (not manual intrinsics)
 - **Date:** [Reasoning not recovered — design choice documented inline]
-- **Status:** Active
+- **Status:** **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. Active
 - **Context:** Per `simd_ops.rs:19-25` doc-comment "Best Practices (2025)": "Prefer simple iterators over manual unrolling - LLVM auto-vectorizes better; Avoid manual FMA (mul_add) - creates artificial dependencies."
 - **Decision:** Use `glam::Vec3` operations inside batch iterators rather than `#[target_feature(enable = "avx2")]` + `_mm256_*` intrinsics. Document the rationale inline.
 - **Alternatives considered:** Manual AVX2 intrinsics (rejected per inline comment); WGSL-only solver (rejected — keeps CPU batch helpers for editor/preview/non-GPU code).
-- **Consequences:** `simd_ops.rs` is 39,554 LoC of safe Rust batch operations. No `unsafe` SIMD intrinsics. Performance depends on LLVM auto-vectorization quality.
+- **Consequences:** **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is not in `src/`. Before that deletion it was 39,554 lines. The 2026-05-12 text that follows is historical. `simd_ops.rs` is 39,554 LoC of safe Rust batch operations. No `unsafe` SIMD intrinsics. Performance depends on LLVM auto-vectorization quality.
 
 ### Decision: Refactor `ssfr_smooth.wgsl` → `ssfr_smooth_v2.wgsl` ("shader permutation system")
 - **Date:** Recovered via git log 2026-05-12 — commit `4af95b47c` "Implement rain splash particle system, shader permutation system, snow footprint stamping, and vegetation interaction system" deletes `astraweave-fluids/shaders/ssfr_smooth.wgsl` (confirmed via `git log --diff-filter=D -- astraweave-fluids/shaders/ssfr_smooth.wgsl`).
@@ -792,13 +794,14 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
-| 1 | `Particle` is 80 bytes, `bytemuck::Pod + Zeroable`, `#[repr(C)]` | Yes (compile-time) | `lib.rs:208-219` derive + repr attributes |
-| 2 | `SimParams` is 64 bytes (12 f32 fields + 4 padding f32 + u32 fields) | Yes (compile-time) | `lib.rs:221-248` |
-| 3 | `SecondaryParticle` is 48 bytes | Yes (compile-time) | `lib.rs:354-360` |
+| 1 | `Particle` is 80 bytes, `bytemuck::Pod + Zeroable`, `#[repr(C)]`. **Superseded by W.1 (verified at `604d35d1`).** `Particle` is `lib.rs:170`. The 2026-05-12 cite `lib.rs:208-219` is historical. | Yes (compile-time) | `lib.rs:170` |
+| 2 | `SimParams` is 64 bytes (12 f32 fields + 4 padding f32 + u32 fields). **Superseded by W.1 (verified at `604d35d1`).** `SimParams` is `lib.rs:191`. The 2026-05-12 cite `lib.rs:221-248` is historical. | Yes (compile-time) | `lib.rs:191` |
+| 3 | `SecondaryParticle` is 48 bytes. **Superseded by W.1 (verified at `604d35d1`).** `SecondaryParticle` is `lib.rs:398`. The 2026-05-12 cite `lib.rs:354-360` is historical. | Yes (compile-time) | `lib.rs:398` |
 | 4 | `GpuWaterCell` is 16 bytes | Yes (compile-time) | `gpu_volume.rs:15-27` |
 | 5 | `WaterSurfaceVertex` is 32 bytes (position[3]=12 + normal[3]=12 + uv[2]=8) | Yes (compile-time + `wgpu::VertexBufferLayout`) | `gpu_volume.rs:41-80` |
 | 6 | `CameraUniform` is 304 bytes | Yes (compile-time, verified 2026-05-12) | `renderer.rs:7-16`: 3× `[[f32; 4]; 4]` mat4 = 192 bytes (view_proj + inv_view_proj + view_inv) + 2× `[f32; 4]` vec4 = 32 bytes (cam_pos + light_dir) + `f32` = 4 bytes (time) + `[f32; 19]` padding = 76 bytes. Total = 192+32+4+76 = 304 bytes. The previous trace claim "200 bytes" was incorrect. |
@@ -837,7 +840,7 @@ The GPU emission kernel remains a logged, deferred follow-on (`F4_0_RECON.md`).
 
 | Path | Frequency | Budget | Sensitivity |
 |---|---|---|---|
-| `FluidSystem` 8-stage compute pass | Per frame (60 Hz default) | Per `SimulationBudget` — frame-time target configurable | Particle count, iteration count, grid cell count, GPU vendor |
+| `FluidSystem` compute pass (7 pipelines) | Per frame (60 Hz default) | Per `SimulationBudget` — frame-time target configurable | Particle count, iteration count, grid cell count, GPU vendor |
 | `lambda` + `delta_pos` PBD iteration | Per iteration × N iterations × per frame | Each iteration dispatches over all particles | Density error feedback drives iteration count via `AdaptiveIterations` |
 | `FluidRenderer` SSFR pipeline | Per frame | Per render-target resolution | Smoothing radius, blur passes, particle screen-space coverage |
 | `WaterVolumeGrid` per-cell flow | Per voxel update tick | CPU-bound (separate from GPU particle path) | Grid dimensions (W×H×D), active-cell count |
@@ -866,12 +869,12 @@ Per README:
 
 | Resource | Owner | Lifetime | Access pattern |
 |---|---|---|---|
-| `wgpu::Buffer` (particle_buffers, head_pointers, next_pointers, params_buffer, etc.) | `FluidSystem` | `FluidSystem` lifetime | Mutated by compute passes; read by render passes |
-| `wgpu::ComputePipeline` (8 PBD pipelines) | `FluidSystem` | `FluidSystem` lifetime | Read-only after construction |
+| `wgpu::Buffer` (`particle_buffer` at `lib.rs:221`, `head_pointers` at `lib.rs:240`, `next_pointers` at `lib.rs:242`, params_buffer, etc.) | `FluidSystem` | `FluidSystem` lifetime | Mutated by compute passes; read by render passes |
+| `wgpu::ComputePipeline` (7 PBD pipelines) | `FluidSystem` | `FluidSystem` lifetime | Read-only after construction |
 | `wgpu::BindGroup` + `wgpu::BindGroupLayout` (4 + cache) | `FluidSystem` | `FluidSystem` lifetime | Bound per compute pass |
-| `density_error_staging_buffers: [wgpu::Buffer; 2]` | `FluidSystem` | `FluidSystem` lifetime | Ping-pong async readback for CPU-side convergence monitoring |
-| `staging_mapped: [bool; 2]` | `FluidSystem` | `FluidSystem` lifetime | Tracks mapped state of staging buffers |
-| `SdfSystem` | `FluidSystem` (pub field at `lib.rs:301`) | `FluidSystem` lifetime | Bound to compute passes as boundary representation |
+| `density_error_staging_buffers: [wgpu::Buffer; 2]` | `FluidSystem` | `FluidSystem` lifetime | Two-frame-lag readback. `step` records a copy, requests the map on a later call, and harvests it after that (`lib.rs:1237-1247`) |
+| `staging_state: [StagingState; 2]` | `FluidSystem` (`lib.rs:293`) | `FluidSystem` lifetime | Idle, copy recorded, or map requested. This is the two-frame-lag state machine, not a particle ping-pong |
+| `SdfSystem` | `FluidSystem` (pub field at `lib.rs:270`) | `FluidSystem` lifetime | Bound to compute passes as boundary representation |
 | `objects_buffer: wgpu::Buffer` | `FluidSystem` | `FluidSystem` lifetime | `DynamicObject[]` for moving collider geometry |
 | `default_sampler: wgpu::Sampler` | `FluidSystem` | `FluidSystem` lifetime | Texture sampling |
 | `WaterVolumeGrid` cells | `WaterVolumeGrid` | Caller-managed | Voxel state |
@@ -886,16 +889,17 @@ Per README:
 ## 10. Testing & Validation
 
 - **Unit tests:** Inline `#[cfg(test)]` modules in each source file. Verified 2026-05-12 via `grep -rcn "#\[test\]"`: 600+ inline tests across 20+ source files. Per-file breakdown (top counts): `editor.rs:140`, `lib.rs:79`, `optimization.rs:78`, `multi_phase.rs:61`, `lod.rs:49`, `gpu_volume.rs:47`, `emitter.rs:41`, `pcisph_system.rs:37`, `research.rs:35`, `boundary.rs:34`, `building.rs:33`, `foam.rs:26`, `sdf.rs:25`, `caustics.rs:24`, `profiling.rs:24`, `serialization.rs:19`, `anisotropic.rs:18`, `debug_viz.rs:19`, `god_rays.rs:16`, `particle_shifting.rs:11`.
-- **Integration tests:** Single file `astraweave-fluids/tests/mutation_resistant_comprehensive_tests.rs` (785 LoC). Per CLAUDE.md mutation-testing campaign convention, this is the dedicated mutation-resistance test surface. Imports via `use astraweave_fluids::*` at `:12`.
+- **Integration tests:** **Superseded by W.1 (verified at `604d35d1`).** Integration tests are `tests/gpu_execution_tests.rs` (1,434 lines) and `tests/mutation_resistant_comprehensive_tests.rs` (456 lines). The 2026-05-12 single-file text that follows is historical. Single file `astraweave-fluids/tests/mutation_resistant_comprehensive_tests.rs` (785 LoC). Per CLAUDE.md mutation-testing campaign convention, this is the dedicated mutation-resistance test surface. Imports via `use astraweave_fluids::*` at `:12`.
 - **Mutation testing:** Tracked in `docs/current/FLUIDS_MUTATION_TESTING_REPORT.md` (status out of scope for this trace).
 - **Miri validation:** Not formally tracked here. The crate does NOT declare `#![forbid(unsafe_code)]`, but verified 2026-05-12: only 2 unsafe occurrences exist crate-wide — both at `debug_viz.rs:479-480` (bytemuck Pod/Zeroable impls on `DebugVertex`). No `unsafe { ... }` blocks. Miri-relevant surface is therefore limited to bytemuck trait safety.
-- **Benchmarks:** Single file `astraweave-fluids/benches/fluids_adversarial.rs` (1,893 LoC). Imports include `simd_ops::parallel::par_batch_kernel_cubic`, `simd_ops::position_to_morton`, `simd_ops::parallel::par_compute_morton_codes`, plus broader `simd_ops::*` patterns (per grep at `:1749, :1774, :1785, :1810`). Configured as `[[bench]] name = "fluids_adversarial"` at `Cargo.toml:11-13`.
+- **Benchmarks:** **Superseded by W.1 (verified at `604d35d1`).** `benches/fluids_adversarial.rs` is 1,676 lines and `benches/fluid_baselines.rs` is 175 lines. The 2026-05-12 single-file text that follows is historical. Single file `astraweave-fluids/benches/fluids_adversarial.rs` (1,893 LoC). Imports include `simd_ops::parallel::par_batch_kernel_cubic`, `simd_ops::position_to_morton`, `simd_ops::parallel::par_compute_morton_codes`, plus broader `simd_ops::*` patterns (per grep at `:1749, :1774, :1785, :1810`). Configured as `[[bench]] name = "fluids_adversarial"` at `Cargo.toml:11-13`.
 - **GPU execution tests (F.4.2):** `tests/gpu_execution_tests.rs` adds `gpu_render_accents_smoke` — proves `render_accents` dispatches without validation error AND the zero-accent identity (empty set records no pass). `try_create_test_device` records a skip or panics. It does not return success with no line.
 - **Manual validation:** `examples/fluids_demo` (PBD solver via SSFR) + `examples/weaving_playground` (F.4.2/F.4.3 weave-impact accents) are the interactive validation harnesses. Imports `FluidSystem`, `FluidRenderer`, `FluidLodConfig`, `FluidLodManager`, `FluidOptimizationController` per `fluids_demo/src/main.rs:18-21`. Uses `astraweave_fluids::renderer::CameraUniform` at `:18`.
 - **Audit document:** `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` v2.0 (January 2026) — comprehensive audit + roadmap targeting research-grade simulation. Cited grade: "B (Good for games, insufficient for research)."
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 > **W.1 closures (2026-06-20):** the W-series ratified deprecation removed the SPH
@@ -919,9 +923,9 @@ Per README:
 >
 > **F.3.S closures (2026-06-19):** "Voxel-grid sparsity — the F.3 gating work item" → **RESOLVED and measured.** `simulate` is now a bit-identical dirty-AABB sparse path (Invariants 29–31); the `active_cells` field's intent is realised (as a box, forced by the F.3 forward-cascade). **Budget verdict: PARTIAL** — the ~1 ms voxel budget is met only at 32³ (≤ 50 % fill) or for localized water ≲ 16³ (≈ 4 k cells); a full-extent 64³ flood is 2.35 ms even at 5 % depth and never fits, because (a) hydrostatic pressure is **column-coupled** (full-extent water can't sparsify pressure) and (b) the F.3 immediate-apply flow **cascades ~8 cells forward per tick** (the same order-dependence also blocks bit-identical CPU parallelism). **Recommendation: stay at Option A; do not convert A→C for general water** (reachable only by tiling the world into small bounded voxel grids, or deferring Enshrouded-class flooding to a GPU-voxel future). Numbers in `MASTER_BENCHMARK_REPORT.md` v5.59; analysis in `F3S_EXECUTION_REPORT.md`. **Now genuinely out of scope / deferred:** GPU-voxel large-scale water; an order-independent flow rewrite (would unblock cheaper sparsity + parallelism but changes F.3 behaviour).
 
-- **Runtime production wiring of fluids — when and via which solver?** [Decisional / **HIGH-IMPACT finding from 2026-05-12 trace investigation**.] Factual state (verified 2026-05-12): workspace grep for `use astraweave_fluids` outside the fluids crate itself returned only `examples/fluids_demo/src/main.rs:18-21`. NO production game-loop crate (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The crate is 84.5K LoC of working code (1 integration test passing, 1 benchmark, 1 demo) with zero engine integration. Per the audit doc `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md`, the system is in active development toward research-grade simulation. Three directional options: (a) wire the existing PBD `FluidSystem` (the demo's current choice) into the runtime engine — smallest integration step; (b) wait for the research-grade solvers to mature (PCISPH/DFSPH/IISPH per the roadmap) and wire the `UnifiedSolver` umbrella; (c) prune the parallel solvers and keep only the demo-validated PBD path. Same dormancy shape as the LLM Production Hardening and RAG subsystems traced in `docs/architecture/ai_pipeline.md` §13.7 + §13.8.
-- **Five parallel solver/manager surfaces — consolidation roadmap?** [Decisional.] Factual: `FluidSystem` (lib.rs PBD), `UnifiedSolver` (unified_solver.rs coordinator), `ResearchFluidSystem` (research.rs research-grade umbrella), `PCISPHSystem` (pcisph_system.rs standalone PCISPH), `WaterEffectsManager` (water_effects.rs visual coordinator) coexist with overlapping responsibilities. The crate is 84.5K LoC. Whether to consolidate into a single `Fluid` facade, keep all five as separately-published modules, or migrate consumers to `UnifiedSolver` exclusively is undecided.
-- **`SolverType` naming collision between `unified_solver.rs` (lowercase) and `research.rs` (UPPERCASE) — rename or coexist?** [Decisional / factual.] Two enums of the same name with different variant casing conventions. The crate root re-exports the lowercase version (`lib.rs:187`). Whether to rename the research version (e.g. `ResearchSolverType`) or accept the namespacing requirement is undecided.
+- **Runtime production wiring of fluids — when and via which solver?** **Superseded by W.1 (verified at `604d35d1`).** The crate is 24,509 lines under `src/`. `examples/fluids_demo` and `examples/weaving_playground` depend on it. No `astraweave-*` game-loop crate does. The 2026-05-12 text that follows described the pre-W.1 crate: workspace grep for `use astraweave_fluids` outside the fluids crate itself returned only `examples/fluids_demo/src/main.rs:18-21`. NO production game-loop crate (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The crate was then 84.5K LoC of working code (1 integration test passing, 1 benchmark, 1 demo) with zero engine integration. Per the audit doc `FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md`, the system is in active development toward research-grade simulation. Three directional options: (a) wire the existing PBD `FluidSystem` (the demo's current choice) into the runtime engine — smallest integration step; (b) wait for the research-grade solvers to mature (PCISPH/DFSPH/IISPH per the roadmap) and wire the `UnifiedSolver` umbrella; (c) prune the parallel solvers and keep only the demo-validated PBD path. Same dormancy shape as the LLM Production Hardening and RAG subsystems traced in `docs/architecture/ai_pipeline.md` §13.7 + §13.8.
+- **Five parallel solver/manager surfaces — consolidation roadmap?** **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` and `WaterEffectsManager` remain. The 2026-05-12 list that follows is historical. [Decisional.] Factual: `FluidSystem` (lib.rs PBD), `UnifiedSolver` (unified_solver.rs coordinator), `ResearchFluidSystem` (research.rs research-grade umbrella), `PCISPHSystem` (pcisph_system.rs standalone PCISPH), `WaterEffectsManager` (water_effects.rs visual coordinator) coexist with overlapping responsibilities. The crate was then 84.5K LoC. Whether to consolidate into a single `Fluid` facade, keep all five as separately-published modules, or migrate consumers to `UnifiedSolver` exclusively is undecided.
+- **`SolverType` naming collision between `unified_solver.rs` (lowercase) and `research.rs` (UPPERCASE) — rename or coexist?** **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`. `lib.rs:186` is `pub half_extents: [f32; 4]` on `DynamicObject` (line 187 closes the struct), not a `SolverType` re-export. The 2026-05-12 collision that follows is historical. [Decisional / factual.] Two enums of the same name with different variant casing conventions. The crate root then re-exported the lowercase version (the old cite was `lib.rs:187`). Whether to rename the research version (e.g. `ResearchSolverType`) or accept the namespacing requirement is undecided.
 - **`ViscositySolverType` (unified) vs `ViscositySolver` (research) — pick a single name?** [Decisional.] Factual: two parallel types with same conceptual purpose but different names. Standardize on one or keep both.
 - **Four parallel quality enums (`QualityPreset`, `WaterQualityPreset`, `QualityTier`, `ResearchQualityTier`) — unify or document parallel intent?** [Decisional.] Each scopes to a different subsystem. Whether to share a single base enum + per-subsystem extension trait, keep four parallel enums, or accept the redundancy is undecided.
 <!-- Question "ssfr_smooth_v2.wgsl suffix — vestige of v1 deletion?" closed via deep investigation 2026-05-12. Resolution: v1 (`ssfr_smooth.wgsl`) DID exist and was deleted in commit `4af95b47c` ("Implement rain splash particle system, shader permutation system, snow footprint stamping, and vegetation interaction system"). The commit's "shader permutation system" likely refactored ssfr_smooth as v2. Resolution captured in §5 file map row for `ssfr_smooth_v2.wgsl` and §7 Decision Log (new entry for SSFR shader refactor). -->
@@ -937,6 +941,8 @@ Per README:
 
 | Version | Date | Change |
 |---|---|---|
+| 2.10 | 2026-11-11 | **Pre-W.1 rows outside §1.** Vocabulary, conflict, decision, invariant, test, and appendix rows that still read as current are marked superseded at `604d35d1`, with the current symbol or file fact beside the historical text. |
+| 2.9 | 2026-11-09 | **Summary at `604d35d1`.** 24,509 lines under `src/`. `FluidSystem` and `WaterEffectsManager` remain. `examples/fluids_demo` and `examples/weaving_playground` depend on it. The duplicate §11 anchor was removed. |
 | 2.8 | 2026-10-28 | **File-map test count.** The `gpu_execution_tests.rs` row says `(11)`. The file has eleven `#[test]` functions, and each calls `try_create_test_device`. `last_verified_commit` is the parent `1640f16b`. That parent still says `(7)`. `e15d7dfa` is not an ancestor after the rebase onto `0213d1cf`. |
 | 2.7 | 2026-10-27 | **Rebase restamp.** `8f56554b` is not an ancestor after the rebase onto `07306de0`. After the rebase onto `99382af7`, `e06b4f11` is not an ancestor either. `last_verified_commit` is the parent `e15d7dfa`. That parent already counts `gpu_execution_tests.rs` at 1,434. |
 | 2.6 | 2026-10-25 | **`gpu_execution_tests.rs` line count.** The file-map row and the owner-notes count are 1,434 on this head. The 2026-06-20 `wc -l` was 568. `last_verified_commit` is the parent `8f56554b`. That parent still says 568. |
@@ -973,7 +979,7 @@ Per README:
 **Verification process:**
 - Spot-check §2.1 PBD pipeline against `shaders/fluid.wgsl` kernel names + `lib.rs::FluidSystem::new` pipeline construction
 - Verify §5 file map line counts against `wc -l astraweave-fluids/src/*.rs astraweave-fluids/shaders/*.wgsl`
-- Verify §6 naming-collision claims against `grep -n "pub enum SolverType" astraweave-fluids/src/{unified_solver,research}.rs`
+- Verify the §6 naming-collision claim against the tree at `604d35d1`: `unified_solver.rs` and `research.rs` are gone, no `enum SolverType` remains under `src/`, and `lib.rs:186` is `half_extents` on `DynamicObject`.
 - Verify §11 first Open Question with `grep -rn "use astraweave_fluids" --include="*.rs"` workspace-wide
 - Run `cargo test -p astraweave-fluids --tests` for integration test surface
 - Run `cargo bench -p astraweave-fluids` for bench surface
@@ -987,42 +993,42 @@ Per README:
 
 0. **(2026-06-24) Scope split — check which trace you need.** The visible water *surface* (Gerstner heightfield, weave-response part/freeze/raise deformation, LOD, `WaterQuery` truth facade) is now traced in [`docs/architecture/water.md`](./water.md), NOT here. This `fluids.md` trace covers only the deprecated PBD solver remnant + the **F.4 GPU-particle accent garnish** (`SecondaryParticle` / `secondary.wgsl` / `FluidRenderer::render_accents` / `set_secondary_particles`). The accent producer (`WaterAccentProducer`) is binary glue in `examples/weaving_playground`, not in this crate; `astraweave-render` and `astraweave-fluids` have no Cargo edge.
 1. **The crate has no production game-loop consumer.** Only the two examples consume it: `fluids_demo` (PBD solver) and `weaving_playground` (F.4.2 accents). No `astraweave-*` engine crate depends on `astraweave-fluids`.
-2. **Five parallel solver/manager surfaces coexist.** `FluidSystem` (lib.rs PBD), `UnifiedSolver`, `ResearchFluidSystem`, `PCISPHSystem`, `WaterEffectsManager`. The demo uses `FluidSystem`. The others are research-grade additions per the roadmap.
-3. **`SolverType` naming collision:** `unified_solver::SolverType` has `Pbd/Pcisph/Dfsph/Iisph` (lowercase). `research::SolverType` has `PBD/PCISPH/DFSPH/IISPH` (UPPERCASE). The crate root re-exports the lowercase version.
-4. **Quality enums proliferate:** `QualityPreset`, `WaterQualityPreset`, `QualityTier`, `ResearchQualityTier` — each scopes to a different subsystem. They are NOT interchangeable.
-5. **GPU-first architecture.** `FluidSystem::new` takes `&wgpu::Device`. Compute pipelines are constructed once; per-frame work is a single compute pass over 8 kernels.
-6. **Two paradigms coexist:** particle simulation (PBD/PCISPH/etc.) for splashes/jets/hero fluids; voxel grid (`WaterVolumeGrid`) for building flooding / terrain interaction.
+2. **Superseded by W.1 (verified at `604d35d1`).** `unified_solver.rs`, `research.rs`, and `pcisph_system.rs` are gone. `FluidSystem` (`lib.rs`) and `WaterEffectsManager` (`water_effects.rs`) remain. The 2026-05-12 list of five coexisting solver surfaces is historical.
+3. **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`, and the crate root does not re-export one. `lib.rs:186` is `pub half_extents: [f32; 4]` on `DynamicObject`. The 2026-05-12 casing collision is historical.
+4. **Quality enums.** At `604d35d1`, `QualityPreset` (`editor.rs`), `WaterQualityPreset` (`water_effects.rs`), and `QualityTier` (`optimization.rs`) remain and are not interchangeable. `ResearchQualityTier` is gone with the research solver.
+5. **GPU-first architecture.** `FluidSystem::new` takes `&wgpu::Device`. `lib.rs:790-796` builds 7 compute pipelines (`clear_grid`, `build_grid`, `predict`, `compute_lambda`, `compute_delta_pos`, `integrate`, `mix_dye`). `fluid.wgsl` has those 7 `@compute` entry points.
+6. **Superseded by W.1 (verified at `604d35d1`).** `volume_grid.rs` and `building.rs` are gone, and `WaterVolumeGrid` is not in this crate. The kept particle path is `FluidSystem`. The 2026-05-12 voxel-grid paragraph is historical.
 7. **`#![forbid(unsafe_code)]` is NOT declared at lib.rs:1.** Sibling engine crates do declare it. Verified 2026-05-12: only 2 unsafe occurrences crate-wide — bytemuck Pod/Zeroable impls at `debug_viz.rs:479-480`. No `unsafe { ... }` blocks.
-8. **`simd_ops.rs` is the largest file at 39,554 LoC.** It is batch-operation surface designed for LLVM auto-vectorization via glam — NOT manual SIMD intrinsics. Per inline doc-comment, manual unrolling and manual FMA are explicitly avoided.
-9. **`editor.rs` is the second-largest file at 5,823 LoC.** Comprehensive editor integration with undo/redo, validation, batch operations, color-blind palettes. Verified 2026-05-12: NOT consumed by `tools/aw_editor` — forward-design only.
-10. **WGSL shaders live in `astraweave-fluids/shaders/`** (7 files). `shaders/fluid.wgsl` (481 LoC) is the central compute shader with 8 kernels.
+8. **Superseded by W.1 (verified at `604d35d1`).** `simd_ops.rs` is gone. Before that deletion it was 39,554 lines of iterator-style batch ops, not manual SIMD intrinsics.
+9. **`editor.rs` is the largest file at 5,823 lines.** `lib.rs` is second, at 4,198. Comprehensive editor integration with undo/redo, validation, batch operations, color-blind palettes. Verified 2026-05-12: NOT consumed by `tools/aw_editor` — forward-design only.
+10. **WGSL shaders live in `astraweave-fluids/shaders/`** (7 files at `604d35d1`). `shaders/fluid.wgsl` is 649 lines and is the central compute shader.
 11. **`WaterEffectsManager` is the visual-effects coordinator** behind `WaterQualityPreset`. The 7 visual subsystems (caustics/foam/god rays/reflections/underwater/underwater_particles/waterfall) are independently constructable but typically used via this coordinator.
-12. **Two Cargo features only:** `default = ["serde"]`, `parallel = ["dep:rayon"]`. Neither is required for the GPU compute paths.
+12. **Cargo features at `604d35d1`:** `default = []`. `serde` is an unconditional dependency. `parallel = ["dep:rayon"]` is still declared and gates nothing after W.1 removed `simd_ops.rs`.
 
 **Files you'll most likely touch:**
 
 - `astraweave-fluids/src/lib.rs` — `FluidSystem` (PBD GPU pipeline), `Particle`/`SimParams`/`SecondaryParticle` GPU types
 - `astraweave-fluids/src/water_effects.rs` — `WaterEffectsManager` visual coordinator
-- `astraweave-fluids/src/volume_grid.rs` + `building.rs` — voxel water + building integration
-- `astraweave-fluids/shaders/fluid.wgsl` — 8-kernel PBD compute shader
+- `astraweave-fluids/src/volume_grid.rs` and `building.rs` — **gone in W.1**. Do not treat them as files to edit.
+- `astraweave-fluids/shaders/fluid.wgsl` — 7-kernel PBD compute shader (`clear_grid`, `build_grid`, `predict`, `compute_lambda`, `compute_delta_pos`, `integrate`, `mix_dye`)
 - `astraweave-fluids/src/renderer.rs` — SSFR rendering pipeline
-- `examples/fluids_demo/src/main.rs` — the only consumer; the canonical usage pattern
+- `examples/fluids_demo/src/main.rs` and `examples/weaving_playground` — the two consumers; `fluids_demo` is the canonical PBD usage pattern
 
 **Files you should NOT touch without strong reason:**
 
-- `astraweave-fluids/src/simd_ops.rs` (39,554 LoC) — the SIMD primitives layer; per inline doc-comment, the design choice is "iterators not intrinsics" and the file optimizes for LLVM auto-vectorization, not manual SIMD
-- `astraweave-fluids/src/research.rs` + `pcisph_system.rs` + `unified_solver.rs` — research-grade solver inventory; coordinated by the roadmap doc and dormant in production
-- `astraweave-fluids/src/editor.rs` (5,823 LoC) — comprehensive editor surface with extensive re-exports; modifications cascade through `lib.rs:100-153` re-exports
+- `astraweave-fluids/src/simd_ops.rs` — **gone in W.1** (it was 39,554 lines). Do not restore it as a current edit target.
+- `astraweave-fluids/src/research.rs`, `pcisph_system.rs`, and `unified_solver.rs` — **gone in W.1**. Do not treat the 2026-05-12 research inventory as files that still exist.
+- `astraweave-fluids/src/editor.rs` (5,823 lines, the largest file) — comprehensive editor surface with extensive re-exports; modifications cascade through the `pub use editor` block at `lib.rs:78-131`
 - `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` — audit doc; this trace is anchored to it
 
 **Common mistakes when changing this system:**
 
-- **Assuming `astraweave-fluids` is wired into the engine.** It is not. The crate is dormant outside `examples/fluids_demo`.
-- **Choosing `SolverType::PBD` (UPPERCASE) and expecting it to work from a `unified_solver` consumer.** The unified solver's enum is lowercase (`Pbd`). The UPPERCASE version is from `research::SolverType`. Fully-qualify imports.
-- **Treating `FluidSystem` and `UnifiedSolver` as interchangeable.** They have different GPU types (`Particle` vs `ResearchParticle`) and different compute pipelines. Switching is a migration, not a swap.
-- **Modifying `simd_ops.rs` to add manual SIMD intrinsics.** Per the file's inline doc-comment (lines 19-25), the design choice is explicitly to AVOID manual intrinsics and FMA in favor of LLVM auto-vectorization.
-- **Adding a new variant to `#[non_exhaustive]` enums without checking dispatch sites.** Many enums (`MaterialType`, `SolverType`, `WaterEffectsError`, etc.) feed into match expressions in the `editor.rs` validation surface. Per CLAUDE.md Integration Completeness #2, audit all sites.
-- **Calling `WaterDrain` and expecting particle behavior.** `WaterDrain` is voxel-side (aliased `VolumetricDrain` at re-export). Particle-side drains use `FluidDrain`.
+- **Assuming `astraweave-fluids` is wired into the engine.** It is not. The crate is consumed by `examples/fluids_demo` and `examples/weaving_playground`, and by no `astraweave-*` game-loop crate.
+- **Choosing a `SolverType` variant or a `unified_solver` consumer.** **Superseded by W.1 (verified at `604d35d1`).** There is no `enum SolverType` under `src/`, and `unified_solver.rs` is gone. `lib.rs:186` is `half_extents` on `DynamicObject`.
+- **Treating `FluidSystem` and `UnifiedSolver` as interchangeable.** **Superseded by W.1.** `UnifiedSolver` is gone. `FluidSystem` remains.
+- **Modifying `simd_ops.rs`.** **Superseded by W.1.** That file is gone.
+- **Adding a new variant to a `#[non_exhaustive]` enum without checking dispatch sites.** `WaterEffectsError` remains in `water_effects.rs`. There is no `enum SolverType` and no `enum MaterialType` under `src/`. Audit the live match sites.
+- **Calling `WaterDrain` and expecting particle behavior.** **Superseded by W.1.** `WaterDrain` and `VolumetricDrain` are gone. `FluidDrain` remains in `emitter.rs` and is re-exported from `lib.rs`.
 - **Updating `shaders/ssfr_smooth_v2.wgsl` thinking v1 exists somewhere as a fallback.** Only v2 exists in the directory.
 
 ---
@@ -1039,8 +1045,8 @@ The fluids crate has gone through visible development phases captured in `docs/`
 
 4. **Visual effects layer** (`caustics.rs`, `foam.rs`, `god_rays.rs`, `water_reflections.rs`, `underwater.rs`, `underwater_particles.rs`, `waterfall.rs`, `water_effects.rs`) — coordinated by `WaterEffectsManager`. Inline-WGSL constants (`CAUSTICS_WGSL`, `GOD_RAYS_WGSL`, `SSR_WGSL`) suggest external shader-composition use cases.
 
-5. **Optimization + LOD + profiling** (`optimization.rs`, `lod.rs`, `profiling.rs`, `simd_ops.rs`) — tuning surface. GPU-vendor-aware workgroup sizing, adaptive iteration, simulation budget, batch spawning.
+5. **Optimization + LOD + profiling** **Superseded by W.1 (verified at `604d35d1`).** `optimization.rs`, `lod.rs`, and `profiling.rs` remain. `simd_ops.rs` is not in `src/`. The 2026-05-12 text that follows is historical. (`optimization.rs`, `lod.rs`, `profiling.rs`, `simd_ops.rs`) — tuning surface. GPU-vendor-aware workgroup sizing, adaptive iteration, simulation budget, batch spawning.
 
 6. **Editor integration** (`editor.rs` at 5,823 LoC) — the largest non-SIMD file. Suggests significant authoring-tool integration effort.
 
-Status as of 2026-05-12: the crate is 84.5K LoC of working code with comprehensive tests and benchmarks, but is dormant in production — only `examples/fluids_demo` consumes it. The audit-doc grade is "B (Good for games, insufficient for research)." Per CLAUDE.md Integration Completeness rule, the crate qualifies as designed-but-not-wired infrastructure pending a production integration campaign.
+Status as of 2026-05-12: **Superseded by W.1 (verified at `604d35d1`).** `src/` is 24,509 lines in 19 files. `examples/fluids_demo` and `examples/weaving_playground` depend on the crate. The 2026-05-12 text that follows is historical. the crate is 84.5K LoC of working code with comprehensive tests and benchmarks, but is dormant in production — only `examples/fluids_demo` consumes it. The audit-doc grade is "B (Good for games, insufficient for research)." Per CLAUDE.md Integration Completeness rule, the crate qualifies as designed-but-not-wired infrastructure pending a production integration campaign.

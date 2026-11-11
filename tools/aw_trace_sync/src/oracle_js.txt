@@ -1,0 +1,205 @@
+LEX "|f=false|s=0"
+LEX "id:a|f=false|s=1"
+LEX "id:a . id:b|f=false|s=3"
+LEX "id:a ?. id:b|f=false|s=4"
+LEX "id:a = num|f=false|s=4"
+LEX "id:a = id:b|f=false|s=5"
+LEX "id:a = id:b|f=false|s=5"
+LEX "id:a = id:b|f=false|s=5"
+LEX "id:a = id:b|f=false|s=5"
+LEX "id:a = id:b|f=false|s=5"
+LEX "id:a = id:b|f=false|s=6"
+LEX "id:a = id:b|f=false|s=5"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a op id:b|f=false|s=5"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a => id:b|f=false|s=4"
+LEX "id:a =|f=false|s=3"
+LEX "id:a =|f=false|s=3"
+LEX "( )|f=false|s=2"
+LEX "[ ]|f=false|s=2"
+LEX "{ }|f=false|s=2"
+LEX "id:a + id:b|f=false|s=3"
+LEX "num|f=false|s=3"
+LEX "num|f=false|s=2"
+LEX "num|f=false|s=4"
+LEX "num|f=false|s=4"
+LEX "str:ab|f=false|s=4"
+LEX "str:a\nb|f=false|s=6"
+LEX "interp id:b + num|f=false|s=11"
+LEX "id:a|f=false|s=6"
+LEX "id:a|f=false|s=8"
+LEX "err|f=true|s=2"
+LEX "id:a|f=false|s=6"
+LEX "op|f=false|s=5"
+LEX "id:a op id:b|f=false|s=3"
+LEX "id:if ( id:a ) op|f=false|s=8"
+LEX "id:foo ?. ( num )|f=false|s=8"
+LEX "id:foo tpl:x|f=false|s=6"
+LEX "id:eval ( num )|f=false|s=7"
+LEX "err str:unterminated|f=true|s=13"
+LEX "err|f=true|s=13"
+LEX "id:A|f=false|s=6"
+LEX "id:é|f=false|s=2"
+LEX "id:a|f=false|s=4"
+LEX "id:a , id:b|f=false|s=5"
+LEX "id:a = id:b|f=false|s=3"
+LEX "id:a op id:b|f=false|s=3"
+LEX "id:a op id:b|f=false|s=3"
+LEX "id:a op id:b|f=false|s=3"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a op id:b|f=false|s=4"
+LEX "id:a op id:b|f=false|s=5"
+LEX "id:a op id:b|f=false|s=4"
+LEX "( id:a )|f=false|s=3"
+LEX "id:f ( )|f=false|s=3"
+LEX "interp tpl:a|f=false|s=9"
+LEX "num|f=false|s=4"
+LEX "str:a\tA|f=false|s=11"
+LEX "err|f=true|s=4"
+LEX "op|f=false|s=5"
+LEX "id:a = id:b|f=false|s=4"
+PROB "bare eval|steps=7|limit=120"
+PROB "bare foo|steps=6|limit=112"
+PROB "bare foo|steps=8|limit=128"
+PROB "bare foo|steps=6|limit=112"
+PROB "string timer|steps=13|limit=168"
+PROB "|steps=15|limit=184"
+PROB "string timer|steps=15|limit=184"
+PROB "|steps=24|limit=256"
+PROB "|steps=17|limit=200"
+PROB "|steps=9|limit=136"
+PROB "new Blob|steps=10|limit=144"
+PROB "bare import|steps=9|limit=136"
+PROB "with|steps=9|limit=136"
+PROB "bare assign location|steps=10|limit=144"
+PROB "|steps=14|limit=176"
+PROB "bare assign onclick|steps=9|limit=136"
+PROB "|steps=13|limit=168"
+PROB "member call write | member write|steps=17|limit=200"
+PROB "|steps=12|limit=160"
+PROB "member assign foo|steps=10|limit=144"
+PROB "member assign innerHTML | member innerHTML|steps=16|limit=192"
+PROB "member call Reflect|steps=18|limit=208"
+PROB "member call replace|steps=19|limit=216"
+PROB "member call append|steps=14|limit=176"
+PROB "|steps=11|limit=152"
+PROB "bare eval | member call call|steps=17|limit=200"
+PROB "|steps=30|limit=304"
+PROB "member assign innerHTML | member innerHTML|steps=19|limit=216"
+PROB "computed assign|steps=9|limit=136"
+PROB "computed call|steps=9|limit=136"
+PROB "|steps=15|limit=184"
+PROB "bare eval | indirect call|steps=11|limit=152"
+PROB "bare foo|steps=8|limit=128"
+PROB "element script|steps=12|limit=160"
+PROB "|steps=8|limit=128"
+PROB "element script|steps=32|limit=320"
+PROB "|steps=28|limit=288"
+PROB "attribute href|steps=37|limit=360"
+PROB "|steps=28|limit=288"
+PROB "computed attribute|steps=22|limit=240"
+PROB "bare open|steps=14|limit=176"
+PROB "|steps=18|limit=208"
+PROB "member assign href|steps=15|limit=184"
+PROB "member assign textContent|steps=16|limit=184"
+PROB "|steps=45|limit=368"
+PROB "bare eval|steps=22|limit=256"
+PROB "bare foo|steps=20|limit=248"
+PROB "|steps=39|limit=448"
+PROB "bare foo|steps=67|limit=624"
+PROB "attribute onerror|steps=32|limit=256"
+PROB "|steps=40|limit=288"
+PROB "attribute href|steps=28|limit=288"
+PROB "element iframe|steps=49|limit=456"
+PROB "element base|steps=38|limit=368"
+PROB "script src|steps=43|limit=480"
+PROB "style import|steps=19|limit=280"
+PROB "meta refresh|steps=53|limit=488"
+PROB "element link|steps=40|limit=384"
+PROB "bare foo|steps=25|limit=288"
+PROB "scan failed closed|steps=3|limit=88"
+PROB "bare foo|steps=31|limit=336"
+PROB "attribute href|steps=53|limit=488"
+PROB "element object|steps=50|limit=464"
+PROB "element embed|steps=47|limit=440"
+PROB "element link|steps=36|limit=352"
+PROB "bare foo|steps=29|limit=320"
+PROB "bare foo|steps=27|limit=304"
+PROB "bare eval|steps=14|limit=176"
+PROB "member call write | member write|steps=22|limit=240"
+PROB "member eval|steps=18|limit=208"
+PROB "member assign innerHTML | member innerHTML|steps=20|limit=224"
+PROB "|steps=24|limit=256"
+PROB "|steps=56|limit=512"
+PROB "|steps=52|limit=480"
+PROB "attribute href|steps=29|limit=296"
+PROB "string timer|steps=20|limit=224"
+PROB "bare setTimeout|steps=24|limit=256"
+PROB "computed assign|steps=11|limit=152"
+PROB "computed assign|steps=11|limit=152"
+KEY ['ab'] static:ab
+KEY ['a'+'b'] static:ab
+KEY [foo] bare
+KEY [1] num
+KEY [foo.bar] member
+KEY [foo()] call
+KEY [foo+1] other
+KEY [`ab`] static:ab
+KEY [a?.b] member
+ARG0 f(a,b+c,d) id:a
+ARG1 f(a,b+c,d) id:b + id:c
+FIRST f(a,b+c,d) other
+ARG0 f() 
+ARG1 f() 
+FIRST f() missing
+ARG0 f(function(){}) id:function ( ) { }
+ARG1 f(function(){}) 
+FIRST f(function(){}) other
+ARG0 setTimeout(()=>1, 2) ( ) => num
+ARG1 setTimeout(()=>1, 2) num
+FIRST setTimeout(()=>1, 2) other
+MATE (a[b]) 0>5,2>4,4>2,5>0
+COMMA (a[b]) false
+MATE (a 
+MATE ([)] 
+COMMA ([)] false
+MATE {(} 
+MATE f(a,b) 1>5,5>1
+COMMA f(a,b) true
+MATE f((a,b)) 1>7,2>6,6>2,7>1
+COMMA f((a,b)) false
+MATE (function(){})() 0>6,2>3,3>2,4>5,5>4,6>0,7>8,8>7
+COMMA (function(){})() false
+SAFE ["u"]
+STR ["bad", "s", "u"]
+IN setText true el false
+ELPARAM true
+BORROW true
+BORROW_EVAL false
+TIMER arrow arrow=true allowed=true
+TIMER fn arrow=false allowed=true
+TIMER id arrow=false allowed=true
+TIMER eval arrow=false allowed=false
+TIMER str arrow=false allowed=false
+TIMER nested arrow=true allowed=true
+SCHEME true scriptish true
+PREV "a" value=true kw=false
+PREV "if a" value=true kw=false
+PREV "(a)" value=true kw=false
+PREV "'a'" value=true kw=false
+PREV "1" value=true kw=false
+PREV "a?." value=true kw=false
+PREV "return a" value=true kw=false
+MEM true CALL false
+MEM false CALL true
+MEM false CALL false
+MEM false CALL false
+TAG "<a href=x>" tag:a:end10:closefalse:href=x
+TAG "<a href=\"x\" id=1>" tag:a:end17:closefalse:href=x,id=1
+TAG "<div class>" tag:div:end11:closefalse:class=
+TAG "<?" not
+TAG "<a href=x<b>" unclosed:9

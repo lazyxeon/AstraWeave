@@ -280,6 +280,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -362,6 +363,7 @@ This crate hosts **two distinct pipelines** that do not call each other. Both ar
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -410,6 +412,7 @@ This is a pure-CPU logic crate; performance is benchmark-tracked but not a runti
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is the `systems/*` "ECS system" framing intended to be wired?** The doc-comments target `App::add_system`, but the signatures and absence of an `astraweave-ecs` dependency mean they are not registrable today. Is a future ECS-adapter layer planned, or is the framing vestigial from a design that predated the slice-runtime split?

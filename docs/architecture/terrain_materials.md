@@ -234,6 +234,7 @@ Loaded by `tools/aw_editor/src/viewport/canonical_terrain_pack.rs` (`load_canoni
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -299,6 +300,7 @@ Loaded by `tools/aw_editor/src/viewport/canonical_terrain_pack.rs` (`load_canoni
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -351,6 +353,7 @@ Loaded by `tools/aw_editor/src/viewport/canonical_terrain_pack.rs` (`load_canoni
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is `astraweave-terrain/src/texture_splatting.rs` still load-bearing anywhere, or is it dead code awaiting deletion?** Resolving this determines whether the file should be marked Deprecated, fully removed, or scoped to a specific procedural-generation role distinct from the active 32-layer pipeline.

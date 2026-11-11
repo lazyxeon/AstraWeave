@@ -1,7 +1,8 @@
 # AstraWeave Architecture Map
 
-> **Generated**: 2026-05-07 | **Last reconciled**: 2026-10-29 | **Version**: 0.8.15 | **Rust**: 1.89.0
+> **Generated**: 2026-05-07 | **Last reconciled**: 2026-11-09 | **Version**: 0.8.16 | **Rust**: 1.89.0
 > Living document — used by all agents as the primary architectural reference.
+> **0.8.16 update (2026-11-09)**: Camera creation cite is `8c551c6ea` (not `52b9e711c`). `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1` (line 60 on 2026-05-13). Editor `pending_actions`: 31 panel files, 7 drained, 24 never drained. The editor index is 237 `.rs` files and 238,389 lines outside `target/` (152 files and 181,148 under `src/`); `EditorApp` has 133 fields; `EditorApp::update` is `main.rs:9728-9729`; `tab_viewer/mod.rs` is 8,397 lines; HWND is `hwnd_cache` at `main.rs:527`. Dialogue LLM is 2,231 of 4,420 lines under `src/`. Fluids `src/` is 24,509 lines; `lib.rs` is 4,198; `editor.rs` is 5,823 and is the largest file. `WaterBuildingManager` is not in the crate.
 > **0.8.15 update (2026-10-29)**: `miri.yml` weekly jobs are ecs `--lib` (120m), ecs `--tests` (120m), sdk `--lib --tests` (90m), core (90m), physics (90m, non-blocking #558), and ai (60m). Pull requests that touch `blob_vec.rs`, `sparse_set.rs`, or `archetype.rs` run `miri-ecs-hotpath` (45m). The nightly channel is `.github/rust-nightly-channel` (#560).
 > **0.8.14 update (2026-10-17)**: Rebased onto `cbb314b9`. #353 vendors `third_party/candle-core` 0.8.4 pinned to `zip` 9.0.3. `zip` 1.1.4 is not in the lockfile. No audit ignore for RUSTSEC-2026-0367, 0368, or 0369. #324 is closed. The fix is #353. Nineteen replay cases stay.
 > **0.8.13 update (2026-10-16)**: Rebased onto `22741c42`. #332 requires nineteen replay cases: `greybox_checkpoint`, `quest_ticks`, and `persist_replay` join the sixteen. The golden stays `b6a9d5a2c5da28a6`.
@@ -36,12 +37,12 @@
 | Net (snapshot-based server) | [`net.md`](net.md) | Active; 2D grid `IVec2` model; JSON over WebSocket; coexists with `astraweave-net-ecs` (different model entirely) |
 | Net-ECS + standalone matchmaking | [`net_ecs.md`](net_ecs.md) | Standalone server/client production-style; ECS Plugin layer **dormant** (zero production consumers despite declared dep); the former HMAC-vs-XOR sig mismatch is **RESOLVED** — HMAC-SHA256 signing now enforced end-to-end, kick-by-default (Net-Trio-Remediation; `net_ecs.md` §6/§7) |
 | Input | [`input.md`](input.md) | Pure facade over winit + gilrs; declared by `astraweave-gameplay` and `astraweave-ui` but neither imports the crate; editor reinvents the entire input domain in a 2,511-LoC panel that doesn't drain its action queue |
-| Fluids | [`fluids.md`](fluids.md) | **Dormant/deprecated for runtime engine (post-W.1).** ~24.2K LoC after W.1 (2026-06-20) removed the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC); only `examples/` consume it. Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate (`FluidSystem` / `WaterEffectsManager`; `PcisphSystem`/`UnifiedSolver`/`ResearchFluidSystem` absent). The live water system is the view-side successor — [`water.md`](water.md) |
+| Fluids | [`fluids.md`](fluids.md) | **Dormant/deprecated for runtime engine (post-W.1).** 24,509 lines under `src/` after W.1 (2026-06-20) removed the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC); `examples/fluids_demo` and `examples/weaving_playground` consume it. Now the deprecated PBD remnant + retained F.4 GPU-particle accent substrate (`FluidSystem` / `WaterEffectsManager`; `PcisphSystem`/`UnifiedSolver`/`ResearchFluidSystem` absent). The live water system is the view-side successor — [`water.md`](water.md) |
 | ECS substrate + Math/Core/SDK | [`ecs_math_core_sdk_foundation.md`](ecs_math_core_sdk_foundation.md) | Active foundation; **two `World` types** and **two `Entity` types** coexist (legacy `core::World` bridged into ECS via `build_app`); `ParallelSchedule` removed 2026-04-18 |
 | Audio | [`audio.md`](audio.md) | Active rodio facade; **5 buses** (not 4 per stale lib.rs docstring); not an ECS Resource (rodio chain is `!Send`); 10+ editor panel knobs are no-op forward-design |
 | Animation System | [`animation.md`](animation.md) | Phase 2 Task 5 complete; **four parallel type families** (`render::Skeleton`/`asset::Skeleton`/`scene::CSkeleton`/`editor::GltfSkeleton`) — no shared types, no `From` impls; `MAX_JOINTS = 256` hard-coded in two places; CubicSpline falls back to Linear/Slerp |
 | AI Pipeline (8 subsystem traces) | [`ai_pipeline.md`](ai_pipeline.md) | Active foundation — engine's first-class citizen. 12,700+ agents @ 60 FPS validated. **Two GOAP implementations**, **runtime LLM default still phi3:medium despite Qwen3 doc-comments**, hardening surface (~15K LoC) shelf-stocked but not in line, Memory/Coordination/RAG subsystems dormant |
-| aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign. 216 `.rs` files / 224,584+ LoC; god-struct `EditorApp` (123 fields); §7.7 wrapped-component trap surfaced at 4 layers; Multi-Tool Sub-phases 3 (incl. Real-Fix.A–E) and 4 COMPLETE, Sub-phase 5 in flight (5.A/5.B landed 2026-06-06; 5.C closeout + Mediator Removal + SP6 pending) |
+| aw_editor (Visual Editor) | [`aw_editor.md`](aw_editor.md) | Mid-campaign. At `604d35d1`: 237 `.rs` files and 238,389 lines outside `target/` (152 files and 181,148 lines under `src/`); god-struct `EditorApp` (133 fields); §7.7 wrapped-component trap surfaced at 4 layers; Multi-Tool Sub-phases 3 (incl. Real-Fix.A–E) and 4 COMPLETE, Sub-phase 5 in flight (5.A/5.B landed 2026-06-06; 5.C closeout + Mediator Removal + SP6 pending) |
 
 Traces added after the June index (file map is the trace; do not treat a missing row here as "unbuilt"): `asset.md`, `camera.md`, `causality.md`, `cinematics.md`, `combat.md`, `destruction.md`, `gameplay.md`, `nav.md`, `pcg.md`, `quests.md`, `scene.md`, `scripting.md`, `security.md`, `terrain.md`, `ui.md`, `water.md`, `weaving.md`. The generated table in `CLAUDE.md` is the membership list. `aw_trace_sync --check` owns that table.
 
@@ -104,8 +105,8 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 |-------|---------------|
 | `astraweave-materials` | _(none)_ |
 | `astraweave-cinematics` | _(none)_ |
-| `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `52b9e711c` 2026-05-18)_ |
-| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:45), **aw_asset_cli** (tool — unusual direction, verified 2026-05-13 still present at Cargo.toml:60) |
+| `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `8c551c6ea` 2026-05-18)_ |
+| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:46 at `604d35d1`), **aw_asset_cli** (tool — unusual direction, Cargo.toml:64 at `604d35d1`; line 60 when first verified 2026-05-13) |
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
 | `astraweave-blend` | _(in crates/)_ |
@@ -164,7 +165,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 ### 2.3 Architectural Anomalies
 
 1. **`terrain` → `gameplay`** (reverse dependency): World-gen crate imports gameplay biome types. Should flow the other way. Verified 2026-05-13 still present. Blast radius: changing gameplay biome types breaks terrain generation.
-2. **`render` → `aw_asset_cli`** (production → tool): A runtime rendering crate depending on a CLI tool crate. Verified 2026-05-13 still present at `astraweave-render/Cargo.toml:60`. Unusual dependency direction.
+2. **`render` → `aw_asset_cli`** (production → tool): A runtime rendering crate depending on a CLI tool crate. Present at `astraweave-render/Cargo.toml:64` at `604d35d1` (line 60 when first verified 2026-05-13). Unusual dependency direction.
 3. **`npc` does NOT depend on `ai` or `behavior`**: NPC crate depends on physics/audio/gameplay instead. NPC behavior logic is decoupled from the AI orchestration layer. Confirmed by `ai_pipeline.md` §13.3 — NPC is "a fully isolated AI subsystem with its own parallel vocabulary (`NpcAction`/`NpcPlan`/`NpcWorldView`/`LlmAdapter`/`CommandSink`), zero imports of canonical AI types, and direct physics/audio integration."
 4. **`core` → `behavior`**: Core foundation depends on behavior trees (behavioral is part of the core abstraction).
 5. **`aw_editor` → `render` is REQUIRED** (Fix 27): Previously optional (`#[cfg(feature = "astraweave-render")]`), now always compiled. ~30 `#[cfg]` guards removed. Build time increased ~45s but editor always has engine-grade PBR rendering.
@@ -255,10 +256,10 @@ There are no dependency cycles in the workspace graph as of 2026-05-13. The "rev
 - **Reconciliation note (v0.7.0)**: `PhysicsWorld` is `Send + Sync` (auto-derived; compile-time-proven by `astraweave-scripting/src/lib.rs:148, 336, 453, 506` using `World::get_resource<PhysicsWorld>` which requires `Send + Sync`). The prior trace claim "Send but NOT Sync" was wrong. See `physics.md` §8 Invariant 18.
 
 **astraweave-fluids**
-- 19 source files (~24.2K LoC) after W.1 (2026-06-20) removed the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC). Largest single file now: `editor.rs` at 5,823 LoC; second: `lib.rs` at 4,068 LoC. (`simd_ops.rs` — formerly 39,554 LoC — deleted in W.1.)
+- 19 source files (24,509 lines under `src/`) after W.1 (2026-06-20) removed the SPH/voxel solver + `simd_ops.rs` (−58.8K LoC). Largest single file: `editor.rs` at 5,823 lines; second: `lib.rs` at 4,198. (`simd_ops.rs` — formerly 39,554 LoC — deleted in W.1.)
 - Post-W.1, the SPH/voxel solver is removed; the remaining surfaces are `FluidSystem` (lib.rs PBD remnant) and `WaterEffectsManager` (visual coordinator). `PcisphSystem` (formerly standalone PCISPH) and `simd_ops.rs` were deleted in W.1 (2026-06-20); `UnifiedSolver` was deleted earlier with `unified_solver.rs`; `ResearchFluidSystem` was never a type — `research.rs` is a wgpu-free config/particle module.
-- Types: `WaterBuildingManager`, `WaterEffectsManager`, `CausticsSystem`, `WaterQualityPreset` (Low/Medium/High/Ultra/Custom)
-- **Reconciliation note (v0.7.0 — runtime dormancy)**: `fluids.md` §1 verified 2026-05-12: the **only** workspace consumer of `astraweave-fluids` outside the crate itself is `examples/fluids_demo/src/main.rs:18-21`. **No production game-loop crate** (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The audit doc `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` rates current state at "Grade B (Good for games, insufficient for research)." This was the single largest dormant-code reservoir in the workspace at ~84.5K LoC at v0.7.0; W.1 (2026-06-20) cut it to ~24.2K LoC by removing the SPH/voxel solver.
+- Types: `WaterEffectsManager`, `CausticsSystem`, `WaterQualityPreset` (Low/Medium/High/Ultra/Custom). `WaterBuildingManager` is not in the crate (`building.rs` is gone).
+- **Reconciliation note (v0.7.0 — runtime dormancy)**: `fluids.md` §1 verified 2026-05-12: at that date the workspace consumer outside the crate was `examples/fluids_demo/src/main.rs:18-21`. At `604d35d1` the consumers are `examples/fluids_demo` and `examples/weaving_playground`. **No production game-loop crate** (`astraweave-render`, `astraweave-gameplay`, `astraweave-physics`, `astraweave-scene`, `astraweave-terrain`, `astraweave-ecs`) depends on `astraweave-fluids`. The audit doc `docs/current/FLUIDS_RESEARCH_GRADE_ENHANCEMENT_PLAN.md` rates current state at "Grade B (Good for games, insufficient for research)." This was the single largest dormant-code reservoir in the workspace at ~84.5K LoC at v0.7.0; W.1 (2026-06-20) cut it to 24,509 lines under `src/` by removing the SPH/voxel solver.
 - **Reconciliation note (v0.7.0 — `editor.rs` not wired)**: The 5,823-LoC `editor.rs` is forward-design infrastructure. Verified 2026-05-12: `tools/aw_editor/Cargo.toml` does not declare `astraweave-fluids` as a dependency; workspace grep for `use astraweave_fluids` inside `tools/aw_editor` returns zero matches. See `fluids.md` §5 file map editor.rs row.
 - **Reconciliation note (v0.7.0 — no `forbid(unsafe_code)`)**: Unlike sibling engine crates, `astraweave-fluids/src/lib.rs:1` does NOT declare `#![forbid(unsafe_code)]`. Only two unsafe occurrences crate-wide: `unsafe impl bytemuck::Pod for DebugVertex {}` + `unsafe impl bytemuck::Zeroable for DebugVertex {}` at `debug_viz.rs:479-480`. No `unsafe { ... }` blocks.
 
@@ -367,7 +368,7 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 | `load_bindings` collapses every error mode to `None` | `astraweave-input/src/save.rs:16-19` | `input.md` §6 |
 | `safe_llm_invoke` has zero workspace callers (4096-char limit unreachable) | `astraweave-llm/src/llm_adapter.rs` (file labeled "stub") | `ai_pipeline.md` §6, §13.7 |
 | `LLM_CACHE_SIM_THRESH < 1.0` causes test pollution; off by default | `astraweave-llm/src/lib.rs:57-67` | `ai_pipeline.md` §6 |
-| Editor `pending_actions` queues on 25 panels but only 7 `take_*_actions` drain functions exist | `tools/aw_editor/src/panels/*.rs` | `aw_editor.md` §6, §11 |
+| Editor `pending_actions`: 31 panel files queue `pending_actions`; production drains 7, and 24 are never drained | `tools/aw_editor/src/panels/*.rs` | `aw_editor.md` §6, §11 |
 
 **How to apply**: Run `rg 'let _ = .*[Rr]esult\|let _ = .*\?'` and `rg '\.ok\(\)' --type rust` periodically. Treat each match as a finding requiring justification.
 
@@ -387,13 +388,13 @@ Reconciled from per-subsystem trace §11 / §13 sections. Each entry: subsystem,
 
 | Subsystem | LoC | Evidence | Source trace |
 |---|---|---|---|
-| **Fluids (entire crate)** | ~24.2K (post-W.1; was ~84.5K) | `examples/` are the only workspace consumers; the SPH/voxel solver was removed in W.1 (2026-06-20). No game-loop crate depends on `astraweave-fluids`. | `fluids.md` §1, §11 |
+| **Fluids (entire crate)** | 24,509 (post-W.1; was ~84.5K) | `examples/fluids_demo` and `examples/weaving_playground` are the workspace consumers; the SPH/voxel solver was removed in W.1 (2026-06-20). No game-loop crate depends on `astraweave-fluids`. | `fluids.md` §1, §11 |
 | **Memory pipeline (main)** | ~11K | Zero in-engine production consumers in `astraweave-ai`, `astraweave-behavior`, `astraweave-render`. Only `astraweave-persona` uses the legacy `persona::*` types. | `ai_pipeline.md` §13.1, §11 |
 | **Coordination crate** | ~5.3K | Zero workspace consumers (no examples, no tools, no game-loop crates). Explicit `#[allow(dead_code)]` "reserved for future..." markers on 7+ struct/field locations. Three commented-out `pub mod` declarations whose source files never existed. | `ai_pipeline.md` §13.5, §6 |
 | **Advanced GOAP** | ~16.7K | 22 files, feature `planner_advanced`. Zero production constructors outside tests + benches + three disabled CLI bins (`bin.disabled/{analyze-plan,validate-goals,visualize-plan}.rs`). | `ai_pipeline.md` §13.6, §11 |
 | **LLM Production Hardening** | ~15K | 16 files. Only `parse_llm_response` (and `FallbackOrchestrator::generate_plan`) is actively wired in production. `ProductionHardeningLayer` has no production constructor. The runtime `AIArbiter`/`LlmExecutor` path bypasses the entire hardening surface — no rate limiting, no circuit breaking, no backpressure, no A/B routing, no retry, no telemetry, no ToolGuard, no 4-tier fallback. | `ai_pipeline.md` §13.7, §11 |
 | **RAG stack** (`astraweave-rag` + `astraweave-embeddings` + `astraweave-context`) | ~12.3K | Foundation primitives active (`TokenCounter::new` instantiated by `RagPipeline::new` AND `ConversationHistory::new`); `RagPipeline` composite **dormant**: held as a field in 5 LLM-enhanced consumer crates (Director, Quests, Persona, Dialogue, Coordination), all themselves dormant. Plus advertised HNSW vector index is actually a linear scan. | `ai_pipeline.md` §13.8, §11 |
-| **Dialogue LLM layer (`llm_dialogue.rs`)** | ~2.9K | 60% of crate. Zero external consumers. The basic `DialogueGraph`/`DialogueRunner`/`toml_loader` path IS actively production-wired into `veilweaver_slice_runtime` and the editor, but the LLM-enhanced layer is dormant. | `ai_pipeline.md` §13.4 |
+| **Dialogue LLM layer (`llm_dialogue.rs`)** | ~2.2K | About half the crate (2,231 of 4,420 lines under `src/` at `604d35d1`). Zero external consumers. The basic `DialogueGraph`/`DialogueRunner`/`toml_loader` path IS actively production-wired into `veilweaver_slice_runtime` and the editor, but the LLM-enhanced layer is dormant. | `ai_pipeline.md` §13.4 |
 | **NPC** (isolated subsystem) | ~1.7K | Fully isolated AI subsystem with its own parallel vocabulary (`NpcAction`/`NpcPlan`/`NpcWorldView`/`LlmAdapter`/`CommandSink`). Zero imports of canonical AI types. Direct physics/audio integration rather than ECS-loop participation. Single direct consumer in `astraweave-npc` itself. | `ai_pipeline.md` §13.3 |
 | **`astraweave-net-ecs` ECS Plugin layer** | (small) | Working tests, **no production consumer**. The Cargo-declared dep in `astraweave-stress-test/Cargo.toml:20` is not imported in any source file. Async helpers `connect_to_server` / `start_network_server` use `Codec::Bincode` (incompatible with standalone server's `Codec::PostcardLz4`). | `net_ecs.md` §1, §6 |
 | **`astraweave-persistence-ecs` ECS layer (the Plugin parts)** | (medium) | Roundtrip serialization works. A `health` write is a little-endian `i32` from the first four bytes, and only when `CHealth` is already on the `CReplayState` entity. A missing component is a no-op. Other due events are recorded and left unapplied. Autosave serializes first. A failed serialize saves nothing. A later save error leaves earlier managers saved. Companions stay empty and `credits` stay 0. `calculate_world_hash` covers 4 of 10 components. `world_tick` is `CSimClock.tick`, or 0 when that clock is absent. No production consumer outside the crate's own tests. | `persistence_ecs.md` §1, §6 |
@@ -697,7 +698,7 @@ ECS World (Vec3 positions)
 
 ```
 User input (mouse, keyboard, gamepad via winit → eframe)
-  → EditorApp::update(ctx, frame) [main.rs:9119-9120]
+  → EditorApp::update(ctx, frame) [main.rs:9728-9729]
   → tick_audio_subsystem + tick_animation_subsystem + tick_movement_scripts (play mode only)
   → process_pending_hotkeys + process_file_watcher_events + auto-save check
   → MenuBar / StatusBar / Dialogs
@@ -709,7 +710,7 @@ User input (mouse, keyboard, gamepad via winit → eframe)
   → Panel updates (asset browser, terrain, profiler, etc.)
 ```
 
-`UndoStack` is bounded (default 100 commands). 9 entity-creation operations were flagged in Behavioral Correctness Audit as bypassing the undo stack — Wave-3 mutation remediation closed several. 18 `pending_actions` queues exist on panels but only 7 `take_*_actions` drain functions are defined — most user button presses queue events that no code ever reads.
+`UndoStack` is bounded (default 100 commands). 9 entity-creation operations were flagged in Behavioral Correctness Audit as bypassing the undo stack — Wave-3 mutation remediation closed several. 31 panel files queue `pending_actions`; production drains 7, and 24 are never drained. The crate defines 37 `take_*actions` functions. Most user button presses on the undrained panels queue events that no code ever reads.
 
 ---
 
@@ -753,7 +754,7 @@ User input (mouse, keyboard, gamepad via winit → eframe)
 | `tools/aw_editor/src/viewport/shaders/shadow.wgsl` | Editor's own shadow map WGSL shader |
 | `tools/aw_editor/src/viewport/shaders/brdf_lut.wgsl` | BRDF integration LUT compute shader |
 | `tools/aw_editor/src/viewport/shaders/mipmap_blit.wgsl` | GPU mipmap generation shader |
-| `tools/aw_editor/src/tab_viewer.rs` | Tab viewer logic (moved/unified into `tab_viewer/mod.rs` 8,185-line module) |
+| `tools/aw_editor/src/tab_viewer.rs` | Tab viewer logic (moved/unified into `tab_viewer/mod.rs`, 8,397 lines at `604d35d1`) |
 
 ### 9.2 Frame Rendering Sequence
 
@@ -802,7 +803,7 @@ Frame Start
 | `astraweave-fluids` | `debug_viz.rs:479-480` — 2× `unsafe impl bytemuck::{Pod,Zeroable}` for `DebugVertex` | No `unsafe {…}` blocks. No `forbid(unsafe_code)`. |
 | `astraweave-physics`, `astraweave-input`, `astraweave-net`, `astraweave-audio`, `astraweave-llm`, `astraweave-behavior`, `astraweave-memory`, `astraweave-director`, `astraweave-coordination`, `astraweave-npc`, `astraweave-dialogue`, `astraweave-persistence-ecs`, `aw-save`, `astraweave-net-ecs`, `aw-net-proto`, `astraweave-scene` | _(none)_ — `#![forbid(unsafe_code)]` declared at crate root | Unsafe lives in deps (Rapier3D, wgpu, rodio, tokio-rustls, etc.) |
 | `astraweave-render` | `#![deny(unsafe_code)]` at `lib.rs:1` — crate is **unsafe-free** | Any wgpu unsafe lives inside wgpu |
-| `aw_editor` | NOT `#![forbid(unsafe_code)]` — raw-window-handle, wgpu raw resources, Windows-specific HWND access at `main.rs:417` | Cannot forbid unsafe |
+| `aw_editor` | NOT `#![forbid(unsafe_code)]` — raw-window-handle, wgpu raw resources, Windows-specific HWND access (`hwnd_cache` at `main.rs:527`, `#[cfg(target_os = "windows")]` at `:526`) | Cannot forbid unsafe |
 
 ---
 
@@ -940,7 +941,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 11. **Memory subsystem dormancy — production-wire, prune, or rebrand?** ~11K LoC; zero in-engine production consumers. `ai_pipeline.md` §11, §13.1.
 
-12. **Fluids subsystem dormancy — superseded by the view-side water successor (W.1/W.2, 2026-06-20).** W.1 removed the SPH/voxel solver (−58.8K LoC); the crate is now ~24.2K LoC (deprecated PBD remnant + F.4 accent substrate). The live water system is `astraweave-water` + render `water.rs` (see `water.md`). Remaining question: prune or rebrand the deprecated remnant. `fluids.md` §11.
+12. **Fluids subsystem dormancy — superseded by the view-side water successor (W.1/W.2, 2026-06-20).** W.1 removed the SPH/voxel solver (−58.8K LoC); the crate is now 24,509 lines under `src/` (deprecated PBD remnant + F.4 accent substrate). The live water system is `astraweave-water` + render `water.rs` (see `water.md`). Remaining question: prune or rebrand the deprecated remnant. `fluids.md` §11.
 
 13. **Four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip` type families — unify into a shared `astraweave-animation` crate?** `animation.md` §11.
 
@@ -967,6 +968,9 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 ---
 
 ## Revision History
+
+### v0.8.16 (2026-11-09)
+Camera creation cite is `8c551c6ea`. `astraweave-render` camera dep is `Cargo.toml:46` and `aw_asset_cli` is `:64` at `604d35d1`. Editor `pending_actions` is 31 panel files, 7 drained, 24 never drained. The editor index is 237 `.rs` files and 238,389 lines outside `target/` (152 files and 181,148 under `src/`); `EditorApp` has 133 fields; `EditorApp::update` is `main.rs:9728-9729`; `tab_viewer/mod.rs` is 8,397 lines; HWND is `hwnd_cache` at `main.rs:527`. Dialogue LLM is 2,231 of 4,420 lines under `src/`. Fluids `src/` is 24,509 lines; `lib.rs` is 4,198; `editor.rs` is 5,823 and is the largest file. `WaterBuildingManager` is not in the crate.
 
 ### v0.8.15 (2026-10-29)
 `miri.yml` lists ecs `--lib`, ecs `--tests`, sdk `--lib --tests`, core, physics (non-blocking until #558), and ai. `miri-ecs-hotpath` runs on pull requests that touch BlobVec, SparseSet, or Archetype. Nightly is `.github/rust-nightly-channel` (#560).

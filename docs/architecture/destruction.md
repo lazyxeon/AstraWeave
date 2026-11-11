@@ -120,6 +120,7 @@ Floats do not enter this pipeline. Rapier is not called.
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 | Abstraction | Status | Disposition |
@@ -153,6 +154,7 @@ Floats do not enter this pipeline. Rapier is not called.
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -184,6 +186,7 @@ Caps, not wall-clock gates: 256 debris, 1024 nodes per tick, 8 stress iterations
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **#249 column adapter.** Closed on `5c664f23` for the hook. `ColumnFns::top` is what `surface_y` reads. `ColumnFns::material` is the paired pointer. `rebuild_dag` still fills density overrides only, the same as `TerrainBase::column_material`, which no rebuild calls. The generator, erosion, and scatter in `astraweave-terrain` are not edited here.

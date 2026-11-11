@@ -223,6 +223,7 @@ The crate exposes **two distinct integration paths** that callers pick between; 
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Backup / residue source files (high-value)
@@ -304,6 +305,7 @@ The crate exposes **two distinct integration paths** that callers pick between; 
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -334,6 +336,7 @@ Immediate-mode UI re-emitted every frame; no persistent retained scene. Per-fram
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Are `accessibility` (`AccessibilitySettings`/`ColorblindMode`/`transform_color`) and `gamepad` (`GamepadManager`) intended to be wired, or are they in-design-but-tested scaffolding?** Both are exported and tested but have zero non-test consumers, and `accessibility::` is not used inside `hud.rs`. Per CLAUDE.md Key Lesson 8 they currently classify as "in-design-but-tested." Resolution needed: wire them into the HUD/render path or mark them dormant.
