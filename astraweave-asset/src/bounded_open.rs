@@ -8,8 +8,10 @@
 //! Those directory handles do not share delete, so a directory the load holds
 //! cannot be renamed or removed while they are open. Each URI component is
 //! reopened from that final path. A cloud-file reparse tag is allowed. Delete
-//! sharing is only on the first open of that file, so its name can be replaced
-//! between the two opens, and the second open must be the same file. A symlink,
+//! sharing is on the first open of each URI leaf file, so that name can be
+//! replaced while the handle is held. Only a cloud placeholder is opened a
+//! second time, without delete sharing, and that second open must be the same
+//! file. A symlink,
 //! a junction, and a mount point are refused. The file's final path must stay
 //! under the root's. Those paths compare as exact UTF-16 units.
 //!
@@ -313,6 +315,8 @@ fn after_resolve() {
 thread_local! {
     static AFTER_ROOT_OPEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
         std::cell::RefCell::new(None);
+    static AFTER_URI_DIRECTORY_OPEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
     static ROOT_OPENS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
@@ -330,6 +334,7 @@ fn record_root_open() {
 pub(crate) fn reset_root_opens() {
     ROOT_OPENS.with(|cell| cell.set(0));
     AFTER_ROOT_OPEN.with(|cell| *cell.borrow_mut() = None);
+    AFTER_URI_DIRECTORY_OPEN.with(|cell| *cell.borrow_mut() = None);
 }
 
 #[cfg(test)]
@@ -340,6 +345,12 @@ pub(crate) fn root_open_count() -> u32 {
 #[cfg(test)]
 pub(crate) fn after_root_open(hook: Box<dyn FnOnce()>) {
     AFTER_ROOT_OPEN.with(|cell| *cell.borrow_mut() = Some(hook));
+}
+
+#[cfg(test)]
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn after_uri_directory_open(hook: Box<dyn FnOnce()>) {
+    AFTER_URI_DIRECTORY_OPEN.with(|cell| *cell.borrow_mut() = Some(hook));
 }
 
 fn relative_names(relative: &Path) -> std::io::Result<Vec<std::ffi::OsString>> {
@@ -470,9 +481,9 @@ thread_local! {
 
 #[cfg(windows)]
 fn open_path(path: &Path, reparse: bool) -> std::io::Result<File> {
-    // Directory handles, and the second open of a file, do not share delete.
-    // A directory this load holds cannot be renamed or removed while that
-    // handle is open.
+    // Directory handles do not share delete. The second open of a cloud file
+    // also goes through this path and does not share delete. A directory this
+    // load holds cannot be renamed or removed while that handle is open.
     open_with_share(path, reparse, false)
 }
 
@@ -580,6 +591,10 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
             let file = open_path(&cursor, true)?;
             ensure_directory(&file)?;
             held.push(file);
+            #[cfg(test)]
+            if let Some(hook) = AFTER_URI_DIRECTORY_OPEN.with(|cell| cell.borrow_mut().take()) {
+                hook();
+            }
             continue;
         }
         let file = open_leaf_file(&cursor)?;
@@ -605,9 +620,10 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
 
 #[cfg(windows)]
 fn open_leaf_file(path: &Path) -> std::io::Result<File> {
-    // Delete sharing is only on this first open. A cloud file's name can be
-    // replaced while the handle is held, and the file-id compare then refuses
-    // a different file.
+    // Delete sharing is on this first open of each URI leaf file, so the name
+    // can be replaced while the handle is held. A cloud placeholder is opened a
+    // second time without delete sharing; the file-id compare then refuses a
+    // different file.
     let first = open_with_share(path, true, true)?;
     let meta = first.metadata()?;
     let cloud = cloud_placeholder(&first, &meta)?;

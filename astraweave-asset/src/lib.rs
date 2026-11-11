@@ -2732,6 +2732,88 @@ pub mod gltf_loader {
             let base = mat.base_color_texture.expect("base");
             assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
         }
+
+        #[cfg_attr(not(windows), allow(dead_code))]
+        fn triangle_glb_tex_subdir() -> Vec<u8> {
+            let bin = triangle_bin();
+            let json = format!(
+                r#"{{
+                    "asset": {{"version": "2.0"}},
+                    "buffers": [{{"byteLength": {}}}],
+                    "bufferViews": [
+                        {{"buffer": 0, "byteOffset": 0, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 36, "byteLength": 36}},
+                        {{"buffer": 0, "byteOffset": 72, "byteLength": 6}}
+                    ],
+                    "accessors": [
+                        {{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0]}},
+                        {{"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}},
+                        {{"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}}
+                    ],
+                    "images": [{{"uri": "tex/a.png"}}, {{"uri": "tex/b.png"}}],
+                    "textures": [{{"source": 0}}, {{"source": 1}}],
+                    "materials": [{{
+                        "pbrMetallicRoughness": {{"baseColorTexture": {{"index": 0}}}},
+                        "normalTexture": {{"index": 1}}
+                    }}],
+                    "meshes": [{{"primitives": [{{
+                        "attributes": {{"POSITION": 0, "NORMAL": 1}},
+                        "indices": 2,
+                        "material": 0
+                    }}]}}]
+                }}"#,
+                bin.len()
+            );
+            glb_with_bin(&json, &bin)
+        }
+
+        #[test]
+        fn glb_image_uri_read_stops_at_per_image_cap() {
+            let cap = crate::image_limits::MAX_IMAGE_ALLOC;
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            std::fs::create_dir(&model).expect("model");
+            let big = std::fs::File::create(model.join("a.png")).expect("create");
+            big.set_len(cap + 1).expect("len");
+            drop(big);
+            write_png(&model.join("b.png"), [1, 2, 3, 255]);
+            let glb = triangle_glb();
+            let err = load_from_glb(&model, &glb).expect_err("image cap");
+            let chain = format!("{err:#}");
+            assert!(chain.contains(&format!("limit is {cap}")), "{chain}");
+        }
+
+        #[cfg(windows)]
+        #[test]
+        fn glb_load_keeps_intermediate_uri_directory() {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let model = dir.path().join("model");
+            let tex = model.join("tex");
+            let swapped_tex = dir.path().join("swapped_tex");
+            std::fs::create_dir_all(&model).expect("model");
+            std::fs::create_dir_all(&tex).expect("tex");
+            std::fs::create_dir_all(&swapped_tex).expect("swapped");
+            write_png(&tex.join("a.png"), [10, 20, 30, 255]);
+            write_png(&tex.join("b.png"), [1, 2, 3, 255]);
+            write_png(&swapped_tex.join("a.png"), [90, 90, 90, 255]);
+            write_png(&swapped_tex.join("b.png"), [90, 90, 90, 255]);
+            let glb = triangle_glb_tex_subdir();
+            let tex_hook = tex.clone();
+            let swapped_hook = swapped_tex.clone();
+            let hold = dir.path().join("tex_hold");
+            crate::bounded_open::reset_root_opens();
+            crate::bounded_open::after_uri_directory_open(Box::new(move || {
+                let renamed = std::fs::rename(&tex_hook, &hold);
+                if renamed.is_ok() {
+                    std::fs::rename(&swapped_hook, &tex_hook).expect("swap");
+                }
+                assert!(renamed.is_err(), "held uri directory was renamed");
+            }));
+            let (_mesh, mat) = load_from_glb(&model, &glb).expect("glb");
+            crate::bounded_open::reset_root_opens();
+            let base = mat.base_color_texture.expect("base");
+            assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
+        }
     }
 }
 

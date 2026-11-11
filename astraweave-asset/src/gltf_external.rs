@@ -1,10 +1,11 @@
 //! Jailed glTF buffer and image loads.
 //!
-//! Callers use [`load_jailed_gltf`] instead of `import_buffers` / `import_images`.
-//! One load opens the model directory once, and that handle is used for the
-//! container read, every sibling URI, and every image URI. Each URI component
-//! is read from that handle.
-//! Buffer and image URI bytes share one total, and the URI count is capped.
+//! Callers use [`load_jailed_gltf`] or [`load_jailed_gltf_with_root`] instead of
+//! `import_buffers` / `import_images`. One load opens the model directory once,
+//! and that handle is used for every sibling URI and every image URI. Each URI
+//! component is read from that handle. The caller supplies container bytes; this
+//! module does not re-read the model file. Buffer and image URI bytes share one
+//! total, and the URI count is capped.
 
 use anyhow::{anyhow, bail, Context, Result};
 use base64::Engine as _;
@@ -85,8 +86,8 @@ fn external_uri_count(document: &gltf::Document) -> usize {
 
 /// The model directory opened once for a load.
 ///
-/// One load opens the model directory once, and that handle is used for the
-/// container read, every sibling URI, and every image URI.
+/// One load opens the model directory once, and that handle is used for every
+/// sibling URI and every image URI. The caller supplies container bytes.
 #[derive(Debug)]
 pub struct ModelRoot {
     inner: crate::bounded_open::OpenedRoot,
@@ -811,7 +812,8 @@ mod tests {
         assert_eq!(images.len(), 1);
         let err = load_jailed_gltf(dir.path(), gltf, total - 1).expect_err("one past");
         let msg = err.to_string();
-        assert!(msg.contains("limit") || msg.contains("exceed"), "{msg}");
+        let image_limit = png.len() as u64 - 1;
+        assert!(msg.contains(&format!("limit is {image_limit}")), "{msg}");
     }
 
     #[test]
