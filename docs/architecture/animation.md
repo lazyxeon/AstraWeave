@@ -44,7 +44,7 @@ Provides the canonical skeletal animation runtime for the engine — used by `ex
 - `astraweave-render/src/types.rs:51-106` — `SkinnedVertex` GPU vertex layout (60 bytes per vertex: position + normal + tangent + uv + joints[u16;4] + weights[f32;4])
 - `astraweave-asset/src/lib.rs:1453-…` — glTF import (`load_skeleton`, `load_animations`, plus parallel asset-side `Skeleton`/`Joint`/`Transform`/`AnimationClip`/`AnimationChannel`/`ChannelData`/`Interpolation` types using plain float arrays for Pod-friendly serialization)
 - `astraweave-scene/src/lib.rs:415-` — ECS animation components (`CSkeleton`, `CSkinnedMesh`, `CAnimator`, `CJointMatrices`, `CParentBone`, `PlaybackState`) + systems (`update_animations`, `compute_poses_stub`, `update_bone_attachments`)
-- `tools/aw_editor/src/viewport/types.rs:240-298` — editor-side `Gltf*` animation types (`GltfSkeleton`, `GltfJoint`, `GltfAnimationClip`, `GltfAnimChannel`, `GltfChannelProperty`, `GltfInterpolation`)
+- `tools/aw_editor/src/viewport/types.rs:306-366` — editor-side `Gltf*` animation types (`GltfSkeleton`, `GltfJoint`, `GltfAnimationClip`, `GltfAnimChannel`, `GltfChannelProperty`, `GltfInterpolation`)
 - `tools/aw_editor/src/animation_bridge.rs` (451 LoC) — `EditorAnimationBridge` with per-entity playback state (`EntityAnimationState`, `ClipEntry`, `AnimationOutput`, `JointTransform`)
 - `tools/aw_editor/src/panels/animation_panel.rs` (3,680 LoC) — editor UI panel
 - `examples/skinning_demo/src/main.rs` — interactive CPU/GPU skinning demonstration
@@ -89,7 +89,7 @@ The core pipeline is Phase-2-Task-5 complete (per `docs/archive/phase_reports/PH
     file: astraweave-render/src/animation.rs:101-166
     role: Per active channel: find_keyframes() binary-search → interpolate per ChannelData variant
           (Translation: Vec3::lerp; Rotation: Quat::slerp; Scale: Vec3::lerp;
-           CubicSpline falls back to linear/slerp at lines 127, 140, 153).
+           CubicSpline falls back to linear/slerp at lines 137, 150, 163).
           Returns Vec<Transform> indexed by joint.
     │
     ▼
@@ -118,8 +118,8 @@ The core pipeline is Phase-2-Task-5 complete (per `docs/archive/phase_reports/PH
     │
     ▼
 [F: Renderer dispatches the skinned draw]
-    files: astraweave-render/src/renderer.rs:6744-6760 (set_skinned_mesh — v0 API),
-           astraweave-render/src/renderer.rs:6762-6771 (update_skin_palette),
+    files: astraweave-render/src/renderer.rs:10715-10731 (set_skinned_mesh — v0 API),
+           astraweave-render/src/renderer.rs:10733-10742 (update_skin_palette),
            astraweave-render/src/types.rs:51-106 (SkinnedVertex layout: 60 bytes /
                                                   shader_locations 0/1/10/11/12/13)
     role: Uploads skinned vbuf+ibuf into Renderer.skinned_mesh slot;
@@ -134,13 +134,13 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | Term | Definition | Used in |
 |---|---|---|
-| **Skeleton** | A hierarchy of joints with inverse-bind matrices. Three structurally distinct definitions exist: `astraweave_render::Skeleton { joints: Vec<Joint>, root_indices }`, `astraweave_asset::Skeleton` (same shape but with `[f32;…]` field storage on `Joint`/`Transform`), and `astraweave_scene::CSkeleton { joint_count, root_indices, parent_indices: Vec<Option<usize>>, inverse_bind_matrices: Vec<Mat4>, local_transforms: Vec<Transform> }` (parallel-array layout, no `Vec<Joint>` wrapper). The editor uses a fourth `GltfSkeleton` with `Vec<GltfJoint>`. | `astraweave-render/src/animation.rs:58-61`, `astraweave-asset/src/lib.rs:1498-1501`, `astraweave-scene/src/lib.rs:421-427`, `tools/aw_editor/src/viewport/types.rs:250-255` |
-| **Joint** | A single bone with name, parent index, inverse-bind matrix, and bind-pose local transform. Render-side stores `Mat4` + render-side `Transform`; asset-side stores `[[f32;4];4]` + asset-side `Transform`; editor-side `GltfJoint` stores `glam::Mat4` for **both** inverse-bind and local-transform (no TRS decomposition). | `astraweave-render/src/animation.rs:16-21`, `astraweave-asset/src/lib.rs:1471-1476`, `tools/aw_editor/src/viewport/types.rs:238-246` |
+| **Skeleton** | A hierarchy of joints with inverse-bind matrices. Three structurally distinct definitions exist: `astraweave_render::Skeleton { joints: Vec<Joint>, root_indices }`, `astraweave_asset::Skeleton` (same shape but with `[f32;…]` field storage on `Joint`/`Transform`), and `astraweave_scene::CSkeleton { joint_count, root_indices, parent_indices: Vec<Option<usize>>, inverse_bind_matrices: Vec<Mat4>, local_transforms: Vec<Transform> }` (parallel-array layout, no `Vec<Joint>` wrapper). The editor uses a fourth `GltfSkeleton` with `Vec<GltfJoint>`. | `astraweave-render/src/animation.rs:58-61`, `astraweave-asset/src/lib.rs:1498-1501`, `astraweave-scene/src/lib.rs:421-427`, `tools/aw_editor/src/viewport/types.rs:319-324` |
+| **Joint** | A single bone with name, parent index, inverse-bind matrix, and bind-pose local transform. Render-side stores `Mat4` + render-side `Transform`; asset-side stores `[[f32;4];4]` + asset-side `Transform`; editor-side `GltfJoint` stores `glam::Mat4` for **both** inverse-bind and local-transform (no TRS decomposition). | `astraweave-render/src/animation.rs:16-21`, `astraweave-asset/src/lib.rs:1471-1476`, `tools/aw_editor/src/viewport/types.rs:306-315` |
 | **Transform (TRS)** | Translation + rotation (quaternion) + scale. The render-side and asset-side `Transform` types share the same conceptual shape but differ in field representation (`Vec3`/`Quat` vs `[f32;3]`/`[f32;4]`). The scene crate also defines its own `Transform` at `astraweave-scene/src/lib.rs:37-42` used inside `CSkeleton::local_transforms`. | `astraweave-render/src/animation.rs:25-29`, `astraweave-asset/src/lib.rs:1480-1484`, `astraweave-scene/src/lib.rs:37-42` |
-| **AnimationClip** | A named, fixed-duration set of channels animating joint properties. Render-side, asset-side, and editor-side (`GltfAnimationClip`) all use `name` + `duration` + `channels` shape but with distinct channel type definitions. | `astraweave-render/src/animation.rs:92-96`, `astraweave-asset/src/lib.rs:1531-1535`, `tools/aw_editor/src/viewport/types.rs:290-297` |
-| **AnimationChannel** | One animated property (translation/rotation/scale) on one joint, with keyframe times + values + interpolation mode. Render-side and asset-side embed the property in a `ChannelData` discriminated union; editor-side `GltfAnimChannel` splits the property name (`GltfChannelProperty`) from the values (`Vec<Vec<f32>>`). | `astraweave-render/src/animation.rs:83-88`, `astraweave-asset/src/lib.rs:1514-1519`, `tools/aw_editor/src/viewport/types.rs:275-286` |
+| **AnimationClip** | A named, fixed-duration set of channels animating joint properties. Render-side, asset-side, and editor-side (`GltfAnimationClip`) all use `name` + `duration` + `channels` shape but with distinct channel type definitions. | `astraweave-render/src/animation.rs:92-96`, `astraweave-asset/src/lib.rs:1531-1535`, `tools/aw_editor/src/viewport/types.rs:359-366` |
+| **AnimationChannel** | One animated property (translation/rotation/scale) on one joint, with keyframe times + values + interpolation mode. Render-side and asset-side embed the property in a `ChannelData` discriminated union; editor-side `GltfAnimChannel` splits the property name (`GltfChannelProperty`) from the values (`Vec<Vec<f32>>`). | `astraweave-render/src/animation.rs:83-88`, `astraweave-asset/src/lib.rs:1514-1519`, `tools/aw_editor/src/viewport/types.rs:344-355` |
 | **ChannelData** | The discriminated union variant carrying typed keyframe values: `Translation(Vec<Vec3>)`, `Rotation(Vec<Quat>)`, `Scale(Vec<Vec3>)` on render-side; same variants with `Vec<[f32;3]>`/`Vec<[f32;4]>` on asset-side. Marked `#[non_exhaustive]`. | `astraweave-render/src/animation.rs:74-79`, `astraweave-asset/src/lib.rs:1504-1510` |
-| **Interpolation** | `Step / Linear / CubicSpline` keyframe interpolation modes. `#[non_exhaustive]`. CubicSpline falls back to Linear/Slerp in `AnimationClip::sample` (`astraweave-render/src/animation.rs:127, 140, 153`); the asset side comments "Not fully implemented yet" at `astraweave-asset/src/lib.rs:1526`. | `astraweave-render/src/animation.rs:64-70`, `astraweave-asset/src/lib.rs:1523-1527`, `tools/aw_editor/src/viewport/types.rs:258-263` |
+| **Interpolation** | `Step / Linear / CubicSpline` keyframe interpolation modes. `#[non_exhaustive]`. CubicSpline falls back to Linear/Slerp in `AnimationClip::sample` (`astraweave-render/src/animation.rs:137, 150, 163`); the asset side comments "Not fully implemented yet" at `astraweave-asset/src/lib.rs:1526`. | `astraweave-render/src/animation.rs:64-70`, `astraweave-asset/src/lib.rs:1523-1527`, `tools/aw_editor/src/viewport/types.rs:328-332` |
 | **AnimationState** | Render-side per-clip playback state: `clip_index`, `time`, `speed`, `looping`, `playing`. Looping wraps via `%` (`animation.rs:236-240`); non-looping clamps and sets `playing = false` at duration (`animation.rs:242-247`). | `astraweave-render/src/animation.rs:204-267` |
 | **CAnimator** | ECS-side per-entity playback state. Same conceptual role as `AnimationState` but with a `PlaybackState` enum (`Playing` / `Paused` / `Stopped`) instead of a plain `playing: bool`. Distinct type from `AnimationState`. | `astraweave-scene/src/lib.rs:493-499` |
 | **PlaybackState** | ECS-side enum (`Playing`, `Paused`, `Stopped`) with helper predicates `is_playing` / `is_paused` / `is_stopped` / `is_active`. `#[non_exhaustive]`. | `astraweave-scene/src/lib.rs:437-489` |
@@ -148,7 +148,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | **JointMatrixGPU** | `#[repr(C)]` Pod-Zeroable wrapper around `[[f32; 4]; 4]` for storage-buffer upload. 64 bytes, 16-byte aligned. | `astraweave-render/src/animation.rs:345-355` |
 | **JointPalette** | `#[repr(C)]` Pod-Zeroable: `[JointMatrixGPU; MAX_JOINTS=256]` + `joint_count: u32` + 12 bytes padding. Total ~16KB per palette. | `astraweave-render/src/animation.rs:361-394`, with `MAX_JOINTS = 256` at line 358 |
 | **JointPaletteHandle** | Opaque `u32`-wrapped handle returned by `JointPaletteManager::allocate()`. Maps to a pool slot via `handle_to_slot: HashMap<JointPaletteHandle, u32>`. | `astraweave-render/src/skinning_gpu.rs:13` |
-| **JointPaletteManager** | Pooled SSBO manager: single large storage buffer with dynamic offsets, one slot per skeleton. Grows by doubling on demand (`grow` at `skinning_gpu.rs:198-246`). Initial capacity 64 slots (line 50). | `astraweave-render/src/skinning_gpu.rs:20-247` |
+| **JointPaletteManager** | Pooled SSBO manager: single large storage buffer with dynamic offsets, one slot per skeleton. Grows by doubling on demand (`grow` at `skinning_gpu.rs:195-247`). Initial capacity 64 slots (line 50). | `astraweave-render/src/skinning_gpu.rs:20-247` |
 | **SkinnedVertex** | GPU vertex layout: 60 bytes = position(12) + normal(12) + tangent(16) + uv(8) + joints `u16x4`(8) + weights `f32x4`(16). Locations 0/1/10/11/12/13. | `astraweave-render/src/types.rs:49-106` |
 | **SKINNING_GPU_SHADER** | Embedded WGSL string defining `JointPalette` SSBO (binding `@group(4) @binding(0)`), `SkinnedVertexInput`, and `apply_skinning` / `apply_skinning_normal` / `apply_skinning_tangent` helpers. | `astraweave-render/src/skinning_gpu.rs:254-335` |
 | **CSkeleton / CSkinnedMesh / CJointMatrices / CParentBone** | ECS components. `CSkeleton` uses parallel-array layout (no `Vec<Joint>`). `CJointMatrices` carries `matrices: Vec<Mat4>` + `dirty: bool`. `CParentBone` is the bone-attachment component (child entity follows a parent joint). | `astraweave-scene/src/lib.rs:421-665` |
@@ -157,11 +157,11 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 ### Terms to NOT confuse
 
 - **`Skeleton`** has FOUR definitions in this codebase. `astraweave_render::Skeleton` (canonical runtime), `astraweave_asset::Skeleton` (asset-side, float-array), `astraweave_scene::CSkeleton` (ECS, parallel-array), `aw_editor::viewport::types::GltfSkeleton` (editor-side, glam types). All four are structurally distinct. Always namespace explicitly.
-- **`Joint`** similarly has FOUR definitions. The editor's `GltfJoint` uniquely stores `local_transform: glam::Mat4` instead of TRS components (`tools/aw_editor/src/viewport/types.rs:245`).
+- **`Joint`** similarly has FOUR definitions. The editor's `GltfJoint` uniquely stores `local_transform: glam::Mat4` instead of TRS components (`tools/aw_editor/src/viewport/types.rs:314`).
 - **`Transform`** has THREE definitions. `astraweave_render::animation::Transform` (`Vec3`/`Quat`/`Vec3`), `astraweave_asset::Transform` (`[f32;3]`/`[f32;4]`/`[f32;3]`), and `astraweave_scene::Transform` (`Vec3`/`Quat`/`Vec3` — same shape as render-side but a different Rust type at `astraweave-scene/src/lib.rs:37-42`). They are not interchangeable across crate boundaries without explicit conversion.
 - **`AnimationClip`** has THREE definitions: render-side, asset-side, and `GltfAnimationClip`. Same conceptual shape but distinct types.
 - **`AnimationChannel`** has THREE definitions, with the editor's `GltfAnimChannel` being structurally different: it separates the property *kind* (`GltfChannelProperty::Translation/Rotation/Scale`) from the values (`Vec<Vec<f32>>`, weakly typed). The render-side and asset-side encode the property *in* `ChannelData` as a discriminated union.
-- **`Interpolation`** has THREE definitions; the render-side and asset-side both note "CubicSpline not fully implemented" / falls back to Linear (`animation.rs:127, 140, 153`; `astraweave-asset/src/lib.rs:1526`).
+- **`Interpolation`** has THREE definitions; the render-side and asset-side both note "CubicSpline not fully implemented" / falls back to Linear (`animation.rs:137, 150, 163`; `astraweave-asset/src/lib.rs:1526`).
 - **`AnimationState` (render) vs `CAnimator` (scene) vs `EntityAnimationState` (editor bridge)**: three different per-entity playback-state types. Render-side uses `playing: bool`; scene-side uses `PlaybackState` enum; editor-bridge uses `playing: bool` and an `Option<usize>` clip index. Each system maintains its own.
 - **Render `MAX_JOINTS = 256`** is a hard limit on per-skeleton joints in the GPU palette (`astraweave-render/src/animation.rs:358`). Skeletons with more joints than this would have surplus joints silently dropped at `JointPalette::from_matrices` (line 388 `take(MAX_JOINTS)`).
 
@@ -183,7 +183,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | Consumer | Interface | Data | Notes |
 |---|---|---|---|
-| `astraweave-render::Renderer` | `set_skinned_mesh(&[SkinnedVertex], &[u32])` at `renderer.rs:6744`; `update_skin_palette(&[Mat4])` at `renderer.rs:6762` | Skinned vbuf+ibuf and a contiguous Mat4 palette | The Renderer's skinned-mesh API is v0 (annotated `// --- Skinning API (v0) ---` at `renderer.rs:6743`). One skinned mesh slot per Renderer (`self.skinned_mesh: Option<(vbuf, ibuf, count)>`) |
+| `astraweave-render::Renderer` | `set_skinned_mesh(&[SkinnedVertex], &[u32])` at `renderer.rs:10715`; `update_skin_palette(&[Mat4])` at `renderer.rs:10733` | Skinned vbuf+ibuf and a contiguous Mat4 palette | The Renderer's skinned-mesh API is v0 (annotated `// --- Skinning API (v0) ---` at `renderer.rs:10714`). One skinned mesh slot per Renderer (`self.skinned_mesh: Option<(vbuf, ibuf, count)>`) |
 | `examples/skinning_demo` | `use astraweave_render::animation::*;` at `skinning_demo/src/main.rs:6` | Skeleton + AnimationClip directly | Interactive demo with CPU/GPU toggle, play/pause, speed control. Per `examples/skinning_demo/src/main.rs:1-23` |
 | Integration tests | `skinning_rest_pose_golden.rs`, `skinning_pose_frame_golden.rs`, `skinning_integration.rs`, `skinning_parity_cpu_vs_gpu.rs`, `skinning_stress_many_entities.rs` | Test fixtures using runtime types | 305+330+262+642+472 LoC total |
 | `astraweave-scene` ECS systems | `update_animations(world, dt, clip_durations)` at `astraweave-scene/src/lib.rs:896`; `compute_poses_stub(world)` at line 941 | Per-tick advance of `CAnimator::time` | `compute_poses_stub` is a stub (per its name); it checks for presence of `CSkeleton` + `CJointMatrices` but full pose-write is gated. [NEEDS VERIFICATION on whether stub is wired into a complete pose-compute path elsewhere] |
@@ -193,7 +193,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 ### Bidirectional / Coupled
 
-- **`JointPaletteManager` ↔ `Renderer`**: When the `skinning-gpu` feature is active, the manager owns the pooled SSBO and the shared `bind_group`. Renderer-side pipeline consumes it at group(4) with `has_dynamic_offset=true`. Pool growth (`grow`, `skinning_gpu.rs:198-246`) copies existing data to a doubled buffer and rebuilds the bind group; any cached external references to the old bind group are invalidated.
+- **`JointPaletteManager` ↔ `Renderer`**: When the `skinning-gpu` feature is active, the manager owns the pooled SSBO and the shared `bind_group`. Renderer-side pipeline consumes it at group(4) with `has_dynamic_offset=true`. Pool growth (`grow`, `skinning_gpu.rs:195-247`) copies existing data to a doubled buffer and rebuilds the bind group; any cached external references to the old bind group are invalidated.
 - **`astraweave-asset` ↔ `astraweave-render::animation`**: Asset-side types are independent of render-side types. Conversion happens at the call site (typically in scene loaders or examples). No canonical `From`/`Into` impl was found between the two type families in this pass.
 - **`astraweave-scene::CSkeleton` ↔ `astraweave-render::Skeleton`**: Same conceptual data, different physical layout. `CSkeleton` uses parallel arrays; `Skeleton` uses `Vec<Joint>`. Conversion happens at the ECS-spawn site.
 - **`EditorAnimationBridge` ↔ runtime animation**: The bridge maintains its own clip library, per-entity skeletons (`GltfSkeleton`), per-entity clips (`Vec<GltfAnimationClip>`), and computed `joint_matrices: Vec<Mat4>`. The matrices it computes flow back into the editor's renderer adapter; the bridge does not feed `Renderer::update_skin_palette` directly [NEEDS VERIFICATION on exact wiring].
@@ -210,8 +210,8 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | `astraweave-render/src/skinning_gpu.rs` | `JointPaletteManager` pooled SSBO + embedded `SKINNING_GPU_SHADER` WGSL + 8 inline tests | Active (feature `skinning-gpu`) | 814 LoC. Re-exported at `lib.rs:278-279` (feature-gated) |
 | `astraweave-render/src/animation_extra_tests.rs` | 29 additional unit tests (mutation-killing coverage) | Active (test gate) | 613 LoC; declared `#[cfg(test)]` at `lib.rs:126-127` |
 | `astraweave-render/src/types.rs:49-106` | `SkinnedVertex` GPU vertex struct + `layout()` | Active | 60-byte vertex; shader locations 0/1/10/11/12/13 |
-| `astraweave-render/src/renderer.rs:6744-6760` | `Renderer::set_skinned_mesh(&[SkinnedVertex], &[u32])` | Active (v0 API per inline comment at line 6743) | Stores one skinned mesh in `Renderer.skinned_mesh` |
-| `astraweave-render/src/renderer.rs:6762-6771` | `Renderer::update_skin_palette(&[Mat4])` | Active | Uploads contiguous Mat4 array via `queue.write_buffer` |
+| `astraweave-render/src/renderer.rs:10715-10731` | `Renderer::set_skinned_mesh(&[SkinnedVertex], &[u32])` | Active (v0 API per inline comment at line 10714) | Stores one skinned mesh in `Renderer.skinned_mesh` |
+| `astraweave-render/src/renderer.rs:10733-10742` | `Renderer::update_skin_palette(&[Mat4])` | Active | Uploads contiguous Mat4 array via `queue.write_buffer` |
 | `astraweave-render/tests/skinning_rest_pose_golden.rs` | Rest-pose correctness golden tests | Active | 262 LoC |
 | `astraweave-render/tests/skinning_pose_frame_golden.rs` | Animated-frame correctness golden tests | Active | 330 LoC |
 | `astraweave-render/tests/skinning_integration.rs` | End-to-end integration tests | Active | 305 LoC |
@@ -245,7 +245,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `tools/aw_editor/src/viewport/types.rs:238-298` | Editor-side `GltfSkeleton`, `GltfJoint`, `GltfInterpolation`, `GltfChannelProperty`, `GltfAnimChannel`, `GltfAnimationClip` | Active | `GltfJoint` uniquely stores `local_transform: glam::Mat4` (line 245) without TRS decomposition |
+| `tools/aw_editor/src/viewport/types.rs:306-366` | Editor-side `GltfSkeleton`, `GltfJoint`, `GltfInterpolation`, `GltfChannelProperty`, `GltfAnimChannel`, `GltfAnimationClip` | Active | `GltfJoint` uniquely stores `local_transform: glam::Mat4` (line 314) without TRS decomposition |
 | `tools/aw_editor/src/animation_bridge.rs` | `EditorAnimationBridge`, `EntityAnimationState`, `ClipEntry`, `AnimationOutput`, `JointTransform` | Active | 451 LoC. Bridges UI events to per-entity playback + per-entity GltfSkeleton/GltfAnimationClip libraries |
 | `tools/aw_editor/src/panels/animation_panel.rs` | Animation UI panel | Active | 3,680 LoC — second-largest editor panel |
 | `tools/aw_editor/src/panels/animation.rs` | Smaller animation panel module | Active | |
@@ -275,14 +275,14 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | Abstraction | Files | Status | Notes |
 |---|---|---|---|
 | Four `Skeleton` definitions | `astraweave_render::Skeleton`, `astraweave_asset::Skeleton`, `astraweave_scene::CSkeleton`, `aw_editor::viewport::types::GltfSkeleton` | Coexisting | Each crate has its own representation optimized for its purpose: glam types for runtime math, float arrays for asset serialization, parallel arrays for ECS, glam types for editor UI |
-| Four `Joint` definitions | Same four crates | Coexisting | Editor's `GltfJoint` uniquely stores `local_transform: glam::Mat4` instead of TRS components (`viewport/types.rs:245`) |
+| Four `Joint` definitions | Same four crates | Coexisting | Editor's `GltfJoint` uniquely stores `local_transform: glam::Mat4` instead of TRS components (`viewport/types.rs:314`) |
 | Three `Transform` definitions | `astraweave_render::animation::Transform`, `astraweave_asset::Transform`, `astraweave_scene::Transform` | Coexisting | Render and scene share TRS shape with `Vec3`/`Quat`/`Vec3` fields but are distinct Rust types |
 | Three `AnimationClip` definitions | render / asset / editor (`GltfAnimationClip`) | Coexisting | Same `name`/`duration`/`channels` shape, distinct channel types |
 | Three `AnimationChannel` definitions | render / asset / editor (`GltfAnimChannel`) | Coexisting | Editor's `GltfAnimChannel` separates property kind from values; render+asset embed property in `ChannelData` discriminated union |
-| Three `Interpolation` definitions | render / asset / editor (`GltfInterpolation`) | Coexisting | All three carry the same three variants (`Step`/`Linear`/`CubicSpline`). CubicSpline falls back to Linear/Slerp in render-side `AnimationClip::sample` (lines 127, 140, 153); asset-side comments "Not fully implemented yet" (`lib.rs:1526`) |
+| Three `Interpolation` definitions | render / asset / editor (`GltfInterpolation`) | Coexisting | All three carry the same three variants (`Step`/`Linear`/`CubicSpline`). CubicSpline falls back to Linear/Slerp in render-side `AnimationClip::sample` (lines 137, 150, 163); asset-side comments "Not fully implemented yet" (`lib.rs:1526`) |
 | Three per-entity playback states | `AnimationState` (render), `CAnimator` + `PlaybackState` (scene), `EntityAnimationState` (editor bridge) | Coexisting | Same conceptual data; different field choices (`playing: bool` vs `PlaybackState` enum; `clip_index: usize` vs `Option<usize>`) |
 | Asset-side `SkinnedVertexLite` vs render-side `SkinnedVertex` | `astraweave-asset/src/lib.rs:1453-1460` vs `astraweave-render/src/types.rs:51-58` | Coexisting | Asset-side uses `[f32; …]` plus `joints: [u16; 4]` and `weights: [f32; 4]` for serialization; render-side has the same fields but as a `#[repr(C)] Pod Zeroable` struct with an explicit GPU `layout()` |
-| Render-side `Renderer::set_skinned_mesh` "v0 API" vs newer pooled `JointPaletteManager` | `renderer.rs:6743-6771` vs `skinning_gpu.rs:20-…` | Coexisting | Inline comment at `renderer.rs:6743` labels the simple API as "v0"; the pooled SSBO with dynamic offsets is the modern path. Both are active. [NEEDS VERIFICATION on whether v0 has documented planned deprecation] |
+| Render-side `Renderer::set_skinned_mesh` "v0 API" vs newer pooled `JointPaletteManager` | `renderer.rs:10714-10742` vs `skinning_gpu.rs:20-…` | Coexisting | Inline comment at `renderer.rs:10714` labels the simple API as "v0"; the pooled SSBO with dynamic offsets is the modern path. Both are active. [NEEDS VERIFICATION on whether v0 has documented planned deprecation] |
 | `compute_poses_stub` (scene ECS, named "stub") vs `compute_joint_matrices` (render canonical) | `astraweave-scene/src/lib.rs:941` vs `astraweave-render/src/animation.rs:274-336` | Coexisting | The render-side function is the canonical hierarchical pose-compute. The scene-side `compute_poses_stub` checks ECS component presence but does not (per its name) replicate the full pose computation. Whether it's intentional that pose compute lives entirely on the render-side is unrecorded |
 | CPU skinning (default) vs GPU skinning (`skinning-gpu` feature) | `astraweave-render/src/animation.rs:401-435` vs `astraweave-render/src/skinning_gpu.rs:…` | Coexisting (intentional, by feature flag) | Documented in `lib.rs:117-118` (`#[cfg(feature = "skinning-gpu")]` module gate). CPU is the deterministic CI-safe default per `animation.rs:1-6` module header |
 
@@ -296,14 +296,14 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **`Interpolation`** — render / asset / editor (`GltfInterpolation`).
 - **`ChannelData`** — render / asset.
 - **`AnimationState` vs `CAnimator` vs `EntityAnimationState`** — three names for the same conceptual playback record in three crates.
-- **"Skinning"** — refers to CPU skinning in `animation.rs::skin_vertex_cpu`, GPU skinning in `skinning_gpu.rs::SKINNING_GPU_SHADER`, and the v0 Renderer API at `renderer.rs:6743-6771`. Always specify which path.
+- **"Skinning"** — refers to CPU skinning in `animation.rs::skin_vertex_cpu`, GPU skinning in `skinning_gpu.rs::SKINNING_GPU_SHADER`, and the v0 Renderer API at `renderer.rs:10714-10742`. Always specify which path.
 
 ### Known cognitive traps
 
 - **Trap**: Treating any one of the four `Skeleton` types as the canonical type and passing it across crate boundaries without conversion.
   **What's actually true**: Each crate uses its own definition. The asset-side loader returns `astraweave_asset::Skeleton`; the runtime expects `astraweave_render::Skeleton`; the ECS expects `astraweave_scene::CSkeleton`; the editor expects `aw_editor::viewport::types::GltfSkeleton`. Each boundary needs explicit conversion — none of the four types implement `From`/`Into` for any of the others (verified by grep across the four crates for `impl From<` involving these names).
 - **Trap**: Assuming `AnimationClip::sample` interpolates `CubicSpline` keyframes correctly.
-  **What's actually true**: `astraweave-render/src/animation.rs:127, 140, 153` explicitly fall back to Linear (for translations and scales) or Slerp (for rotations) when the interpolation is `CubicSpline`. The asset-side comment at `astraweave-asset/src/lib.rs:1526` confirms "Not fully implemented yet". A glTF clip authored with cubic-spline keyframes will play back as linear in this engine until that gap is closed.
+  **What's actually true**: `astraweave-render/src/animation.rs:137, 150, 163` explicitly fall back to Linear (for translations and scales) or Slerp (for rotations) when the interpolation is `CubicSpline`. The asset-side comment at `astraweave-asset/src/lib.rs:1526` confirms "Not fully implemented yet". A glTF clip authored with cubic-spline keyframes will play back as linear in this engine until that gap is closed.
 - **Trap**: Skeletons with more than 256 joints.
   **What's actually true**: `JointPalette::from_matrices` silently drops surplus joints via `take(MAX_JOINTS)` at `animation.rs:388`. No error is returned. `MAX_JOINTS = 256` is hard-coded at `animation.rs:358` and is also the size baked into the GPU SSBO struct at `skinning_gpu.rs:261`.
 - **Trap**: Calling `compute_joint_matrices` on a skeleton whose `root_indices` is empty or whose joint parent chain has cycles.
@@ -311,7 +311,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **Trap**: Using `compute_poses_stub` (`astraweave-scene/src/lib.rs:941`) and expecting it to populate `CJointMatrices::matrices`.
   **What's actually true**: The function name says "stub". It checks for presence of `CSkeleton` + `CJointMatrices` but does not (per its name) write the full pose. [NEEDS VERIFICATION on whether a full pose-compute system exists elsewhere in `astraweave-scene` or whether ECS-side pose computation is incomplete.]
 - **Trap**: Treating `Renderer::set_skinned_mesh` and `JointPaletteManager` as the same API.
-  **What's actually true**: They are two different ways to feed skinned data to the renderer. `set_skinned_mesh` (v0 per its inline comment at `renderer.rs:6743`) takes a `&[SkinnedVertex]` + `&[u32]` and uploads a contiguous Mat4 palette via `update_skin_palette`. `JointPaletteManager` (modern, pooled) takes `JointPaletteHandle`s and exposes a shared bind group with dynamic offsets. The two paths likely coexist for backward compatibility.
+  **What's actually true**: They are two different ways to feed skinned data to the renderer. `set_skinned_mesh` (v0 per its inline comment at `renderer.rs:10714`) takes a `&[SkinnedVertex]` + `&[u32]` and uploads a contiguous Mat4 palette via `update_skin_palette`. `JointPaletteManager` (modern, pooled) takes `JointPaletteHandle`s and exposes a shared bind group with dynamic offsets. The two paths likely coexist for backward compatibility.
 
 ---
 
@@ -328,7 +328,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 ### Decision: Pooled SSBO with dynamic offsets for GPU joint palettes
 - **Date:** Not directly recovered; module-level docstring at `astraweave-render/src/skinning_gpu.rs:14-19` documents the rationale.
 - **Status:** Accepted (in active code, feature `skinning-gpu`)
-- **Context:** The docstring at `skinning_gpu.rs:16-19` says: "Uses a single large SSBO with dynamic offsets instead of per-skeleton individual buffers. This eliminates per-skeleton buffer/bind-group allocation overhead and enables efficient draw-call batching." Pool growth doubles capacity (`grow` at lines 198-246) and copies the existing buffer to a new larger one, rebuilds the bind group (lines 233-245).
+- **Context:** The docstring at `skinning_gpu.rs:16-19` says: "Uses a single large SSBO with dynamic offsets instead of per-skeleton individual buffers. This eliminates per-skeleton buffer/bind-group allocation overhead and enables efficient draw-call batching." Pool growth doubles capacity (`grow` at lines 195-247) and copies the existing buffer to a new larger one, rebuilds the bind group (lines 232-245).
 - **Decision:** Single `pool_buffer` of `slot_stride * pool_capacity` bytes; `slot_stride` rounded up to `device.limits().min_storage_buffer_offset_alignment` (`skinning_gpu.rs:55-57`); per-handle slot allocation from a LIFO `free_slots: Vec<u32>`.
 - **Alternatives considered:** Per-skeleton individual buffers — explicitly framed as the rejected alternative in the docstring at lines 16-19.
 - **Consequences:** One bind group rebinding per draw with a `dynamic_offset` rather than per-skeleton bind-group switching. Initial pool capacity is 64 slots (`INITIAL_POOL_CAPACITY` at line 50); growth doubles. Each slot is `slot_stride` bytes (≥16 KB for `JointPalette` size 16,396 bytes rounded up to alignment).
@@ -358,9 +358,9 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **Consequences:** Bone attachment lives at the ECS layer rather than inside the animation runtime. A bone attachment without a parent that has a `CJointMatrices` will silently fail to update [NEEDS VERIFICATION on exact error/silent behavior].
 
 ### Decision: `Renderer::set_skinned_mesh` is "v0" — coexists with pooled `JointPaletteManager`
-- **Date:** Not recovered; inline comment at `astraweave-render/src/renderer.rs:6743` labels it `// --- Skinning API (v0) ---`
+- **Date:** Not recovered; inline comment at `astraweave-render/src/renderer.rs:10714` labels it `// --- Skinning API (v0) ---`
 - **Status:** Accepted (in active code, transitional)
-- **Context:** Renderer has a single `skinned_mesh: Option<(vbuf, ibuf, count)>` slot plus a `skin_palette_buf`. The v0 API uploads a contiguous `Mat4` array (`update_skin_palette`, line 6762). The pooled SSBO path in `skinning_gpu.rs` is the multi-skeleton modern alternative.
+- **Context:** Renderer has a single `skinned_mesh: Option<(vbuf, ibuf, count)>` slot plus a `skin_palette_buf`. The v0 API uploads a contiguous `Mat4` array (`update_skin_palette`, line 10733). The pooled SSBO path in `skinning_gpu.rs` is the multi-skeleton modern alternative.
 - **Decision:** Keep the v0 simple API for single-skeleton scenarios; use the pooled manager when many skeletons need to be in flight simultaneously.
 - **Alternatives considered:** [Reasoning not recovered.]
 - **Consequences:** Two ways to feed GPU skinning data exist concurrently; callers must choose. No deprecation path was found documented in this pass.
@@ -383,9 +383,9 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | 2 | `JointPalette::from_matrices` silently drops joints beyond `MAX_JOINTS` (no error returned) | Yes | `animation.rs:388` (`.take(MAX_JOINTS)`); test coverage [NEEDS VERIFICATION] |
 | 3 | `compute_joint_matrices` detects cycles in the joint hierarchy and returns `anyhow::Error` | Yes | `animation.rs:289-294` (`if !visited.insert(joint_idx) { return Err(...) }`); test in `animation_extra_tests.rs` [NEEDS VERIFICATION on exact test name] |
 | 4 | `AnimationState::update` wraps time modulo clip duration when `looping`, and clamps + stops at duration when not | Yes | `animation.rs:233-247`; tests `test_animation_state_update_looping` (line 464) and `test_animation_state_update_clamping` (line 479) |
-| 5 | CubicSpline interpolation is NOT fully implemented; falls back to Linear/Slerp | Yes (compile-time fall-through) | `animation.rs:127, 140, 153`; asset-side comment at `astraweave-asset/src/lib.rs:1526` ("Not fully implemented yet") |
+| 5 | CubicSpline interpolation is NOT fully implemented; falls back to Linear/Slerp | Yes (compile-time fall-through) | `animation.rs:137, 150, 163`; asset-side comment at `astraweave-asset/src/lib.rs:1526` ("Not fully implemented yet") |
 | 6 | CPU and GPU skinning produce equivalent results within floating-point tolerance | Yes (test) | `skinning_parity_cpu_vs_gpu.rs` (642 LoC, `--ignored` for CI per file header) |
-| 7 | `JointPaletteManager` grows by doubling and preserves existing data; bind group is rebuilt after growth | Yes | `skinning_gpu.rs:198-246`; growth-test [NEEDS VERIFICATION on exact test name] |
+| 7 | `JointPaletteManager` grows by doubling and preserves existing data; bind group is rebuilt after growth | Yes | `skinning_gpu.rs:195-247`; growth-test [NEEDS VERIFICATION on exact test name] |
 | 8 | The pooled SSBO slot stride equals `JointPalette` size rounded up to `device.limits().min_storage_buffer_offset_alignment` | Yes | `skinning_gpu.rs:55-57` (`slot_stride = raw_size.div_ceil(alignment) * alignment`) |
 | 9 | `skin_vertex_cpu` normalizes the skinned normal (or returns zero) | Yes | `animation.rs:434` (`skinned_normal.normalize_or_zero()`) |
 | 10 | `AnimationClip::sample` returns one `Transform` per skeleton joint, initialized to the joint's bind-pose `local_transform` and then overwritten by active channels | Yes | `animation.rs:104-107, 162-165` |
@@ -407,7 +407,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 ### Cold paths
 - **glTF skeleton + animation load**: at asset-load time only. `astraweave-asset::load_skeleton` and `load_animations` parse the entire glTF document; not per-frame.
 - **`JointPaletteManager::grow`**: amortized O(1) on top of doubling; the actual `copy_buffer_to_buffer` + bind-group rebuild happens infrequently.
-- **`Renderer::set_skinned_mesh`**: only when the skinned mesh changes — creates new `vbuf` + `ibuf` GPU buffers (`renderer.rs:6745-6759`).
+- **`Renderer::set_skinned_mesh`**: only when the skinned mesh changes — creates new `vbuf` + `ibuf` GPU buffers (`renderer.rs:10716-10730`).
 
 ### Resource ownership
 - **`Skeleton` / `AnimationClip` (runtime)**: typically owned by the caller (example main, ECS resource, or editor bridge). The render crate provides no central registry.
@@ -454,7 +454,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **Should the four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip`/`AnimationChannel`/`ChannelData`/`Interpolation` type families be unified into a single shared crate (e.g., `astraweave-animation`)?** [Decisional.] Factual state: each of the four crates defines its own representation, optimized for its purpose (Pod serialization in asset, glam math in render, parallel arrays in scene ECS, glam matrices in editor). The §7.7 wrapped-component resource identity pattern documented in `docs/architecture/render_pipeline_material_system_shader_infrastructure.md` §6 and `docs/current/EDITOR_MULTI_TOOL_ARCHITECTURE_CAMPAIGN.md` Status header is the architectural precedent. No retirement campaign was identified.
 - **`compute_poses_stub` — when does it stop being a stub?** [Decisional / factual mixed.] Factual: the function name says "stub" and its body (per `astraweave-scene/src/lib.rs:941+`) checks for `CSkeleton` + `CJointMatrices` presence. [NEEDS VERIFICATION on whether a complete `compute_poses` system exists elsewhere in `astraweave-scene` or whether ECS-side pose-compute is a known gap.] Decisional: if it's a gap, when does it close?
 - **CubicSpline interpolation — implement or remove the variant?** [Decisional.] Factual: render-side and asset-side both have the variant but fall back to Linear/Slerp. glTF files authored with cubic-spline keyframes lose fidelity in this engine. Whether to implement it (matrix coefficient + tangent computation per glTF spec) or to remove the variant from the enum is undecided.
-- **`Renderer::set_skinned_mesh` "v0 API" — eventual deprecation?** [Decisional.] Factual: the inline comment at `renderer.rs:6743` labels it v0; the pooled `JointPaletteManager` is the modern path. No deprecation timeline was found.
+- **`Renderer::set_skinned_mesh` "v0 API" — eventual deprecation?** [Decisional.] Factual: the inline comment at `renderer.rs:10714` labels it v0; the pooled `JointPaletteManager` is the modern path. No deprecation timeline was found.
 - **`EditorAnimationBridge` parity with runtime playback** — should a parity test ensure editor preview matches `AnimationState::update` + `AnimationClip::sample` outputs? [Decisional, with factual context.] Factual: no automated parity test between editor bridge and runtime animation was found in this pass.
 - **`MAX_JOINTS = 256` — is this a permanent limit, or should it scale with hardware?** [Decisional.] Factual: hard-coded at `animation.rs:358` and `skinning_gpu.rs:261`, kept in sync by manual edit. Surplus joints silently drop. Industry conventions vary (Unity 32-64, Unreal 256-1024, custom engines often 256-512).
 - **Are skeletons >256 joints a real authoring concern in current AstraWeave assets?** [Factual — investigable.] [NEEDS VERIFICATION via asset audit — but if yes, the silent drop at `animation.rs:388` is a hidden data-loss bug.]
@@ -490,11 +490,11 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 1. **There are FOUR parallel type families for animation data.** `astraweave_render::animation` (runtime, glam), `astraweave_asset::*` (loader, float arrays), `astraweave_scene::C*` (ECS, parallel arrays), `aw_editor::viewport::types::Gltf*` (editor, glam). They are not interchangeable. Each boundary needs explicit conversion. Editor also adds `EditorAnimationBridge`-specific types (`JointTransform`, `AnimationOutput`, `EntityAnimationState`, `ClipEntry`).
 2. **CPU is the deterministic default; GPU is opt-in.** Per `animation.rs:1-6` module header. The CI-safe path is CPU. GPU parity test is `--ignored` for CI per `skinning_parity_cpu_vs_gpu.rs:6-7`.
 3. **`MAX_JOINTS = 256`.** Hard-coded in Rust (`animation.rs:358`) and WGSL (`skinning_gpu.rs:261`). Surplus joints silently dropped at `animation.rs:388`. Keep both constants in sync.
-4. **CubicSpline interpolation falls back to Linear/Slerp.** `animation.rs:127, 140, 153`. glTF cubic-spline clips lose fidelity.
+4. **CubicSpline interpolation falls back to Linear/Slerp.** `animation.rs:137, 150, 163`. glTF cubic-spline clips lose fidelity.
 5. **`compute_poses_stub` is named stub for a reason.** ECS-side full pose compute may be a gap; the canonical compute is render-side `compute_joint_matrices`.
 6. **CPU skinning early-continues on weight==0 and out-of-range joint indices.** Silent skips, not panics (`animation.rs:413-420`).
 7. **`JointPaletteManager` uses a pooled SSBO with dynamic offsets.** One bind group, many skeletons. Pool doubles on grow.
-8. **Renderer has two skinning paths.** v0 simple API (`renderer.rs:6743-6771`) and pooled manager (`skinning_gpu.rs`). Pick deliberately.
+8. **Renderer has two skinning paths.** v0 simple API (`renderer.rs:10714-10742`) and pooled manager (`skinning_gpu.rs`). Pick deliberately.
 
 **Files you'll most likely touch:**
 - `astraweave-render/src/animation.rs` — canonical runtime
@@ -502,7 +502,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - `astraweave-asset/src/lib.rs:1453-…` — glTF loader
 - `astraweave-scene/src/lib.rs:415-…` — ECS components and systems
 - `tools/aw_editor/src/animation_bridge.rs` — editor bridge
-- `tools/aw_editor/src/viewport/types.rs:238-298` — editor type definitions
+- `tools/aw_editor/src/viewport/types.rs:306-366` — editor type definitions
 
 **Files you should NOT touch without strong reason:**
 - `astraweave-render/src/animation.rs:358` `MAX_JOINTS` — must stay in sync with `skinning_gpu.rs:261`

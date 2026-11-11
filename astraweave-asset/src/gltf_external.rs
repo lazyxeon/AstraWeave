@@ -593,13 +593,10 @@ mod tests {
             .status()
             .expect("mkfifo");
         assert!(status.success(), "mkfifo");
-        let started = std::time::Instant::now();
-        let err = read_jailed_file(&pipe, 64).expect_err("pipe");
-        assert!(
-            started.elapsed() < std::time::Duration::from_secs(2),
-            "read_jailed_file blocked"
-        );
-        assert!(err.to_string().contains("not a regular file"), "{err}");
+        let pipe_path = pipe.clone();
+        crate::bounded_open::assert_not_regular_without_blocking(move || {
+            read_jailed_file(&pipe_path, 64).map(|_| ())
+        });
 
         let real = dir.path().join("real.bin");
         std::fs::write(&real, b"real").expect("real");

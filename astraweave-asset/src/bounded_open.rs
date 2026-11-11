@@ -3,12 +3,14 @@
 //! On the editor, cook, and runtime paths, one handle covers the container
 //! and every URI. A base-taking loader opens the base once for its URIs, and
 //! the caller supplies the container bytes. On Unix the handle is a directory
-//! file descriptor and each URI component is opened from it with `O_NOFOLLOW`.
-//! On Windows the handle is the directory-handle chain plus the final path.
-//! Those directory handles do not share delete, so a directory the load holds
-//! cannot be renamed or removed while they are open. Each intermediate
-//! directory handle `open_relative` opens stays on `OpenedRoot` until that
-//! root drops. Each URI component is reopened from that final path. A
+//! file descriptor. Each URI is opened from that descriptor, one component at
+//! a time, with `O_NOFOLLOW`, and those descriptors are not kept. On Windows
+//! the handle is the directory-handle chain plus the final path. Those
+//! directory handles do not share delete, so a directory the load holds cannot
+//! be renamed or removed while they are open. Each distinct intermediate
+//! directory stays on `OpenedRoot` until that root drops. A repeated open of
+//! the same directory does not add another handle. Each URI component is
+//! reopened from that final path. A
 //! cloud-file reparse tag is allowed. Delete sharing is on the first open of
 //! each URI leaf file, so that name can be replaced while the handle is held.
 //! Only a cloud placeholder is opened a second time, without delete sharing,
@@ -33,16 +35,16 @@ use std::path::{Component, Path};
 ///
 /// On the editor, cook, and runtime paths, this handle covers the container
 /// and every URI. A base-taking loader opens the base once for its URIs, and
-/// the caller supplies the container bytes. On Windows the held directory
-/// handles do not share delete, so those directories cannot be renamed or
-/// removed while the load holds them. Intermediate directory handles opened
-/// for a URI stay here until this root drops.
+/// the caller supplies the container bytes. On Unix each URI is opened from
+/// this descriptor with `O_NOFOLLOW`, and those descriptors are not kept. On
+/// Windows the held directory handles do not share delete, so those
+/// directories cannot be renamed or removed while the load holds them. Each
+/// distinct intermediate directory stays here until this root drops. A
+/// repeated open of the same directory does not add another handle.
 #[derive(Debug)]
 pub(crate) struct OpenedRoot {
     #[cfg(unix)]
     dir: rustix::fd::OwnedFd,
-    #[cfg(unix)]
-    held: std::sync::Mutex<Vec<rustix::fd::OwnedFd>>,
     #[cfg(windows)]
     root_final: PathBuf,
     #[cfg(windows)]
@@ -187,10 +189,6 @@ fn read_opened(
             return Err(err).with_context(|| format!("open {}", subject(noun, display)));
         }
     };
-    // After `open_relative` returns, intermediate directory handles live only
-    // on `root`. A hook here runs once the leaf is open.
-    #[cfg(all(windows, test))]
-    fire_uri_directory_hook(relative);
     let meta = file
         .metadata()
         .with_context(|| format!("stat {}", subject(noun, display)))?;
@@ -215,6 +213,10 @@ fn read_opened(
     if bytes.len() as u64 > max_bytes {
         bail!("{} exceeds {max_bytes} bytes", subject(noun, display));
     }
+    // The leaf handle is dropped before the hook. The next URI has not opened.
+    drop(file);
+    #[cfg(all(windows, test))]
+    fire_uri_directory_hook(relative);
     Ok(bytes)
 }
 
@@ -406,19 +408,10 @@ impl OpenedRoot {
         let flags = directory_flags();
         let root = Self {
             dir: open_canonical(absolute, flags)?,
-            held: std::sync::Mutex::new(Vec::new()),
         };
         record_root_open();
         Ok(root)
     }
-}
-
-#[cfg(unix)]
-fn hold_directory(root: &OpenedRoot, fd: rustix::fd::OwnedFd) {
-    root.held
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
-        .push(fd);
 }
 
 #[cfg(unix)]
@@ -428,15 +421,13 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
     let directory = directory_flags();
     let file_flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let names = relative_names(relative)?;
+    // Each URI starts again at the root descriptor. Component descriptors are
+    // not kept after this function returns.
     let mut dir = root.dir.try_clone()?;
     for (index, name) in names.iter().enumerate() {
         let last = index + 1 == names.len();
         let flags = if last { file_flags } else { directory };
-        let opened_fd = opened(openat(&dir, name.as_os_str(), flags, Mode::empty()))?;
-        if !last {
-            hold_directory(root, opened_fd.try_clone()?);
-        }
-        dir = opened_fd;
+        dir = opened(openat(&dir, name.as_os_str(), flags, Mode::empty()))?;
     }
     Ok(File::from(dir))
 }
@@ -561,11 +552,19 @@ impl OpenedRoot {
 }
 
 #[cfg(windows)]
-fn hold_directory(root: &OpenedRoot, file: File) {
-    root.held
+fn hold_directory(root: &OpenedRoot, file: File) -> std::io::Result<()> {
+    let id = windows_file_id(&file)?;
+    let mut held = root
+        .held
         .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
-        .push(file);
+        .unwrap_or_else(|poison| poison.into_inner());
+    for existing in held.iter() {
+        if windows_file_id(existing)? == id {
+            return Ok(());
+        }
+    }
+    held.push(file);
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -620,7 +619,7 @@ fn open_relative(root: &OpenedRoot, relative: &Path) -> std::io::Result<File> {
         if !last {
             let file = open_path(&cursor, true)?;
             ensure_directory(&file)?;
-            hold_directory(root, file);
+            hold_directory(root, file)?;
             continue;
         }
         let file = open_leaf_file(&cursor)?;
@@ -1101,6 +1100,33 @@ fn utf16(text: &str) -> Vec<u16> {
     text.encode_utf16().collect()
 }
 
+/// A FIFO `open` for reading waits until a writer connects. `op` runs on
+/// another thread so this returns when that wait does not finish. Joining the
+/// worker would sit on the same open.
+#[cfg(all(unix, test))]
+pub(crate) fn assert_not_regular_without_blocking(
+    op: impl FnOnce() -> Result<()> + Send + 'static,
+) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let message = match op() {
+            Ok(()) => String::new(),
+            Err(err) => format!("{err:#}"),
+        };
+        let _ = tx.send(message);
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+        Ok(message) => {
+            worker.join().expect("reader");
+            assert!(message.contains("not a regular file"), "{message}");
+        }
+        Err(_) => {
+            drop(worker);
+            panic!("fifo open blocked");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1251,6 +1277,62 @@ mod tests {
         )
         .expect_err("link");
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(unix)]
+    fn descriptors_named(path: &Path) -> usize {
+        let want = std::fs::canonicalize(path).expect("canonical");
+        let dir = if Path::new("/proc/self/fd").is_dir() {
+            Path::new("/proc/self/fd")
+        } else {
+            Path::new("/dev/fd")
+        };
+        std::fs::read_dir(dir)
+            .expect("fds")
+            .flatten()
+            .filter(|entry| {
+                std::fs::read_link(entry.path()).ok().as_deref() == Some(want.as_path())
+            })
+            .count()
+    }
+
+    /// Repeated reads of one nested URI start again at the root descriptor.
+    #[cfg(unix)]
+    #[test]
+    fn repeated_nested_uri_does_not_keep_the_intermediate() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mid = dir.path().join("mid");
+        std::fs::create_dir(&mid).expect("mid");
+        let leaf = mid.join("leaf.bin");
+        std::fs::write(&leaf, b"leaf").expect("leaf");
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        for _ in 0..8 {
+            let bytes = root
+                .read(Path::new("mid/leaf.bin"), 64, "", Path::new("mid/leaf.bin"))
+                .expect("read");
+            assert_eq!(bytes, b"leaf");
+        }
+        assert_eq!(descriptors_named(&mid), 0);
+    }
+
+    /// The leaf of a URI is a FIFO. The open must fail before a writer connects.
+    #[cfg(unix)]
+    #[test]
+    fn fifo_uri_is_rejected_without_blocking() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sub = dir.path().join("textures");
+        std::fs::create_dir(&sub).expect("textures");
+        let pipe = sub.join("pipe.bin");
+        let status = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .expect("mkfifo");
+        assert!(status.success(), "mkfifo");
+        let root = dir.path().to_path_buf();
+        let display = std::path::PathBuf::from("textures/pipe.bin");
+        assert_not_regular_without_blocking(move || {
+            read_under(&root, Path::new("textures/pipe.bin"), 64, "", &display).map(|_| ())
+        });
     }
 
     #[cfg(unix)]
@@ -1922,5 +2004,48 @@ mod tests {
         });
         let err = read_under(dir.path(), Path::new("model.bin"), 64, "", &path).expect_err("tag");
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    #[cfg(windows)]
+    fn held_ids(root: &OpenedRoot) -> Vec<(u32, u32, u32)> {
+        let held = root
+            .held
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        held.iter()
+            .map(|file| windows_file_id(file).expect("file id"))
+            .collect()
+    }
+
+    /// Eight reads of one nested URI add that intermediate directory once.
+    #[cfg(windows)]
+    #[test]
+    fn repeated_nested_uri_keeps_one_intermediate_handle() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mid = dir.path().join("mid");
+        std::fs::create_dir(&mid).expect("mid");
+        let leaf = mid.join("leaf.bin");
+        std::fs::write(&leaf, b"leaf").expect("leaf");
+        let root = OpenedRoot::open(dir.path()).expect("root");
+        let before = held_ids(&root);
+        let bytes = root
+            .read(Path::new("mid/leaf.bin"), 64, "", Path::new("mid/leaf.bin"))
+            .expect("read");
+        assert_eq!(bytes, b"leaf");
+        let once = held_ids(&root);
+        assert_eq!(once.len(), before.len() + 1);
+        let mid_file = open_path(&mid, true).expect("mid");
+        let mid_id = windows_file_id(&mid_file).expect("mid id");
+        let leaf_file = std::fs::File::open(&leaf).expect("leaf");
+        let leaf_id = windows_file_id(&leaf_file).expect("leaf id");
+        assert!(once.contains(&mid_id));
+        assert!(!once.contains(&leaf_id));
+        for _ in 0..7 {
+            let again = root
+                .read(Path::new("mid/leaf.bin"), 64, "", Path::new("mid/leaf.bin"))
+                .expect("again");
+            assert_eq!(again, b"leaf");
+        }
+        assert_eq!(held_ids(&root), once);
     }
 }

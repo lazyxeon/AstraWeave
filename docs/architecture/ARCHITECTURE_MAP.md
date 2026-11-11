@@ -105,7 +105,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 | `astraweave-materials` | _(none)_ |
 | `astraweave-cinematics` | _(none)_ |
 | `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `52b9e711c` 2026-05-18)_ |
-| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:45), **aw_asset_cli** (tool — unusual direction, verified 2026-05-13 still present at Cargo.toml:60) |
+| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:45), **aw_asset_cli** (tool — unusual direction, `astraweave-render/Cargo.toml:64`) |
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
 | `astraweave-blend` | _(in crates/)_ |
@@ -164,7 +164,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 ### 2.3 Architectural Anomalies
 
 1. **`terrain` → `gameplay`** (reverse dependency): World-gen crate imports gameplay biome types. Should flow the other way. Verified 2026-05-13 still present. Blast radius: changing gameplay biome types breaks terrain generation.
-2. **`render` → `aw_asset_cli`** (production → tool): A runtime rendering crate depending on a CLI tool crate. Verified 2026-05-13 still present at `astraweave-render/Cargo.toml:60`. Unusual dependency direction.
+2. **`render` → `aw_asset_cli`** (production → tool): A runtime rendering crate depending on a CLI tool crate. Present at `astraweave-render/Cargo.toml:64`. Unusual dependency direction.
 3. **`npc` does NOT depend on `ai` or `behavior`**: NPC crate depends on physics/audio/gameplay instead. NPC behavior logic is decoupled from the AI orchestration layer. Confirmed by `ai_pipeline.md` §13.3 — NPC is "a fully isolated AI subsystem with its own parallel vocabulary (`NpcAction`/`NpcPlan`/`NpcWorldView`/`LlmAdapter`/`CommandSink`), zero imports of canonical AI types, and direct physics/audio integration."
 4. **`core` → `behavior`**: Core foundation depends on behavior trees (behavioral is part of the core abstraction).
 5. **`aw_editor` → `render` is REQUIRED** (Fix 27): Previously optional (`#[cfg(feature = "astraweave-render")]`), now always compiled. ~30 `#[cfg]` guards removed. Build time increased ~45s but editor always has engine-grade PBR rendering.

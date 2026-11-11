@@ -726,20 +726,14 @@ pub mod gltf_loader {
                 .status()
                 .expect("mkfifo");
             assert!(status.success(), "mkfifo");
-            let started = std::time::Instant::now();
-            let err = reject_short_glb_file(&path).expect_err("fifo");
-            assert!(
-                started.elapsed() < std::time::Duration::from_secs(2),
-                "reject_short_glb_file opened the fifo"
-            );
-            let msg = err.to_string();
-            assert!(msg.contains("not a regular file"), "{msg}");
-            let again = read_gltf_container(&path).expect_err("fifo read");
-            assert!(
-                started.elapsed() < std::time::Duration::from_secs(2),
-                "read_gltf_container opened the fifo"
-            );
-            assert!(again.to_string().contains("not a regular file"), "{again}");
+            let path_reject = path.clone();
+            crate::bounded_open::assert_not_regular_without_blocking(move || {
+                reject_short_glb_file(&path_reject).map(|_| ())
+            });
+            let path_read = path.clone();
+            crate::bounded_open::assert_not_regular_without_blocking(move || {
+                read_gltf_container(&path_read).map(|_| ())
+            });
         }
 
         /// `Read::read` may return one byte. The declared length is still checked.
@@ -2829,6 +2823,8 @@ pub mod gltf_loader {
             let (_mesh, mat) = loaded.expect("glb");
             let base = mat.base_color_texture.expect("base");
             assert_eq!(&base.rgba8[..4], &[10, 20, 30, 255]);
+            let normal = mat.normal_texture.expect("normal");
+            assert_eq!(&normal.rgba8[..4], &[1, 2, 3, 255]);
         }
     }
 }
