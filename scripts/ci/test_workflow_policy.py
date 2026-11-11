@@ -11,9 +11,11 @@ import json
 import os
 import re
 import shutil
+import string
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import unittest
 from pathlib import Path
 
@@ -794,6 +796,12 @@ LOCAL_ACTION_MSG = "a local action uses path must be an allowlisted action"
 ARCHIVE_MSG = "upload-artifact archive must be absent or true"
 RUST_NIGHTLY_MSG = "rust-nightly must equal the canonical action"
 REUSABLE_WORKFLOW_MSG = "a reusable workflow uses must be an allowlisted target"
+UPLOAD_WITH_DUP_MSG = "upload-artifact with: must not repeat a key"
+COVERAGE_JOB_SET_MSG = "coverage workflow job ids must match the allowlisted set"
+COVERAGE_ACTION_MSG = "coverage workflow external actions must match the allowlisted set"
+LOCKED_ACTION_FILE_MSG = (
+    "a locked action.yml must exist and action.yaml must not sit beside it"
+)
 RUN_CONTEXT_MSG = (
     "defaults is absent; workflow env is absent in coverage.yml and canonical in the other two; job env is absent"
 )
@@ -1029,6 +1037,22 @@ _EDITOR_TEST_STRATEGY = {
 }
 _PINNED_REPORT_NAME_VALUES = frozenset(_PINNED_REPORT_NAMES.values())
 _PINNED_REPORT_NAME_FOLDED = frozenset(name.casefold() for name in _PINNED_REPORT_NAME_VALUES)
+# Exact upload names outside the two coverage workflows. Any other ${{ fails.
+_PUBLISHED_EXPRESSION_ARTIFACT_NAMES = frozenset(
+    {
+        "alloc-measure-${{ matrix.crate }}",
+        "benchmark-alert-results-${{ github.sha }}",
+        "benchmark-alert-results-${{ github.sha }}-shard-${{ matrix.shard_index }}",
+        "benchmark-results-${{ github.sha }}",
+        "benchmark-results-${{ github.sha }}-shard-${{ matrix.shard_index }}",
+        "bundle-${{ matrix.target }}",
+        "mutants-ai-results-${{ matrix.shard }}",
+        "performance-${{ matrix.toolchain }}",
+        "regression-report-${{ github.sha }}",
+        "replay-hash-${{ runner.os }}",
+        "security-audit-report-${{ github.run_number }}",
+    }
+)
 _LOCAL_ACTION_USES = frozenset(
     {
         "./.github/actions/rust-ci-setup",
@@ -1038,6 +1062,30 @@ _LOCAL_ACTION_USES = frozenset(
 _RUST_CI_SETUP_PATH = ".github/actions/rust-ci-setup/action.yml"
 _RUST_NIGHTLY_PATH = ".github/actions/rust-nightly/action.yml"
 _REUSABLE_WORKFLOW_USES: frozenset[str] = frozenset()
+_LOCAL_USES_EXACT = _LOCAL_ACTION_USES | _REUSABLE_WORKFLOW_USES
+_COVERAGE_JOB_IDS = {
+    "coverage.yml": frozenset({"coverage", "codecov", "coverage-html"}),
+    "aw-editor-tests.yml": frozenset({"test", "coverage", "codecov"}),
+}
+_COVERAGE_EXTERNAL_ACTIONS = {
+    "coverage.yml": frozenset(
+        {
+            "actions/checkout",
+            "actions/download-artifact",
+            "actions/upload-artifact",
+            "codecov/codecov-action",
+        }
+    ),
+    "aw-editor-tests.yml": frozenset(
+        {
+            "actions/checkout",
+            "actions/download-artifact",
+            "actions/upload-artifact",
+            "codecov/codecov-action",
+            "dtolnay/rust-toolchain",
+        }
+    ),
+}
 _RUST_NIGHTLY_PIN_RUN = (
     "channel=$(grep -v '^[[:space:]]*#' .github/rust-nightly-channel | tr -d '[:space:]')\n"
     'if [ -z "$channel" ]; then\n'
@@ -1847,9 +1895,13 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     canonical step fails. The coverage job is the exact ordered list of
     canonical steps, including Rust CI setup and Install Rust Toolchain,
     with their with: and env. An inserted, removed, or reordered step
-    fails.     Its runs-on is ubuntu-latest and its timeout-minutes is 45.
-    coverage-html needs is the job coverage, and its permissions are exactly
-    contents: read. The editor test strategy is fail-fast false and
+    fails. Its runs-on is ubuntu-latest and its timeout-minutes is 45.
+    coverage-html needs is the job coverage, as that string or as [coverage],
+    and its permissions are exactly contents: read. Job ids are an exact
+    allowlist: coverage, codecov, and coverage-html in coverage.yml; test,
+    coverage, and codecov in aw-editor-tests.yml. External actions in each
+    file are an exact allowlist of the actions that file uses. Any other
+    job id or external action fails. The editor test strategy is fail-fast false and
     matrix.os is ubuntu-latest, windows-latest, macos-latest.
     coverage-html and the editor test job are each an exact ordered list
     of canonical steps. A repeated key on either job fails. The Install cargo-tarpaulin step in coverage-html
@@ -1968,6 +2020,12 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
         if not _steps_equal_ordered(editor_steps, _EDITOR_TEST_STEPS):
             line = int(job_lines.get("test", 1))
             violations.append(f"{prefix}{line}: {EDITOR_TEST_STEPS_MSG}")
+    expected_jobs = _COVERAGE_JOB_IDS.get(workflow)
+    if expected_jobs is not None and set(jobs) != expected_jobs:
+        violations.append(f"{prefix}1: {COVERAGE_JOB_SET_MSG}")
+    expected_actions = _COVERAGE_EXTERNAL_ACTIONS.get(workflow)
+    if expected_actions is not None and _external_action_names(doc) != expected_actions:
+        violations.append(f"{prefix}1: {COVERAGE_ACTION_MSG}")
     return violations
 
 
@@ -2162,6 +2220,27 @@ def run_context_violations(text: str, *, path: str = "") -> list[str]:
     return violations
 
 
+def _locked_action_files_ok() -> bool:
+    """Both locked action.yml files exist, and neither has an action.yaml sibling."""
+    for rel in (_RUST_CI_SETUP_PATH, _RUST_NIGHTLY_PATH):
+        yml = ROOT / rel
+        if not yml.is_file() or yml.with_name("action.yaml").exists():
+            return False
+    return True
+
+
+def _external_action_names(doc: object) -> set[str]:
+    """Action names of uses values that are not local `./` paths."""
+    found: set[str] = set()
+    if not isinstance(doc, dict):
+        return found
+    for _line_no, uses in _iter_uses(doc):
+        if not isinstance(uses, str) or uses.startswith("./"):
+            continue
+        found.add(_action_name(uses))
+    return found
+
+
 def rust_ci_setup_violations(text: str, *, path: str = "") -> list[str]:
     """The shared setup action matches the canonical action document.
 
@@ -2172,21 +2251,25 @@ def rust_ci_setup_violations(text: str, *, path: str = "") -> list[str]:
     in Enable sccache. An extra step, including one that writes GITHUB_ENV,
     fails. The toolchain input default is the pinned toolchain. The shape
     check applies to `.github/actions/rust-ci-setup/action.yml` and
-    `.github/actions/rust-nightly/action.yml`. A local action `uses:` must
-    be one of those two paths. A non-mapping document fails.
+    `.github/actions/rust-nightly/action.yml`. Each of those files must
+    exist, and `action.yaml` must not sit beside it. Every local `uses:`
+    must exactly match one of those two paths or an entry on the
+    reusable-workflow allowlist. That allowlist is empty. A path under
+    `.github/workflows`, including a directory, is not exempt. A
+    non-mapping document fails.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
     if err:
         return [f"{prefix}1: {err}"]
     violations: list[str] = []
+    if not _locked_action_files_ok():
+        violations.append(f"{prefix}1: {LOCKED_ACTION_FILE_MSG}")
     if isinstance(doc, dict):
         for line_no, uses in _iter_uses(doc):
             if not isinstance(uses, str) or not uses.startswith("./"):
                 continue
-            if uses.startswith("./.github/workflows/"):
-                continue
-            if uses not in _LOCAL_ACTION_USES:
+            if uses not in _LOCAL_USES_EXACT:
                 violations.append(f"{prefix}{int(line_no)}: {LOCAL_ACTION_MSG}")
     if Path(path).as_posix() == _RUST_NIGHTLY_PATH:
         if not isinstance(doc, dict) or not _mapping_equals(doc, _RUST_NIGHTLY_ACTION):
@@ -2236,114 +2319,91 @@ def _has_overwrite(node: object) -> bool:
     return any(isinstance(key, str) and key.casefold() == "overwrite" for key in node)
 
 
-def _constant_expression(expr: str) -> str | None:
-    """A single quoted string, or None."""
-    part = expr.strip()
-    if len(part) < 2 or part[0] not in "\"'" or part[-1] != part[0]:
-        return None
-    body = part[1:-1]
-    if part[0] in body:
-        return None
-    return body
-
-
-def _resolve_artifact_name(name: str) -> str | None:
-    """The name with constant ${{ }} expressions substituted, else None."""
-    pieces = _EXPRESSION_RE.split(name)
-    if len(pieces) < 2 or len(pieces) % 2 == 0:
-        return None
-    rendered: list[str] = []
-    for index, piece in enumerate(pieces):
-        if index % 2 == 0:
-            if "${{" in piece:
-                return None
-            rendered.append(piece)
-            continue
-        constant = _constant_expression(piece)
-        if constant is None:
-            return None
-        rendered.append(constant)
-    return "".join(rendered)
-
-
-def _unresolved_name_could_be_pinned(name: str) -> bool:
-    """True when an unresolved expression could still be a pinned report name."""
-    pieces = _EXPRESSION_RE.split(name)
-    if len(pieces) == 1 or len(pieces) % 2 == 0:
-        return True
-    pattern = ""
-    for index, piece in enumerate(pieces):
-        if index % 2 == 0:
-            if "${{" in piece:
-                return True
-            pattern += re.escape(piece)
-        else:
-            pattern += ".*"
-    compiled = re.compile("^" + pattern + "$")
-    return any(compiled.fullmatch(pinned) for pinned in _PINNED_REPORT_NAME_VALUES)
-
-
 def _expression_end(name: str, start: int) -> int | None:
-    """Index just after the closing `}}`, or None when the expression is open.
+    """Index just after the closing `}}`, or None when the scan does not finish.
 
-    A quote hides `}}`. The expression text is not evaluated.
+    Actions expressions quote strings with `'`. `"` is also treated as a
+    quote so a double-quoted `}}` cannot end the scan early. The expression
+    text is not evaluated. If the index does not advance, the scan fails
+    closed instead of looping.
     """
     quote: str | None = None
     index = start
     while index < len(name):
+        previous = index
         char = name[index]
         if quote is not None:
             if char == quote:
                 quote = None
-            index += 1
-            continue
-        if char in "\"'":
+        elif char in "'\"":
             quote = char
-            index += 1
-            continue
-        if name.startswith("}}", index):
+        elif name.startswith("}}", index):
             return index + 2
-        index += 1
+        index = previous + 1
+        if index <= previous:
+            return None
     return None
 
 
-def _expression_could_be_pinned(name: str) -> bool:
-    """True when a `${{` name can still be a pinned report.
+def _walk_expressions(name: str) -> bool:
+    """True when every `${{` closes and the scan advances.
 
-    The expression is not evaluated. Literal text outside each expression
-    stays. An expression that does not close fails closed.
+    A scan that does not advance fails closed. The caller rejects every
+    other `${{` name.
     """
-    pieces: list[str] = []
     index = 0
     while index < len(name):
+        previous = index
         if name.startswith("${{", index):
             end = _expression_end(name, index + 3)
-            if end is None:
-                return True
-            pieces.append("\0")
+            if not isinstance(end, int) or end <= previous:
+                return False
             index = end
+        else:
+            index = previous + 1
+        if index <= previous:
+            return False
+    return True
+
+
+def _name_form_rejected(name: str) -> bool:
+    """True when the name is not its ASCII-trimmed form, or contains
+    non-ASCII whitespace or a format character.
+
+    ASCII trim is `string.whitespace` only. The character class is the
+    Unicode category, not a list of code points.
+    """
+    if name != name.strip(string.whitespace):
+        return True
+    for char in name:
+        if ord(char) < 128:
             continue
-        pieces.append(name[index])
-        index += 1
-    pattern = "".join(".*" if piece == "\0" else re.escape(piece) for piece in pieces)
-    compiled = re.compile("^" + pattern + "$", re.IGNORECASE)
-    return any(compiled.fullmatch(pinned) for pinned in _PINNED_REPORT_NAME_VALUES)
+        category = unicodedata.category(char)
+        if category == "Cf" or category.startswith("Z"):
+            return True
+    return False
 
 
 def _could_be_pinned_report_name(name: object) -> bool:
-    """True when an upload name is, or could be, coverage-xml or aw-editor-lcov.
+    """True when an upload name fails closed or is a pinned report.
 
-    Surrounding whitespace is trimmed and the compare ignores case. A name
-    that contains `${{` is not evaluated. It fails when the literal text
-    outside the expression can still be a pinned report, and when the
-    expression does not close.
+    A name that is not equal to its ASCII-trimmed form fails. A name that
+    contains non-ASCII whitespace or a format character fails. A name that
+    contains `${{` fails, and the expression is not evaluated, unless that
+    exact string is an artifact name already published outside the two
+    coverage workflows. Literal text around `${{` is not matched. A name
+    that remains is compared without case. An expression that does not
+    close fails.
     """
     if not isinstance(name, str):
         return False
-    stripped = name.strip()
-    if "${{" in stripped:
-        return _expression_could_be_pinned(stripped)
-    return stripped.casefold() in _PINNED_REPORT_NAME_FOLDED
+    if _name_form_rejected(name):
+        return True
+    if "${{" in name:
+        if not _walk_expressions(name):
+            return True
+        return name not in _PUBLISHED_EXPRESSION_ARTIFACT_NAMES
+    return name.casefold() in _PINNED_REPORT_NAME_FOLDED
 
 
 def coverage_report_publish_violations(
@@ -2351,18 +2411,23 @@ def coverage_report_publish_violations(
 ) -> list[str]:
     """Only the producer upload may publish the pinned report name.
 
-    coverage-xml and aw-editor-lcov are those names. The compare trims
-    whitespace and ignores case. A name that contains `${{` is not
-    evaluated. It fails when the literal text outside the expression can
-    still be a pinned report, and when the expression does not close. The one plain
+    coverage-xml and aw-editor-lcov are those names. A name that is not
+    equal to its ASCII-trimmed form fails. A name that contains non-ASCII
+    whitespace or a format character fails. A name that contains `${{` fails,
+    and the expression is not evaluated, unless that exact string is an
+    artifact name already published outside these two workflows. Literal
+    text around `${{` is not matched. A name that remains is compared
+    without case. An expression that does not close fails. The one plain
     producer upload in coverage.yml or aw-editor-tests.yml is the exception
-    when the name is exactly that report. archive fails unless it is absent
-    or true. A sub-path of actions/upload-artifact, including merge, is the
-    same upload. An overwrite key on a step or under with: fails in every
-    scanned file. A caller uses: that starts with ./ must resolve to a
-    scanned local action or workflow that passes this check. A local path
-    outside that scan fails. A reusable workflow uses must be on the
-    allowlist, which is empty.
+    when the name is exactly that report. archive fails unless it is absent or true. A
+    repeated key in an upload with: fails, including a later case-variant.
+    The first and last values are not used. A sub-path of
+    actions/upload-artifact, including merge, is the same upload, and that
+    action-name compare ignores case. An overwrite key on a step or under
+    with: fails in every scanned file. A caller uses: that starts with ./
+    must resolve to a scanned local action or workflow that passes this
+    check. A local path outside that scan fails. A reusable workflow uses
+    must be on the allowlist, which is empty.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -2378,9 +2443,13 @@ def coverage_report_publish_violations(
             violations.append(f"{prefix}{_step_line(step)}: {OVERWRITE_MSG}")
         if not _is_upload_artifact_step(step):
             continue
+        body = step.get("with")
+        if _mapping_has_duplicate(body):
+            violations.append(f"{prefix}{_step_line(step)}: {UPLOAD_WITH_DUP_MSG}")
+            continue
         if not _archive_is_default(step):
             violations.append(f"{prefix}{_step_line(step)}: {ARCHIVE_MSG}")
-        _key, name = _ci_item(_mapping(step.get("with")), "name")
+        _key, name = _ci_item(_mapping(body), "name")
         plain_producer = (
             allowed is not None
             and _is_named_action(step, "actions/upload-artifact")
@@ -7795,11 +7864,12 @@ jobs:
             " ".join(coverage_report_publish_violations(missing, path="coverage.yml")),
         )
 
-    def test_pinned_report_names_resolve_expressions_and_other_files(self) -> None:
-        """An upload name that contains an expression cannot publish the report.
+    def test_pinned_report_names_reject_expressions_and_other_files(self) -> None:
+        """An upload name that contains ${{ fails unless it is an exact published name.
 
-        The name is not parsed. A literal name that is not pinned is allowed.
-        Composites and reusable workflows stay under the same check.
+        The expression is not evaluated. Literal text around ${{ is not
+        matched. A literal name that is not pinned is allowed. The same name
+        check applies to a composite file and to a workflow file.
         """
         coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         report = "          name: coverage-report\n"
@@ -7896,6 +7966,8 @@ jobs:
         )
         self.assertTrue(_could_be_pinned_report_name("${{ 'not-a-pinned-report' }}"))
         self.assertFalse(_could_be_pinned_report_name("benchmark-results-${{ github.sha }}"))
+        self.assertTrue(_could_be_pinned_report_name("Benchmark-results-${{ github.sha }}"))
+        self.assertTrue(_could_be_pinned_report_name("zz-${{ github.sha }}"))
         self.assertTrue(_could_be_pinned_report_name("${{ 'coverage-xml' }}"))
         self.assertTrue(_could_be_pinned_report_name("${{ matrix.artifact }}"))
         self.assertTrue(_could_be_pinned_report_name(" Coverage-XML "))
@@ -8285,11 +8357,30 @@ jobs:
         self.assertNotIn("rust-ci-setup", ".github/workflows/ci.yml")
         hits = rust_ci_setup_violations(mutant, path=".github/workflows/ci.yml")
         self.assertIn(LOCAL_ACTION_MSG, " ".join(hits))
+        longer = text.replace(old, "uses: ./.github/actions/rust-ci-setup/extra\n", 1)
+        cased = text.replace(old, "uses: ./.github/actions/Rust-ci-setup\n", 1)
+        for label, edited in (("longer", longer), ("cased", cased)):
+            self.assertNotIn(edited, _LOCAL_USES_EXACT, label)
+            self.assertIn(
+                LOCAL_ACTION_MSG,
+                " ".join(rust_ci_setup_violations(edited, path=".github/workflows/ci.yml")),
+                label,
+            )
 
     def test_expression_guards_fail_closed(self) -> None:
-        """Unbalanced markers, a literal marker in a piece, and a non-mapping action fail."""
-        self.assertTrue(_unresolved_name_could_be_pinned("coverage-xml ${{ no-close"))
-        self.assertIsNone(_resolve_artifact_name("a${{ 'b' }}c${{d"))
+        """An unclosed expression and a quoted marker stay on the live scan.
+
+        The scan index moves, and a scan that cannot close returns None.
+        """
+        unclosed = "coverage-xml ${{ no-close"
+        self.assertIsNone(_expression_end(unclosed, unclosed.index("${{") + 3))
+        self.assertTrue(_could_be_pinned_report_name(unclosed))
+        quoted = "ok-${{'}}'}}-tail"
+        start = quoted.index("${{") + 3
+        end = _expression_end(quoted, start)
+        self.assertIsNotNone(end)
+        self.assertGreater(end, start)
+        self.assertGreater(end, quoted.index("'}}'"))
         hits = rust_ci_setup_violations(
             "[]\n",
             path=".github/actions/rust-ci-setup/action.yml",
@@ -8374,20 +8465,24 @@ jobs:
             "    steps:\n"
             "      - uses: ./.github/workflows/ci.yml\n"
         )
-        self.assertNotIn(
+        self.assertIn(
             LOCAL_ACTION_MSG,
             " ".join(rust_ci_setup_violations(workflow_uses, path=".github/workflows/ci.yml")),
         )
-        self.assertIsNone(_constant_expression("abc"))
-        self.assertIsNone(_constant_expression("\"abc'"))
-        self.assertIsNone(_constant_expression("\""))
-        self.assertIsNone(_constant_expression("'a'b'"))
-        self.assertEqual(_constant_expression("'coverage-xml'"), "coverage-xml")
-        quoted = "ok-${{'}}'}}-tail"
-        self.assertFalse(_expression_could_be_pinned(quoted))
-        self.assertIsNotNone(_expression_end(quoted, quoted.index("${{") + 3))
+        self.assertIn(
+            REUSABLE_WORKFLOW_MSG,
+            " ".join(coverage_report_publish_violations(workflow_uses, path=".github/workflows/ci.yml")),
+        )
+        sample = "zz-${{ github.sha }}"
+        sample_start = sample.index("${{") + 3
+        sample_end = _expression_end(sample, sample_start)
+        self.assertIsNotNone(sample_end)
+        self.assertGreater(sample_end, sample_start)
+        self.assertTrue(_walk_expressions(sample))
+        self.assertFalse(_walk_expressions("${{ 'x'"))
         self.assertIsNone(_expression_end("${{ 'x'", 3))
-        self.assertTrue(_expression_could_be_pinned("${{ 'x'"))
+        self.assertTrue(_could_be_pinned_report_name("${{ 'x'"))
+        self.assertTrue(_could_be_pinned_report_name(sample))
         plain = WORKFLOWS / "probe-not-yaml.txt"
         ref = ROOT / ".github" / "actions" / "probe@ref"
         root_action = ROOT / "action.yml"
@@ -8420,6 +8515,335 @@ jobs:
             if link_probe.exists() or link_probe.is_symlink():
                 shutil.rmtree(link_probe)
             shutil.rmtree(outside, ignore_errors=True)
+
+    def test_workflow_directory_action_is_not_allowlisted(self) -> None:
+        """A directory under .github/workflows is a local action and must be listed."""
+        action_dir = WORKFLOWS / "sub"
+        action = action_dir / "action.yml"
+        caller = (WORKFLOWS / "miri.yml").read_text(encoding="utf-8")
+        job = (
+            "\n"
+            "  probe:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./.github/workflows/sub\n"
+        )
+        text = caller.rstrip() + job
+        self.assertNotIn("./.github/workflows/sub", _LOCAL_USES_EXACT)
+        try:
+            action_dir.mkdir()
+            action.write_text(
+                "name: probe\n"
+                "description: probe\n"
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - run: \"true\"\n"
+                "      shell: bash\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(_local_use_target("./.github/workflows/sub") == action.resolve())
+            hits = rust_ci_setup_violations(text, path=".github/workflows/miri.yml")
+            self.assertIn(LOCAL_ACTION_MSG, " ".join(hits))
+            pin, policy = scan_action_surface(text, ".github/workflows/miri.yml")
+            self.assertIn(LOCAL_ACTION_MSG, " ".join(pin + policy))
+        finally:
+            if action_dir.exists():
+                shutil.rmtree(action_dir)
+
+    def test_parent_segment_local_use_is_rejected(self) -> None:
+        """A local uses value with a parent segment does not resolve."""
+        action_dir = ROOT / ".github" / "actions" / "sub"
+        action = action_dir / "action.yml"
+        uses = "./.github/workflows/../actions/sub"
+        caller = (WORKFLOWS / "miri.yml").read_text(encoding="utf-8")
+        text = caller.rstrip() + (
+            "\n"
+            "  probe:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            f"      - uses: {uses}\n"
+        )
+        try:
+            action_dir.mkdir()
+            action.write_text(
+                "name: probe\n"
+                "description: probe\n"
+                "runs:\n"
+                "  using: composite\n"
+                "  steps:\n"
+                "    - run: \"true\"\n"
+                "      shell: bash\n",
+                encoding="utf-8",
+            )
+            self.assertIsNone(_local_use_target(uses))
+            joined = " ".join(
+                coverage_report_publish_violations(text, path=".github/workflows/miri.yml")
+            )
+            self.assertIn(LOCAL_USE_MSG, joined)
+            self.assertIn(
+                LOCAL_ACTION_MSG,
+                " ".join(rust_ci_setup_violations(text, path=".github/workflows/miri.yml")),
+            )
+        finally:
+            if action_dir.exists():
+                shutil.rmtree(action_dir)
+
+    def test_reusable_workflow_yaml_and_case_are_required(self) -> None:
+        """A reusable workflow target matches .yaml and ignores case."""
+        sha = "a" * 40
+        cases = {
+            "yaml": f"org/repo/.github/workflows/x.yaml@{sha}",
+            "case": f"Org/Repo/.github/WORKFLOWS/x.yml@{sha}",
+        }
+        for label, uses in cases.items():
+            text = f"name: t\non: push\njobs:\n  a:\n    uses: {uses}\n"
+            self.assertTrue(_is_reusable_workflow_use(uses), label)
+            self.assertNotIn(uses, _REUSABLE_WORKFLOW_USES, label)
+            hits = coverage_report_publish_violations(text, path=".github/workflows/called.yml")
+            self.assertIn(REUSABLE_WORKFLOW_MSG, " ".join(hits), label)
+
+    def test_upload_with_duplicate_keys_fail_closed(self) -> None:
+        """A repeated with: key fails. The first and last values are not used."""
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+        forms = {
+            "name": "{name: other, NAME: aw-editor-lcov, path: x}",
+            "archive": "{name: other, path: aw-editor-lcov, archive: true, ARCHIVE: false}",
+            "path": "{name: other, path: out, Path: out}",
+            "same": "{name: other, name: still-other, path: out}",
+        }
+        for label, body in forms.items():
+            job = (
+                "\n"
+                "  extra:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: actions/upload-artifact@{sha}\n"
+                f"        with: {body}\n"
+            )
+            text = editor.rstrip() + job
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, label)
+            step = doc["jobs"]["extra"]["steps"][0]
+            mapping = step.get("with")
+            self.assertTrue(_mapping_has_duplicate(mapping), label)
+            if label == "name":
+                self.assertEqual(_ci_item(mapping, "name")[1], "other", label)
+                self.assertFalse(getattr(mapping, "duplicate_keys", None), label)
+            if label == "archive":
+                self.assertTrue(_archive_is_default(step), label)
+            hits = " ".join(
+                coverage_report_publish_violations(text, path="aw-editor-tests.yml")
+            )
+            self.assertIn(UPLOAD_WITH_DUP_MSG, hits, label)
+            pin, policy = scan_action_surface(text, ".github/workflows/aw-editor-tests.yml")
+            self.assertIn(UPLOAD_WITH_DUP_MSG, " ".join(pin + policy), label)
+
+    def test_upload_action_name_casefold_is_required(self) -> None:
+        """A case-variant upload-artifact name is still that upload."""
+        sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+        uses_values = (
+            f"Actions/Upload-Artifact@{sha}",
+            f"Actions/Upload-Artifact/Merge@{sha}",
+        )
+        for uses in uses_values:
+            text = (
+                "name: t\n"
+                "on: push\n"
+                "jobs:\n"
+                "  decoy:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: {uses}\n"
+                "        with:\n"
+                "          name: coverage-xml\n"
+                "          path: out\n"
+            )
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, uses)
+            step = doc["jobs"]["decoy"]["steps"][0]
+            self.assertTrue(_is_upload_artifact_step(step), uses)
+            self.assertFalse(_has_overwrite(step), uses)
+            self.assertFalse(_has_overwrite(step.get("with")), uses)
+            hits = coverage_report_publish_violations(text, path="other.yml")
+            self.assertIn(PINNED_REPORT_MSG, " ".join(hits), uses)
+
+    def test_published_expression_artifact_names_are_exact(self) -> None:
+        """Expression artifact names outside the two coverage workflows are exact.
+
+        Any other name that contains ${{ fails. A case variant of a published
+        name fails.
+        """
+        found: set[str] = set()
+        for path in github_action_surfaces():
+            text = path.read_text(encoding="utf-8")
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, str(path))
+            if not isinstance(doc, dict):
+                continue
+            for _job_id, _job, step in _iter_steps(doc):
+                if not _is_upload_artifact_step(step):
+                    continue
+                _key, name = _ci_item(_mapping(step.get("with")), "name")
+                if not isinstance(name, str) or "${{" not in name:
+                    continue
+                self.assertNotIn(path.name, _PINNED_REPORT_NAMES, name)
+                found.add(name)
+                self.assertFalse(_could_be_pinned_report_name(name), name)
+                self.assertFalse(_name_form_rejected(name), name)
+        self.assertEqual(found, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
+        variant = "Benchmark-results-${{ github.sha }}"
+        self.assertNotIn(variant, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
+        self.assertTrue(_could_be_pinned_report_name(variant))
+        self.assertTrue(_could_be_pinned_report_name("zz-${{ github.sha }}"))
+        lone = (
+            "name: Other\n"
+            "on: push\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: actions/upload-artifact@v7\n"
+            "        with:\n"
+            "          name: benchmark-results-${{ github.sha }}\n"
+            "          path: out\n"
+        )
+        self.assertEqual(
+            coverage_report_publish_violations(lone, path=".github/workflows/other.yml"),
+            [],
+        )
+
+    def test_upload_name_form_fails_closed(self) -> None:
+        """A name that is not its ASCII-trimmed form, or that contains ${{, fails."""
+        sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        names = {
+            "editor-prefix": "\ufeffaw-editor-lcov",
+            "editor-suffix": "aw-editor-lcov\ufeff",
+            "editor-expression": "\ufeff${{ github.sha }}",
+            "coverage-prefix": "\ufeffcoverage-xml",
+            "expression": "zz-${{ github.sha }}",
+            "format": "aw-editor-lcov\u200b",
+            "ascii-space": " other ",
+        }
+        files = {
+            "editor-prefix": (editor, "aw-editor-tests.yml"),
+            "editor-suffix": (editor, "aw-editor-tests.yml"),
+            "editor-expression": (editor, "aw-editor-tests.yml"),
+            "coverage-prefix": (coverage, "coverage.yml"),
+            "expression": (editor, "aw-editor-tests.yml"),
+            "format": (editor, "aw-editor-tests.yml"),
+            "ascii-space": (editor, "aw-editor-tests.yml"),
+        }
+        for label, name in names.items():
+            base, path = files[label]
+            self.assertTrue(_could_be_pinned_report_name(name), label)
+            scalar = json.dumps(name)
+            job = (
+                "\n"
+                "  extra:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: actions/upload-artifact@{sha}\n"
+                "        with:\n"
+                f"          name: {scalar}\n"
+                "          path: out\n"
+            )
+            text = base.rstrip() + job
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, label)
+            loaded = doc["jobs"]["extra"]["steps"][0]["with"]["name"]
+            self.assertEqual(loaded, name, label)
+            hits = " ".join(coverage_report_publish_violations(text, path=path))
+            self.assertIn(PINNED_REPORT_MSG, hits, label)
+
+    def test_coverage_job_and_action_allowlists_are_exact(self) -> None:
+        """Job ids and external actions in the two coverage workflows are exact."""
+        pages = "actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa"
+        for name in ("coverage.yml", "aw-editor-tests.yml"):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, name)
+            self.assertEqual(set(doc["jobs"]), _COVERAGE_JOB_IDS[name], name)
+            self.assertEqual(_external_action_names(doc), _COVERAGE_EXTERNAL_ACTIONS[name], name)
+            self.assertEqual(coverage_permission_violations(text, path=name), [], name)
+            extra = (
+                "\n"
+                "  extra:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: {pages}\n"
+                "        with:\n"
+                "          name: aw-editor-lcov\n"
+            )
+            mutant = text.rstrip() + extra
+            parsed, parse_err = load_workflow_yaml(mutant)
+            self.assertIsNone(parse_err, name)
+            step = parsed["jobs"]["extra"]["steps"][0]
+            self.assertFalse(_is_upload_artifact_step(step), name)
+            self.assertEqual(_action_name(step["uses"]), "actions/upload-pages-artifact", name)
+            messages = " ".join(coverage_permission_violations(mutant, path=name))
+            self.assertIn(COVERAGE_JOB_SET_MSG, messages, name)
+            self.assertIn(COVERAGE_ACTION_MSG, messages, name)
+            pin, policy = scan_action_surface(mutant, f".github/workflows/{name}")
+            scanned = " ".join(pin + policy)
+            self.assertIn(COVERAGE_JOB_SET_MSG, scanned, name)
+            self.assertIn(COVERAGE_ACTION_MSG, scanned, name)
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        head, tail = editor.split("  # Coverage job", 1)
+        prefix, _rest = head.split("jobs:\n", 1)
+        missing = prefix + "jobs:\n" + "  # Coverage job" + tail
+        missing_doc, missing_err = load_workflow_yaml(missing)
+        self.assertIsNone(missing_err)
+        self.assertNotIn("test", missing_doc["jobs"])
+        self.assertEqual(
+            _external_action_names(missing_doc),
+            _COVERAGE_EXTERNAL_ACTIONS["aw-editor-tests.yml"],
+        )
+        missing_hits = " ".join(
+            coverage_permission_violations(missing, path="aw-editor-tests.yml")
+        )
+        self.assertIn(COVERAGE_JOB_SET_MSG, missing_hits)
+        replaced = editor.replace(
+            "uses: dtolnay/rust-toolchain@599c45df1a24c1c63ae1129a7e59f46654b8fb66 # 1.89.0\n",
+            "uses: ./.github/actions/rust-ci-setup\n",
+            1,
+        )
+        self.assertNotEqual(replaced, editor)
+        replaced_doc, replaced_err = load_workflow_yaml(replaced)
+        self.assertIsNone(replaced_err)
+        self.assertEqual(set(replaced_doc["jobs"]), _COVERAGE_JOB_IDS["aw-editor-tests.yml"])
+        self.assertNotIn("dtolnay/rust-toolchain", _external_action_names(replaced_doc))
+        self.assertIn(
+            COVERAGE_ACTION_MSG,
+            " ".join(coverage_permission_violations(replaced, path="aw-editor-tests.yml")),
+        )
+
+    def test_locked_action_file_must_exist_without_yaml_sibling(self) -> None:
+        """The locked action.yml exists, and action.yaml must not sit beside it."""
+        nightly = ROOT / _RUST_NIGHTLY_PATH
+        sibling = nightly.with_name("action.yaml")
+        held = nightly.read_text(encoding="utf-8")
+        caller = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        self.assertTrue(_locked_action_files_ok())
+        self.assertEqual(rust_ci_setup_violations(caller, path=".github/workflows/ci.yml"), [])
+        try:
+            sibling.write_text("name: other\n", encoding="utf-8")
+            self.assertFalse(_locked_action_files_ok())
+            hits = rust_ci_setup_violations(caller, path=".github/workflows/ci.yml")
+            self.assertIn(LOCKED_ACTION_FILE_MSG, " ".join(hits))
+            sibling.unlink()
+            nightly.unlink()
+            self.assertFalse(nightly.exists())
+            missing = rust_ci_setup_violations(caller, path=".github/workflows/ci.yml")
+            self.assertIn(LOCKED_ACTION_FILE_MSG, " ".join(missing))
+        finally:
+            if not nightly.exists():
+                nightly.write_text(held, encoding="utf-8")
+            if sibling.exists():
+                sibling.unlink()
 
 
 if __name__ == "__main__":
