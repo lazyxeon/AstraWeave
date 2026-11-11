@@ -6,13 +6,24 @@
 //! attributes, script-scheme URLs, and `srcdoc`. A computed call or assignment
 //! is allowlisted only for a static allowlisted name. Optional computed access
 //! is a computed access. A member followed by a template is a call. Script
-//! sources must match the pinned URL and integrity pair. Remote-loading
-//! elements and a style import are outside the allowlist. Character references
+//! sources must match the pinned URL and integrity pair. A markup element is a
+//! sink unless its name is allowlisted. A URL-bearing attribute (`src`,
+//! `srcset`, `data`, `poster`, `background`, `action`, `ping`, and `href` on
+//! `use` or `image`) is a sink unless that attribute is a pinned script
+//! source. `url(` and `@import` are sinks after CSS escapes are decoded, in a
+//! style element and in a `style` attribute. `meta http-equiv` is a sink for
+//! every value. A `style` property assignment is a sink when its value
+//! contains `url(` or `@import`. Character references
 //! in markup are decoded, then tab, line feed, and carriage return are removed,
 //! before a scheme check. The same whitespace strip applies to a decoded script
 //! string. Unterminated input, an unclosed tag, a depth overrun, and a scan
 //! that cannot finish are sinks. `setAttribute` names and string timers are
-//! checked after escapes and `'a'+'b'` folding.
+//! checked after escapes and `'a'+'b'` folding. A location `replace` or
+//! `assign`, and a head `append`, still count when the receiver is that
+//! object through a computed key, optional access, or grouping parentheses.
+//! An `el` URL counts when its value folds to a script scheme or contains a
+//! template hole. An `import` or `export` loads a module. An animation
+//! `attributeName` that names an event handler is that handler.
 
 use std::collections::BTreeSet;
 
@@ -359,6 +370,16 @@ const ELEMENT_TAG: &[&str] = &[
     "strong", "summary", "ul",
 ];
 
+/// Sorted. Static markup the map page and the oracle samples use. Any other
+/// element name is a sink. `img`, `svg`, `math`, and `maction` are here so an
+/// allowlisted handler host does not become an element sink.
+const MARKUP_ELEMENT: &[&str] = &[
+    "a", "aside", "base", "body", "br", "button", "code", "details", "div", "em", "embed",
+    "footer", "h1", "head", "header", "html", "iframe", "img", "input", "li", "link", "maction",
+    "math", "meta", "object", "option", "script", "select", "span", "strong", "style", "summary",
+    "svg", "title", "ul",
+];
+
 /// Pinned external scripts: exact URL and integrity. Any other `src` is a sink.
 const SCRIPT_SRC: &[(&str, &str)] = &[
     (
@@ -508,7 +529,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
         }
         match &tokens[i] {
             Tok::Dot | Tok::Opt => {
-                note_dot(&tokens, i, &stringish, out, steps, limit);
+                note_dot(&tokens, &mate, i, &stringish, out, steps, limit);
                 if matches!(tokens.get(i + 1), Some(Tok::Ident(_))) {
                     i = i.saturating_add(2);
                     continue;
@@ -516,7 +537,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             }
             Tok::LBrack if prev_is_value(&tokens, i) => {
                 if let Some(end) = mate[i] {
-                    note_computed(&tokens, i, end, &stringish, out, steps, limit);
+                    note_computed(&tokens, &mate, i, end, &stringish, out, steps, limit);
                     i = end + 1;
                     continue;
                 }
@@ -535,7 +556,12 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             Tok::Ident(name) if name == "import" => {
                 if matches!(tokens.get(i + 1), Some(Tok::LParen)) {
                     out.insert("bare import".to_string());
+                } else {
+                    out.insert("module import".to_string());
                 }
+            }
+            Tok::Ident(name) if name == "export" => {
+                out.insert("module export".to_string());
             }
             Tok::Ident(name)
                 if matches!(tokens.get(i + 1), Some(Tok::Opt))
@@ -578,8 +604,143 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
     }
 }
 
+/// `Some(true)` when the receiver is `name`, `Some(false)` when it is a
+/// different proven value, and `None` when the shape does not prove either.
+fn receiver_status(
+    tokens: &[Tok],
+    mate: &[Option<usize>],
+    end: usize,
+    name: &str,
+    spins: &mut usize,
+) -> Option<bool> {
+    *spins = spins.saturating_add(1);
+    if past_cap(*spins, tokens.len().saturating_mul(4).saturating_add(8)) {
+        return None;
+    }
+    let Some(tok) = tokens.get(end) else {
+        return Some(false);
+    };
+    match tok {
+        Tok::Ident(got) => Some(got == name),
+        Tok::Str(_) | Tok::Tpl(_) | Tok::Num => Some(false),
+        Tok::Opt => {
+            if end == 0 {
+                None
+            } else {
+                receiver_status(tokens, mate, end - 1, name, spins)
+            }
+        }
+        Tok::RBrack => computed_name(tokens, mate, end).map(|got| got == name),
+        Tok::RParen => {
+            let open = mate.get(end).copied().flatten()?;
+            if open >= end {
+                return None;
+            }
+            if call_paren(tokens, open) {
+                return Some(false);
+            }
+            if open + 1 >= end {
+                return Some(false);
+            }
+            alt_status(tokens, mate, open + 1, end - 1, name, spins)
+        }
+        _ => None,
+    }
+}
+
+fn computed_name(tokens: &[Tok], mate: &[Option<usize>], end: usize) -> Option<String> {
+    let open = mate.get(end).copied().flatten()?;
+    if open >= end {
+        return None;
+    }
+    match classify_key(&tokens[open + 1..end]) {
+        Key::Static(got) => Some(got),
+        _ => None,
+    }
+}
+
+fn call_paren(tokens: &[Tok], open: usize) -> bool {
+    open > 0
+        && matches!(
+            tokens.get(open - 1),
+            Some(Tok::Ident(_) | Tok::RParen | Tok::RBrack | Tok::Opt)
+        )
+}
+
+fn alt_status(
+    tokens: &[Tok],
+    mate: &[Option<usize>],
+    start: usize,
+    end: usize,
+    name: &str,
+    spins: &mut usize,
+) -> Option<bool> {
+    let mut depth = 0i32;
+    let mut seg = start;
+    let mut saw_true = false;
+    let mut saw_unknown = false;
+    let mut saw = false;
+    let mut i = start;
+    while i <= end && i < tokens.len() {
+        *spins = spins.saturating_add(1);
+        if past_cap(*spins, tokens.len().saturating_mul(4).saturating_add(8)) {
+            return None;
+        }
+        let split = depth == 0
+            && matches!(
+                tokens[i],
+                Tok::Other | Tok::Plus | Tok::Assign | Tok::Comma | Tok::Arrow
+            );
+        match &tokens[i] {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => depth -= 1,
+            _ => {}
+        }
+        if split && i > seg {
+            fold_status(
+                receiver_status(tokens, mate, i - 1, name, spins),
+                &mut saw,
+                &mut saw_true,
+                &mut saw_unknown,
+            );
+            seg = i + 1;
+        } else if split {
+            seg = i + 1;
+        }
+        if i == end {
+            break;
+        }
+        i = i.saturating_add(1);
+    }
+    if seg <= end && seg < tokens.len() {
+        fold_status(
+            receiver_status(tokens, mate, end.min(tokens.len() - 1), name, spins),
+            &mut saw,
+            &mut saw_true,
+            &mut saw_unknown,
+        );
+    }
+    if saw_true {
+        Some(true)
+    } else if saw_unknown || !saw {
+        None
+    } else {
+        Some(false)
+    }
+}
+
+fn fold_status(status: Option<bool>, saw: &mut bool, saw_true: &mut bool, saw_unknown: &mut bool) {
+    *saw = true;
+    match status {
+        Some(true) => *saw_true = true,
+        None => *saw_unknown = true,
+        Some(false) => {}
+    }
+}
+
 fn note_dot(
     tokens: &[Tok],
+    mate: &[Option<usize>],
     dot: usize,
     stringish: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
@@ -590,16 +751,22 @@ fn note_dot(
         return;
     };
     let receiver_is =
-        |recv: &str| dot > 0 && matches!(&tokens[dot - 1], Tok::Ident(got) if got == recv);
+        |recv: &str| dot > 0 && receiver_status(tokens, mate, dot - 1, recv, &mut 0) == Some(true);
     if receiver_is("Reflect") {
         out.insert("member call Reflect".to_string());
         return;
     }
-    if receiver_is("location") && matches!(name.as_str(), "replace" | "assign") {
+    if dot > 0
+        && matches!(name.as_str(), "replace" | "assign")
+        && receiver_status(tokens, mate, dot - 1, "location", &mut 0) != Some(false)
+    {
         out.insert(format!("member call {name}"));
         return;
     }
-    if receiver_is("head") && name == "append" {
+    if dot > 0
+        && name == "append"
+        && receiver_status(tokens, mate, dot - 1, "head", &mut 0) != Some(false)
+    {
         out.insert("member call append".to_string());
         return;
     }
@@ -630,6 +797,12 @@ fn note_dot(
         }
         note_member_call(name, tokens, paren, stringish, out, steps, limit);
     } else if assign_follows(tokens, after) {
+        if dot > 0
+            && receiver_status(tokens, mate, dot - 1, "style", &mut 0) == Some(true)
+            && style_assign_loads(tokens, after)
+        {
+            out.insert("style resource".to_string());
+        }
         if receiver_is("location") && name == "href" {
             out.insert("member assign href".to_string());
         } else if name == "textContent" {
@@ -669,8 +842,10 @@ fn assign_follows(tokens: &[Tok], i: usize) -> bool {
     matches!(tokens.get(i), Some(Tok::Assign))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn note_computed(
     tokens: &[Tok],
+    mate: &[Option<usize>],
     open: usize,
     end: usize,
     stringish: &BTreeSet<String>,
@@ -697,6 +872,20 @@ fn note_computed(
     if call {
         match key {
             Key::Static(name) => {
+                if open > 0
+                    && matches!(name.as_str(), "replace" | "assign")
+                    && receiver_status(tokens, mate, open - 1, "location", &mut 0) != Some(false)
+                {
+                    out.insert(format!("member call {name}"));
+                    return;
+                }
+                if open > 0
+                    && name == "append"
+                    && receiver_status(tokens, mate, open - 1, "head", &mut 0) != Some(false)
+                {
+                    out.insert("member call append".to_string());
+                    return;
+                }
                 note_member_call(&name, tokens, paren, stringish, out, steps, limit);
             }
             _ => {
@@ -704,6 +893,13 @@ fn note_computed(
             }
         }
         return;
+    }
+    if assign
+        && open > 0
+        && receiver_status(tokens, mate, open - 1, "style", &mut 0) == Some(true)
+        && style_assign_loads(tokens, after)
+    {
+        out.insert("style resource".to_string());
     }
     if assign {
         match key {
@@ -891,6 +1087,12 @@ fn url_value_allowed(tokens: &[Tok], paren: usize, steps: &mut u64, limit: u64) 
     if parts.is_empty() {
         return false;
     }
+    if parts
+        .iter()
+        .any(|tok| matches!(tok, Tok::Interp | Tok::Error))
+    {
+        return false;
+    }
     if let Some(Tok::Ident(name)) = parts.first() {
         if safe_url_names(tokens).contains(name) {
             return true;
@@ -1037,22 +1239,121 @@ fn note_el(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) {
         "script" | "iframe" | "object" | "embed" | "style" | "link" | "base"
     );
     let parts = call_arg(tokens, paren, 1);
+    let mate = match_brackets(&parts);
     let mut i = 0;
+    let mut spins = 0usize;
+    let cap = parts.len().saturating_mul(4).saturating_add(8);
     while i < parts.len() {
-        if let Tok::Ident(key) = &parts[i] {
-            if key == "href" || key == "src" || (executable && key == "text") {
-                let rest = &parts[i + 1..];
-                if rest.iter().any(|tok| match tok {
-                    Tok::Str(s) | Tok::Tpl(s) => script_scheme(s),
-                    _ => false,
-                }) || (executable && key == "text")
-                {
-                    out.insert(format!("attribute {key}"));
-                }
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
+            out.insert("scan failed closed".to_string());
+            return;
+        }
+        if let Some((key, value_at, shorthand)) = url_prop(&parts, &mate, i, executable) {
+            let sink = shorthand
+                || (executable && key == "text")
+                || url_expr_is_sink(&parts[value_at..value_end(&parts, value_at)]);
+            if sink {
+                out.insert(format!("attribute {key}"));
             }
+            let next = value_end(&parts, value_at);
+            i = next.max(i.saturating_add(1));
+            continue;
         }
         i = i.saturating_add(1);
     }
+}
+
+fn url_prop(
+    parts: &[Tok],
+    mate: &[Option<usize>],
+    i: usize,
+    executable: bool,
+) -> Option<(String, usize, bool)> {
+    if i > 0 && !matches!(parts.get(i - 1), Some(Tok::LBrace | Tok::Comma)) {
+        return None;
+    }
+    let (key, after) = match parts.get(i)? {
+        Tok::Ident(name) | Tok::Str(name) | Tok::Tpl(name) => (name.clone(), i + 1),
+        Tok::LBrack => {
+            let end = mate.get(i).copied().flatten()?;
+            let name = match classify_key(&parts[i + 1..end]) {
+                Key::Static(name) => name,
+                _ => return None,
+            };
+            (name, end + 1)
+        }
+        _ => return None,
+    };
+    if !is_url_prop(&key, executable) {
+        return None;
+    }
+    if matches!(parts.get(after), Some(Tok::Other)) {
+        Some((key, after + 1, false))
+    } else if matches!(parts.get(after), Some(Tok::Comma | Tok::RBrace) | None) {
+        Some((key, after, true))
+    } else {
+        None
+    }
+}
+
+fn is_url_prop(key: &str, executable: bool) -> bool {
+    key == "href" || key == "src" || (executable && key == "text")
+}
+
+fn style_assign_loads(tokens: &[Tok], eq: usize) -> bool {
+    let mut depth = 0i32;
+    let mut text = String::new();
+    let mut hole = false;
+    let mut i = eq + 1;
+    while i < tokens.len() {
+        match &tokens[i] {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            }
+            Tok::Comma if depth == 0 => break,
+            Tok::Str(value) | Tok::Tpl(value) => text.push_str(value),
+            Tok::Interp | Tok::Error => hole = true,
+            _ => {}
+        }
+        i = i.saturating_add(1);
+    }
+    hole || css_loads_remote(&text)
+}
+
+fn value_end(parts: &[Tok], start: usize) -> usize {
+    let mut depth = 0i32;
+    let mut i = start;
+    while i < parts.len() {
+        match &parts[i] {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                if depth == 0 {
+                    return i;
+                }
+                depth -= 1;
+            }
+            Tok::Comma if depth == 0 => return i,
+            _ => {}
+        }
+        i = i.saturating_add(1);
+    }
+    parts.len()
+}
+
+fn url_expr_is_sink(parts: &[Tok]) -> bool {
+    if parts
+        .iter()
+        .any(|tok| matches!(tok, Tok::Interp | Tok::Error))
+    {
+        return true;
+    }
+    let refs: Vec<&Tok> = parts.iter().collect();
+    scriptish(&refs)
 }
 
 fn note_create_element(
@@ -1169,6 +1470,11 @@ fn decode_html_chars(input: &str) -> String {
     while i < bytes.len() {
         if bytes[i] == b'&' {
             if let Some((ch, next)) = html_char_ref(input, i) {
+                if next <= i {
+                    out.push(bytes[i] as char);
+                    i = i.saturating_add(1);
+                    continue;
+                }
                 out.push(ch);
                 i = next;
                 continue;
@@ -1197,7 +1503,11 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
             if !ok {
                 break;
             }
-            len = len.saturating_add(1);
+            let next = len.saturating_add(1);
+            if next <= len {
+                return None;
+            }
+            len = next;
             if len == 7 {
                 break;
             }
@@ -1219,7 +1529,11 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
         if !b.is_ascii_alphanumeric() {
             break;
         }
-        len = len.saturating_add(1);
+        let next = len.saturating_add(1);
+        if next <= len {
+            return None;
+        }
+        len = next;
         if len == 32 {
             break;
         }
@@ -1592,7 +1906,8 @@ impl<'a> Lx<'a> {
             }
             if c == b'/' && regex_here(out.last(), regex_ready, keyword_member(&out)) {
                 let next = skip_regex(self.src, self.i + 1);
-                if next > b.len()
+                if next <= self.i
+                    || next > b.len()
                     || next == self.i + 1
                     || (next >= b.len() && !closed_regex(self.src, self.i + 1))
                 {
@@ -1609,6 +1924,12 @@ impl<'a> Lx<'a> {
             }
             if c == b'\'' || c == b'"' {
                 let (value, next, closed) = read_string(self.src, self.i);
+                if next <= self.i {
+                    self.failed = true;
+                    out.push(Tok::Error);
+                    self.i = b.len();
+                    return out;
+                }
                 if !closed {
                     self.failed = true;
                     out.push(Tok::Error);
@@ -1645,6 +1966,12 @@ impl<'a> Lx<'a> {
             }
             if is_ident_start(self.src, self.i) {
                 let (name, next) = read_ident(self.src, self.i);
+                if next <= self.i {
+                    self.failed = true;
+                    out.push(Tok::Error);
+                    self.i = b.len();
+                    return out;
+                }
                 out.push(Tok::Ident(name));
                 self.i = next;
                 regex_ready = false;
@@ -1755,6 +2082,10 @@ impl<'a> Lx<'a> {
             let tick = self.i;
             if b[self.i] == b'\\' {
                 let (ch, next) = decode_escape(self.src, self.i);
+                if next <= self.i {
+                    self.failed = true;
+                    return (Tok::Error, body);
+                }
                 value.push(ch);
                 self.i = next;
                 self.charge(tick);
@@ -1832,6 +2163,7 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
     let cap = src.len().saturating_mul(4).saturating_add(8);
     let mut spins = 0usize;
     while i < b.len() {
+        let tick = i;
         spins = spins.saturating_add(1);
         if past_cap(spins, cap) {
             return false;
@@ -1866,6 +2198,9 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
                 };
             }
         }
+        if i <= tick {
+            return false;
+        }
     }
     false
 }
@@ -1877,6 +2212,7 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
     let mut spins = 0usize;
     let fail = src.len().saturating_add(1);
     while i < b.len() {
+        let tick = i;
         spins = spins.saturating_add(1);
         if past_cap(spins, cap) {
             return fail;
@@ -1905,7 +2241,11 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
             b'/' if !class => {
                 i = i.saturating_add(1);
                 while i < b.len() && b[i].is_ascii_alphabetic() {
-                    i = i.saturating_add(1);
+                    let next = i.saturating_add(1);
+                    if next <= i {
+                        return fail;
+                    }
+                    i = next;
                 }
                 return i;
             }
@@ -1917,6 +2257,9 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
                 };
             }
         }
+        if i <= tick {
+            return fail;
+        }
     }
     i
 }
@@ -1927,25 +2270,26 @@ fn read_string(src: &str, start: usize) -> (String, usize, bool) {
     let mut i = start + 1;
     let mut value = String::new();
     while i < b.len() {
+        let tick = i;
         if !src.is_char_boundary(i) {
             i = i.saturating_add(1);
-            continue;
-        }
-        if b[i] == b'\\' {
+        } else if b[i] == b'\\' {
             let (ch, next) = decode_escape(src, i);
             if next <= i {
                 return (value, i, false);
             }
             value.push(ch);
             i = next;
-            continue;
-        }
-        if b[i] == quote {
+        } else if b[i] == quote {
             return (value, i + 1, true);
+        } else {
+            let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
+            value.push(ch);
+            i = i.saturating_add(ch.len_utf8());
         }
-        let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
-        value.push(ch);
-        i = i.saturating_add(ch.len_utf8());
+        if i <= tick {
+            return (value, tick, false);
+        }
     }
     (value, i, false)
 }
@@ -1970,7 +2314,11 @@ fn decode_escape(src: &str, slash: usize) -> (char, usize) {
             let start = i + 2;
             let mut j = start;
             while j < b.len() && b[j].is_ascii_hexdigit() && j - start < 6 {
-                j = j.saturating_add(1);
+                let next = j.saturating_add(1);
+                if next <= j {
+                    return ('u', j);
+                }
+                j = next;
             }
             let digits = &src[start..j];
             let ch = u32::from_str_radix(digits, 16)
@@ -2023,25 +2371,33 @@ fn read_ident(src: &str, start: usize) -> (String, usize) {
     let mut i = start;
     let mut name = String::new();
     while i < b.len() {
+        let tick = i;
         if !src.is_char_boundary(i) {
             break;
         }
         if b[i] == b'\\' && b.get(i + 1) == Some(&b'u') {
             let (ch, next) = decode_escape(src, i);
-            if ch == '\\' || ch == 'u' || next == i {
+            if ch == '\\' || ch == 'u' || next <= i {
                 break;
             }
             name.push(ch);
             i = next;
-            continue;
+        } else {
+            let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
+            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch.is_alphabetic() {
+                name.push(ch);
+                let next = i.saturating_add(ch.len_utf8());
+                if next <= i {
+                    break;
+                }
+                i = next;
+            } else {
+                break;
+            }
         }
-        let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch.is_alphabetic() {
-            name.push(ch);
-            i = i.saturating_add(ch.len_utf8());
-            continue;
+        if i <= tick {
+            break;
         }
-        break;
     }
     if name.is_empty() {
         let ch = src[start..].chars().next().unwrap_or('\u{FFFD}');
@@ -2337,6 +2693,121 @@ fn handler_value_is_code(value: &str) -> bool {
     true
 }
 
+fn css_unescaped(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\\' {
+            out.push(ch);
+            continue;
+        }
+        let mut hex = String::new();
+        while hex.len() < 6 {
+            match chars.peek() {
+                Some(digit) if digit.is_ascii_hexdigit() => {
+                    hex.push(chars.next().unwrap_or('0'));
+                }
+                _ => break,
+            }
+        }
+        if !hex.is_empty() {
+            if let Ok(code) = u32::from_str_radix(&hex, 16) {
+                if let Some(decoded) = char::from_u32(code) {
+                    out.push(decoded);
+                }
+            }
+            if matches!(chars.peek(), Some(space) if space.is_ascii_whitespace()) {
+                chars.next();
+            }
+            continue;
+        }
+        if let Some(next) = chars.next() {
+            out.push(next);
+        }
+    }
+    out
+}
+
+fn css_loads_remote(input: &str) -> bool {
+    let plain = css_unescaped(input).to_ascii_lowercase();
+    plain.contains("url(") || plain.contains("@import")
+}
+
+fn css_remote_kinds(input: &str) -> (bool, bool) {
+    let plain = css_unescaped(input).to_ascii_lowercase();
+    (plain.contains("url("), plain.contains("@import"))
+}
+
+fn tag_is_prose(src: &str, start: usize, end: usize) -> bool {
+    let bytes = src.as_bytes();
+    let mut i = start;
+    let mut quote = 0u8;
+    while i < end && i < bytes.len() {
+        let ch = bytes[i];
+        if quote != 0 {
+            if ch == quote {
+                quote = 0;
+            }
+            i = i.saturating_add(1);
+            continue;
+        }
+        if ch == b'"' || ch == b'\'' {
+            quote = ch;
+        } else if ch == b',' {
+            return true;
+        }
+        i = i.saturating_add(1);
+    }
+    false
+}
+
+fn note_markup_element(tag: &Parsed, out: &mut BTreeSet<String>) {
+    let name = tag.name.to_ascii_lowercase();
+    if !allowed(MARKUP_ELEMENT, &name) {
+        out.insert(format!("element {name}"));
+    }
+}
+
+fn note_url_attribute(tag: &Parsed, out: &mut BTreeSet<String>) {
+    let name = tag.name.to_ascii_lowercase();
+    if remote_element(&name) || name == "link" || name == "script" {
+        return;
+    }
+    for (attr, _) in &tag.attrs {
+        let attr_name = attr.to_ascii_lowercase();
+        let url = matches!(
+            attr_name.as_str(),
+            "src" | "srcset" | "data" | "poster" | "background" | "action" | "ping"
+        ) || (attr_name == "href" && matches!(name.as_str(), "use" | "image"))
+            || (attr_name == "code" && name == "applet");
+        if url {
+            out.insert(format!("url attribute {attr_name}"));
+        }
+    }
+}
+
+fn note_style_attribute(tag: &Parsed, out: &mut BTreeSet<String>) {
+    let Some(value) = attr_value(&tag.attrs, "style") else {
+        return;
+    };
+    if css_loads_remote(value) {
+        out.insert("style resource".to_string());
+    }
+}
+
+fn note_meta_referrer(tag: &Parsed, out: &mut BTreeSet<String>) {
+    if !tag.name.eq_ignore_ascii_case("meta") {
+        return;
+    }
+    if attr_value(&tag.attrs, "name")
+        .unwrap_or("")
+        .trim()
+        .eq_ignore_ascii_case("referrer")
+    {
+        out.insert("meta referrer".to_string());
+    }
+}
+
 fn remote_element(name: &str) -> bool {
     matches!(
         name.to_ascii_lowercase().as_str(),
@@ -2482,6 +2953,10 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
         }
         if src[i..].starts_with("<!--") {
             if let Some(next) = html_comment_end(src, i) {
+                if next <= i {
+                    out.insert("scan failed closed".to_string());
+                    break;
+                }
                 *steps = steps.saturating_add((next - i) as u64);
                 i = next;
             } else {
@@ -2512,9 +2987,16 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                 if remote_element(&tag.name) {
                     out.insert(format!("element {}", tag.name));
                 }
+                if !tag_is_prose(src, i, tag.end) {
+                    note_markup_element(&tag, out);
+                }
+                note_url_attribute(&tag, out);
+                note_style_attribute(&tag, out);
                 note_script_src(&tag, out);
                 note_meta_refresh(&tag, out);
+                note_meta_referrer(&tag, out);
                 note_link_href(&tag, out);
+                note_animation_handler(&tag, out, &mut chunks);
                 for (name, value) in &tag.attrs {
                     note_markup_attr(name, value, out, &mut chunks);
                 }
@@ -2537,8 +3019,12 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                 } else if tag.name.eq_ignore_ascii_case("style") {
                     if let Some(end_gt) = find_end_tag(src, tag.end, "style") {
                         let body = body_before_end(src, tag.end, end_gt);
-                        if body.to_ascii_lowercase().contains("@import") {
+                        let (has_url, has_import) = css_remote_kinds(&body);
+                        if has_import {
                             out.insert("style import".to_string());
+                        }
+                        if has_url {
+                            out.insert("style resource".to_string());
                         }
                         *steps = steps.saturating_add(body.len() as u64);
                         i = end_gt + 1;
@@ -2613,9 +3099,13 @@ fn note_meta_refresh(tag: &Parsed, out: &mut BTreeSet<String>) {
     if !tag.name.eq_ignore_ascii_case("meta") {
         return;
     }
-    let equiv = attr_value(&tag.attrs, "http-equiv").unwrap_or("");
+    let Some(equiv) = attr_value(&tag.attrs, "http-equiv") else {
+        return;
+    };
     if equiv.trim().eq_ignore_ascii_case("refresh") {
         out.insert("meta refresh".to_string());
+    } else {
+        out.insert("meta http-equiv".to_string());
     }
 }
 
@@ -2659,6 +3149,25 @@ fn find_end_tag(src: &str, from: usize, name: &str) -> Option<usize> {
         i = i.saturating_add(1);
     }
     None
+}
+
+fn note_animation_handler(tag: &Parsed, out: &mut BTreeSet<String>, chunks: &mut Vec<String>) {
+    let Some(target) = attr_value(&tag.attrs, "attributeName") else {
+        return;
+    };
+    if !is_handler_attr(target) {
+        return;
+    }
+    out.insert(format!("attribute {target}"));
+    for name in ["to", "from", "values", "by"] {
+        let Some(value) = attr_value(&tag.attrs, name) else {
+            continue;
+        };
+        let decoded = decode_html_chars(value);
+        if !decoded.trim().is_empty() {
+            chunks.push(decoded);
+        }
+    }
 }
 
 fn note_markup_attr(name: &str, value: &str, out: &mut BTreeSet<String>, chunks: &mut Vec<String>) {
@@ -2991,7 +3500,11 @@ mod class_tests {
     #[test]
     fn markup_handlers_urls_and_srcdoc_fail() {
         sink("<img src=\"x\" alt=\"\" onerror=\"eval(1)\">");
-        sink("<iframe srcdoc=\"&lt;script&gt;parent.x=1&lt;/script&gt;\"></iframe>");
+        let srcdoc = html_parsing_problems(
+            "<iframe srcdoc=\"&lt;script&gt;foo(1)&lt;/script&gt;\"></iframe>",
+        );
+        assert!(srcdoc.contains("attribute srcdoc"), "{srcdoc:?}");
+        assert!(srcdoc.contains("bare foo"), "{srcdoc:?}");
         sink("<a href=\"javascript:eval(1)\">x</a>");
         sink("<a href='javascript:alert(1)'>x</a>");
         clean("var href = 'https://example.com'");
@@ -3192,6 +3705,387 @@ mod class_tests {
         sink("return open(x)");
         sink("location.replace(x)");
         sink("with (scope) { href = x }");
+    }
+
+    #[test]
+    fn a_computed_replace_on_a_location_binding_is_a_sink() {
+        sink("location['replace'](x)");
+    }
+
+    #[test]
+    fn a_computed_location_then_replace_is_a_sink() {
+        sink("window['location'].replace(x)");
+    }
+
+    #[test]
+    fn a_double_quoted_computed_location_then_replace_is_a_sink() {
+        sink("window[\"location\"].replace(x)");
+    }
+
+    #[test]
+    fn a_grouped_location_replace_is_a_sink() {
+        sink("(location).replace(x)");
+    }
+
+    #[test]
+    fn an_optional_computed_replace_on_location_is_a_sink() {
+        sink("location?.['replace'](x)");
+    }
+
+    #[test]
+    fn a_member_location_computed_replace_is_a_sink() {
+        sink("window.location['replace'](x)");
+    }
+
+    #[test]
+    fn a_computed_append_on_head_is_a_sink() {
+        sink("head['append'](x)");
+    }
+
+    #[test]
+    fn a_grouped_head_append_is_a_sink() {
+        sink("(head).append(x)");
+    }
+
+    #[test]
+    fn a_computed_head_then_append_is_a_sink() {
+        sink("document['head'].append(x)");
+    }
+
+    #[test]
+    fn a_string_replace_stays_allowlisted() {
+        clean("(window.location.hash || '').replace(/^#/, '')");
+        clean("s.replace(x)");
+        clean("chip.append(x)");
+        clean("history.replaceState(null, '', x)");
+    }
+
+    #[test]
+    fn a_helper_attrs_url_concatenation_is_a_sink() {
+        sink(&cat(&["el('a',{attrs:{href:'java'+'", "script:", "x'}})"]));
+    }
+
+    #[test]
+    fn a_helper_attrs_url_template_is_a_sink() {
+        sink(&cat(&[
+            "el('a',{attrs:{href:`java${'",
+            "script:",
+            "'}x`}})",
+        ]));
+    }
+
+    #[test]
+    fn a_helper_url_concatenation_is_a_sink() {
+        sink(&cat(&["el('a',{href:'java'+'", "script:", "x'})"]));
+    }
+
+    #[test]
+    fn a_quoted_helper_url_key_is_a_sink() {
+        sink(&cat(&["el('a',{attrs:{'href':'", "javascript:", "x'}})"]));
+    }
+
+    #[test]
+    fn a_computed_helper_url_key_is_a_sink() {
+        sink(&cat(&[
+            "el('a',{attrs:{[\"href\"]:'",
+            "javascript:",
+            "x'}})",
+        ]));
+    }
+
+    #[test]
+    fn a_template_hole_inside_the_helper_is_a_sink() {
+        sink(&cat(&[
+            "function el(){ a.setAttribute('href', `java${'",
+            "script:",
+            "'}x`) }",
+        ]));
+    }
+
+    fn remote_module(stmt: &str) -> String {
+        stmt.replace("URL", "https://example.invalid/x.js")
+    }
+
+    #[test]
+    fn a_side_effect_import_is_a_sink() {
+        sink(&remote_module("import 'URL'"));
+    }
+
+    #[test]
+    fn a_default_import_is_a_sink() {
+        sink(&remote_module("import x from 'URL'"));
+    }
+
+    #[test]
+    fn a_named_import_is_a_sink() {
+        sink(&remote_module("import {x} from 'URL'"));
+    }
+
+    #[test]
+    fn a_star_reexport_is_a_sink() {
+        sink(&remote_module("export * from 'URL'"));
+    }
+
+    #[test]
+    fn a_named_reexport_is_a_sink() {
+        sink(&remote_module("export {x} from 'URL'"));
+    }
+
+    #[test]
+    fn a_module_script_side_effect_import_is_a_sink() {
+        sink(&format!(
+            "<script type=\"module\">{}</script>",
+            remote_module("import 'URL'")
+        ));
+    }
+
+    #[test]
+    fn a_module_script_default_import_is_a_sink() {
+        sink(&format!(
+            "<script type=\"module\">{}</script>",
+            remote_module("import x from 'URL'")
+        ));
+    }
+
+    #[test]
+    fn a_module_script_named_import_is_a_sink() {
+        sink(&format!(
+            "<script type=\"module\">{}</script>",
+            remote_module("import {x} from 'URL'")
+        ));
+    }
+
+    #[test]
+    fn an_svg_set_handler_name_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<svg><set attributeName=\"onmouseover\" to=\"foo(1)\"></set></svg>",
+        );
+        assert!(problems.contains("attribute onmouseover"), "{problems:?}");
+        assert!(problems.contains("bare foo"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_svg_set_handler_name_is_case_insensitive() {
+        let problems = html_parsing_problems(
+            "<svg><SET attributeName=\"ONMOUSEOVER\" to=\"foo(1)\"></SET></svg>",
+        );
+        assert!(problems.contains("attribute ONMOUSEOVER"), "{problems:?}");
+        assert!(problems.contains("bare foo"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_svg_set_handler_name_in_single_quotes_is_a_sink() {
+        let problems =
+            html_parsing_problems("<svg><set attributeName='onclick' to='foo(1)'></set></svg>");
+        assert!(problems.contains("attribute onclick"), "{problems:?}");
+        assert!(problems.contains("bare foo"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_svg_animate_handler_name_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<svg><animate attributeName=\"onbegin\" to=\"foo(1)\"></animate></svg>",
+        );
+        assert!(problems.contains("attribute onbegin"), "{problems:?}");
+        assert!(problems.contains("bare foo"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_remote_image_source_is_a_sink() {
+        let problems = html_parsing_problems("<img src=\"https://example.invalid/a.png\">");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_remote_image_source_set_is_a_sink() {
+        let problems = html_parsing_problems("<img srcset=\"https://example.invalid/a.png 1x\">");
+        assert!(problems.contains("url attribute srcset"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_picture_source_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<picture><source srcset=\"https://example.invalid/a.png\"></source></picture>",
+        );
+        assert!(problems.contains("element picture"), "{problems:?}");
+        assert!(problems.contains("element source"), "{problems:?}");
+        assert!(problems.contains("url attribute srcset"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_video_source_is_a_sink() {
+        let problems =
+            html_parsing_problems("<video src=\"https://example.invalid/a.mp4\"></video>");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_audio_source_is_a_sink() {
+        let problems =
+            html_parsing_problems("<audio src=\"https://example.invalid/a.mp3\"></audio>");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_track_source_is_a_sink() {
+        let problems = html_parsing_problems("<track src=\"https://example.invalid/a.vtt\">");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_image_input_source_is_a_sink() {
+        let problems =
+            html_parsing_problems("<input type=\"image\" src=\"https://example.invalid/a.png\">");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_frame_source_is_a_sink() {
+        let problems = html_parsing_problems("<frame src=\"https://example.invalid/a.html\">");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_portal_source_is_a_sink() {
+        let problems = html_parsing_problems("<portal src=\"https://example.invalid/a.html\">");
+        assert!(problems.contains("url attribute src"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_applet_code_attribute_is_a_sink() {
+        let problems = html_parsing_problems("<applet code=\"x\"></applet>");
+        assert!(problems.contains("url attribute code"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_svg_use_reference_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<svg><use href=\"https://example.invalid/a.svg#a\"></use></svg>",
+        );
+        assert!(problems.contains("url attribute href"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_body_background_is_a_sink() {
+        let problems =
+            html_parsing_problems("<body background=\"https://example.invalid/a.png\"></body>");
+        assert!(
+            problems.contains("url attribute background"),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn an_anchor_ping_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<a href=\"https://example.invalid/a\" ping=\"https://example.invalid/p\">z</a>",
+        );
+        assert!(problems.contains("url attribute ping"), "{problems:?}");
+        clean("<a href=\"https://example.invalid/a\">z</a>");
+    }
+
+    #[test]
+    fn a_form_action_is_a_sink() {
+        let problems = html_parsing_problems("<form action=\"https://example.invalid/a\"></form>");
+        assert!(problems.contains("url attribute action"), "{problems:?}");
+    }
+
+    #[test]
+    fn any_meta_http_equiv_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\">",
+        );
+        assert!(problems.contains("meta http-equiv"), "{problems:?}");
+        assert!(!problems.contains("meta refresh"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_referrer_meta_is_a_sink() {
+        let problems = html_parsing_problems("<meta name=\"referrer\" content=\"unsafe-url\">");
+        assert!(problems.contains("meta referrer"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_style_attribute_url_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<div style=\"background-image:url(https://example.invalid/a.png)\"></div>",
+        );
+        assert!(problems.contains("style resource"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_style_body_url_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<style>body{background:url(https://example.invalid/a.png)}</style>",
+        );
+        assert!(problems.contains("style resource"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_font_face_url_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<style>@font-face{src:url(https://example.invalid/a.woff)}</style>",
+        );
+        assert!(problems.contains("style resource"), "{problems:?}");
+    }
+
+    #[test]
+    fn an_escaped_style_import_is_a_sink() {
+        let problems =
+            html_parsing_problems("<style>@im\\port 'https://example.invalid/a.css';</style>");
+        assert!(problems.contains("style import"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_style_property_url_is_a_sink() {
+        let problems =
+            html_parsing_problems("node.style.background = 'url(https://example.invalid/a.png)'");
+        assert!(problems.contains("style resource"), "{problems:?}");
+        clean("function el(node, style){ node.style.color = String(style.color) }");
+    }
+
+    #[test]
+    fn computed_text_inside_set_text_stays_clean() {
+        clean("function setText(n,v){n['textContent']=v}");
+        sink("n['textContent']=v");
+        clean("node['title']=1");
+        sink("node['foo']=1");
+    }
+
+    #[test]
+    fn text_after_a_function_is_still_a_sink() {
+        sink("function setText(n,v) extra {n.textContent=v}");
+        clean("function setText(n,v){n.textContent=v}");
+    }
+
+    #[test]
+    fn an_svg_animate_values_handler_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<svg><animate attributeName=\"onclick\" values=\"foo(1)\"></animate></svg>",
+        );
+        assert!(problems.contains("attribute onclick"), "{problems:?}");
+        assert!(problems.contains("bare foo"), "{problems:?}");
+    }
+
+    #[test]
+    fn comment_end_advances_past_its_start() {
+        for src in ["<!-->", "<!--->", "<!-- -->", "<!-- --!>"] {
+            let end = html_comment_end(src, 0).expect(src);
+            assert!(end > 0, "{src} -> {end}");
+        }
+        let sample = "<!--><script>foo(1)</script>";
+        let started = std::time::Instant::now();
+        let problems = html_parsing_problems(sample);
+        assert!(
+            started.elapsed().as_millis() < 500,
+            "{:?}",
+            started.elapsed()
+        );
+        assert!(problems.contains("bare foo"), "{problems:?}");
+        assert!(
+            !problems.iter().any(|item| item.contains("failed closed")),
+            "{problems:?}"
+        );
     }
 
     #[test]
@@ -3558,6 +4452,12 @@ mod mutant_tests {
         assert!(!is_ident_start("1", 0));
         assert!(is_ident_start("\\u0041", 0));
         assert_eq!(read_ident("ab1$", 0), ("ab1$".into(), 4));
+        let (text, next, closed) = read_string("'ab'", 0);
+        assert_eq!((text.as_str(), next, closed), ("ab", 4, true));
+        assert!(next > 0);
+        let (ch, next) = decode_escape("\\n", 0);
+        assert_eq!((ch, next), ('\n', 2));
+        assert!(next > 0);
         assert_eq!(read_ident("éx", 0), ("éx".into(), 3));
         assert_eq!(read_ident("\\u0041Z", 0).0, "AZ");
 
@@ -3566,7 +4466,11 @@ mod mutant_tests {
         assert!(!closed_regex("ab\n", 0));
         assert!(closed_regex("[/]/", 0));
         assert!(closed_regex("\\//", 0));
+        assert!(!closed_regex("\\/", 0));
+        assert!(!closed_regex("[/]", 0));
         assert_eq!(skip_regex("ab/g", 0), 4);
+        assert_eq!(skip_regex("\\/a/g", 0), 5);
+        assert_eq!(skip_regex("[a]/g+", 0), 5);
         assert_eq!(skip_regex("ab", 0), 2);
         assert_eq!(skip_regex("[/]/i", 0), 5);
         assert_eq!(skip_template_linear("`a`", 0), 3);
@@ -3721,6 +4625,52 @@ mod mutant_tests {
             .rposition(|tok| matches!(tok, Tok::RBrack))
             .unwrap();
         toks[open + 1..close].to_vec()
+    }
+
+    #[test]
+    fn a_template_at_the_depth_limit_fails_closed() {
+        let wrap = |depth: usize| {
+            let mut body = "x".to_string();
+            for _ in 0..depth {
+                body = format!("${{`{body}`}}");
+            }
+            format!("`{body}`")
+        };
+        let (ok, failed_ok, _) = lex_of(&wrap(7), u64::MAX / 8);
+        assert!(!failed_ok, "{}", lex_s(&wrap(7)));
+        assert!(ok
+            .iter()
+            .any(|tok| matches!(tok, Tok::Interp | Tok::Tpl(_))));
+        let (bad, failed_bad, _) = lex_of(&wrap(8), u64::MAX / 8);
+        assert!(failed_bad, "{}", lex_s(&wrap(8)));
+        assert!(bad.iter().any(|tok| matches!(tok, Tok::Error)));
+        let escaped = lex_s("`\\``");
+        assert!(escaped.starts_with("tpl:`"), "{escaped}");
+        let plain = lex_s("`ab`");
+        assert!(plain.starts_with("tpl:ab"), "{plain}");
+        let hole = lex_s("`a${b}c`");
+        assert!(hole.contains("interp"), "{hole}");
+        let nested = lex_s("`${`a`}`");
+        assert!(nested.contains("tpl:a"), "{nested}");
+    }
+
+    #[test]
+    fn safe_and_stringish_names_cover_the_last_window() {
+        let src = "const u = 'https://example.invalid/a'; let bad = 'javascript:x'; var n = 1; const s = String(a); const tail = 'https://example.invalid/z'";
+        let toks = lex_of(src, u64::MAX / 8).0;
+        let safe = safe_url_names(&toks);
+        assert!(safe.contains("u"), "{safe:?}");
+        assert!(safe.contains("tail"), "{safe:?}");
+        assert!(!safe.contains("bad"), "{safe:?}");
+        assert!(!safe.contains("n"), "{safe:?}");
+        assert!(!safe.contains("s"), "{safe:?}");
+        let names = stringish_names(&toks);
+        assert!(
+            names.contains("u") && names.contains("bad") && names.contains("s"),
+            "{names:?}"
+        );
+        assert!(names.contains("tail"), "{names:?}");
+        assert!(!names.contains("n"), "{names:?}");
     }
 
     #[test]
@@ -4036,5 +4986,51 @@ mod mutant_tests {
 
     fn lex_s_from(toks: &[Tok]) -> String {
         toks.iter().map(tok_s).collect::<Vec<_>>().join(" ")
+    }
+
+    #[test]
+    fn computed_receivers_keep_allowlisted_calls() {
+        let opt = html_parsing_problems("node['setAttribute']?.('href','javascript:x')");
+        assert!(opt.contains("attribute href"), "{opt:?}");
+        assert!(
+            !opt.iter().any(|item| item.contains("failed closed")),
+            "{opt:?}"
+        );
+        let made = html_parsing_problems("node['createElement']?.('script')");
+        assert!(made.contains("element script"), "{made:?}");
+        let styled =
+            html_parsing_problems("style['background'] = 'url(https://example.invalid/a.png)'");
+        assert!(styled.contains("style resource"), "{styled:?}");
+        clean_js("node['background'] = 'url(https://example.invalid/a.png)'");
+        clean_js("location['push'](1)");
+        clean_js("node['replace'](1)");
+        clean_js("node['append'](1)");
+        clean_js("head['push'](1)");
+        clean_js("node?.replace(1)");
+        clean_js("obj['node'].replace(1)");
+        let loc = html_parsing_problems("obj['location'].replace(1)");
+        assert!(loc.contains("member call replace"), "{loc:?}");
+        assert!(
+            !loc.iter().any(|item| item.contains("failed closed")),
+            "{loc:?}"
+        );
+    }
+
+    fn clean_js(sample: &str) {
+        let problems = html_parsing_problems(sample);
+        assert!(problems.is_empty(), "{sample} -> {problems:?}");
+    }
+
+    #[test]
+    fn escape_regex_and_template_edges_are_exact() {
+        let (ch, end) = decode_escape("\\u{0000041}", 0);
+        assert_eq!((ch, end), ('\u{4}', 9));
+        assert!(!closed_regex("a\n/", 0));
+        assert_eq!(skip_regex("ab\n", 0), 2);
+        let plain = lex_s("`a$b`");
+        assert!(plain.starts_with("tpl:a$b"), "{plain}");
+        assert!(!plain.contains("interp"), "{plain}");
+        let open = lex_s("`a${b`");
+        assert!(open.contains("err") || open.contains("f=true"), "{open}");
     }
 }

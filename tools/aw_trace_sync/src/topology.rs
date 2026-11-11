@@ -1444,7 +1444,11 @@ fn final_sigma(chars: &[char], index: usize) -> bool {
 fn preceded_by_cased(chars: &[char], index: usize) -> bool {
     let mut j = index;
     while j > 0 {
-        j -= 1;
+        let next = j - 1;
+        if next >= j {
+            return false;
+        }
+        j = next;
         let c = chars[j];
         if case_ignorable(c) {
             continue;
@@ -1459,7 +1463,11 @@ fn followed_by_cased(chars: &[char], index: usize) -> bool {
     while j < chars.len() {
         let c = chars[j];
         if case_ignorable(c) {
-            j += 1;
+            let next = j + 1;
+            if next <= j {
+                return false;
+            }
+            j = next;
             continue;
         }
         return cased(c);
@@ -1804,6 +1812,15 @@ mod tests {
         assert_eq!(github_slug("a.Σb"), "aσb");
         assert_eq!(github_slug("a:Σb"), "aσb");
         assert_eq!(github_slug("a-b"), "a-b");
+        assert_eq!(github_slug("a'Σ"), "aς");
+        assert_eq!(github_slug("a.Σ"), "aς");
+        assert_eq!(github_slug("a:Σ"), "aς");
+        assert_eq!(github_slug("Σ'a"), "σa");
+        assert_eq!(github_slug("a\u{0300}Σ"), "a\u{0300}ς");
+        assert_eq!(github_slug("a\u{1AB0}Σ"), "a\u{1AB0}ς");
+        assert_eq!(github_slug("a\u{1DC0}Σ"), "a\u{1DC0}ς");
+        assert_eq!(github_slug("a\u{20D0}Σ"), "a\u{20D0}ς");
+        assert_eq!(github_slug("a\u{FE20}Σ"), "a\u{FE20}ς");
     }
 
     #[test]

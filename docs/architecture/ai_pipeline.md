@@ -490,7 +490,7 @@ This section enumerates the load-bearing files. Per-file enumeration of all 112 
 | `astraweave-npc/tests/mutation_resistant_comprehensive_tests.rs` (797 LoC) | 47 mutation-killing integration tests | Active | |
 | `astraweave-npc/benches/npc_adversarial.rs` (1374 LoC) | Criterion bench harness with adversarial cases | Active | |
 | `astraweave-dialogue/src/lib.rs` (1,398 LoC) | Top-level: `DialogueNode`, `DialogueResponse`, `DialogueGraph` with builder methods, summary helpers, validation API (`DialogueGraph::validate`). 78 inline tests | Active | `#![forbid(unsafe_code)]`. Production-wired into editor and game loop |
-| `astraweave-dialogue/src/runner.rs` (370 LoC) | `DialogueRunner` state machine (`Idle`/`WaitingForChoice`/`Finished`), `DialogueEvent` enum (`NodeEntered`/`ChoiceMade`/`Ended`), `RunnerState`. API: `start(node_id)`, `choose(choice_index)`, `drain_events()`. 8 inline tests | Active | Consumed by `veilweaver_slice_runtime/src/game_loop.rs:16-17` |
+| `astraweave-dialogue/src/runner.rs` (370 LoC) | `DialogueRunner` state machine (`Idle`/`WaitingForChoice`/`Finished`), `DialogueEvent` enum (`NodeEntered`/`ChoiceMade`/`Ended`), `RunnerState`. API: `start(node_id)`, `choose(choice_index)`, `drain_events()`. 8 inline tests | Active | Consumed by `veilweaver_slice_runtime/src/game_loop.rs:16` (`DialogueRunner` import; `:17` is `LoadedDialogue`) |
 | `astraweave-dialogue/src/toml_loader.rs` (421 LoC) | `load_dialogue_from_toml -> Result<LoadedDialogue>`, `LoadedDialogue { dialogue_id, start_node, graph }`. TOML schema `[[nodes]]` with `line.{speaker, text}` and `choices[{text, go_to}]`. 10 inline tests | Active | Production import of `LoadedDialogue` is `veilweaver_slice_runtime/src/game_loop.rs:17`. `game_loop.rs:446` is `#[cfg(test)]` only. Also consumed by `veilweaver_slice_runtime/tests/e2e_*` |
 | `astraweave-dialogue/src/llm_dialogue.rs` | `LlmDialogueSystem` proposes through an injected `LlmClient`. Prompts use `set_path`. Each conversation is `Arc<Mutex<ActiveConversation>>`. `recorded_line` is a pure helper intended as the sim boundary: `SimRng` seeded with `SIM_SYSTEM_LLM_DIALOGUE`, not drawn. No `thread_rng`. No non-test caller. | Compiles / off the sim tick | `speaker_name_appears_in_the_rendered_prompt`. `concurrent_generate_response_keeps_both_turns`. `sys_ai_planning` and `sys_spatial_tick` do not call `generate_response`. See §8 invariants 24 and 25 |
 | `astraweave-dialogue/tests/dialogue.rs` (38 LoC) | 2 integration tests against `DialogueGraph::validate` | Active | |
@@ -1050,7 +1050,7 @@ Note: M4-M7 are all subordinate engines reachable through `MemoryStorage` / `Mem
 |---|---|---|
 | `astraweave-persona/src/lib.rs:19`, `llm_persona.rs:25` | `astraweave_memory::persona::{Persona, CompanionProfile, Fact, Skill}` | LEGACY persona types only. Does NOT touch the main memory pipeline |
 | `astraweave-persona/tests/{sprint3_persona_tests, mutation_resistant_comprehensive_tests, serialization}.rs`, `astraweave-persona/benches/persona_benchmarks.rs` | Same legacy types | Test/bench-only |
-| `astraweave-dialogue/src/llm_dialogue.rs:21` | `astraweave_persona::LlmPersona` | The LLM layer imports the persona type from `astraweave-persona`. `SimRng` is constructed at `llm_dialogue.rs:558-561` |
+| `astraweave-dialogue/src/llm_dialogue.rs` | not a consumer of `astraweave-memory` | The former reference was removed (see the 2026-10-16 closure). The file imports `astraweave_persona::LlmPersona` at `llm_dialogue.rs:21`. `SimRng` is constructed at `llm_dialogue.rs:558-561` |
 | `examples/companion_profile/src/main.rs` | `astraweave_memory` symbols | Example-only |
 | `examples/llm_integration/tests/full_integration_test.rs` | `astraweave_memory` symbols | Test-only |
 
@@ -1466,8 +1466,8 @@ The NPC crate **does not import any canonical AI types** and is therefore not co
 
 ### 13.4 Subsystem Trace — Dialogue
 
-**Last verified against commit:** `32afac52f`
-**Last verified date:** 2026-05-12
+**Last verified against commit:** symbol cites in this section (`DialogueRunner` import, `DialogueConfig`, `DialogueContextConfig`, `BranchingConfig`, `LlmClient`, the clamps, and `disabled`)
+**Last verified date:** 2026-11-11. The 2026-05-12 pass was `32afac52f`.
 **Status:** **Two-layer architecture, mixed status.** The **basic dialogue layer** (`lib.rs` types, `runner.rs` state machine, `toml_loader.rs` authoring) is Active and production-wired into `veilweaver_slice_runtime/src/game_loop.rs` and the editor's `dialogue_editor_panel.rs`. The **LLM-enhanced layer** (`llm_dialogue.rs`, 2,231 lines, about half of the 4,420 under `src/`) is Active (code-wise) / Dormant (runtime-wise) — workspace grep confirms zero external consumers outside the file itself. The two layers share no types: the LLM path defines its own `LlmDialogueSystem`, `DialogueConfig`, `ActiveConversation`, etc., distinct from the basic `DialogueGraph` / `DialogueRunner`.
 
 #### 13.4.1 Role within the parent system
@@ -1507,7 +1507,7 @@ Dialogue provides **branching dialogue graphs** for player↔NPC and player↔co
          - emits ChoiceMade { node_id, choice_index, choice_text, next_node_id }
          - either transitions to next node (NodeEntered) or emits Ended { last_node_id }
       4. Game loop drains events via drain_events() — consumed by veilweaver_slice_runtime
-         (`veilweaver_slice_runtime/src/game_loop.rs:16-17` integrates DialogueRunner / DialogueEvent / RunnerState)
+         (`veilweaver_slice_runtime/src/game_loop.rs:16` imports DialogueRunner / DialogueEvent / RunnerState; `:17` is `LoadedDialogue`)
     │
     ▼
 [D4 — Game loop event consumption]
@@ -1530,7 +1530,7 @@ Dialogue provides **branching dialogue graphs** for player↔NPC and player↔co
       DialogueContextConfig (max_history_turns, max_relevant_memories, context_window, summarization)
       BranchingConfig (dynamic branching threshold, max depth, merge strategy)
       QualityControlConfig (validation flag)
-    file: llm_dialogue.rs:52-92, 150-…
+    file: llm_dialogue.rs:51-75, 150-…
     │
     ▼
 [L2 — Designed flow (DORMANT — verified 2026-05-12)]
@@ -1554,10 +1554,10 @@ Dialogue provides **branching dialogue graphs** for player↔NPC and player↔co
 | **`LoadedDialogue`** | `{ dialogue_id: String, start_node: String, graph: DialogueGraph }`. Result of `load_dialogue_from_toml`. | `toml_loader.rs:72-79` |
 | **TOML schema** | `[[nodes]]` entries with `id` + `line { speaker, text }` + `choices [{ text, go_to }]` + optional `end: bool`. Translated by `toml_loader.rs` to runtime types via internal `TomlDialogueFile`/`TomlDialogueNode`/`TomlLine`/`TomlChoice`. | `toml_loader.rs:25-65` |
 | **`LlmDialogueSystem`** | `{ llm_client: Arc<dyn LlmClient>, rag_pipeline: Arc<RwLock<RagPipeline>>, template_engine: Arc<RwLock<TemplateEngine>>, conversations: Arc<RwLock<HashMap<String, Arc<Mutex<ActiveConversation>>>>>, config: DialogueConfig, metrics: Arc<RwLock<DialogueMetrics>> }`. The LLM-enhanced dialogue orchestrator. `generate_response` holds the per-conversation mutex for the whole update. | `llm_dialogue.rs` |
-| **`DialogueConfig`** | LLM path top-level config: `{ max_response_tokens (256), temperature (0.8), top_p (0.9), num_dialogue_options (3), emotion_analysis: EmotionAnalysisConfig, context_config: DialogueContextConfig, branching_config: BranchingConfig, quality_control: QualityControlConfig }`. | `llm_dialogue.rs:52-92` |
+| **`DialogueConfig`** | LLM path top-level config: `{ max_response_tokens (256), temperature (0.8), top_p (0.9), num_dialogue_options (3), emotion_analysis: EmotionAnalysisConfig, context_config: DialogueContextConfig, branching_config: BranchingConfig, quality_control: QualityControlConfig }`. | `llm_dialogue.rs:51-75` |
 | **`EmotionAnalysisConfig`** | `{ enable_sentiment_analysis, enable_emotion_detection, enable_empathy_responses, sentiment_influence (0.3), emotional_memory_retention (0.7) }`. | `llm_dialogue.rs:151-179` |
-| **`DialogueContextConfig`** | `{ max_history_turns (10), max_relevant_memories (5), context_window_size (2048), enable_summarization (true) }`. Constructors: `minimal()` (3/2/512/false), `extended()` (20/10/4096/true). | `llm_dialogue.rs:233-281` |
-| **`BranchingConfig`** | `{ enable_dynamic_branching, branching_threshold (0.7), max_branch_depth (5), merge_strategy: BranchMergeStrategy }`. | `llm_dialogue.rs:311-…` |
+| **`DialogueContextConfig`** | `{ max_history_turns (10), max_relevant_memories (5), context_window_size (2048), enable_summarization (true) }`. Constructors: `minimal()` (`llm_dialogue.rs:271`), `extended()` (`llm_dialogue.rs:282`). | `llm_dialogue.rs:243` |
+| **`BranchingConfig`** | `{ enable_dynamic_branching, branching_threshold (0.7), max_branch_depth (5), merge_strategy: BranchMergeStrategy }`. | `llm_dialogue.rs:321` |
 | **`ActiveConversation`** | Per-id LLM conversation state (held in `LlmDialogueSystem.conversations` map). | `llm_dialogue.rs` |
 | **`DialogueMetrics`** | Performance metrics for LLM dialogue calls. | `llm_dialogue.rs` |
 
@@ -1597,12 +1597,12 @@ The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls 
 
 | Designed touchpoint | Interface | Verified 2026-05-12 |
 |---|---|---|
-| LLM client | `Arc<dyn astraweave_llm::LlmClient>` (`llm_dialogue.rs:21, 33`) | No external code constructs `LlmDialogueSystem` |
+| LLM client | `use astraweave_llm::LlmClient` at `llm_dialogue.rs:20`. The field is `llm_client: Arc<dyn LlmClient>` at `llm_dialogue.rs:30`. | No external code constructs `LlmDialogueSystem` |
 | RAG retrieval | `Arc<RwLock<astraweave_rag::RagPipeline>>` (`llm_dialogue.rs:26, 36`) | Same |
 | Prompt templates | `astraweave_prompts::{template::PromptTemplate, engine::TemplateEngine, context::PromptContext}` (`llm_dialogue.rs:23-25`) | Same |
 | Conversation history | `astraweave_context::{ConversationHistory, ContextConfig, Role, Message}` (`llm_dialogue.rs:22`) | Same |
 | Persona overlay | `astraweave_persona::{LlmPersonaManager, LlmPersona}` (`llm_dialogue.rs:27`) | Same |
-| Embedding store | `astraweave_embeddings::{Memory, MemoryCategory}` (`llm_dialogue.rs:28`) | Same |
+| Embedding store | There is no `astraweave_embeddings::{Memory, MemoryCategory}` import. The only `astraweave_embeddings` uses are inside `#[cfg(test)]` (`llm_dialogue.rs:2081`), at `llm_dialogue.rs:2163-2165`. | Same |
 | Fallback chain (parent §2.3) | Not used. The LLM layer holds `Arc<dyn LlmClient>` directly, bypassing `FallbackOrchestrator`. | Same pattern as Director's `LlmDirector` — see §13.2.7 |
 
 **Outside the parent AI system:**
@@ -1625,9 +1625,9 @@ The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls 
 | D6 | `DialogueResponse.next_id == None` is the terminal marker; `is_terminal()` returns `true` in that case | Yes | `lib.rs:213-215` |
 | D7 | `DialogueNode.is_linear()` is true only when `responses.len() == 1`; `is_choice()` requires `> 1` | Yes | `lib.rs:65-73` |
 | D8 | TOML `end: true` marker on a node sets `responses: vec![]` after translation (terminal) | Yes (inspection) | `toml_loader.rs:49-50` (`end: bool`) plus translation logic |
-| D9 | `DialogueConfig.temperature` clamped to `[0.0, 2.0]` and `top_p` to `[0.0, 1.0]` in builder methods | Yes | `llm_dialogue.rs:104, 113` (`.clamp`) |
+| D9 | `DialogueConfig.temperature` clamped to `[0.0, 2.0]` and `top_p` to `[0.0, 1.0]` in builder methods | Yes | `with_temperature` clamps at `llm_dialogue.rs:103`. `with_top_p` clamps at `llm_dialogue.rs:110`. |
 | D10 | `DialogueContextConfig::minimal()` and `::extended()` provide named-preset alternatives to defaults | Yes (code) | `llm_dialogue.rs:263-281` |
-| D11 | `EmotionAnalysisConfig::disabled()` zeros all enable flags AND the sentiment-influence/retention floats | Yes | `llm_dialogue.rs:184-192` |
+| D11 | `EmotionAnalysisConfig::disabled()` zeros all enable flags AND the sentiment-influence/retention floats | Yes | `llm_dialogue.rs:183` |
 | D12 | `LlmDialogueSystem` is `Send + Sync` via auto-traits — all 6 fields are Send + Sync | Yes | Fields: `Arc<dyn LlmClient>`, `Arc<RwLock<RagPipeline>>`, `Arc<RwLock<TemplateEngine>>`, `Arc<RwLock<HashMap<String, Arc<Mutex<ActiveConversation>>>>>`, `DialogueConfig`, `Arc<RwLock<DialogueMetrics>>`. The per-conversation mutex is `tokio::sync::Mutex`. |
 | D13 | `recorded_line` seeds `SimRng` with `SIM_SYSTEM_LLM_DIALOGUE` and does not draw it | Yes | `llm_dialogue.rs:551` |
 | D14 | Dialogue crate is unsafe-free | Yes | `astraweave-dialogue/src/lib.rs:1` `#![forbid(unsafe_code)]` |
@@ -1639,7 +1639,7 @@ The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls 
 **Subsystem-specific open questions:**
 
 - **`llm_dialogue.rs` dormancy — production-wire, prune, or rebrand?** [Decisional, mirrors §13.1 Memory dormancy.] Factual state (verified 2026-05-12): the 2,231-line LLM-enhanced layer has zero external consumers in the workspace. Workspace grep for `LlmDialogueSystem`, `DialogueConfig`, `EmotionAnalysisConfig`, `DialogueContextConfig`, `BranchingConfig`, `ActiveConversation`, `DialogueMetrics` returns only the file itself. 6 inline tests exercise it in isolation. Seven AstraWeave-crate Cargo dependencies (`astraweave-core`/`llm`/`embeddings`/`context`/`prompts`/`rag`/`persona`) plus tokio + async-trait + regex are pulled in for this layer alone. Same decisional template as the Memory subsystem dormancy question: production-wire (hook `LlmDialogueSystem` into `veilweaver_slice_runtime/src/game_loop.rs` alongside the existing `DialogueRunner`), prune (delete `llm_dialogue.rs` and the seven Cargo deps it pulls in), or rebrand (relocate to an experimental crate). The basic dialogue layer is excluded from this question — it's actively production-wired.
-- **`LlmDialogueSystem` bypasses `FallbackOrchestrator`.** [Decisional / factual.] Same pattern as `LlmDirector` (§13.2.7): the system holds `Arc<dyn LlmClient>` directly (`llm_dialogue.rs:33`) instead of going through the parent §2.3 4-tier fallback chain. Whether this is intentional (dialogue failure modes are different from plan-generation failure modes — a missing LLM response can degrade to scripted dialogue) or a hardening gap is undecided.
+- **`LlmDialogueSystem` bypasses `FallbackOrchestrator`.** [Decisional / factual.] Same pattern as `LlmDirector` (§13.2.7): the system holds `Arc<dyn LlmClient>` directly (`llm_dialogue.rs:30`) instead of going through the parent §2.3 4-tier fallback chain. Whether this is intentional (dialogue failure modes are different from plan-generation failure modes — a missing LLM response can degrade to scripted dialogue) or a hardening gap is undecided.
 - **TOML schema translation asymmetry.** [Factual — resolved 2026-05-12.] `TomlChoice { text, go_to }` becomes `DialogueResponse { text, next_id: Some(go_to) }`. `TomlDialogueNode.end: true` becomes `DialogueNode.responses: vec![]`. These translations are not 1:1; the runtime types lose the `end` marker (it becomes implicit via empty responses). Verified 2026-05-12 at `astraweave-dialogue/src/lib.rs:130-167` (DialogueNode definition + Display impl) and `:170-177` (DialogueResponse definition): **the `speaker` info from `TomlLine` is NOT retained after translation.** `DialogueNode` has only `id`, `text`, and `responses: Vec<DialogueResponse>`; `DialogueResponse` has only `text` and `next_id`. No speaker field exists in either runtime type.
 - **`DialogueGraph::validate` is auto-called by `toml_loader` but NOT by `DialogueRunner::new`.** [Factual — corrected 2026-05-12, supersedes earlier "opt-in" framing.] Verified at `astraweave-dialogue/src/toml_loader.rs:124-127`: `load_dialogue_from_toml` calls `graph.validate().map_err(...)?` automatically. `DialogueRunner::new(graph)` (per `runner.rs:60-75`) does NOT auto-validate — it accepts any `DialogueGraph` regardless of integrity. Production constructs the runner from `LoadedDialogue` imported at `veilweaver_slice_runtime/src/game_loop.rs:17`. `game_loop.rs:446` is `#[cfg(test)]` only and is not that path. The TOML-load path validates. The decisional question shifts: should `DialogueRunner::new` also validate (defense-in-depth) or trust callers?
 - **`runner.rs:35-43` `RunnerState::Idle` vs `Finished` semantics.** [Factual / informational — **enriched 2026-05-12**.] Both are non-active states with no clear behavioral difference from the runner's perspective — `Idle` is the pre-`start` state; `Finished` is the post-terminal state. Verified 2026-05-12 at `runner.rs:81-91`: `start()` does NOT gate on state — it can be called from any state (including `Finished`); it clears history and enters the node unconditionally. The externally-observable distinction is only via `is_finished()` predicate at `:221` (`self.state == RunnerState::Finished`) — there is no `is_idle()`. Workspace grep for external `RunnerState::Idle` or `RunnerState::Finished` consumers (excluding `astraweave-dialogue/src` and `astraweave-dialogue/tests`) returned zero matches. The state machine could collapse to a single `Inactive` variant without behavior change. Whether the distinction is load-bearing for future game-loop adapter UI hints or vestigial is a decisional question.

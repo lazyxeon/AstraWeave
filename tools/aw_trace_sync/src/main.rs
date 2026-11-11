@@ -3002,7 +3002,83 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
                     "unmarked test-only cite: {line}"
                 );
             }
+            if line.contains("DialogueRunner")
+                && line.contains("game_loop.rs:16-17")
+                && !line.contains("LoadedDialogue")
+            {
+                panic!("runner cite includes the toml_loader import: {line}");
+            }
         }
+        let at = |needle: &str| {
+            llm_src
+                .lines()
+                .position(|line| line.contains(needle))
+                .unwrap_or_else(|| panic!("missing {needle}"))
+                + 1
+        };
+        let game = std::fs::read_to_string(root.join("veilweaver_slice_runtime/src/game_loop.rs"))
+            .unwrap();
+        let runner_import = game
+            .lines()
+            .position(|line| line.contains("use astraweave_dialogue::runner::"))
+            .expect("runner import")
+            + 1;
+        let loaded_import = game
+            .lines()
+            .position(|line| line.contains("use astraweave_dialogue::toml_loader::LoadedDialogue"))
+            .expect("loaded import")
+            + 1;
+        assert!(section.contains(&format!("game_loop.rs:{runner_import}")));
+        assert!(section.contains(&format!("game_loop.rs:{loaded_import}")));
+        let production = section
+            .lines()
+            .find(|line| line.contains("Game loop integration"))
+            .expect("game loop row");
+        assert!(!production.contains(", 446"), "{production}");
+        let seeds = section
+            .lines()
+            .find(|line| line.contains("recorded_line") && line.contains("does not draw"))
+            .expect("recorded_line sentence");
+        assert!(!seeds.contains("thread_rng"), "{seeds}");
+        assert!(!seeds.contains("non-deterministic"), "{seeds}");
+        for (label, needle) in [
+            ("DialogueConfig", "pub struct DialogueConfig {"),
+            (
+                "DialogueContextConfig",
+                "pub struct DialogueContextConfig {",
+            ),
+            ("BranchingConfig", "pub struct BranchingConfig {"),
+            ("LlmClient import", "use astraweave_llm::LlmClient;"),
+            ("LlmClient field", "llm_client: Arc<dyn LlmClient>,"),
+            ("temperature clamp", "self.temperature = temp.clamp"),
+            ("top_p clamp", "self.top_p = top_p.clamp"),
+            ("disabled", "pub fn disabled() -> Self {"),
+            ("cfg test", "#[cfg(test)]"),
+            (
+                "embedding client",
+                "astraweave_embeddings::MockEmbeddingClient::new()",
+            ),
+        ] {
+            let line = at(needle);
+            let needle = format!("llm_dialogue.rs:{line}");
+            let cited = section.match_indices(&needle).any(|(at, _)| {
+                section[at + needle.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|ch| !ch.is_ascii_digit())
+            });
+            assert!(cited, "{label} at {line} missing from §13.4");
+        }
+        assert!(
+            section.contains("symbol cites in this section"),
+            "{section}"
+        );
+        assert!(doc.contains("not a consumer of `astraweave-memory`"));
+        assert!(!section.contains("llm_dialogue.rs:52-92"));
+        assert!(!section.contains("llm_dialogue.rs:233-281"));
+        assert!(!section.contains("llm_dialogue.rs:21, 33"));
+        assert!(section
+            .contains("There is no `astraweave_embeddings::{Memory, MemoryCategory}` import."));
     }
 
     #[test]
@@ -3165,11 +3241,124 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
         assert!(quote.contains("examples/weaving_playground"));
         assert!(doc.contains("`lib.rs` is 4,198 lines"));
         assert!(doc.contains("7 WGSL files, 1,375 lines"));
-        assert!(doc.contains("`compute_lambda` (`fluid.wgsl:220`)"));
-        assert!(doc.contains("`compute_delta_pos` (`fluid.wgsl:308`)"));
-        assert!(doc.contains("24,509 lines in 19 files"));
-        assert!(doc.contains("`optimization.rs:144`"));
-        assert!(doc.contains("`optimization.rs:532`"));
+        let wgsl =
+            std::fs::read_to_string(root.join("astraweave-fluids/shaders/fluid.wgsl")).unwrap();
+        let symbol_line = |src: &str, needle: &str| {
+            src.lines()
+                .position(|line| line.contains(needle))
+                .unwrap_or_else(|| panic!("missing {needle}"))
+                + 1
+        };
+        let lambda = symbol_line(&wgsl, "fn compute_lambda");
+        let delta = symbol_line(&wgsl, "fn compute_delta_pos");
+        assert!(
+            doc.contains(&format!("`compute_lambda` (`fluid.wgsl:{lambda}`)")),
+            "compute_lambda is at {lambda}"
+        );
+        assert!(
+            doc.contains(&format!("`compute_delta_pos` (`fluid.wgsl:{delta}`)")),
+            "compute_delta_pos is at {delta}"
+        );
+        let src_lines = rust_line_total(&root.join("astraweave-fluids/src"));
+        let src_files = rust_file_total(&root.join("astraweave-fluids/src"));
+        assert!(
+            doc.contains(&format!(
+                "{} lines in {src_files} files",
+                grouped(src_lines)
+            )),
+            "src is {src_lines} lines in {src_files} files"
+        );
+        assert!(
+            doc.contains(&format!("{} lines of Rust", grouped(src_lines))),
+            "summary line count"
+        );
+        let notes = doc
+            .lines()
+            .find(|line| line.starts_with("| **Owner notes** |"))
+            .expect("owner notes");
+        let adversarial =
+            std::fs::read_to_string(root.join("astraweave-fluids/benches/fluids_adversarial.rs"))
+                .unwrap()
+                .lines()
+                .count();
+        let baselines =
+            std::fs::read_to_string(root.join("astraweave-fluids/benches/fluid_baselines.rs"))
+                .unwrap()
+                .lines()
+                .count();
+        assert_eq!(adversarial, 1676);
+        assert_eq!(baselines, 175);
+        assert!(notes.contains("`fluids_adversarial` 1,676"), "{notes}");
+        assert!(notes.contains("`fluid_baselines` 175"), "{notes}");
+        assert!(!notes.contains("1,678"), "{notes}");
+        assert!(!notes.contains("`fluid_baselines` 149"), "{notes}");
+        let opt =
+            std::fs::read_to_string(root.join("astraweave-fluids/src/optimization.rs")).unwrap();
+        let at = |needle: &str| {
+            opt.lines()
+                .position(|line| line.contains(needle))
+                .expect(needle)
+                + 1
+        };
+        let workgroups = doc
+            .lines()
+            .find(|line| line.contains("| **`WorkgroupConfig`** |"))
+            .expect("WorkgroupConfig row");
+        for (label, needle) in [
+            ("universal", "pub const fn universal()"),
+            ("nvidia", "pub const fn nvidia()"),
+            ("amd", "pub const fn amd()"),
+            ("intel", "pub const fn intel()"),
+            ("apple", "pub const fn apple()"),
+            ("for_gpu", "pub fn for_gpu("),
+            ("from_adapter_info", "pub fn from_adapter_info("),
+        ] {
+            let line = at(needle);
+            assert!(
+                workgroups.contains(&format!("`{label}` (`optimization.rs:{line}`)")),
+                "{label} at {line} missing from {workgroups}"
+            );
+        }
+        assert!(
+            workgroups.contains("There is no `auto_detect`."),
+            "{workgroups}"
+        );
+        assert!(
+            !workgroups.contains("`auto_detect` (`optimization.rs:"),
+            "{workgroups}"
+        );
+        let morton = at("pub struct MortonCode");
+        assert!(
+            doc.contains(&format!("`optimization.rs:{morton}`")),
+            "MortonCode is at {morton}"
+        );
+        let particle = symbol_line(
+            &std::fs::read_to_string(root.join("astraweave-fluids/src/lib.rs")).unwrap(),
+            "pub struct Particle",
+        );
+        let params = symbol_line(
+            &std::fs::read_to_string(root.join("astraweave-fluids/src/lib.rs")).unwrap(),
+            "pub struct SimParams",
+        );
+        let secondary = symbol_line(
+            &std::fs::read_to_string(root.join("astraweave-fluids/src/lib.rs")).unwrap(),
+            "pub struct SecondaryParticle",
+        );
+        for (label, line) in [
+            ("Particle", particle),
+            ("SimParams", params),
+            ("SecondaryParticle", secondary),
+        ] {
+            let row = doc
+                .lines()
+                .find(|item| item.contains(&format!("**`{label}`**")))
+                .unwrap_or_else(|| panic!("missing {label}"));
+            assert!(row.contains("Superseded by W.1"), "{row}");
+            assert!(
+                row.contains(&format!("`lib.rs:{line}`")),
+                "{label} at {line} missing from {row}"
+            );
+        }
         let wgsl_total: usize = std::fs::read_dir(root.join("astraweave-fluids/shaders"))
             .unwrap()
             .flatten()
@@ -3316,6 +3505,38 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             .trim();
         let token = cell.split_whitespace().next().unwrap().replace(',', "");
         token.parse().expect(row)
+    }
+
+    fn rust_line_total(dir: &std::path::Path) -> usize {
+        fn walk(dir: &std::path::Path, total: &mut usize) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, total);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                    *total += std::fs::read_to_string(&path).unwrap().lines().count();
+                }
+            }
+        }
+        let mut total = 0;
+        walk(dir, &mut total);
+        total
+    }
+
+    fn rust_file_total(dir: &std::path::Path) -> usize {
+        fn walk(dir: &std::path::Path, total: &mut usize) {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, total);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                    *total += 1;
+                }
+            }
+        }
+        let mut total = 0;
+        walk(dir, &mut total);
+        total
     }
 
     fn grouped(n: usize) -> String {

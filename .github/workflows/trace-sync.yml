@@ -1,9 +1,14 @@
 name: Trace Sync
 
 # Drift gate for the architecture-trace registry/map. Trace front-matter and
-# cargo metadata are the sources; this fails if the CLAUDE.md trace table,
-# workspace_map.html trace links, nodes, normal path edges, examples aggregate,
-# footer, trace-section anchors, or crate src line counts are out of sync. Fix locally with:
+# cargo metadata are the sources. On push to main, on pull_request, and on
+# workflow_dispatch, the check step runs
+# `cargo run --locked -p aw_trace_sync -- --check`. That fails if the CLAUDE.md
+# trace table, workspace_map.html trace links, nodes, normal path edges,
+# examples aggregate, footer, trace-section anchors, or crate src line counts
+# are out of sync, and if the map page has a markup or script sink. The test
+# step runs `cargo test --locked -p aw_trace_sync`, which scans that map again.
+# Fix locally with:
 #   cargo run -p aw_trace_sync -- --write
 # Design: docs/architecture/_meta/TRACE_SYNC_PROPOSAL.md
 
@@ -21,7 +26,7 @@ on:
       - 'CLAUDE.md'
       - 'tools/aw_trace_sync/**'
       - '.github/workflows/trace-sync.yml'
-    pull_request:
+  pull_request:
     paths:
       - 'docs/architecture/**'
       - '**/Cargo.toml'
