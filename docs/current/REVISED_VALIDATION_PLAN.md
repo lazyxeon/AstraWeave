@@ -12,7 +12,7 @@ Before implementing this plan, understand these practical limitations:
 
 1. **ASan + GPU Drivers Don't Mix**: AddressSanitizer produces false positives from GPU driver allocations. The render crate **cannot get ASan coverage** — rely on wgpu validation instead. Run ASan tests with `--no-default-features` to disable GPU features.
 
-2. **ThreadSanitizer fails the Sanitizers workflow.** `.github/workflows/sanitizers.yml` no longer names that job advisory. The summary job fails when `thread-sanitizer` fails. The job runs on the nightly schedule, or on `workflow_dispatch` with `force_full_suite`. It does not run on pull requests. A race or a suppression miss is a failed workflow.
+2. **ThreadSanitizer fails the Sanitizers workflow.** `.github/workflows/sanitizers.yml` no longer names that job advisory. The summary job fails when `thread-sanitizer` fails. The job runs on pull requests, on the nightly schedule, and on `workflow_dispatch` with `force_full_suite`. A race or a suppression miss is a failed workflow.
 
 3. **contracts Crate Has Rough Edges**: Version 0.6 struggles with complex generic types. Works well for math crate (quaternions, matrices), but may hit limitations with AI planning types. **Test on a single function before broad adoption.**
 
@@ -273,7 +273,7 @@ jobs:
 - `astraweave-coordination` - Agent coordination
 - `astraweave-net` - Network protocol handling
 
-**The Sanitizers workflow fails when this job fails.** The job name is `ThreadSanitizer`. The old advisory label is gone. `sanitizer-summary` sets a failed workflow when `needs.thread-sanitizer.result` is `failure`. The job runs on the nightly schedule, or on `workflow_dispatch` with `force_full_suite`. It does not run on pull requests.
+**The Sanitizers workflow fails when this job fails.** The job name is `ThreadSanitizer`. The old advisory label is gone. `sanitizer-summary` sets a failed workflow when `needs.thread-sanitizer.result` is `failure`. The job runs on pull requests, on the nightly schedule, and on `workflow_dispatch` with `force_full_suite`.
 
 TSan with async Rust can still report races in Tokio, crossbeam, or parking_lot. Those belong in `scripts/tsan_suppressions.txt` when they are not engine bugs. A red job is not a warning.
 

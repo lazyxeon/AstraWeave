@@ -163,12 +163,18 @@ jobs:
     - name: Check validation status
       run: |
         set -euo pipefail
-        shopt -s nullglob
-        files=(validation-grassland.json validation-mountain.json validation-desert.json validation-all.json)
-        if [ "${#files[@]}" -ne 4 ]; then
-          echo "::error::expected 4 validation reports, found ${#files[@]}"
-          exit 1
-        fi
+        files=(
+          validation-grassland.json
+          validation-mountain.json
+          validation-desert.json
+          validation-all.json
+        )
+        for file in "${files[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "::error::missing validation report: $file"
+            exit 1
+          fi
+        done
         failed=0
         for file in "${files[@]}"; do
           if ! jq -e 'type == "array" and length > 0 and all(.[]; .passed == true)' "$file" >/dev/null; then

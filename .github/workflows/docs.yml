@@ -32,9 +32,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 env:
   MDBOOK_VERSION: '0.5.2'
@@ -179,8 +177,41 @@ jobs:
           fi
           echo "mdBook output verified: $(find docs/book -name '*.html' | wc -l) HTML files"
 
+      - name: Upload book
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-book
+          path: docs/book
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          echo "### Documentation built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Link check uses the read-only token. Deploy is a separate job." >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Deploy Docs
+    needs: build-and-deploy
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download book
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-book
+          path: docs/book
+
       - name: Deploy to GitHub Pages
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -191,7 +222,7 @@ jobs:
 
       - name: Summary
         run: |
-          echo "### Documentation Deployed ✅" >> $GITHUB_STEP_SUMMARY
+          echo "### Documentation Deployed" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Documentation URL**: https://lazyxeon.github.io/AstraWeave/" >> $GITHUB_STEP_SUMMARY
           echo "**API Docs URL**: https://lazyxeon.github.io/AstraWeave/api/" >> $GITHUB_STEP_SUMMARY

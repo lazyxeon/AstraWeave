@@ -182,7 +182,7 @@ A high mutation score proves test suite effectiveness.
 The existing `sanitizers.yml` covers:
 - ASan on: ecs, physics, memory
 - LSan on: aw-save
-- TSan on: scheduled/advisory
+- TSan on: pull requests, the nightly schedule, and `workflow_dispatch` with `force_full_suite`. A failure fails the Sanitizers workflow.
 
 ### Enhanced Coverage (IMPLEMENTED)
 
@@ -194,7 +194,7 @@ The existing `sanitizers.yml` covers:
 **LSan targets**:
 - `aw-save` (existing)
 
-**TSan Focus Areas** (advisory):
+**TSan crates** (a failure fails the Sanitizers workflow):
 - `astraweave-ai`
 - `astraweave-coordination`
 

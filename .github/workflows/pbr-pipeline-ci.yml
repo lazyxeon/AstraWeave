@@ -228,7 +228,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-    - name: Check shader syntax
+    - name: Check shader files are non-empty
       run: |
         set -euo pipefail
         dirs=(
@@ -236,6 +236,8 @@ jobs:
           astraweave-render/src/shaders
           astraweave-fluids/shaders
           assets/shaders
+          tools/aw_editor/src/viewport/shaders
+          examples/fluids_demo/src
         )
         fail=0
         for dir in "${dirs[@]}"; do
@@ -266,7 +268,7 @@ jobs:
           echo "## WGSL Shaders"
           echo
           echo "### Shader Files:"
-          find astraweave-render/shaders astraweave-render/src/shaders astraweave-fluids/shaders assets/shaders \
+          find astraweave-render/shaders astraweave-render/src/shaders astraweave-fluids/shaders assets/shaders tools/aw_editor/src/viewport/shaders examples/fluids_demo/src \
             -name '*.wgsl' -type f -print | LC_ALL=C sort | while IFS= read -r shader; do
             lines=$(wc -l < "$shader")
             echo "- \`$shader\` (${lines} lines)"

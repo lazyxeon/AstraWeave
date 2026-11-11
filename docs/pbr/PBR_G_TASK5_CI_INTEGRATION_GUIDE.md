@@ -76,7 +76,7 @@ Automated material validation and PBR pipeline testing in GitHub Actions CI. Thi
 - **Output**: Test summary in GitHub Step Summary
 
 #### **Job 3: Validate WGSL Shaders**
-- **Checks**: each `.wgsl` file under `astraweave-render/shaders`, `astraweave-render/src/shaders`, `astraweave-fluids/shaders`, and `assets/shaders` is non-empty. It does not parse WGSL.
+- **Checks**: each `.wgsl` file under `astraweave-render/shaders`, `astraweave-render/src/shaders`, `astraweave-fluids/shaders`, `assets/shaders`, `tools/aw_editor/src/viewport/shaders`, and `examples/fluids_demo/src` is non-empty. It does not parse WGSL. The `validate-shaders` job sets a job-level `continue-on-error`, so a failed file check does not fail the workflow until #747.
 - **Lists**: those files with line counts
 - **Not installed**: `wgsl-analyzer`
 

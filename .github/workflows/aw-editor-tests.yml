@@ -122,6 +122,14 @@ jobs:
     - name: Generate Coverage Report
       run: cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
 
+    - name: Upload Coverage to Codecov
+      uses: codecov/codecov-action@v4
+      if: success()
+      with:
+        files: ./lcov.info
+        flags: aw_editor
+        name: aw-editor-coverage
+
     - name: Upload coverage report
       uses: actions/upload-artifact@v7
       with:
