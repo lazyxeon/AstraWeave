@@ -168,7 +168,7 @@ The system is three loosely-coupled data paths. They share the `astraweave-asset
 | **GUID** | 128-bit hex digest (`SHA-256` of lowercased, forward-slash-normalized path, first 16 bytes) identifying an asset. | `guid_for_path` (lib.rs:2756-2761); `AssetDatabase`, `AssetCache` |
 | **`AssetKind` (root)** | Crate-root asset-category enum used by `AssetDatabase`: `Mesh, Texture, Audio, Dialogue, Material, Animation, Script, BlenderSource, Other`. `#[non_exhaustive]`. | lib.rs:4192-4203 |
 | **`AssetKind` (cell)** | Cell-loader's own enum: `Mesh, Texture, Material, Audio, Animation, Other` (no Dialogue/Script/BlenderSource). `#[non_exhaustive]`. | cell_loader.rs:12-21 |
-| **`AssetMetadata`** | DB record: guid, path, kind, content hash, deps, mtime, size. | lib.rs:4116-4124 |
+| **`AssetMetadata`** | DB record: guid, path, kind, content hash, deps, mtime, size. | lib.rs:4180-4188 |
 | **`AssetRef`** | Cell-level reference to an asset (path + cell `AssetKind` + optional guid). | cell_loader.rs:23-47 |
 | **`CellData`** | Serialized World-Partition cell (entities + asset refs + metadata). | cell_loader.rs:104-147 |
 | **Meshlet** | Triangle cluster with local vertex list, `u8` triangle indices, `AABB`, `BoundingCone`, LOD level/error. | nanite_preprocess.rs:142-215 |
@@ -284,14 +284,14 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 ### Discarded-Result residue
 
 - `astraweave-scene/src/streaming.rs:193` uses `let _ = Self::load_asset_data(asset_ref, assets_root).await;` — the per-asset byte-load Result is discarded in the streaming loop. This is a consumer-side pattern, surfaced here because it touches the cell-loader output. (CLAUDE.md flags `let _ =` on fallible asset I/O as a hazard; recorded as an open question in §11, not a recommendation.)
-- `astraweave-asset/src/lib.rs:4233` (`invalidate_asset`) and `lib.rs:4451` (watcher channel send) use `.ok()` on `watch`/`mpsc` sends — intentional fire-and-forget on channels with possibly-dropped receivers.
+- `astraweave-asset/src/lib.rs:4297` (`invalidate_asset`) and `lib.rs:4515` (watcher channel send) use `.ok()` on `watch`/`mpsc` sends — intentional fire-and-forget on channels with possibly-dropped receivers.
 
 ---
 
 ## 7. Decision Log
 
 ### Decision: Deterministic path-based GUIDs (SHA-256, 128-bit)
-- **Date:** [Reasoning not recovered from available sources] (code comment "Phase 2 foundations", lib.rs:2689)
+- **Date:** [Reasoning not recovered from available sources] (code comment "Phase 2 foundations", lib.rs:2753)
 - **Status:** Accepted.
 - **Context:** Assets need a stable identity across runs for caching/dependency tracking.
 - **Decision:** `guid_for_path` hashes the lowercased, `\`→`/`-normalized path with SHA-256 and keeps the first 16 bytes as hex (lib.rs:2756-2761).
