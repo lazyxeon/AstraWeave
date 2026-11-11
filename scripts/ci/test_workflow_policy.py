@@ -1890,7 +1890,7 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     Top-level permissions must be {}. A missing key fails. A permission
     value must be exactly read or none. id-token may be exactly write on
     the upload job. Any other value fails, including a different case,
-    padding, or quotes, a flow mapping, or a quoted key. write and
+    padding, or a quoted value other than read or none, a flow mapping, or a quoted key. write and
     write-all, including those spellings, report the write message. The
     editor test job's permissions map is exactly contents: read.
     The upload job's keys are exactly name, needs, permissions, runs-on,
@@ -8935,8 +8935,12 @@ jobs:
         """Editor test permissions are exactly contents: read.
 
         A value that is not the scalar read or none fails. Case, padding,
-        quotes, and an expression are separate spellings. id-token write on this job is
-        not the upload-job exception.
+        a quoted value other than read or none, and an expression are
+        separate spellings. id-token write on this job is not the upload-job
+        exception, and id-token WRITE reports the write message. A
+        case-variant key, a quoted case-variant key, and a repeated contents
+        key whose last value is read report the exact-map message. A mapping
+        read-all and a non-string contents value report the level message.
         """
         editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
         anchor = (
@@ -8961,6 +8965,18 @@ jobs:
             "extra-read": "      contents: read\n      actions: read\n",
             "extra-write-case": "      contents: read\n      actions: Write\n",
             "none": "      contents: none\n",
+            "key-case": "      Contents: read\n",
+            "key-case-quoted": '      "Contents": read\n',
+            "key-case-pair": "      contents: read\n      Contents: read\n",
+            "id-token-write": "      contents: read\n      id-token: write\n",
+            "id-token-write-case": "      contents: read\n      id-token: WRITE\n",
+            "read-all": "      contents: read-all\n",
+            "value-true": "      contents: true\n",
+            "value-null": "      contents: null\n",
+            "value-tilde": "      contents: ~\n",
+            "value-list": "      contents: [read]\n",
+            "dup-write-read": "      contents: write\n      contents: read\n",
+            "dup-read-read": "      contents: read\n      contents: read\n",
         }
         write_cases = {
             "case",
@@ -8969,8 +8985,27 @@ jobs:
             "quoting",
             "quoting-single",
             "extra-write-case",
+            "id-token-write-case",
         }
-        level_cases = {"read-case", "read-padding", "expression"}
+        level_cases = {
+            "read-case",
+            "read-padding",
+            "expression",
+            "read-all",
+            "value-true",
+            "value-null",
+            "value-tilde",
+            "value-list",
+        }
+        exact_only = {
+            "extra-read",
+            "none",
+            "key-case",
+            "key-case-quoted",
+            "key-case-pair",
+            "dup-write-read",
+            "dup-read-read",
+        }
         for label, body in cases.items():
             mutant = editor.replace(anchor, "    permissions:\n" + body + "    runs-on: ${{ matrix.os }}\n", 1)
             self.assertNotEqual(mutant, editor, label)
@@ -8994,26 +9029,313 @@ jobs:
                 self.assertEqual(perms.get("contents"), "${{ 'write' }}", label)
             elif label == "none":
                 self.assertEqual(perms.get("contents"), "none", label)
+            elif label in {"key-case", "key-case-quoted"}:
+                self.assertEqual(set(perms), {"Contents"}, label)
+                self.assertEqual(perms.get("Contents"), "read", label)
+            elif label == "key-case-pair":
+                self.assertEqual(set(perms), {"contents", "Contents"}, label)
+                self.assertEqual(perms.get("contents"), "read", label)
+                self.assertEqual(perms.get("Contents"), "read", label)
+                self.assertFalse(getattr(perms, "duplicate_keys", None), label)
+            elif label == "read-all":
+                self.assertEqual(perms.get("contents"), "read-all", label)
+            elif label == "value-true":
+                self.assertIs(perms.get("contents"), True, label)
+            elif label in {"value-null", "value-tilde"}:
+                self.assertIsNone(perms.get("contents"), label)
+            elif label == "value-list":
+                self.assertEqual(list(perms.get("contents")), ["read"], label)
+            elif label == "id-token-write":
+                self.assertEqual(perms.get("contents"), "read", label)
+                self.assertEqual(perms.get("id-token"), "write", label)
+            elif label == "id-token-write-case":
+                self.assertEqual(perms.get("contents"), "read", label)
+                self.assertEqual(perms.get("id-token"), "WRITE", label)
+            elif label in {"dup-write-read", "dup-read-read"}:
+                self.assertEqual(perms.get("contents"), "read", label)
+                self.assertEqual(getattr(perms, "duplicate_keys", None), ["contents"], label)
             messages = " ".join(coverage_permission_violations(mutant, path="aw-editor-tests.yml"))
             _pin, policy = scan_action_surface(mutant, ".github/workflows/aw-editor-tests.yml")
             scanned = messages + " " + " ".join(policy)
+            self.assertIn(EDITOR_TEST_PERMISSIONS_MSG, messages, label)
             self.assertIn(EDITOR_TEST_PERMISSIONS_MSG, scanned, label)
             if label in write_cases:
-                self.assertIn(COVERAGE_WRITE_MSG, scanned, label)
+                self.assertIn(COVERAGE_WRITE_MSG, messages, label)
+                self.assertNotIn(PERMISSION_LEVEL_MSG, messages, label)
+                self.assertNotIn(TOP_PERMISSIONS_MSG, messages, label)
+            if label == "id-token-write-case":
+                self.assertNotIn(COVERAGE_ID_TOKEN_JOB_MSG, messages, label)
             if label in level_cases:
-                self.assertIn(PERMISSION_LEVEL_MSG, scanned, label)
-            if label in {"extra-read", "none"}:
+                self.assertIn(PERMISSION_LEVEL_MSG, messages, label)
+                self.assertNotIn(COVERAGE_WRITE_MSG, messages, label)
+            if label in exact_only:
                 self.assertNotIn(COVERAGE_WRITE_MSG, messages, label)
                 self.assertNotIn(PERMISSION_LEVEL_MSG, messages, label)
+                self.assertNotIn(TOP_PERMISSIONS_MSG, messages, label)
+            if label == "id-token-write":
+                self.assertIn(COVERAGE_ID_TOKEN_JOB_MSG, messages, label)
+                self.assertNotIn(COVERAGE_WRITE_MSG, messages, label)
+
+    def test_permission_scalar_duplicate_and_top_level_arms_are_pinned(self) -> None:
+        """Job-level and top-level spellings pin the write and top messages.
+
+        WRITE, a padded write, and WRITE-ALL report the write message at
+        job level on the upload job and on a non-upload job, and at top
+        level. id-token WRITE reports the write message on both of those
+        jobs. Top-level read-all, including case and padding, reports the
+        top-level message. A job-level scalar read and a job-level bool
+        report the value-checker message. A repeated contents key whose
+        last value is read reports the exact-map message on the coverage
+        producer job and on coverage-html.
+        """
+        coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
+        editor_anchor = (
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ${{ matrix.os }}\n"
+        )
+        producer_anchor = (
+            "    name: Generate Code Coverage\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        html_anchor = (
+            "    name: HTML coverage report\n"
+            "    needs: coverage\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        upload_anchor = (
+            "    name: Codecov upload\n"
+            "    needs: coverage\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "      id-token: write\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        self.assertEqual(editor.count(editor_anchor), 1)
+        self.assertEqual(coverage.count(producer_anchor), 1)
+        self.assertEqual(coverage.count(html_anchor), 1)
+        self.assertEqual(coverage.count(upload_anchor), 1)
+        self.assertEqual(coverage.count("permissions: {}\n"), 1)
+        self.assertEqual(editor.count("permissions: {}\n"), 1)
+
+        def expect(
+            text: str,
+            path: str,
+            present: tuple[str, ...],
+            absent: tuple[str, ...],
+            label: str,
+        ) -> None:
+            messages = " ".join(coverage_permission_violations(text, path=path))
+            _pin, policy = scan_action_surface(text, f".github/workflows/{path}")
+            scanned = messages + " " + " ".join(policy)
+            for message in present:
+                self.assertIn(message, messages, label)
+                self.assertIn(message, scanned, label)
+            for message in absent:
+                self.assertNotIn(message, messages, label)
+
+        write_spellings = {
+            "WRITE": "WRITE",
+            "write-pad": '"write "',
+            "WRITE-ALL": "WRITE-ALL",
+        }
+        for label, scalar in write_spellings.items():
+            top = f"permissions: {scalar}\n"
+            for path, source in (("coverage.yml", coverage), ("aw-editor-tests.yml", editor)):
+                mutant = source.replace("permissions: {}\n", top, 1)
+                self.assertNotEqual(mutant, source, label)
+                expect(
+                    mutant,
+                    path,
+                    (COVERAGE_WRITE_MSG,),
+                    (TOP_PERMISSIONS_MSG, PERMISSION_LEVEL_MSG),
+                    f"top-{label}-{path}",
+                )
+            editor_job = editor.replace(
+                editor_anchor,
+                f"    permissions: {scalar}\n    runs-on: ${{{{ matrix.os }}}}\n",
+                1,
+            )
+            expect(
+                editor_job,
+                "aw-editor-tests.yml",
+                (COVERAGE_WRITE_MSG, EDITOR_TEST_PERMISSIONS_MSG),
+                (TOP_PERMISSIONS_MSG, PERMISSION_LEVEL_MSG),
+                f"editor-{label}",
+            )
+            producer_job = coverage.replace(
+                producer_anchor,
+                "    name: Generate Code Coverage\n"
+                f"    permissions: {scalar}\n"
+                "    runs-on: ubuntu-latest\n",
+                1,
+            )
+            expect(
+                producer_job,
+                "coverage.yml",
+                (COVERAGE_WRITE_MSG, PRODUCER_PERMISSIONS_MSG),
+                (TOP_PERMISSIONS_MSG, PERMISSION_LEVEL_MSG),
+                f"producer-{label}",
+            )
+            upload_job = coverage.replace(
+                upload_anchor,
+                "    name: Codecov upload\n"
+                "    needs: coverage\n"
+                f"    permissions: {scalar}\n"
+                "    runs-on: ubuntu-latest\n",
+                1,
+            )
+            expect(
+                upload_job,
+                "coverage.yml",
+                (COVERAGE_WRITE_MSG,),
+                (TOP_PERMISSIONS_MSG, PERMISSION_LEVEL_MSG, COVERAGE_ID_TOKEN_JOB_MSG),
+                f"upload-{label}",
+            )
+
+        for label, scalar in {
+            "read-all": "read-all",
+            "read-all-case": "READ-ALL",
+            "read-all-pad": '"read-all "',
+        }.items():
+            mutant = coverage.replace("permissions: {}\n", f"permissions: {scalar}\n", 1)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, label)
+            self.assertIsInstance(doc["permissions"], str, label)
+            expect(
+                mutant,
+                "coverage.yml",
+                (TOP_PERMISSIONS_MSG,),
+                (COVERAGE_WRITE_MSG, PERMISSION_LEVEL_MSG),
+                label,
+            )
+
+        for label, scalar in {"scalar-read": "read", "scalar-bool": "true"}.items():
+            editor_job = editor.replace(
+                editor_anchor,
+                f"    permissions: {scalar}\n    runs-on: ${{{{ matrix.os }}}}\n",
+                1,
+            )
+            doc, err = load_workflow_yaml(editor_job)
+            self.assertIsNone(err, label)
+            got = doc["jobs"]["test"]["permissions"]
+            if label == "scalar-bool":
+                self.assertIs(got, True, label)
+            else:
+                self.assertEqual(got, "read", label)
+            expect(
+                editor_job,
+                "aw-editor-tests.yml",
+                (TOP_PERMISSIONS_MSG, EDITOR_TEST_PERMISSIONS_MSG),
+                (COVERAGE_WRITE_MSG, PERMISSION_LEVEL_MSG),
+                label,
+            )
+            producer_job = coverage.replace(
+                producer_anchor,
+                "    name: Generate Code Coverage\n"
+                f"    permissions: {scalar}\n"
+                "    runs-on: ubuntu-latest\n",
+                1,
+            )
+            expect(
+                producer_job,
+                "coverage.yml",
+                (TOP_PERMISSIONS_MSG, PRODUCER_PERMISSIONS_MSG),
+                (COVERAGE_WRITE_MSG, PERMISSION_LEVEL_MSG),
+                f"producer-{label}",
+            )
+
+        producer_id = coverage.replace(
+            producer_anchor,
+            "    name: Generate Code Coverage\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "      id-token: WRITE\n"
+            "    runs-on: ubuntu-latest\n",
+            1,
+        )
+        expect(
+            producer_id,
+            "coverage.yml",
+            (COVERAGE_WRITE_MSG, PRODUCER_PERMISSIONS_MSG),
+            (COVERAGE_ID_TOKEN_JOB_MSG, TOP_PERMISSIONS_MSG, PERMISSION_LEVEL_MSG),
+            "producer-id-token-WRITE",
+        )
+        upload_id = coverage.replace(
+            "      contents: read\n      id-token: write\n",
+            "      contents: read\n      id-token: WRITE\n",
+            1,
+        )
+        self.assertEqual(upload_id.count("id-token: WRITE"), 1)
+        doc, err = load_workflow_yaml(upload_id)
+        self.assertIsNone(err)
+        self.assertEqual(doc["jobs"]["codecov"]["permissions"].get("id-token"), "WRITE")
+        expect(
+            upload_id,
+            "coverage.yml",
+            (COVERAGE_WRITE_MSG,),
+            (COVERAGE_ID_TOKEN_JOB_MSG, TOP_PERMISSIONS_MSG, PERMISSION_LEVEL_MSG),
+            "upload-id-token-WRITE",
+        )
+
+        duplicate_rows = {
+            "dup-write-read": "      contents: write\n      contents: read\n",
+            "dup-read-read": "      contents: read\n      contents: read\n",
+        }
+        for label, body in duplicate_rows.items():
+            producer_job = coverage.replace(
+                producer_anchor,
+                "    name: Generate Code Coverage\n"
+                "    permissions:\n"
+                f"{body}"
+                "    runs-on: ubuntu-latest\n",
+                1,
+            )
+            html_job = coverage.replace(
+                html_anchor,
+                "    name: HTML coverage report\n"
+                "    needs: coverage\n"
+                "    permissions:\n"
+                f"{body}"
+                "    runs-on: ubuntu-latest\n",
+                1,
+            )
+            for path, mutant, job_id, exact in (
+                ("coverage.yml", producer_job, "coverage", PRODUCER_PERMISSIONS_MSG),
+                ("coverage.yml", html_job, "coverage-html", COVERAGE_HTML_JOB_MSG),
+            ):
+                doc, err = load_workflow_yaml(mutant)
+                self.assertIsNone(err, label)
+                perms = doc["jobs"][job_id]["permissions"]
+                self.assertEqual(perms.get("contents"), "read", f"{label}-{job_id}")
+                self.assertEqual(
+                    getattr(perms, "duplicate_keys", None),
+                    ["contents"],
+                    f"{label}-{job_id}",
+                )
+                expect(
+                    mutant,
+                    path,
+                    (exact,),
+                    (COVERAGE_WRITE_MSG, PERMISSION_LEVEL_MSG, TOP_PERMISSIONS_MSG),
+                    f"{label}-{job_id}",
+                )
 
     def test_printable_name_range_is_pinned(self) -> None:
         """Every non-surrogate scalar outside 0x20-0x7E fails closed.
 
-        The form check sees both edges of both pinned names. The publish
-        path does too, on the two producer workflows and on other.yml, for
-        the control, format, and separator classes and for other sampled
-        scalars. U+00AD, U+2003, and U+001C through U+001E are explicit rows.
-        A space or tilde in the middle of a name is accepted.
+        The form check sees both edges of both pinned names, and that
+        result equals the publish-path name check over the same walk. The
+        publish function also sees the control, format, and separator
+        classes, a sample of other scalars, and the explicit rows U+00AD,
+        U+2003, and U+001C through U+001E, on the producer workflows and on
+        a non-producer workflow. A space or tilde in the middle of a name
+        is accepted.
         """
         import unicodedata
 
@@ -9075,8 +9397,14 @@ jobs:
                     self.assertFalse(_name_form_rejected(name), hex(code))
                 continue
             for _path, base in bases:
-                self.assertTrue(_name_form_rejected(char + base), hex(code))
-                self.assertTrue(_name_form_rejected(base + char), hex(code))
+                for name in (char + base, base + char):
+                    rejected = _name_form_rejected(name)
+                    self.assertTrue(rejected, hex(code))
+                    self.assertEqual(
+                        _could_be_pinned_report_name(name, "other.yml"),
+                        rejected,
+                        hex(code),
+                    )
 
         publish_codes: list[int] = []
         categories: set[str] = set()
