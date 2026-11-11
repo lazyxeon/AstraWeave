@@ -406,6 +406,14 @@ pub fn html_parsing_problems(src: &str) -> BTreeSet<String> {
     }
 }
 
+fn past_limit(steps: u64, limit: u64) -> bool {
+    steps > limit
+}
+
+fn past_cap(spins: usize, cap: usize) -> bool {
+    spins > cap
+}
+
 fn scan_measured(src: &str) -> (BTreeSet<String>, u64) {
     let mut problems = BTreeSet::new();
     let mut steps = 0u64;
@@ -416,12 +424,12 @@ fn scan_measured(src: &str) -> (BTreeSet<String>, u64) {
         vec![src.to_string()]
     };
     for chunk in &chunks {
-        if steps > limit {
+        if past_limit(steps, limit) {
             break;
         }
         scan_js(chunk, &mut problems, &mut steps, limit);
     }
-    if steps > limit {
+    if past_limit(steps, limit) {
         problems.insert("scan failed closed".to_string());
     }
     (problems, steps)
@@ -485,19 +493,16 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
     let mut spins = 0usize;
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i < tokens.len() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             out.insert("scan failed closed".to_string());
             break;
         }
         match &tokens[i] {
-            Tok::Error => {
-                out.insert("scan failed closed".to_string());
-            }
             Tok::Dot | Tok::Opt => {
                 note_dot(&tokens, i, &stringish, out);
                 if matches!(tokens.get(i + 1), Some(Tok::Ident(_))) {
-                    i += 2;
+                    i = i.saturating_add(2);
                     continue;
                 }
             }
@@ -560,7 +565,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             }
             _ => {}
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
 }
 
@@ -887,8 +892,8 @@ fn safe_url_names(tokens: &[Tok]) -> BTreeSet<String> {
     let mut spins = 0usize;
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i + 3 < tokens.len() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             break;
         }
         if matches!(&tokens[i], Tok::Ident(kw) if matches!(kw.as_str(), "const" | "let" | "var")) {
@@ -900,7 +905,7 @@ fn safe_url_names(tokens: &[Tok]) -> BTreeSet<String> {
                 }
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     names
 }
@@ -926,11 +931,11 @@ fn inside_function(tokens: &[Tok], at: usize, name: &str) -> bool {
     let mut spins = 0usize;
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i > 0 {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             return false;
         }
-        i -= 1;
+        i = i.saturating_sub(1);
         match &tokens[i] {
             Tok::RBrace => depth += 1,
             Tok::LBrace => {
@@ -957,8 +962,8 @@ fn brace_is_function(tokens: &[Tok], brace: usize, name: &str) -> bool {
     let mut spins = 0usize;
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     loop {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             return false;
         }
         match &tokens[i] {
@@ -976,7 +981,7 @@ fn brace_is_function(tokens: &[Tok], brace: usize, name: &str) -> bool {
         if i == 0 {
             return false;
         }
-        i -= 1;
+        i = i.saturating_sub(1);
     }
 }
 
@@ -1010,7 +1015,7 @@ fn note_el(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
 }
 
@@ -1135,7 +1140,7 @@ fn decode_html_chars(input: &str) -> String {
         }
         let ch = input[i..].chars().next().unwrap_or('\u{FFFD}');
         out.push(ch);
-        i += ch.len_utf8();
+        i = i.saturating_add(ch.len_utf8());
     }
     out
 }
@@ -1146,7 +1151,7 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
     if bytes.first() == Some(&b'#') {
         let hex = bytes.get(1).copied() == Some(b'x') || bytes.get(1).copied() == Some(b'X');
         let digits = if hex { &rest[2..] } else { &rest[1..] };
-        let mut len = 0;
+        let mut len: usize = 0;
         for b in digits.bytes() {
             let ok = if hex {
                 b.is_ascii_hexdigit()
@@ -1156,7 +1161,7 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
             if !ok {
                 break;
             }
-            len += 1;
+            len = len.saturating_add(1);
             if len == 7 {
                 break;
             }
@@ -1169,16 +1174,16 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
         let ch = char::from_u32(code).unwrap_or('\u{FFFD}');
         let mut next = at + 1 + if hex { 2 } else { 1 } + len;
         if input.as_bytes().get(next) == Some(&b';') {
-            next += 1;
+            next = next.saturating_add(1);
         }
         return Some((ch, next));
     }
-    let mut len = 0;
+    let mut len: usize = 0;
     for b in bytes {
         if !b.is_ascii_alphanumeric() {
             break;
         }
-        len += 1;
+        len = len.saturating_add(1);
         if len == 32 {
             break;
         }
@@ -1205,7 +1210,7 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
     };
     let mut next = at + 1 + len;
     if input.as_bytes().get(next) == Some(&b';') {
-        next += 1;
+        next = next.saturating_add(1);
     }
     Some((ch, next))
 }
@@ -1412,8 +1417,8 @@ fn stringish_names(tokens: &[Tok]) -> BTreeSet<String> {
     let mut spins = 0usize;
     let cap = tokens.len().saturating_mul(4).saturating_add(8);
     while i + 2 < tokens.len() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             break;
         }
         if let Tok::Ident(kw) = &tokens[i] {
@@ -1427,7 +1432,7 @@ fn stringish_names(tokens: &[Tok]) -> BTreeSet<String> {
                 }
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     names
 }
@@ -1489,25 +1494,25 @@ impl<'a> Lx<'a> {
         let mut regex_ready = false;
         let mut brace = 0i32;
         while self.i < b.len() {
-            if self.steps > self.limit {
+            if past_limit(self.steps, self.limit) {
                 self.failed = true;
                 out.push(Tok::Error);
                 return out;
             }
             if !self.src.is_char_boundary(self.i) {
-                self.i += 1;
+                self.i = self.i.saturating_add(1);
                 self.steps = self.steps.saturating_add(1);
                 continue;
             }
             let start = self.i;
             let c = b[self.i];
             if c.is_ascii_whitespace() {
-                self.i += 1;
+                self.i = self.i.saturating_add(1);
                 self.charge(start);
                 continue;
             }
             if c == b'/' && b.get(self.i + 1) == Some(&b'/') {
-                self.i += 2;
+                self.i = self.i.saturating_add(2);
                 while self.i < b.len() && b[self.i] != b'\n' {
                     if !self.advance() {
                         return out;
@@ -1518,7 +1523,7 @@ impl<'a> Lx<'a> {
                 continue;
             }
             if c == b'/' && b.get(self.i + 1) == Some(&b'*') {
-                self.i += 2;
+                self.i = self.i.saturating_add(2);
                 while self.i + 1 < b.len() && !(b[self.i] == b'*' && b[self.i + 1] == b'/') {
                     if !self.advance() {
                         return out;
@@ -1591,7 +1596,7 @@ impl<'a> Lx<'a> {
             }
             if c == b'?' && b.get(self.i + 1) == Some(&b'.') {
                 out.push(Tok::Opt);
-                self.i += 2;
+                self.i = self.i.saturating_add(2);
                 regex_ready = false;
                 self.charge(start);
                 continue;
@@ -1645,7 +1650,7 @@ impl<'a> Lx<'a> {
                 _ => regex_ready = false,
             }
             out.push(tok);
-            self.i += n;
+            self.i = self.i.saturating_add(n);
             self.charge(start);
         }
         if stop_brace {
@@ -1672,7 +1677,7 @@ impl<'a> Lx<'a> {
     fn charge(&mut self, start: usize) {
         let n = (self.i.saturating_sub(start) as u64).max(1);
         self.steps = self.steps.saturating_add(n);
-        if self.steps > self.limit {
+        if past_limit(self.steps, self.limit) {
             self.failed = true;
         }
     }
@@ -1690,18 +1695,18 @@ impl<'a> Lx<'a> {
             return (Tok::Error, Vec::new());
         }
         let b = self.src.as_bytes();
-        self.i += 1;
+        self.i = self.i.saturating_add(1);
         self.charge(start_tick);
         let mut value = String::new();
         let mut interp = false;
         let mut body = Vec::new();
         while self.i < b.len() {
-            if self.steps > self.limit {
+            if past_limit(self.steps, self.limit) {
                 self.failed = true;
                 return (Tok::Error, body);
             }
             if !self.src.is_char_boundary(self.i) {
-                self.i += 1;
+                self.i = self.i.saturating_add(1);
                 self.steps = self.steps.saturating_add(1);
                 continue;
             }
@@ -1714,7 +1719,7 @@ impl<'a> Lx<'a> {
                 continue;
             }
             if b[self.i] == b'`' {
-                self.i += 1;
+                self.i = self.i.saturating_add(1);
                 self.charge(tick);
                 return if interp {
                     (Tok::Interp, body)
@@ -1724,19 +1729,19 @@ impl<'a> Lx<'a> {
             }
             if b[self.i] == b'$' && b.get(self.i + 1) == Some(&b'{') {
                 interp = true;
-                self.i += 2;
+                self.i = self.i.saturating_add(2);
                 self.charge(tick);
                 let nested = self.lex(true, depth + 1);
                 body.extend(nested);
                 if self.i < b.len() && b[self.i] == b'}' {
-                    self.i += 1;
+                    self.i = self.i.saturating_add(1);
                     self.steps = self.steps.saturating_add(1);
                 }
                 continue;
             }
             let ch = self.src[self.i..].chars().next().unwrap_or('\u{FFFD}');
             value.push(ch);
-            self.i += ch.len_utf8();
+            self.i = self.i.saturating_add(ch.len_utf8());
             self.charge(tick);
         }
         self.failed = true;
@@ -1774,8 +1779,8 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
     let cap = src.len().saturating_mul(4).saturating_add(8);
     let mut spins = 0usize;
     while i < b.len() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             return false;
         }
         if !src.is_char_boundary(i) {
@@ -1783,7 +1788,7 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
         }
         match b[i] {
             b'\\' => {
-                i += 1;
+                i = i.saturating_add(1);
                 if i < src.len() {
                     i = match forward(src, i) {
                         Some(next) => next,
@@ -1793,11 +1798,11 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
             }
             b'[' => {
                 class = true;
-                i += 1;
+                i = i.saturating_add(1);
             }
             b']' => {
                 class = false;
-                i += 1;
+                i = i.saturating_add(1);
             }
             b'/' if !class => return true,
             b'\n' => return false,
@@ -1819,8 +1824,8 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
     let mut spins = 0usize;
     let fail = src.len().saturating_add(1);
     while i < b.len() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             return fail;
         }
         if !src.is_char_boundary(i) {
@@ -1828,7 +1833,7 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
         }
         match b[i] {
             b'\\' => {
-                i += 1;
+                i = i.saturating_add(1);
                 if i < src.len() {
                     i = match forward(src, i) {
                         Some(next) => next,
@@ -1838,16 +1843,16 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
             }
             b'[' => {
                 class = true;
-                i += 1;
+                i = i.saturating_add(1);
             }
             b']' => {
                 class = false;
-                i += 1;
+                i = i.saturating_add(1);
             }
             b'/' if !class => {
-                i += 1;
+                i = i.saturating_add(1);
                 while i < b.len() && b[i].is_ascii_alphabetic() {
-                    i += 1;
+                    i = i.saturating_add(1);
                 }
                 return i;
             }
@@ -1870,7 +1875,7 @@ fn read_string(src: &str, start: usize) -> (String, usize, bool) {
     let mut value = String::new();
     while i < b.len() {
         if !src.is_char_boundary(i) {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if b[i] == b'\\' {
@@ -1887,7 +1892,7 @@ fn read_string(src: &str, start: usize) -> (String, usize, bool) {
         }
         let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
         value.push(ch);
-        i += ch.len_utf8();
+        i = i.saturating_add(ch.len_utf8());
     }
     (value, i, false)
 }
@@ -1912,7 +1917,7 @@ fn decode_escape(src: &str, slash: usize) -> (char, usize) {
             let start = i + 2;
             let mut j = start;
             while j < b.len() && b[j].is_ascii_hexdigit() && j - start < 6 {
-                j += 1;
+                j = j.saturating_add(1);
             }
             let digits = &src[start..j];
             let ch = u32::from_str_radix(digits, 16)
@@ -1980,7 +1985,7 @@ fn read_ident(src: &str, start: usize) -> (String, usize) {
         let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
         if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch.is_alphabetic() {
             name.push(ch);
-            i += ch.len_utf8();
+            i = i.saturating_add(ch.len_utf8());
             continue;
         }
         break;
@@ -1998,22 +2003,22 @@ fn skip_number(src: &str, start: usize) -> usize {
     if b.get(i) == Some(&b'0')
         && matches!(b.get(i + 1), Some(b'x' | b'X' | b'b' | b'B' | b'o' | b'O'))
     {
-        i += 2;
+        i = i.saturating_add(2);
         while i < b.len() && (b[i].is_ascii_hexdigit() || b[i] == b'_') {
-            i += 1;
+            i = i.saturating_add(1);
         }
         return i;
     }
     while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'_' || b[i] == b'.') {
-        i += 1;
+        i = i.saturating_add(1);
     }
     if matches!(b.get(i), Some(b'e' | b'E')) {
-        i += 1;
+        i = i.saturating_add(1);
         if matches!(b.get(i), Some(b'+' | b'-')) {
-            i += 1;
+            i = i.saturating_add(1);
         }
         while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'_') {
-            i += 1;
+            i = i.saturating_add(1);
         }
     }
     i
@@ -2097,17 +2102,17 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
     let mut spins = 0usize;
     let fail = src.len().saturating_add(1);
     while i < b.len() && !mode.is_empty() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             return fail;
         }
         if !src.is_char_boundary(i) {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         let kind = *mode.last().unwrap();
         if b[i] == b'\\' && kind != 2 {
-            i += 1;
+            i = i.saturating_add(1);
             if i < src.len() {
                 i = match forward(src, i) {
                     Some(next) => next,
@@ -2120,7 +2125,7 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
             if b[i] == b'`' {
                 mode.pop();
                 braces.pop();
-                i += 1;
+                i = i.saturating_add(1);
                 if mode.is_empty() {
                     return i;
                 }
@@ -2129,7 +2134,7 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
             if b[i] == b'$' && b.get(i + 1) == Some(&b'{') {
                 mode.push(1);
                 braces.push(1);
-                i += 2;
+                i = i.saturating_add(2);
                 continue;
             }
             i = match forward(src, i) {
@@ -2149,17 +2154,17 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
         if b[i] == b'`' {
             mode.push(0);
             braces.push(0);
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if b[i] == b'{' {
             *braces.last_mut().unwrap() += 1;
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if b[i] == b'}' {
             *braces.last_mut().unwrap() -= 1;
-            i += 1;
+            i = i.saturating_add(1);
             if *braces.last().unwrap() == 0 {
                 mode.pop();
                 braces.pop();
@@ -2185,16 +2190,16 @@ fn skip_quoted(src: &str, start: usize) -> usize {
     let mut spins = 0usize;
     let fail = src.len().saturating_add(1);
     while i < b.len() {
-        spins += 1;
-        if spins > cap {
+        spins = spins.saturating_add(1);
+        if past_cap(spins, cap) {
             return fail;
         }
         if !src.is_char_boundary(i) {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if b[i] == b'\\' {
-            i += 1;
+            i = i.saturating_add(1);
             if i < src.len() {
                 i = match forward(src, i) {
                     Some(next) => next,
@@ -2221,7 +2226,7 @@ fn is_markup(src: &str) -> bool {
         if b[i] == b'<' && script_open_at(src, i) {
             return true;
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     attr_markup(src)
 }
@@ -2263,7 +2268,7 @@ fn attr_markup(src: &str) -> bool {
                 TagTry::NotTag => {}
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     false
 }
@@ -2317,7 +2322,7 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
         return TagTry::Unclosed { at: i };
     }
     let closing = if b[i] == b'/' {
-        i += 1;
+        i = i.saturating_add(1);
         true
     } else {
         false
@@ -2329,9 +2334,9 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
         return TagTry::NotTag;
     }
     let name_at = i;
-    i += 1;
+    i = i.saturating_add(1);
     while i < b.len() && is_tag_char(b[i]) {
-        i += 1;
+        i = i.saturating_add(1);
     }
     let name = src[name_at..i].to_string();
     let mut attrs = Vec::new();
@@ -2351,21 +2356,21 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
             return TagTry::Unclosed { at: i };
         }
         if b[i] == b'/' || b[i].is_ascii_whitespace() {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if !b[i].is_ascii_alphabetic() {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         let attr_at = i;
-        i += 1;
+        i = i.saturating_add(1);
         while i < b.len() && is_attr_char(b[i]) {
-            i += 1;
+            i = i.saturating_add(1);
         }
         let attr = src[attr_at..i].to_string();
         while i < b.len() && b[i].is_ascii_whitespace() {
-            i += 1;
+            i = i.saturating_add(1);
         }
         if i >= b.len() {
             return TagTry::Unclosed { at: i };
@@ -2374,30 +2379,30 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
             attrs.push((attr, String::new()));
             continue;
         }
-        i += 1;
+        i = i.saturating_add(1);
         while i < b.len() && b[i].is_ascii_whitespace() {
-            i += 1;
+            i = i.saturating_add(1);
         }
         if i >= b.len() {
             return TagTry::Unclosed { at: i };
         }
         let value = if b[i] == b'"' || b[i] == b'\'' {
             let quote = b[i];
-            i += 1;
+            i = i.saturating_add(1);
             let vs = i;
             while i < b.len() && b[i] != quote {
-                i += 1;
+                i = i.saturating_add(1);
             }
             if i >= b.len() {
                 return TagTry::Unclosed { at: i };
             }
             let value = src[vs..i].to_string();
-            i += 1;
+            i = i.saturating_add(1);
             value
         } else {
             let vs = i;
             while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'>' && b[i] != b'<' {
-                i += 1;
+                i = i.saturating_add(1);
             }
             if i < b.len() && b[i] == b'<' {
                 return TagTry::Unclosed { at: i };
@@ -2413,12 +2418,12 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
     let mut chunks = Vec::new();
     let mut i = 0;
     while i < b.len() {
-        if *steps > limit {
+        if past_limit(*steps, limit) {
             out.insert("scan failed closed".to_string());
             break;
         }
         if b[i] != b'<' {
-            i += 1;
+            i = i.saturating_add(1);
             *steps = steps.saturating_add(1);
             continue;
         }
@@ -2434,7 +2439,7 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
         }
         match parse_tag(src, i) {
             TagTry::NotTag => {
-                i += 1;
+                i = i.saturating_add(1);
                 *steps = steps.saturating_add(1);
             }
             TagTry::Unclosed { at } => {
@@ -2592,13 +2597,13 @@ fn find_end_tag(src: &str, from: usize, name: &str) -> Option<usize> {
         if b[i] == b'<' && b.get(i + 1) == Some(&b'/') && starts_with_name(&src[i + 2..], name) {
             let mut j = i + 2 + name.len();
             while j < b.len() && b[j].is_ascii_whitespace() {
-                j += 1;
+                j = j.saturating_add(1);
             }
             if j < b.len() && b[j] == b'>' {
                 return Some(j);
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     None
 }
@@ -2632,7 +2637,7 @@ fn contains_ident(src: &str, name: &str) -> bool {
     let mut i = 0;
     while i + name.len() <= bytes.len() {
         if !src.is_char_boundary(i) {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if src[i..].starts_with(name) {
@@ -2644,7 +2649,7 @@ fn contains_ident(src: &str, name: &str) -> bool {
                 return true;
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     false
 }
@@ -2661,7 +2666,7 @@ fn string_timer_text(src: &str) -> bool {
         let mut i = 0;
         while i + name.len() <= bytes.len() {
             if !src.is_char_boundary(i) {
-                i += 1;
+                i = i.saturating_add(1);
                 continue;
             }
             if src[i..].starts_with(name) {
@@ -2670,7 +2675,7 @@ fn string_timer_text(src: &str) -> bool {
                     return true;
                 }
             }
-            i += 1;
+            i = i.saturating_add(1);
         }
     }
     false
@@ -2694,7 +2699,7 @@ fn call_with_paren(src: &str, name: &str) -> bool {
     let mut i = 0;
     while i + name.len() <= bytes.len() {
         if !src.is_char_boundary(i) {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if src[i..].starts_with(name) {
@@ -2702,14 +2707,14 @@ fn call_with_paren(src: &str, name: &str) -> bool {
             let mut j = i + name.len();
             if prev_ok {
                 while j < bytes.len() && bytes[j].is_ascii_whitespace() {
-                    j += 1;
+                    j = j.saturating_add(1);
                 }
                 if j < bytes.len() && bytes[j] == b'(' {
                     return true;
                 }
             }
         }
-        i += 1;
+        i = i.saturating_add(1);
     }
     false
 }
@@ -2721,7 +2726,7 @@ fn fold_string_concats(src: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if !src.is_char_boundary(i) {
-            i += 1;
+            i = i.saturating_add(1);
             continue;
         }
         if matches!(bytes[i], b'\'' | b'"' | b'`') {
@@ -2740,7 +2745,7 @@ fn fold_string_concats(src: &str) -> String {
         }
         let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
         out.push(ch);
-        i += ch.len_utf8();
+        i = i.saturating_add(ch.len_utf8());
     }
     out
 }
@@ -2802,7 +2807,7 @@ fn read_literal(src: &str, start: usize) -> Option<(String, usize)> {
         }
         let ch = src[i..].chars().next()?;
         value.push(ch);
-        i += ch.len_utf8();
+        i = i.saturating_add(ch.len_utf8());
     }
     None
 }
@@ -3233,5 +3238,669 @@ mod class_tests {
         assert!(!script_scheme("https://example.com"));
         assert!(!script_scheme("javascript&colon;x"));
         assert_eq!(normalize_scheme("java\tscript:"), "javascript:");
+    }
+}
+
+#[cfg(test)]
+mod mutant_tests {
+    use super::*;
+
+    fn lex_of(src: &str, limit: u64) -> (Vec<Tok>, bool, u64) {
+        let mut lx = Lx {
+            src,
+            i: 0,
+            steps: 0,
+            limit,
+            failed: false,
+        };
+        let toks = lx.lex(false, 0);
+        (toks, lx.failed, lx.steps)
+    }
+
+    fn tok_s(tok: &Tok) -> String {
+        match tok {
+            Tok::Ident(s) => format!("id:{s}"),
+            Tok::Str(s) => format!("str:{s}"),
+            Tok::Tpl(s) => format!("tpl:{s}"),
+            Tok::Interp => "interp".into(),
+            Tok::Num => "num".into(),
+            Tok::Dot => ".".into(),
+            Tok::Opt => "?.".into(),
+            Tok::LBrack => "[".into(),
+            Tok::RBrack => "]".into(),
+            Tok::LParen => "(".into(),
+            Tok::RParen => ")".into(),
+            Tok::LBrace => "{".into(),
+            Tok::RBrace => "}".into(),
+            Tok::Comma => ",".into(),
+            Tok::Plus => "+".into(),
+            Tok::Assign => "=".into(),
+            Tok::Arrow => "=>".into(),
+            Tok::Other => "op".into(),
+            Tok::Error => "err".into(),
+        }
+    }
+
+    fn lex_s(src: &str) -> String {
+        let (toks, failed, steps) = lex_of(src, u64::MAX / 8);
+        let body = toks.iter().map(tok_s).collect::<Vec<_>>().join(" ");
+        format!("{body}|f={failed}|s={steps}")
+    }
+
+    fn key_s(key: Key) -> String {
+        match key {
+            Key::Static(s) => format!("static:{s}"),
+            Key::Bare => "bare".into(),
+            Key::Num => "num".into(),
+            Key::Member => "member".into(),
+            Key::Call => "call".into(),
+            Key::Other => "other".into(),
+        }
+    }
+
+    fn arg_s(arg: Arg) -> String {
+        match arg {
+            Arg::Static(s) => format!("static:{s}"),
+            Arg::Other => "other".into(),
+            Arg::Missing => "missing".into(),
+        }
+    }
+
+    fn tag_s(src: &str) -> String {
+        match parse_tag(src, 0) {
+            TagTry::NotTag => "not".into(),
+            TagTry::Unclosed { at } => format!("unclosed:{at}"),
+            TagTry::Tag(tag) => {
+                let attrs = tag
+                    .attrs
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!(
+                    "tag:{}:end{}:close{}:{attrs}",
+                    tag.name, tag.end, tag.closing
+                )
+            }
+        }
+    }
+
+    fn probs(src: &str) -> String {
+        let (set, steps) = scan_measured(src);
+        let limit = (src.len() as u64).saturating_mul(8).saturating_add(64);
+        let body = set.into_iter().collect::<Vec<_>>().join(" | ");
+        format!("{body}|steps={steps}|limit={limit}")
+    }
+
+    #[test]
+    fn bounds_and_helpers_are_exact() {
+        assert!(!past_limit(0, 0));
+        assert!(!past_limit(1, 1));
+        assert!(past_limit(2, 1));
+        assert!(!past_cap(0, 0));
+        assert!(!past_cap(3, 3));
+        assert!(past_cap(4, 3));
+
+        let mut out = BTreeSet::new();
+        let mut steps = 0u64;
+        scan_js("a", &mut out, &mut steps, 0);
+        assert!(out.contains("scan failed closed"), "{out:?}");
+        assert!(steps > 0);
+
+        let mut out = BTreeSet::new();
+        let mut steps = 5u64;
+        scan_js("eval(1)", &mut out, &mut steps, 5);
+        assert!(out.contains("bare eval"), "{out:?} steps={steps}");
+
+        assert!(allowed(MEMBER_CALL, "push"));
+        assert!(!allowed(MEMBER_CALL, "write"));
+        assert!(keyword("return"));
+        assert!(!keyword("eval"));
+        assert!(sink_member("writeln"));
+        assert!(!sink_member("push"));
+        assert!(handler_global("onerror"));
+        assert!(!handler_global("on"));
+
+        let escapes = [
+            ("\\n", '\n', 2usize),
+            ("\\r", '\r', 2),
+            ("\\t", '\t', 2),
+            ("\\b", '\u{0008}', 2),
+            ("\\f", '\u{000c}', 2),
+            ("\\v", '\u{000b}', 2),
+            ("\\0", '\0', 2),
+            ("\\\\", '\\', 2),
+            ("\\'", '\'', 2),
+            ("\\\"", '"', 2),
+            ("\\`", '`', 2),
+            ("\\$", '$', 2),
+            ("\\q", 'q', 2),
+            ("\\x41", 'A', 4),
+            ("\\x4", 'x', 2),
+            ("\\x4G", 'x', 2),
+            ("\\u0041", 'A', 6),
+            ("\\u041", 'u', 2),
+            ("\\u{41}", 'A', 6),
+            ("\\u{41", 'A', 5),
+            ("\\u{}", 'u', 4),
+            ("\\u{110000}", 'u', 10),
+            ("\\", '\\', 1),
+        ];
+        for (src, ch, end) in escapes {
+            assert_eq!(decode_escape(src, 0), (ch, end), "{src}");
+        }
+        assert_eq!(hex_char("41", 0, 2), Some(('A', 2)));
+        assert_eq!(hex_char("4", 0, 2), None);
+        assert_eq!(hex_char("4G", 0, 2), None);
+        assert_eq!(hex_char("00", 0, 0), None);
+
+        assert_eq!(bump("ab", 0), 1);
+        assert_eq!(bump("ab", 2), 2);
+        assert_eq!(bump("é", 0), 2);
+        assert_eq!(bump("é", 1), 2);
+        assert_eq!(forward("ab", 0), Some(1));
+        assert_eq!(forward("ab", 2), None);
+        assert_eq!(forward("é", 1), Some(2));
+
+        assert_eq!(read_string("'ab'", 0), ("ab".into(), 4, true));
+        assert_eq!(read_string("'a\\n'", 0), ("a\n".into(), 5, true));
+        assert_eq!(read_string("'a", 0), ("a".into(), 2, false));
+        assert_eq!(read_string("\"a\\\"b\"", 0), ("a\"b".into(), 6, true));
+        assert_eq!(skip_quoted("'a\\'b'", 0), 6);
+        assert_eq!(skip_quoted("'a", 0), 2);
+        assert_eq!(skip_quoted("", 0), 0);
+
+        assert_eq!(skip_number("123", 0), 3);
+        assert_eq!(skip_number("1.2", 0), 3);
+        assert_eq!(skip_number("1e10", 0), 4);
+        assert_eq!(skip_number("1e+2", 0), 4);
+        assert_eq!(skip_number("1E-2", 0), 4);
+        assert_eq!(skip_number("0xFF", 0), 4);
+        assert_eq!(skip_number("0b10_1", 0), 6);
+        assert_eq!(skip_number("0o7", 0), 3);
+        assert_eq!(skip_number("12a", 0), 2);
+        assert_eq!(skip_number(".5", 0), 2);
+        assert_eq!(skip_number("", 0), 0);
+
+        assert!(is_ident_start("a", 0));
+        assert!(is_ident_start("_", 0));
+        assert!(is_ident_start("$", 0));
+        assert!(is_ident_start("é", 0));
+        assert!(!is_ident_start("1", 0));
+        assert!(is_ident_start("\\u0041", 0));
+        assert_eq!(read_ident("ab1$", 0), ("ab1$".into(), 4));
+        assert_eq!(read_ident("éx", 0), ("éx".into(), 3));
+        assert_eq!(read_ident("\\u0041Z", 0).0, "AZ");
+
+        assert!(closed_regex("ab/", 0));
+        assert!(!closed_regex("ab", 0));
+        assert!(!closed_regex("ab\n", 0));
+        assert!(closed_regex("[/]/", 0));
+        assert!(closed_regex("\\//", 0));
+        assert_eq!(skip_regex("ab/g", 0), 4);
+        assert_eq!(skip_regex("ab", 0), 2);
+        assert_eq!(skip_regex("[/]/i", 0), 5);
+        assert_eq!(skip_template_linear("`a`", 0), 3);
+        assert_eq!(skip_template_linear("`a${b}`", 0), 7);
+        assert!(skip_template_linear("`a", 0) <= 3);
+
+        assert_eq!(normalize_scheme(" Java\tScript: "), "javascript:");
+        assert!(script_scheme("javascript:x"));
+        assert!(script_scheme("vbscript:x"));
+        assert!(script_scheme("data:x"));
+        assert!(!script_scheme("https://x"));
+        assert!(!script_scheme("javascript&colon;x"));
+        assert_eq!(decode_html_chars("a&amp;b"), "a&b");
+        assert_eq!(decode_html_chars("&#106;s"), "js");
+        assert_eq!(decode_html_chars("&#x6A;"), "j");
+        assert_eq!(html_char_ref("&lt;", 0), Some(('<', 4)));
+        assert_eq!(html_char_ref("&gt", 0), Some(('>', 3)));
+        assert_eq!(html_char_ref("&quot;", 0), Some(('"', 6)));
+        assert_eq!(html_char_ref("&apos;", 0), Some(('\'', 6)));
+        assert_eq!(html_char_ref("&colon;", 0), Some((':', 7)));
+        assert_eq!(html_char_ref("&Colon;", 0), Some((':', 7)));
+        assert_eq!(html_char_ref("&Tab;", 0), Some(('\t', 5)));
+        assert_eq!(html_char_ref("&NewLine;", 0), Some(('\n', 9)));
+        assert_eq!(html_char_ref("&nope;", 0), None);
+        assert_eq!(html_char_ref("&#;", 0), None);
+        assert_eq!(html_char_ref("&;", 0), None);
+
+        assert_eq!(html_comment_end("<!-->", 0), Some(5));
+        assert_eq!(html_comment_end("<!--->", 0), Some(6));
+        assert_eq!(html_comment_end("<!-- -->", 0), Some(8));
+        assert_eq!(html_comment_end("<!-- --!>", 0), Some(9));
+        assert_eq!(html_comment_end("<!--", 0), None);
+        assert_eq!(html_comment_end("abc", 0), None);
+
+        assert!(script_type_skips(&[(
+            "type".into(),
+            "application/json".into()
+        )]));
+        assert!(script_type_skips(&[(
+            "TYPE".into(),
+            " application/ld+json ".into()
+        )]));
+        assert!(!script_type_skips(&[
+            ("type".into(), "text/javascript".into()),
+            ("type".into(), "application/json".into()),
+        ]));
+        assert!(!script_type_skips(&[(
+            "id".into(),
+            "application/json".into()
+        )]));
+        assert_eq!(
+            attr_value(&[("Src".into(), "a.js".into())], "src"),
+            Some("a.js")
+        );
+        assert_eq!(attr_value(&[], "src"), None);
+
+        assert!(is_handler_attr("onclick"));
+        assert!(is_handler_attr("onClick"));
+        assert!(!is_handler_attr("on"));
+        assert!(!is_handler_attr("on1"));
+        assert!(!is_handler_attr("on-click"));
+        assert!(!is_handler_attr("orientation"));
+        assert!(handler_value_is_code(""));
+        assert!(handler_value_is_code("  "));
+        assert!(!handler_value_is_code(" function(){}"));
+        assert!(!handler_value_is_code("a=>b"));
+        assert!(handler_value_is_code("alert(1)"));
+        assert!(remote_element("IFRAME"));
+        assert!(remote_element("base"));
+        assert!(!remote_element("script"));
+        assert!(starts_with_name("script>", "script"));
+        assert!(starts_with_name("SCRIPT", "script"));
+        assert!(!starts_with_name("scripting", "script"));
+        assert!(!starts_with_name("script.x", "script"));
+        assert!(!starts_with_name("sc", "script"));
+        assert!(is_tag_char(b'a') && is_tag_char(b'-') && is_tag_char(b':'));
+        assert!(!is_tag_char(b'.') && !is_tag_char(b' '));
+        assert!(is_attr_char(b'.') && !is_attr_char(b' '));
+        assert!(is_markup("<script>"));
+        assert!(is_markup("<SCRIPT>"));
+        assert!(is_markup("<img onerror=x>"));
+        assert!(!is_markup("a < b"));
+        assert!(script_open_at("<script>", 0));
+        assert!(!script_open_at("<div>", 0));
+
+        assert_eq!(tag_s("abc"), "not");
+        assert_eq!(tag_s("<"), "unclosed:1");
+        assert_eq!(tag_s("</"), "unclosed:2");
+        assert_eq!(tag_s("<1>"), "not");
+        assert_eq!(tag_s("<a>"), "tag:a:end3:closefalse:");
+        assert_eq!(tag_s("</a>"), "tag:a:end4:closetrue:");
+        assert_eq!(tag_s("<a href=x>"), "tag:a:end10:closefalse:href=x");
+        assert_eq!(tag_s("<a href=\"x\">"), "tag:a:end12:closefalse:href=x");
+        assert_eq!(tag_s("<a href='x'>"), "tag:a:end12:closefalse:href=x");
+        assert_eq!(tag_s("<br/>"), "tag:br:end5:closefalse:");
+        assert!(tag_s("<a href=x").starts_with("unclosed:"));
+        assert!(tag_s("<a href=\"x").starts_with("unclosed:"));
+        assert_eq!(
+            find_end_tag("<script>x</script>", 8, "script"),
+            Some("<script>x</script>".len() - 1)
+        );
+        assert_eq!(find_end_tag("<script>x</script >", 8, "script"), Some(18));
+        assert_eq!(find_end_tag("nope", 0, "script"), None);
+
+        assert!(safe_url_literal("https://example.com"));
+        assert!(safe_url_literal("http://example.com"));
+        assert!(safe_url_literal("mailto:a@b.c"));
+        assert!(safe_url_literal("./a"));
+        assert!(safe_url_literal("#a"));
+        assert!(safe_url_literal("/a"));
+        assert!(safe_url_literal(""));
+        assert!(safe_url_literal("plain"));
+        assert!(!safe_url_literal("javascript:x"));
+        assert!(!safe_url_literal("data:x"));
+        assert!(control_keyword("if") && control_keyword("for") && control_keyword("catch"));
+        assert!(!control_keyword("function"));
+        assert!(regex_here(None, false));
+        assert!(regex_here(Some(&Tok::Ident("if".into())), false));
+        assert!(!regex_here(Some(&Tok::Ident("foo".into())), false));
+        assert!(regex_here(Some(&Tok::Ident("foo".into())), true));
+        assert!(!regex_here(Some(&Tok::Num), false));
+        assert!(regex_here(Some(&Tok::Assign), false));
+        let ret = lex_of("return a", u64::MAX / 8).0;
+        assert!(prev_is_keyword(&ret, 1));
+        assert!(!prev_is_keyword(&ret, 0));
+        assert!(!prev_is_value(&ret, 1));
+        assert!(prev_is_value(&ret, 2));
+        assert!(assign_follows(&[Tok::Assign], 0));
+        assert!(!assign_follows(&[Tok::Ident("a".into())], 0));
+        assert!(init_is_stringish(&[Tok::Str("a".into())]));
+        assert!(init_is_stringish(&[Tok::Ident("foo".into()), Tok::LParen]));
+        assert!(!init_is_stringish(&[
+            Tok::Ident("function".into()),
+            Tok::LParen
+        ]));
+        assert!(!init_is_stringish(&[Tok::Num]));
+    }
+
+    fn inside(src: &str) -> Vec<Tok> {
+        let (toks, _, _) = lex_of(src, u64::MAX / 8);
+        let open = toks
+            .iter()
+            .position(|tok| matches!(tok, Tok::LBrack))
+            .unwrap();
+        let close = toks
+            .iter()
+            .rposition(|tok| matches!(tok, Tok::RBrack))
+            .unwrap();
+        toks[open + 1..close].to_vec()
+    }
+
+    #[test]
+    fn behavior_oracle_covers_each_branch() {
+        let mut lines = Vec::new();
+        let lex_src = [
+            "",
+            "a",
+            "a.b",
+            "a?.b",
+            "a+=1",
+            "a&&=b",
+            "a||=b",
+            "a**=b",
+            "a<<=b",
+            "a>>=b",
+            "a>>>=b",
+            "a??=b",
+            "a==b",
+            "a===b",
+            "a!=b",
+            "a=>b",
+            "a++",
+            "a--",
+            "()",
+            "[]",
+            "{}",
+            "a+b",
+            "1.5",
+            ".5",
+            "0x10",
+            "0b11",
+            "'ab'",
+            "\"a\\nb\"",
+            "`a${b+1}c`",
+            "// c\na",
+            "/* c */a",
+            "/*",
+            "<!--\na",
+            "/ab/g",
+            "a/b",
+            "if(a)/b/",
+            "foo?.(1)",
+            "foo`x`",
+            "eval(1)",
+            "'unterminated",
+            "`unterminated",
+            "\\u0041",
+            "é",
+            "   a",
+            "a , b",
+            "a=b",
+            "a;b",
+            "a!b",
+            "a<b",
+            "a&&b",
+            "a||b",
+            "a??b",
+            "a<<b",
+            "a>>b",
+            "a>>>b",
+            "a**b",
+            "(a)",
+            "f()",
+            "`${`a`}`",
+            "1e+2",
+            "'a\\t\\u0041'",
+            "/* c",
+            "/[/]/",
+            "a/=b",
+        ];
+        for src in lex_src {
+            lines.push(format!("LEX {:?}", lex_s(src)));
+        }
+        let samples = [
+            "eval(1)",
+            "foo(1)",
+            "foo?.(1)",
+            "foo`x`",
+            "setTimeout`x`",
+            "setTimeout(foo)",
+            "setTimeout('a')",
+            "setTimeout(function(){})",
+            "setTimeout(()=>1)",
+            "new Map()",
+            "new Blob()",
+            "import(x)",
+            "with(x){}",
+            "location=1",
+            "let location=1",
+            "onclick=1",
+            "let onclick=1",
+            "document.write(1)",
+            "node.title=1",
+            "node.foo=1",
+            "node.innerHTML=1",
+            "Reflect.set(a,1,2)",
+            "location.replace(1)",
+            "head.append(1)",
+            "arr.push(1)",
+            "eval.call(null,1)",
+            "obj.hasOwnProperty.call(obj,k)",
+            "node['innerHTML']=1",
+            "node[k]=1",
+            "node[0]()",
+            "node['push'](1)",
+            "(0,eval)(1)",
+            "(foo)(1)",
+            "el('script')",
+            "el('li')",
+            "document.createElement('script')",
+            "document.createElement('li')",
+            "a.setAttribute('href','javascript:x')",
+            "a.setAttribute('target','x')",
+            "a.setAttribute(name,x)",
+            "return open(x)",
+            "void setTimeout(s)",
+            "location.href=x",
+            "x.textContent=s",
+            "function setText(n,v){n.textContent=v}",
+            "<script>eval(1)</script>",
+            "<SCRIPT>foo(1)</SCRIPT>",
+            "<script type=\"application/json\">eval(1)</script>",
+            "<script type=\"text/javascript\" type=\"application/json\">foo(1)</script>",
+            "<img onerror=\"alert(1)\">",
+            "<img onerror=\"function(){}\">",
+            "<a href=\"javascript:x\">z</a>",
+            "<iframe src=\"https://example.invalid/x\"></iframe>",
+            "<base href=\"https://example.invalid/\">",
+            "<script src=\"https://example.invalid/a.js\"></script>",
+            "<style>@import \"x\";</style>",
+            "<meta http-equiv=\"refresh\" content=\"0;url=https://x\">",
+            "<link rel=\"stylesheet\" href=\"https://x\">",
+            "<!--><script>foo(1)</script>",
+            "<a ",
+            "<svg><script>foo(1)</script></svg>",
+            "<math><maction href=\"javascript:x\">z</maction></math>",
+            "<object data=\"https://example.invalid/x\"></object>",
+            "<embed src=\"https://example.invalid/x\"></embed>",
+            "<link rel=\"import\" href=\"https://x\">",
+            "<!-- --!><script>foo(1)</script>",
+            "<!---> <script>foo(1)</script>",
+            "return eval(x)",
+            "document?.['write'](s)",
+            "globalThis.eval`x`",
+            "node.innerHTML ||= s",
+            "(function(){return 1})()",
+            "const U='https://example.com'; a.setAttribute('href', U)",
+            "function el(tag){return document.createElement(tag)}",
+            "el('a',{href:'javascript:x'})",
+            "setTimeout(x+'code')",
+            "list.forEach(setTimeout)",
+            "node[a.b]=x",
+            "node[f()]=x",
+        ];
+        for src in samples {
+            lines.push(format!("PROB {:?}", probs(src)));
+        }
+        let keys = [
+            "['ab']",
+            "['a'+'b']",
+            "[foo]",
+            "[1]",
+            "[foo.bar]",
+            "[foo()]",
+            "[foo+1]",
+            "[`ab`]",
+            "[a?.b]",
+        ];
+        for src in keys {
+            lines.push(format!("KEY {src} {}", key_s(classify_key(&inside(src)))));
+        }
+        let calls = [
+            "f(a,b+c,d)",
+            "f()",
+            "f(function(){})",
+            "setTimeout(()=>1, 2)",
+        ];
+        for src in calls {
+            let toks = lex_of(src, u64::MAX / 8).0;
+            let paren = toks
+                .iter()
+                .position(|tok| matches!(tok, Tok::LParen))
+                .unwrap();
+            lines.push(format!(
+                "ARG0 {src} {}",
+                lex_s_from(&call_arg(&toks, paren, 0))
+            ));
+            lines.push(format!(
+                "ARG1 {src} {}",
+                lex_s_from(&call_arg(&toks, paren, 1))
+            ));
+            lines.push(format!("FIRST {src} {}", arg_s(first_arg(&toks, paren))));
+        }
+        let bracket_src = [
+            "(a[b])",
+            "(a",
+            "([)]",
+            "{(}",
+            "f(a,b)",
+            "f((a,b))",
+            "(function(){})()",
+        ];
+        for src in bracket_src {
+            let toks = lex_of(src, u64::MAX / 8).0;
+            let mate = match_brackets(&toks);
+            let pairs = mate
+                .iter()
+                .enumerate()
+                .filter_map(|(i, m)| m.map(|j| format!("{i}>{j}")))
+                .collect::<Vec<_>>()
+                .join(",");
+            lines.push(format!("MATE {src} {pairs}"));
+            if let (Some(open), Some(close)) = (
+                toks.iter().position(|t| matches!(t, Tok::LParen)),
+                toks.iter().rposition(|t| matches!(t, Tok::RParen)),
+            ) {
+                lines.push(format!("COMMA {src} {}", comma_at_root(&toks, open, close)));
+            }
+        }
+        let named = "const u = 'https://example.com'; let bad = 'javascript:x'; var n = 1; const s = String(a);";
+        let named_toks = lex_of(named, u64::MAX / 8).0;
+        lines.push(format!(
+            "SAFE {:?}",
+            safe_url_names(&named_toks).into_iter().collect::<Vec<_>>()
+        ));
+        lines.push(format!(
+            "STR {:?}",
+            stringish_names(&named_toks).into_iter().collect::<Vec<_>>()
+        ));
+        let fn_src = "function setText(n,v){ n.textContent = v } function el(tag){ return tag }";
+        let fn_toks = lex_of(fn_src, u64::MAX / 8).0;
+        let at = fn_toks
+            .iter()
+            .position(|t| matches!(t, Tok::Ident(s) if s == "textContent"))
+            .unwrap();
+        lines.push(format!(
+            "IN setText {} el {}",
+            inside_function(&fn_toks, at, "setText"),
+            inside_function(&fn_toks, at, "el")
+        ));
+        lines.push(format!(
+            "ELPARAM {}",
+            is_el_param(&fn_toks, "tag") && !is_el_param(&fn_toks, "n")
+        ));
+        let borrow_src = "obj.hasOwnProperty.call(obj,k)";
+        let borrow = lex_of(borrow_src, u64::MAX / 8).0;
+        let dot = borrow.iter().rposition(|t| matches!(t, Tok::Dot)).unwrap();
+        lines.push(format!("BORROW {}", borrow_ok(&borrow, dot)));
+        let dot_eval = lex_of("eval.call(null,1)", u64::MAX / 8).0;
+        let dot_e = dot_eval.iter().position(|t| matches!(t, Tok::Dot)).unwrap();
+        lines.push(format!("BORROW_EVAL {}", borrow_ok(&dot_eval, dot_e)));
+        for (label, part) in [
+            ("arrow", "() => 1"),
+            ("fn", "function(){}"),
+            ("id", "foo"),
+            ("eval", "eval"),
+            ("str", "'a'"),
+            ("nested", "(a)=>1"),
+        ] {
+            let toks = lex_of(&format!("setTimeout({part})"), u64::MAX / 8).0;
+            let paren = toks.iter().position(|t| matches!(t, Tok::LParen)).unwrap();
+            let arg = call_arg(&toks, paren, 0);
+            lines.push(format!(
+                "TIMER {label} arrow={} allowed={}",
+                is_arrow(&arg),
+                timer_arg_allowed(&arg, &BTreeSet::new())
+            ));
+        }
+        let scheme_src = "a.setAttribute('href','java'+'script:x')";
+        let scheme = lex_of(scheme_src, u64::MAX / 8).0;
+        let paren = scheme
+            .iter()
+            .rposition(|t| matches!(t, Tok::LParen))
+            .unwrap();
+        lines.push(format!(
+            "SCHEME {} scriptish {}",
+            value_has_script_scheme(&scheme, paren),
+            scriptish(&call_arg(&scheme, paren, 1).iter().collect::<Vec<_>>())
+        ));
+        for src in ["a", "if a", "(a)", "'a'", "1", "a?.", "return a"] {
+            let toks = lex_of(src, u64::MAX / 8).0;
+            lines.push(format!(
+                "PREV {src:?} value={} kw={}",
+                prev_is_value(&toks, toks.len()),
+                prev_is_keyword(&toks, toks.len())
+            ));
+        }
+        for parts in [
+            vec![Tok::Ident("a".into()), Tok::Dot, Tok::Ident("b".into())],
+            vec![Tok::Ident("a".into()), Tok::LParen, Tok::RParen],
+            vec![Tok::Ident("a".into()), Tok::Plus, Tok::Num],
+            vec![Tok::Num],
+        ] {
+            lines.push(format!(
+                "MEM {} CALL {}",
+                is_member_key(&parts),
+                is_call_key(&parts)
+            ));
+        }
+        for src in [
+            "<a href=x>",
+            "<a href=\"x\" id=1>",
+            "<div class>",
+            "<?",
+            "<a href=x<b>",
+        ] {
+            lines.push(format!("TAG {src:?} {}", tag_s(src)));
+        }
+        let text = lines.join("\n");
+        assert_eq!(text, include_str!("oracle_js.txt"));
+    }
+
+    fn lex_s_from(toks: &[Tok]) -> String {
+        toks.iter().map(tok_s).collect::<Vec<_>>().join(" ")
     }
 }
