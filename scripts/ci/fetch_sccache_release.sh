@@ -28,19 +28,24 @@
 # recorded output. A failed download retries with backoff.
 #
 # Before extraction, archive headers must be regular files or directories.
-# Links and devices are refused, including when tar materializes a link as a
-# copy. After extraction, an lstat walk rejects a symlink or any entry that
-# is not a regular file or a directory. The archive must contain exactly one
+# A directory-like header must have size zero. A size or checksum field that
+# is not plain octal is refused, so the reader and the extractor agree on
+# the next header. Links and devices are refused, including when tar
+# materializes a link as a copy. After extraction, an lstat walk rejects a
+# symlink or any entry that is not a regular file or a directory. Cleanup
+# does not chmod a symbolic link. The archive must contain exactly one
 # top-level entry, a real directory named for this release asset. The
 # installed name is sccache.exe on win32 and sccache otherwise. That entry
 # must be one regular file with a link count of 1. The script copies that
 # file alone, checks the tool cache holds only that file, and checks its
-# bytes match the archive member.
+# bytes match the extracted file.
 #
-# Workflow steps start this script with env -i and bash --noprofile --norc,
-# passing PATH, HOME, GITHUB_OUTPUT, and RUNNER_TOOL_CACHE. curl's first
-# argument is -q, so it does not read a curlrc. --release-base is for the
-# policy test harness. Workflows call this script with no arguments.
+# Workflow steps start this script with /usr/bin/env -i and bash
+# --noprofile --norc, passing PATH, HOME, GITHUB_OUTPUT, and
+# RUNNER_TOOL_CACHE. The job environment is trusted until /usr/bin/env
+# starts. curl's first argument is -q, so it does not read a curlrc.
+# --release-base is for the policy test harness. Workflows call this script
+# with no arguments.
 # -E runs the ERR trap inside functions and command substitutions.
 set -eEuo pipefail
 
@@ -222,20 +227,30 @@ plain_tree() {
 }
 
 # Deny by default. Type flags: NUL and "0" are regular files, "5" is a
-# directory. Anything else, including links and devices, is refused.
+# directory. A name that ends in "/" is directory-like for NUL and "0" too.
+# Directory-like headers must have size zero; the following block is the
+# next header. Anything else, including links and devices, is refused.
 # Exit 1 is a refused member. Exit 2 is an archive this parser cannot read.
 archive_plain_members() {
-  node -e 'const fs=require("fs"),zlib=require("zlib"); let buf; try { buf=zlib.gunzipSync(fs.readFileSync(process.argv[1])); } catch (e) { process.exit(2); } function field(header, start, length) { let end=start; const limit=start+length; while (end<limit && header[end]!==0) end++; return header.subarray(start, end).toString("utf8").trim(); } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) process.exit(0); let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=parseInt(field(h, 148, 8), 8); if (!Number.isFinite(recorded) || recorded!==sum) process.exit(2); const typ=h[156]; const plain=typ===0 || typ===48 || typ===53; if (!plain) process.exit(1); const size=parseInt(field(h, 124, 12)||"0", 8); if (!Number.isFinite(size) || size<0) process.exit(2); const blocks=Math.ceil(size/512); off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$1"
+  node -e 'const fs=require("fs"),zlib=require("zlib"); let buf; try { buf=zlib.gunzipSync(fs.readFileSync(process.argv[1])); } catch (e) { process.exit(2); } function plainOctal(header, start, length) { const bytes=header.subarray(start, start+length); let i=0; while (i<bytes.length && bytes[i]===32) i++; if (i>=bytes.length) return 0; if (bytes[i]===0) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0) return null; return 0; } let value=0; let saw=false; for (; i<bytes.length; i++) { const c=bytes[i]; if (c===0 || c===32) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0 && bytes[j]!==32) return null; return saw?value:0; } if (c<48 || c>55) return null; saw=true; value=value*8+(c-48); if (!Number.isSafeInteger(value)) return null; } return saw?value:0; } function nameEndsWithSlash(header) { let end=0; while (end<100 && header[end]!==0) end++; return end>0 && header[end-1]===47; } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) process.exit(0); let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=plainOctal(h, 148, 8); if (recorded===null || recorded!==sum) process.exit(2); const typ=h[156]; const size=plainOctal(h, 124, 12); if (size===null || size<0) process.exit(2); const directoryLike=typ===53 || ((typ===0 || typ===48) && nameEndsWithSlash(h)); if (directoryLike) { if (size!==0) process.exit(1); off+=512; continue; } if (!(typ===0 || typ===48)) process.exit(1); const blocks=Math.ceil(size/512); off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$1"
 }
 
 # An extracted member can be mode 000. chmod the directory before descending
-# so the temp tree can be removed. A failure here cannot change the exit.
+# so the temp tree can be removed. A symbolic link is skipped before any
+# other test, and is never chmodded: chmod would follow it. A failure here
+# cannot change the exit.
 restore_tree() {
+  if [ -L "$1" ]; then
+    return 0
+  fi
   chmod u+rwx "$1" 2>/dev/null || true
   local child
   shopt -s nullglob dotglob
   for child in "$1"/*; do
-    if [ -d "$child" ] && [ ! -L "$child" ]; then
+    if [ -L "$child" ]; then
+      continue
+    fi
+    if [ -d "$child" ]; then
       restore_tree "$child"
     else
       chmod u+rwx "$child" 2>/dev/null || true
