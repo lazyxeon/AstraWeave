@@ -28,7 +28,7 @@ last_verified_commit: f59241e3
 
 ---
 
-> **Revision note (1.1).** `gltf_loader::load_skeleton` and `load_animations` take a base directory: `load_skeleton(base, bytes)` and `load_animations(base, bytes, skeleton)`. Cite updates: asset-side types and loaders at `lib.rs:1447-…` (was `lib.rs:854-…`), `SkinnedVertexLite` at `lib.rs:1447`, `Joint` at `lib.rs:1465-1470`, `Transform` at `lib.rs:1474-1478`, `Skeleton` at `lib.rs:1492-1495`, `ChannelData` at `lib.rs:1500-1504`, `AnimationChannel` at `lib.rs:1508-1513`, `AnimationClip` at `lib.rs:1525-1529`, and the CubicSpline comment at `lib.rs:1520`. `load_animations` translates `gltf::animation::Interpolation` at `lib.rs:1763-1767` and `gltf::animation::Property` at `lib.rs:1769-1845`.
+> **Revision note (1.1).** `gltf_loader::load_skeleton` and `load_animations` take a base directory: `load_skeleton(base, bytes)` and `load_animations(base, bytes, skeleton)`. Cite updates: asset-side types and loaders at `lib.rs:1447-…` (was `lib.rs:854-…`), `SkinnedVertexLite` at `lib.rs:1447`, `Joint` at `lib.rs:1465-1470`, `Transform` at `lib.rs:1474-1478`, `Skeleton` at `lib.rs:1492-1495`, `ChannelData` at `lib.rs:1500-1504`, `AnimationChannel` at `lib.rs:1508-1513`, `AnimationClip` at `lib.rs:1525-1529`, and the CubicSpline comment at `lib.rs:1520`. Render-side cites in this trace were corrected in the same pass, including the animation re-export, the skinning re-export and its line count, the `JointPalette` size, and the out-of-range continue. `find_keyframes` is a linear scan. `load_animations` translates `gltf::animation::Interpolation` at `lib.rs:1763-1767` and `gltf::animation::Property` at `lib.rs:1769-1845`.
 
 ## 1. Executive Summary
 
@@ -206,9 +206,9 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 
 | File | Role | Status | Notes |
 |---|---|---|---|
-| `astraweave-render/src/animation.rs` | Canonical runtime types + CPU pipeline (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `AnimationState`, `JointMatrixGPU`, `JointPalette`, `MAX_JOINTS`, `compute_joint_matrices`, `skin_vertex_cpu`) plus 13 inline unit tests | Active | 750 LoC. Re-exported at crate root via `lib.rs:272-276` |
-| `astraweave-render/src/skinning_gpu.rs` | `JointPaletteManager` pooled SSBO + embedded `SKINNING_GPU_SHADER` WGSL + 8 inline tests | Active (feature `skinning-gpu`) | 814 LoC. Re-exported at `lib.rs:278-279` (feature-gated) |
-| `astraweave-render/src/animation_extra_tests.rs` | 29 additional unit tests (mutation-killing coverage) | Active (test gate) | 613 LoC; declared `#[cfg(test)]` at `lib.rs:126-127` |
+| `astraweave-render/src/animation.rs` | Canonical runtime types + CPU pipeline (`Skeleton`, `Joint`, `Transform`, `AnimationClip`, `AnimationChannel`, `ChannelData`, `Interpolation`, `AnimationState`, `JointMatrixGPU`, `JointPalette`, `MAX_JOINTS`, `compute_joint_matrices`, `skin_vertex_cpu`) plus 13 inline unit tests | Active | 750 LoC. Re-exported at crate root via `lib.rs:276-280` |
+| `astraweave-render/src/skinning_gpu.rs` | `JointPaletteManager` pooled SSBO + embedded `SKINNING_GPU_SHADER` WGSL + 8 inline tests | Active (feature `skinning-gpu`) | 808 LoC. Re-exported at `lib.rs:282-283` (feature-gated) |
+| `astraweave-render/src/animation_extra_tests.rs` | 29 additional unit tests (mutation-killing coverage) | Active (test gate) | 613 LoC; declared `#[cfg(test)]` at `lib.rs:125-126` |
 | `astraweave-render/src/types.rs:49-106` | `SkinnedVertex` GPU vertex struct + `layout()` | Active | 60-byte vertex; shader locations 0/1/10/11/12/13 |
 | `astraweave-render/src/renderer.rs:10715-10731` | `Renderer::set_skinned_mesh(&[SkinnedVertex], &[u32])` | Active (v0 API per inline comment at line 10714) | Stores one skinned mesh in `Renderer.skinned_mesh` |
 | `astraweave-render/src/renderer.rs:10733-10742` | `Renderer::update_skin_palette(&[Mat4])` | Active | Uploads contiguous Mat4 array via `queue.write_buffer` |
@@ -331,7 +331,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **Context:** The docstring at `skinning_gpu.rs:16-19` says: "Uses a single large SSBO with dynamic offsets instead of per-skeleton individual buffers. This eliminates per-skeleton buffer/bind-group allocation overhead and enables efficient draw-call batching." Pool growth doubles capacity (`grow` at lines 195-247) and copies the existing buffer to a new larger one, rebuilds the bind group (lines 232-245).
 - **Decision:** Single `pool_buffer` of `slot_stride * pool_capacity` bytes; `slot_stride` rounded up to `device.limits().min_storage_buffer_offset_alignment` (`skinning_gpu.rs:55-57`); per-handle slot allocation from a LIFO `free_slots: Vec<u32>`.
 - **Alternatives considered:** Per-skeleton individual buffers — explicitly framed as the rejected alternative in the docstring at lines 16-19.
-- **Consequences:** One bind group rebinding per draw with a `dynamic_offset` rather than per-skeleton bind-group switching. Initial pool capacity is 64 slots (`INITIAL_POOL_CAPACITY` at line 50); growth doubles. Each slot is `slot_stride` bytes (≥16 KB for `JointPalette` size 16,396 bytes rounded up to alignment).
+- **Consequences:** One bind group rebinding per draw with a `dynamic_offset` rather than per-skeleton bind-group switching. Initial pool capacity is 64 slots (`INITIAL_POOL_CAPACITY` at line 50); growth doubles. Each slot is `slot_stride` bytes (≥16 KB for `JointPalette` size 16,400 bytes rounded up to alignment).
 
 ### Decision: `MAX_JOINTS = 256` as the per-skeleton GPU palette limit
 - **Date:** Phase 2 Task 5 Phase D
@@ -339,7 +339,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 - **Context:** Defined at `astraweave-render/src/animation.rs:396` and consumed by `JointPalette` (line 401) and `JointPalette::from_matrices` (line 420). The WGSL shader hard-codes the same constant: `joints: array<JointMatrix, 256>` at `skinning_gpu.rs:262`. Phase 2 Task 5 implementation summary line 180 confirms the constant.
 - **Decision:** Skeletons may have at most 256 joints; surplus joints are silently dropped via `.take(MAX_JOINTS)` in `JointPalette::from_matrices` (`animation.rs:426`).
 - **Alternatives considered:** [Reasoning not recovered.]
-- **Consequences:** A `JointPalette` is 16,396 bytes (256 × 64 + 12 padding). Skeletons over 256 joints lose data silently. The constant must be kept in sync between Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:262`) by manual edit — there is no compile-time mirror.
+- **Consequences:** A `JointPalette` is 16,400 bytes (256 × 64 for the joint matrices, plus a `u32` count and three `u32` of padding). Skeletons over 256 joints lose data silently. The constant must be kept in sync between Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:262`) by manual edit — there is no compile-time mirror.
 
 ### Decision: Four parallel type families across crate boundaries (rather than a shared crate)
 - **Date:** Phase 2 Task 5 (asset/render/scene types landed together)
@@ -388,9 +388,9 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 | 7 | `JointPaletteManager` grows by doubling and preserves existing data; bind group is rebuilt after growth | Yes | `skinning_gpu.rs:195-247`; growth-test [NEEDS VERIFICATION on exact test name] |
 | 8 | The pooled SSBO slot stride equals `JointPalette` size rounded up to `device.limits().min_storage_buffer_offset_alignment` | Yes | `skinning_gpu.rs:55-57` (`slot_stride = raw_size.div_ceil(alignment) * alignment`) |
 | 9 | `skin_vertex_cpu` normalizes the skinned normal (or returns zero) | Yes | `animation.rs:472` (`skinned_normal.normalize_or_zero()`) |
-| 10 | `AnimationClip::sample` returns one `Transform` per skeleton joint, initialized to the joint's bind-pose `local_transform` and then overwritten by active channels | Yes | `animation.rs:104-107, 162-165` |
+| 10 | `AnimationClip::sample` returns one `Transform` per skeleton joint, initialized to the joint's bind-pose `local_transform` and then overwritten by active channels | Yes | `animation.rs:111-117` (bind-pose fill in `sample_into`) and `animation.rs:172` (channel write) |
 | 11 | Vertices with `weights[i] == 0.0` skip the corresponding joint matrix multiply (early-continue) | Yes | `animation.rs:451-453` (`if weight == 0.0 { continue; }`) |
-| 12 | Out-of-range joint indices in CPU skinning skip the contribution (no panic) | Yes | `animation.rs:455-458` (`if joint_idx >= joint_matrices.len() { continue; }`) |
+| 12 | Out-of-range joint indices in CPU skinning skip the contribution (no panic) | Yes | `animation.rs:456-458` (`if joint_idx >= joint_matrices.len() { continue; }`) |
 | 13 | Animation crate has no `unsafe` code on the render side (crate-level `#![deny(unsafe_code)]`) and the scene crate is `#![forbid(unsafe_code)]` | Yes | `astraweave-render/src/lib.rs:1` (`#![deny(unsafe_code)]`); `astraweave-scene/src/lib.rs:1` (`#![forbid(unsafe_code)]`) |
 
 ---
@@ -398,7 +398,7 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 ## 9. Performance & Resource Profile
 
 ### Hot paths
-- **`AnimationClip::sample`**: per active animator per tick. Cost = O(channels × keyframes) via the linear scan in `find_keyframes` at `animation.rs:177-203` (the loop is `195-200`). For a 30-bone skeleton with 90 channels (TRS per bone) and 30 keyframes per channel, ~270 scans per sample.
+- **`AnimationClip::sample`**: per active animator per tick. Cost = O(channels × keyframes) via the linear scan in `find_keyframes` at `animation.rs:177-203` (the loop is `195-200`). For a 30-bone skeleton with 90 channels (TRS per bone) and 30 keyframes per channel, that is 90 scans per sample and up to about 2,700 keyframe compares.
 - **`compute_joint_matrices`**: per skeleton per tick. Cost = O(joints) for the recursive walk + O(joints) for inverse-bind multiply at the end (`animation.rs:369-371`).
 - **CPU `skin_vertex_cpu`**: per vertex per tick when CPU skinning is active. Cost = O(4 × matrix-vector mults) per vertex. For a 30k-vertex mesh: ~120k matrix-vector mults per frame.
 - **GPU skinning vertex shader**: per vertex per draw, but executed on the GPU in parallel. The shader at `skinning_gpu.rs:277-296` does 4 mat4×vec4 mults per vertex.
@@ -531,9 +531,9 @@ The two-path structure (CPU default, GPU optional) plus the four-crate type fede
 The animation system was delivered as **Phase 2 Task 5** of the engine roadmap. Per `docs/archive/phase_reports/PHASE2_TASK5_IMPLEMENTATION_SUMMARY.md` (2025-10-01), the implementation followed a six-phase plan:
 
 - **Phase A — Asset Import**: `astraweave-asset` extended with `Skeleton`, `Joint`, `Transform`, `AnimationClip` types and `load_skeleton` / `load_animations` glTF functions (5 tests).
-- **Phase B — Animation Runtime**: `astraweave-render/src/animation.rs` (~600 lines original; 750 today) with `AnimationClip::sample`, `AnimationState`, `compute_joint_matrices`, `skin_vertex_cpu` (10 tests).
+- **Phase B — Animation Runtime**: `astraweave-render/src/animation.rs` (~600 lines original; 750 today) with `AnimationClip::sample`, `AnimationState`, `compute_joint_matrices`, `skin_vertex_cpu` (10 tests in the 2025-10-01 summary; `animation.rs` has 13 today).
 - **Phase C — ECS Integration**: `astraweave-scene` extended with `CSkeleton`, `CSkinnedMesh`, `CAnimator`, `CJointMatrices`, `CParentBone` and the `update_animations` / `compute_poses` / `update_bone_attachments` systems (14 tests).
-- **Phase D — GPU Skinning Pipeline**: `astraweave-render/src/skinning_gpu.rs` (~400 lines original; 808 today after pool refactor) with `JointPalette`, `JointPaletteManager`, embedded WGSL shader (9 tests). The summary at line 210 notes "Pipeline implemented, compute dispatch integration pending" — the pooled SSBO with dynamic offsets refactor came later.
+- **Phase D — GPU Skinning Pipeline**: `astraweave-render/src/skinning_gpu.rs` (~400 lines original; 808 today after pool refactor) with `JointPalette`, `JointPaletteManager`, embedded WGSL shader (9 tests in that summary; `skinning_gpu.rs` has 8 inline tests today, plus 2 behind `gpu-tests`). The summary at line 210 notes "Pipeline implemented, compute dispatch integration pending" — the pooled SSBO with dynamic offsets refactor came later.
 - **Phase E — Golden & Stress Tests**: 5 test files / 1,921 lines / 38 tests covering rest pose, animated pose, integration, CPU/GPU parity, stress.
 - **Phase F — Interactive Demo**: `examples/skinning_demo` with keyboard controls and HUD.
 
