@@ -172,7 +172,11 @@ class _MarkedList(list):
     yaml_line = 1
 
 
-class _MarkedLoader(yaml.SafeLoader):
+# Libyaml when it is present. Both bases reject tags outside the safe schema.
+_SAFE_LOADER_BASE = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+class _MarkedLoader(_SAFE_LOADER_BASE):
     """SafeLoader that records the line of each mapping, key, and sequence."""
 
 
@@ -187,7 +191,9 @@ def _construct_marked_map(loader: yaml.SafeLoader, node: yaml.Node) -> _MarkedDi
         mapping[key] = value
         mapping.key_lines[key] = key_node.start_mark.line + 1
         if isinstance(value_node, yaml.ScalarNode):
-            mapping.scalar_style[key] = (value_node.style, value_node.value)
+            # Plain scalars are null on SafeLoader and "" on CSafeLoader.
+            style = value_node.style or None
+            mapping.scalar_style[key] = (style, value_node.value)
     return mapping
 
 
@@ -210,15 +216,13 @@ _MarkedLoader.add_constructor(
 
 
 def load_workflow_yaml(text: str) -> tuple[object, str | None]:
-    """Parse workflow YAML. `yaml.safe_load` is the acceptance check.
+    """Parse workflow YAML with one SafeLoader pass.
 
-    A SafeLoader subclass then keeps line numbers for the same document.
-    Invalid YAML is a violation, not a pass.
+    The base is libyaml's ``CSafeLoader`` when those bindings are present,
+    and ``SafeLoader`` otherwise. Both reject tags outside the safe schema.
+    Invalid YAML is a violation, not a pass. A plain scalar's style is
+    stored as null so the two bindings record the same style.
     """
-    try:
-        yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        return None, str(exc).splitlines()[0]
     try:
         marked = yaml.load(text, _MarkedLoader)  # noqa: S506 — SafeLoader subclass
     except yaml.YAMLError as exc:
@@ -1890,8 +1894,9 @@ def _download_step_key_violations(job: dict) -> list[int]:
 def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     """Parsed permissions for coverage.yml and aw-editor-tests.yml.
 
-    Top-level permissions must be {}. A missing key fails. A repeated key
-    on the workflow mapping fails, including when the last value is {}.
+    Top-level permissions must be {}. A missing key fails. Any repeated
+    key on the workflow mapping fails, including a repeated permissions
+    key whose last value is {}.
     A key or value that parses to anything other than the exact map fails,
     including a different case, padding, a quoted value other than read or
     none, or an expression. A quoted key or a flow mapping that parses to
@@ -2058,9 +2063,13 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
 def least_privilege_permission_violations(text: str, *, path: str = "") -> list[str]:
     """kani.yml and editor-ci.yml: top-level {} and each job exactly contents: read.
 
-    A repeated key on the workflow mapping fails, including when the last
-    value is {}. A repeated key on a job permissions map fails, including
-    when the last value is contents: read.
+    Any repeated key on the workflow mapping fails, including a repeated
+    permissions key whose last value is {}. A repeated key on the job
+    fails, including a repeated permissions key whose last map is
+    contents: read. A repeated key on a job permissions map fails,
+    including when the last value is contents: read. The map is exactly
+    one contents: read entry. An extra scope, a different case, or
+    padding fails.
     """
     if Path(path).name not in _LEAST_PRIVILEGE_WORKFLOWS:
         return []
@@ -2083,7 +2092,9 @@ def least_privilege_permission_violations(text: str, *, path: str = "") -> list[
         job_line = int(job_lines.get(job_id, 1))
         job_perms = job.get("permissions", _MISSING) if isinstance(job, dict) else _MISSING
         exact = (
-            isinstance(job_perms, dict)
+            isinstance(job, dict)
+            and not getattr(job, "duplicate_keys", None)
+            and isinstance(job_perms, dict)
             and not getattr(job_perms, "duplicate_keys", None)
             and len(job_perms) == 1
             and job_perms.get("contents") == "read"
@@ -9517,16 +9528,191 @@ jobs:
             self.assertIn(JOB_CONTENTS_READ_MSG, scanned, name)
             self.assertNotIn(TOP_PERMISSIONS_MSG, messages, name)
 
+    def test_root_and_job_permission_shapes_are_exact(self) -> None:
+        """Repeated workflow keys, job keys, and the contents value are exact.
+
+        A repeated root key other than permissions still fails, on all
+        four workflows. A repeated permissions key on the job fails when
+        the last map is contents: read. An extra id-token scope, a
+        different case, and padding each fail on kani-ecs and editor-ci.
+        """
+
+        def endings(hits: list[str]) -> list[str]:
+            return [hit.split(": ", 2)[2] for hit in hits]
+
+        root_files = (
+            "coverage.yml",
+            "aw-editor-tests.yml",
+            "kani.yml",
+            "editor-ci.yml",
+        )
+        for name in root_files:
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            check = (
+                coverage_permission_violations
+                if name in ("coverage.yml", "aw-editor-tests.yml")
+                else least_privilege_permission_violations
+            )
+            on_dup = text.replace("\non:\n", "\non: [pull_request]\non:\n", 1)
+            self.assertNotEqual(on_dup, text, name)
+            doc, err = load_workflow_yaml(on_dup)
+            self.assertIsNone(err, name)
+            self.assertEqual(getattr(doc, "duplicate_keys", None), [True], name)
+            self.assertNotIn("permissions", doc.duplicate_keys, name)
+            messages = check(on_dup, path=name)
+            _pin, policy = scan_action_surface(on_dup, f".github/workflows/{name}")
+            self.assertEqual(endings(messages), [TOP_PERMISSIONS_MSG], name)
+            self.assertEqual(endings(policy), [TOP_PERMISSIONS_MSG], name)
+            name_dup = text.replace("name: ", "name: Other\nname: ", 1)
+            self.assertNotEqual(name_dup, text, name)
+            doc, err = load_workflow_yaml(name_dup)
+            self.assertIsNone(err, name)
+            self.assertEqual(getattr(doc, "duplicate_keys", None), ["name"], name)
+            self.assertEqual(doc.get("name"), text.split("name: ", 1)[1].splitlines()[0], name)
+            messages = check(name_dup, path=name)
+            _pin, policy = scan_action_surface(name_dup, f".github/workflows/{name}")
+            self.assertEqual(endings(messages), [TOP_PERMISSIONS_MSG], name)
+            self.assertEqual(endings(policy), [TOP_PERMISSIONS_MSG], name)
+            if "\nenv:\n" not in text:
+                continue
+            env_dup = text.replace(
+                "\nenv:\n",
+                "\nenv:\n  TOKEN: ${{ secrets.TOKEN }}\nenv:\n",
+                1,
+            )
+            doc, err = load_workflow_yaml(env_dup)
+            self.assertIsNone(err, name)
+            self.assertEqual(getattr(doc, "duplicate_keys", None), ["env"], name)
+            messages = check(env_dup, path=name)
+            _pin, policy = scan_action_surface(env_dup, f".github/workflows/{name}")
+            self.assertEqual(endings(messages), [TOP_PERMISSIONS_MSG], name)
+            self.assertEqual(endings(policy), [TOP_PERMISSIONS_MSG], name)
+
+        job_anchor = (
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        job_key_dup = (
+            "    permissions:\n"
+            "      contents: write\n"
+            "      id-token: write\n"
+            "    permissions:\n"
+            "      contents: read\n"
+            "    runs-on: ubuntu-latest\n"
+        )
+        value_rows = {
+            "extra-id-token": (
+                "    permissions:\n"
+                "      contents: read\n"
+                "      id-token: write\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "case-READ": (
+                "    permissions:\n"
+                "      contents: READ\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+            "padded-read": (
+                "    permissions:\n"
+                "      contents: 'read '\n"
+                "    runs-on: ubuntu-latest\n"
+            ),
+        }
+        for name, job_id in (("kani.yml", "kani-ecs"), ("editor-ci.yml", "editor-ci")):
+            text = (WORKFLOWS / name).read_text(encoding="utf-8")
+            self.assertGreaterEqual(text.count(job_anchor), 1, name)
+            mutant = text.replace(job_anchor, job_key_dup, 1)
+            doc, err = load_workflow_yaml(mutant)
+            self.assertIsNone(err, name)
+            job = doc["jobs"][job_id]
+            self.assertEqual(getattr(job, "duplicate_keys", None), ["permissions"], name)
+            perms = job["permissions"]
+            self.assertEqual(perms.get("contents"), "read", name)
+            self.assertFalse(getattr(perms, "duplicate_keys", None), name)
+            messages = least_privilege_permission_violations(mutant, path=name)
+            _pin, policy = scan_action_surface(mutant, f".github/workflows/{name}")
+            self.assertEqual(endings(messages), [JOB_CONTENTS_READ_MSG], name)
+            self.assertIn(JOB_CONTENTS_READ_MSG, " ".join(policy), name)
+            for label, body in value_rows.items():
+                mutant = text.replace(job_anchor, body, 1)
+                self.assertNotEqual(mutant, text, f"{name}-{label}")
+                doc, err = load_workflow_yaml(mutant)
+                self.assertIsNone(err, f"{name}-{label}")
+                perms = doc["jobs"][job_id]["permissions"]
+                self.assertFalse(
+                    len(perms) == 1 and perms.get("contents") == "read",
+                    f"{name}-{label}",
+                )
+                self.assertFalse(getattr(doc["jobs"][job_id], "duplicate_keys", None))
+                messages = least_privilege_permission_violations(mutant, path=name)
+                _pin, policy = scan_action_surface(mutant, f".github/workflows/{name}")
+                self.assertEqual(endings(messages), [JOB_CONTENTS_READ_MSG], f"{name}-{label}")
+                self.assertIn(JOB_CONTENTS_READ_MSG, " ".join(policy), f"{name}-{label}")
+                self.assertNotIn(TOP_PERMISSIONS_MSG, " ".join(messages), f"{name}-{label}")
+
+    def test_producer_archive_and_action_name_pin_the_report(self) -> None:
+        """The producer upload's archive flag and action name pin the report message.
+
+        archive: false on the coverage producer reports the archive message
+        and the pinned-report message twice. The merge sub-path reports the
+        pinned-report message twice and no archive message.
+        """
+        text = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
+        producer = (
+            "      - name: Upload coverage XML\n"
+            "        uses: actions/upload-artifact@"
+            "cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        with:\n"
+            "          name: coverage-xml\n"
+            "          path: tools/astraweave-assets/coverage/cobertura.xml\n"
+            "          retention-days: 30\n"
+        )
+        self.assertEqual(text.count(producer), 1)
+        archived = text.replace(
+            producer,
+            producer.replace(
+                "          retention-days: 30\n",
+                "          retention-days: 30\n          archive: false\n",
+            ),
+            1,
+        )
+        self.assertEqual(
+            coverage_report_publish_violations(archived, path="coverage.yml"),
+            [
+                f"coverage.yml: 41: {ARCHIVE_MSG}",
+                f"coverage.yml: 41: {PINNED_REPORT_MSG}",
+                f"coverage.yml: 1: {PINNED_REPORT_MSG}",
+            ],
+        )
+        merged = text.replace(
+            "uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        with:\n"
+            "          name: coverage-xml\n",
+            "uses: actions/upload-artifact/merge@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2\n"
+            "        with:\n"
+            "          name: coverage-xml\n",
+            1,
+        )
+        self.assertEqual(merged.count("actions/upload-artifact/merge@"), 1)
+        self.assertEqual(
+            coverage_report_publish_violations(merged, path="coverage.yml"),
+            [
+                f"coverage.yml: 41: {PINNED_REPORT_MSG}",
+                f"coverage.yml: 1: {PINNED_REPORT_MSG}",
+            ],
+        )
+
     def test_printable_name_range_is_pinned(self) -> None:
         """Every non-surrogate scalar outside 0x20-0x7E fails closed.
 
-        The form check sees both edges of both pinned names, and that
-        result equals `_could_be_pinned_report_name` on a non-producer
-        path. The publish function sees every one of those names, on a
-        non-producer path and on both producer workflows, and reports the
-        pinned-report message for each. Printable scalars on those edges
-        are walked the same way. A space or tilde in the middle of a name
-        is accepted.
+        The form check sees both edges and the middle of both pinned
+        names, and that result equals `_could_be_pinned_report_name` on a
+        non-producer path. The publish function sees every one of those
+        names, on a non-producer path and on both producer workflows, and
+        reports the pinned-report message for each. Printable scalars on
+        those edges are walked the same way. A space or tilde in the
+        middle of a name is accepted.
         """
         import unicodedata
 
@@ -9563,7 +9749,9 @@ jobs:
 
         for _path, base in bases:
             explicit_names = [
-                edged for char in explicit for edged in (char + base, base + char)
+                edged
+                for char in explicit
+                for edged in (char + base, base + char, base[:4] + char + base[4:])
             ]
             for name in explicit_names:
                 self.assertTrue(_name_form_rejected(name), name)
@@ -9588,7 +9776,8 @@ jobs:
                     self.assertFalse(_name_form_rejected(name), hex(code))
                 continue
             for _path, base in bases:
-                for name in (char + base, base + char):
+                middles = (char + base, base + char, base[:4] + char + base[4:])
+                for name in middles:
                     rejected = _name_form_rejected(name)
                     self.assertTrue(rejected, hex(code))
                     self.assertEqual(
@@ -9637,6 +9826,7 @@ jobs:
                     char = chr(code)
                     batch.append(char + base)
                     batch.append(base + char)
+                    batch.append(base[:4] + char + base[4:])
                     if len(batch) >= chunk_size:
                         submit(batch)
                         batch = []
