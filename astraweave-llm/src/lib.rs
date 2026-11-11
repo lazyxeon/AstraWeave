@@ -4,6 +4,8 @@ use anyhow::Context;
 use anyhow::{bail, Result};
 #[cfg(feature = "ollama")]
 use astraweave_core::{byte_prefix, byte_suffix};
+#[cfg(feature = "ollama")]
+use std::any::Any;
 
 /// Model text above this is rejected before `serde_json` allocates a document.
 pub const MAX_MODEL_JSON_BYTES: usize = 64 * 1024;
@@ -1175,7 +1177,7 @@ pub mod tool_guard;
 pub mod cache;
 
 // --- Phi-3 local model (optional, requires heavy GPU/CPU dependencies) ---
-#[cfg(feature = "phi3")]
+#[cfg(any(feature = "phi3", test))]
 pub mod phi3;
 
 // --- Ollama-based models (optional, requires reqwest) ---
@@ -1227,7 +1229,24 @@ pub enum PlanSource {
 
 /// Trait for LLM clients (mock, Ollama, etc).
 #[async_trait::async_trait]
-pub trait LlmClient: Send + Sync {
+pub trait LlmClient: Send + Sync + std::any::Any {
+    /// Process-local client identity for `GLOBAL_CACHE` partitioning.
+    ///
+    /// Must not be persisted or folded into replay/determinism hashes.
+    fn llm_cache_client_id(&self) -> String {
+        format!("{:?}", self.type_id())
+    }
+
+    /// Model name for global prompt-cache partitioning.
+    fn llm_cache_model_id(&self) -> &str {
+        "default"
+    }
+
+    /// Sampling temperature encoded into the prompt-cache key.
+    fn llm_cache_temperature(&self) -> f32 {
+        0.7
+    }
+
     /// Complete a prompt and return the full response (blocking until complete)
     async fn complete(&self, prompt: &str) -> Result<String>;
 
@@ -1362,6 +1381,14 @@ impl OllamaClient {
 #[cfg(feature = "ollama")]
 #[async_trait::async_trait]
 impl LlmClient for OllamaClient {
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         #[derive(serde::Serialize)]
         struct Req<'a> {
@@ -1442,6 +1469,14 @@ pub struct OllamaChatClient {
 
 #[cfg(feature = "ollama")]
 impl OllamaChatClient {
+    /// Temperature on `/api/chat` completion bodies, including the non-streaming `Req`.
+    /// `warmup` sends `0.0` and does not use this constant. The cache key uses this value.
+    const CHAT_TEMPERATURE: f64 = 0.1;
+
+    /// `num_predict` on the streaming completion. The non-streaming `Req` omits it.
+    /// `warmup` sends `1` and does not use this constant.
+    const CHAT_NUM_PREDICT: u32 = 512;
+
     /// Stored endpoint. The first hop is checked again before each request.
     pub fn url(&self) -> &str {
         &self.url
@@ -1590,6 +1625,7 @@ impl OllamaChatClient {
             stream: bool,
             #[serde(skip_serializing_if = "Option::is_none")]
             format: Option<&'a serde_json::Value>,
+            options: serde_json::Value,
         }
 
         let client = self.client.clone();
@@ -1630,6 +1666,7 @@ impl OllamaChatClient {
                 }],
                 stream: false,
                 format: schema_owned.as_ref(),
+                options: serde_json::json!({ "temperature": Self::CHAT_TEMPERATURE }),
             };
             let backoff = std::time::Duration::from_millis(250 * (1 << (attempt - 1)));
             println!(
@@ -1737,7 +1774,7 @@ impl OllamaChatClient {
                 "model": &self.model,
                 "messages": [{ "role": "user", "content": prompt }],
                 "stream": true,
-                "options": { "temperature": 0.1, "num_predict": 512 }
+                "options": { "temperature": Self::CHAT_TEMPERATURE, "num_predict": Self::CHAT_NUM_PREDICT }
             });
             plan_format::apply_chat_format(
                 &mut stream_body,
@@ -2245,6 +2282,58 @@ impl LlmClient for OllamaChatClient {
         self.complete_with_optional_format(prompt, Some(format))
             .await
     }
+
+    fn llm_cache_client_id(&self) -> String {
+        // Length prefixes keep a URL from aliasing another profile.
+        // `low_latency` selects the streaming completion versus the non-streaming `Req`.
+        // Format and `num_predict` are the values that completion sends: the streaming
+        // body sends `json` when `force_format_json` is set, and `CHAT_NUM_PREDICT`;
+        // the non-streaming `Req` sends neither. `keep_alive` is written only on the
+        // streaming body, including `Some("")` versus `None`. `early_exit_on_json`
+        // stays out: both arms return the same extracted object. `warmup` is not
+        // this completion.
+        fn push_counted(out: &mut String, value: &str) {
+            use std::fmt::Write;
+            let _ = write!(out, "{}:{value}", value.len());
+            out.push(';');
+        }
+
+        let streaming = self.low_latency;
+        let format = if streaming && self.force_format_json {
+            "json"
+        } else {
+            ""
+        };
+        let num_predict = if streaming {
+            Self::CHAT_NUM_PREDICT.to_string()
+        } else {
+            String::new()
+        };
+        let (keep_present, keep_value) = match self.keep_alive.as_deref() {
+            Some(value) if streaming => ("1", value),
+            _ => ("0", ""),
+        };
+
+        let mut id = String::new();
+        push_counted(&mut id, self.url());
+        push_counted(&mut id, &format!("{:?}", self.type_id()));
+        push_counted(&mut id, if streaming { "1" } else { "0" });
+        push_counted(&mut id, format);
+        push_counted(&mut id, &num_predict);
+        push_counted(&mut id, keep_present);
+        push_counted(&mut id, keep_value);
+        id
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        // Streaming and non-streaming chat completions both send `CHAT_TEMPERATURE`,
+        // including when `OLLAMA_LOW_LATENCY` is off. `warmup` sends 0.0 instead.
+        Self::CHAT_TEMPERATURE as f32
+    }
 }
 
 /// A simple local HTTP LLM client that can work with any OpenAI-compatible API
@@ -2438,6 +2527,18 @@ impl LlmClient for LocalHttpClient {
         }
 
         Ok(parsed.choices[0].message.content.clone())
+    }
+
+    fn llm_cache_client_id(&self) -> String {
+        format!("{}:{:?}", self.url(), self.type_id())
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        0.1
     }
 }
 
@@ -2846,6 +2947,23 @@ fn extract_json_from_fenced(s: &str) -> Option<String> {
     None
 }
 
+#[cfg(feature = "llm_cache")]
+pub(crate) fn plan_prompt_cache_key(
+    client: &dyn LlmClient,
+    snap: &WorldSnapshot,
+    reg: &ToolRegistry,
+) -> PromptKey {
+    let prompt = build_prompt(snap, reg);
+    let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
+    PromptKey::new(
+        &prompt,
+        &client.llm_cache_client_id(),
+        client.llm_cache_model_id(),
+        client.llm_cache_temperature(),
+        &tool_names,
+    )
+}
+
 /// Generate a plan using LLM with Phase 7 multi-tier fallback system
 ///
 /// This function uses a 4-tier fallback chain:
@@ -2862,15 +2980,7 @@ pub async fn plan_from_llm(
 ) -> PlanSource {
     #[cfg(feature = "llm_cache")]
     {
-        // Build cache key for fast lookup
-        let prompt = build_prompt(snap, reg);
-        let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
-        let cache_key = PromptKey::new(
-            &prompt,
-            "default", // TODO: Extract from client
-            0.7,       // TODO: Extract temperature from client
-            &tool_names,
-        );
+        let cache_key = plan_prompt_cache_key(client, snap, reg);
 
         // Check cache first
         if let Some((cached_plan, _decision)) = GLOBAL_CACHE.get(&cache_key) {
@@ -2903,8 +3013,7 @@ pub async fn plan_from_llm(
     {
         if result.tier <= fallback_system::FallbackTier::SimplifiedLlm {
             let prompt = build_prompt(snap, reg);
-            let tool_names: Vec<&str> = reg.tools.iter().map(|t| t.name.as_str()).collect();
-            let cache_key = PromptKey::new(&prompt, "default", 0.7, &tool_names);
+            let cache_key = plan_prompt_cache_key(client, snap, reg);
             let cached_plan = CachedPlan {
                 plan: result.plan.clone(),
                 created_at: std::time::Instant::now(),
@@ -3914,6 +4023,626 @@ mod tests {
     fn test_clear_global_cache_does_not_panic() {
         // Just ensure it doesn't panic
         super::clear_global_cache();
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn plan_prompt_cache_key_separates_model_temperature_endpoint_and_type() {
+        use crate::phi3_ollama::Phi3Ollama;
+        use crate::qwen3_ollama::Qwen3Ollama;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+
+        let qwen_a = Qwen3Ollama::new("http://127.0.0.1:11434", "qwen3:a").expect("client");
+        let qwen_b = Qwen3Ollama::new("http://127.0.0.1:11434", "qwen3:b").expect("client");
+        let key_model_a = super::plan_prompt_cache_key(&qwen_a, &snap, &reg);
+        let key_model_b = super::plan_prompt_cache_key(&qwen_b, &snap, &reg);
+        assert_ne!(key_model_a, key_model_b);
+
+        let mut warm = qwen_a.clone();
+        warm.temperature = 0.5;
+        let mut hot = qwen_a.clone();
+        hot.temperature = 0.9;
+        assert_ne!(
+            super::plan_prompt_cache_key(&warm, &snap, &reg),
+            super::plan_prompt_cache_key(&hot, &snap, &reg)
+        );
+
+        let qwen_other_host =
+            Qwen3Ollama::new("http://127.0.0.1:11435", "qwen3:a").expect("client");
+        assert_ne!(
+            super::plan_prompt_cache_key(&qwen_a, &snap, &reg),
+            super::plan_prompt_cache_key(&qwen_other_host, &snap, &reg)
+        );
+
+        let phi3 = Phi3Ollama::new("http://127.0.0.1:11434", "qwen3:a").expect("client");
+        assert_ne!(
+            super::plan_prompt_cache_key(&qwen_a, &snap, &reg),
+            super::plan_prompt_cache_key(&phi3, &snap, &reg)
+        );
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_and_strategic_do_not_share_a_cached_plan_at_default_threshold() {
+        use std::time::Instant;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let fast = qwen3_ollama::Qwen3Ollama::fast().expect("fast client");
+        let strategic = qwen3_ollama::Qwen3Ollama::strategic().expect("strategic client");
+        let fast_key = super::plan_prompt_cache_key(&fast, &snap, &reg);
+        let strategic_key = super::plan_prompt_cache_key(&strategic, &snap, &reg);
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        cache.put(
+            fast_key,
+            CachedPlan {
+                plan: PlanIntent {
+                    plan_id: "fast-plan".to_string(),
+                    steps: vec![],
+                },
+                created_at: Instant::now(),
+                tokens_saved: 1,
+            },
+        );
+
+        let hit = cache.get(&strategic_key);
+        assert!(
+            hit.is_none(),
+            "Qwen3Ollama::fast and ::strategic must not share a plan at similarity 1.0, got {hit:?}"
+        );
+        assert_eq!(cache.stats().similarity_hits, 0);
+    }
+
+    /// `fast` stored, then `get` of a clone that differs in exactly one identity field.
+    ///
+    /// One test per `push_counted` field. Dropping that line makes this `get`
+    /// return the stored plan, so the miss assertion fails on its own.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn assert_qwen_fast_single_field_miss(
+        label: &str,
+        mutate: impl FnOnce(&mut qwen3_ollama::Qwen3Ollama),
+    ) {
+        use std::time::Instant;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let fast = qwen3_ollama::Qwen3Ollama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        mutate(&mut changed);
+        let fast_key = super::plan_prompt_cache_key(&fast, &snap, &reg);
+        let changed_key = super::plan_prompt_cache_key(&changed, &snap, &reg);
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        cache.put(
+            fast_key,
+            CachedPlan {
+                plan: PlanIntent {
+                    plan_id: label.to_string(),
+                    steps: vec![],
+                },
+                created_at: Instant::now(),
+                tokens_saved: 1,
+            },
+        );
+
+        let hit = cache.get(&changed_key);
+        assert!(
+            hit.is_none(),
+            "{label} must miss at similarity 1.0, got {hit:?}"
+        );
+        assert_eq!(cache.stats().similarity_hits, 0);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_enable_thinking_changes() {
+        assert_qwen_fast_single_field_miss("enable_thinking", |client| {
+            client.enable_thinking = !client.enable_thinking;
+        });
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_context_length_changes() {
+        assert_qwen_fast_single_field_miss("context_length", |client| {
+            client.context_length = client.context_length.saturating_add(1);
+        });
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_max_tokens_changes() {
+        assert_qwen_fast_single_field_miss("max_tokens", |client| {
+            client.max_tokens = client.max_tokens.saturating_add(1);
+        });
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn qwen_fast_cache_misses_when_only_system_prompt_changes() {
+        assert_qwen_fast_single_field_miss("system_prompt", |client| {
+            client.system_prompt = Some("different-profile".to_string());
+        });
+    }
+
+    /// One `get` per identity field. Dropping that field's `push_counted` makes
+    /// this return the stored plan at similarity 1.0.
+    #[cfg(feature = "llm_cache")]
+    fn assert_profile_cache_miss(label: &str, stored: &dyn LlmClient, queried: &dyn LlmClient) {
+        use std::time::Instant;
+
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let stored_key = plan_prompt_cache_key(stored, &snap, &reg);
+        let queried_key = plan_prompt_cache_key(queried, &snap, &reg);
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        cache.put(
+            stored_key,
+            CachedPlan {
+                plan: PlanIntent {
+                    plan_id: label.to_string(),
+                    steps: vec![],
+                },
+                created_at: Instant::now(),
+                tokens_saved: 1,
+            },
+        );
+
+        let hit = cache.get(&queried_key);
+        assert!(
+            hit.is_none(),
+            "{label} must miss at similarity 1.0, got {hit:?}"
+        );
+        assert_eq!(cache.stats().similarity_hits, 0);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_url_changes() {
+        let fast = hermes2pro_ollama::Hermes2ProOllama::fast().expect("fast client");
+        let other_url =
+            hermes2pro_ollama::Hermes2ProOllama::new("http://127.0.0.1:11435", fast.model.clone())
+                .expect("client")
+                .with_temperature(fast.temperature)
+                .with_max_tokens(fast.max_tokens);
+        assert_profile_cache_miss("hermes url", &fast, &other_url);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_max_tokens_changes() {
+        let fast = hermes2pro_ollama::Hermes2ProOllama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.max_tokens = fast.max_tokens.saturating_add(1);
+        assert_profile_cache_miss("hermes max_tokens", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_system_prompt_changes() {
+        let fast = hermes2pro_ollama::Hermes2ProOllama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.system_prompt = Some("different-profile".to_string());
+        assert_profile_cache_miss("hermes system_prompt", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn hermes_fast_cache_misses_when_only_system_prompt_presence_changes() {
+        let absent = hermes2pro_ollama::Hermes2ProOllama::fast()
+            .expect("fast client")
+            .without_system_prompt();
+        let empty = hermes2pro_ollama::Hermes2ProOllama::fast()
+            .expect("fast client")
+            .with_system_prompt("");
+        assert_profile_cache_miss("hermes system_prompt presence", &absent, &empty);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_url_changes() {
+        let fast = phi3_ollama::Phi3Ollama::fast().expect("fast client");
+        let other_url = phi3_ollama::Phi3Ollama::new("http://127.0.0.1:11435", fast.model.clone())
+            .expect("client")
+            .with_temperature(fast.temperature)
+            .with_max_tokens(fast.max_tokens);
+        assert_profile_cache_miss("phi3 ollama url", &fast, &other_url);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_max_tokens_changes() {
+        let fast = phi3_ollama::Phi3Ollama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.max_tokens = fast.max_tokens.saturating_add(1);
+        assert_profile_cache_miss("phi3 ollama max_tokens", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_system_prompt_changes() {
+        let fast = phi3_ollama::Phi3Ollama::fast().expect("fast client");
+        let mut changed = fast.clone();
+        changed.system_prompt = Some("different-profile".to_string());
+        assert_profile_cache_miss("phi3 ollama system_prompt", &fast, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn phi3_ollama_fast_cache_misses_when_only_system_prompt_presence_changes() {
+        let absent = phi3_ollama::Phi3Ollama::fast()
+            .expect("fast client")
+            .without_system_prompt();
+        let empty = phi3_ollama::Phi3Ollama::fast()
+            .expect("fast client")
+            .with_system_prompt("");
+        assert_profile_cache_miss("phi3 ollama system_prompt presence", &absent, &empty);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_client_records_streaming_temperature() {
+        let client = OllamaChatClient::new(
+            "http://127.0.0.1:11434".to_string(),
+            "phi3:medium".to_string(),
+        )
+        .expect("client");
+        assert_eq!(client.llm_cache_temperature(), 0.1);
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let key = plan_prompt_cache_key(&client, &snap, &reg);
+        assert_eq!(key.temperature_q, 10);
+    }
+
+    /// Chat profile with the env knobs overridden so the cache id does not
+    /// follow `OLLAMA_LOW_LATENCY`, `OLLAMA_FORMAT_JSON`, or `OLLAMA_KEEP_ALIVE`.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn ollama_chat_profile(low_latency: bool, force_format_json: bool) -> OllamaChatClient {
+        let mut client = OllamaChatClient::new(
+            "http://127.0.0.1:11434".to_string(),
+            "phi3:medium".to_string(),
+        )
+        .expect("client");
+        client.low_latency = low_latency;
+        client.force_format_json = force_format_json;
+        client.keep_alive = None;
+        client
+    }
+
+    /// Length-prefixed fields of `llm_cache_client_id`, in write order.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn cache_id_fields(id: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = id;
+        while !rest.is_empty() {
+            let (len_text, after) = rest
+                .split_once(':')
+                .unwrap_or_else(|| panic!("cache id field missing length: {id}"));
+            let len: usize = len_text
+                .parse()
+                .unwrap_or_else(|_| panic!("cache id length {len_text} in {id}"));
+            assert!(after.len() >= len + 1, "cache id field overruns {id}");
+            out.push(after[..len].to_string());
+            assert_eq!(
+                &after[len..len + 1],
+                ";",
+                "cache id field missing ';' in {id}"
+            );
+            rest = &after[len + 1..];
+        }
+        out
+    }
+
+    /// Streaming and non-streaming completions must not share a plan.
+    ///
+    /// Field order: url, type, low_latency, format, num_predict, keep_alive
+    /// presence, keep_alive value. Dropping one `push_counted` shifts the
+    /// later fields, so this fails closed.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_across_chat_modes() {
+        let stream = ollama_chat_profile(true, true);
+        let batch = ollama_chat_profile(false, true);
+        let stream_fields = cache_id_fields(&stream.llm_cache_client_id());
+        let batch_fields = cache_id_fields(&batch.llm_cache_client_id());
+        assert_eq!(stream_fields.len(), 7, "{stream_fields:?}");
+        assert_eq!(batch_fields.len(), 7, "{batch_fields:?}");
+        assert_eq!(stream_fields[0], batch_fields[0]);
+        assert_eq!(stream_fields[1], batch_fields[1]);
+        assert_eq!(stream_fields[2], "1");
+        assert_eq!(batch_fields[2], "0");
+        assert_eq!(stream_fields[3], "json");
+        assert_eq!(batch_fields[3], "");
+        assert_eq!(stream_fields[4], "512");
+        assert_eq!(batch_fields[4], "");
+        assert_eq!(stream_fields[5], "0");
+        assert_eq!(batch_fields[5], "0");
+        assert_eq!(stream_fields[6], "");
+        assert_eq!(batch_fields[6], "");
+        let batch_plain = ollama_chat_profile(false, false);
+        assert_eq!(
+            batch.llm_cache_client_id(),
+            batch_plain.llm_cache_client_id(),
+            "the non-streaming Req does not send format"
+        );
+        let mut batch_keep = ollama_chat_profile(false, true);
+        batch_keep.keep_alive = Some("5m".to_string());
+        assert_eq!(
+            batch.llm_cache_client_id(),
+            batch_keep.llm_cache_client_id(),
+            "the non-streaming Req does not send keep_alive"
+        );
+        assert_profile_cache_miss("ollama chat mode", &stream, &batch);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_when_only_format_json_changes() {
+        let with_json = ollama_chat_profile(true, true);
+        let without = ollama_chat_profile(true, false);
+        assert_profile_cache_miss("ollama chat format", &with_json, &without);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_when_only_keep_alive_changes() {
+        let mut base = ollama_chat_profile(true, true);
+        let mut changed = ollama_chat_profile(true, true);
+        base.keep_alive = Some("5m".to_string());
+        changed.keep_alive = Some("1m".to_string());
+        assert_profile_cache_miss("ollama chat keep_alive", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[test]
+    fn ollama_chat_cache_misses_when_only_keep_alive_presence_changes() {
+        let absent = ollama_chat_profile(true, true);
+        let mut empty = ollama_chat_profile(true, true);
+        empty.keep_alive = Some(String::new());
+        assert_profile_cache_miss("ollama chat keep_alive presence", &absent, &empty);
+    }
+
+    /// One POST. Returns the URL and the raw JSON body the client sent.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    fn capture_one_http_body(response: &str) -> (String, std::sync::mpsc::Receiver<String>) {
+        use std::io::{Read, Write};
+
+        let response = response.to_string();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let Ok((mut sock, _)) = listener.accept() else {
+                return;
+            };
+            let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 2048];
+            let body = loop {
+                match sock.read(&mut tmp) {
+                    Ok(0) => break String::new(),
+                    Ok(n) => {
+                        buf.extend_from_slice(&tmp[..n]);
+                        let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") else {
+                            continue;
+                        };
+                        let headers = String::from_utf8_lossy(&buf[..end]);
+                        let len = headers
+                            .lines()
+                            .find_map(|line| {
+                                let (name, value) = line.split_once(':')?;
+                                if name.eq_ignore_ascii_case("content-length") {
+                                    value.trim().parse::<usize>().ok()
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(0);
+                        let start = end + 4;
+                        while buf.len() < start + len {
+                            match sock.read(&mut tmp) {
+                                Ok(0) | Err(_) => break,
+                                Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                            }
+                        }
+                        let end_body = (start + len).min(buf.len());
+                        break String::from_utf8_lossy(&buf[start..end_body]).into_owned();
+                    }
+                    Err(_) => break String::new(),
+                }
+            };
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                response.len()
+            );
+            let _ = sock.write_all(header.as_bytes());
+            let _ = sock.write_all(response.as_bytes());
+            let _ = tx.send(body);
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    /// `low_latency == false` is the `OLLAMA_LOW_LATENCY=0` path. `complete`
+    /// sends the non-streaming `Req`, and that body's temperature must equal
+    /// the recorded cache temperature.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[tokio::test]
+    async fn ollama_chat_nonstream_temperature_matches_recorded_cache() {
+        let (url, body_rx) = capture_one_http_body(r#"{"message":{"content":"ok"}}"#);
+        let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
+        client.low_latency = false;
+        client.force_format_json = true;
+        client.keep_alive = None;
+        let text = client.complete("ping").await.expect("non-stream complete");
+        assert_eq!(text, "ok");
+        let body = body_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("request body");
+        let sent: serde_json::Value = serde_json::from_str(&body).expect("json body");
+        assert_eq!(
+            sent["stream"],
+            serde_json::json!(false),
+            "expected the non-stream Req, got {body}"
+        );
+        assert!(
+            sent.get("format").is_none(),
+            "non-stream Req must omit format, got {body}"
+        );
+        assert!(
+            sent["options"].get("num_predict").is_none(),
+            "non-stream Req must omit num_predict, got {body}"
+        );
+        assert_eq!(
+            sent["options"]["temperature"],
+            serde_json::json!(0.1),
+            "options.temperature must be 0.1, got {body}"
+        );
+        assert_eq!(client.llm_cache_temperature(), 0.1);
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let key = plan_prompt_cache_key(&client, &snap, &reg);
+        assert_eq!(key.temperature_q, 10);
+    }
+
+    /// Default `low_latency` is the `OLLAMA_LOW_LATENCY=1` path. `complete` sends
+    /// the streaming chat body, and that body's temperature must equal the recorded
+    /// cache temperature.
+    #[cfg(all(feature = "llm_cache", feature = "ollama"))]
+    #[tokio::test]
+    async fn ollama_chat_stream_temperature_matches_recorded_cache() {
+        let (url, body_rx) =
+            capture_one_http_body("{\"message\":{\"content\":\"ok\"},\"done\":true}\n");
+        let mut client = OllamaChatClient::new(url, "phi3:medium".to_string()).expect("client");
+        client.low_latency = true;
+        client.force_format_json = true;
+        client.keep_alive = None;
+        let text = client.complete("ping").await.expect("stream complete");
+        assert_eq!(text, "ok");
+        let body = body_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("request body");
+        let sent: serde_json::Value = serde_json::from_str(&body).expect("json body");
+        assert_eq!(
+            sent["stream"],
+            serde_json::json!(true),
+            "expected the streaming chat body, got {body}"
+        );
+        assert_eq!(
+            sent["format"],
+            serde_json::json!("json"),
+            "streaming format must be json, got {body}"
+        );
+        assert_eq!(
+            sent["options"]["num_predict"],
+            serde_json::json!(512),
+            "streaming num_predict must be 512, got {body}"
+        );
+        assert_eq!(
+            sent["options"]["temperature"],
+            serde_json::json!(0.1),
+            "options.temperature must be 0.1, got {body}"
+        );
+        assert_eq!(client.llm_cache_temperature(), 0.1);
+        let snap = create_test_world_snapshot();
+        let reg = create_test_registry();
+        let key = plan_prompt_cache_key(&client, &snap, &reg);
+        assert_eq!(key.temperature_q, 10);
+    }
+
+    #[cfg(all(feature = "llm_cache", feature = "ollama", not(feature = "phi3")))]
+    fn cache_id_type_tag(client: &impl LlmClient) -> String {
+        let tag = format!("{:?}", client.type_id());
+        let id = client.llm_cache_client_id();
+        assert!(
+            id.contains(&tag),
+            "cache id {id} is missing concrete type tag {tag}"
+        );
+        tag
+    }
+
+    /// Each profile client id includes its own `TypeId`, and those tags differ.
+    #[cfg(all(feature = "llm_cache", feature = "ollama", not(feature = "phi3")))]
+    #[test]
+    fn cache_client_ids_carry_distinct_concrete_type_tags() {
+        let hermes = hermes2pro_ollama::Hermes2ProOllama::fast().expect("hermes");
+        let phi_ollama = phi3_ollama::Phi3Ollama::fast().expect("phi3 ollama");
+        let qwen = qwen3_ollama::Qwen3Ollama::fast().expect("qwen");
+        let medium = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let tags = [
+            cache_id_type_tag(&hermes),
+            cache_id_type_tag(&phi_ollama),
+            cache_id_type_tag(&qwen),
+            cache_id_type_tag(&medium),
+        ];
+        for (i, left) in tags.iter().enumerate() {
+            for right in tags.iter().skip(i + 1) {
+                assert_ne!(left, right, "concrete type tags must differ");
+            }
+        }
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    fn phi3_medium_probe(model_path: &str, config: phi3::Phi3Config) -> phi3::Phi3Medium {
+        phi3::Phi3Medium::for_cache_probe(model_path, config)
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_max_tokens_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.max_tokens = config.max_tokens.saturating_add(1);
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium max_tokens", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_top_p_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.top_p = 0.5;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium top_p", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_repeat_penalty_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.repeat_penalty = 1.5;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium repeat_penalty", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_device_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.device = phi3::Phi3Device::Cpu;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium device", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_model_path_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let changed = phi3_medium_probe("models/other.gguf", phi3::Phi3Config::default());
+        assert_profile_cache_miss("phi3 medium model_path", &base, &changed);
+    }
+
+    #[cfg(all(feature = "llm_cache", not(feature = "phi3")))]
+    #[test]
+    fn phi3_medium_cache_misses_when_only_temperature_changes() {
+        let base = phi3_medium_probe("models/phi3.gguf", phi3::Phi3Config::default());
+        let mut config = base.config().clone();
+        config.temperature = 0.2;
+        let changed = phi3_medium_probe("models/phi3.gguf", config);
+        assert_profile_cache_miss("phi3 medium temperature", &base, &changed);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

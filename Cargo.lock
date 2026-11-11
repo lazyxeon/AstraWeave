@@ -982,6 +982,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serial_test",
  "tokenizers",
  "tokio",
  "tracing",

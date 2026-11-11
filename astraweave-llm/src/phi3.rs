@@ -26,10 +26,14 @@
 //! # }
 //! ```
 
-use anyhow::{Context, Result};
+#[cfg(feature = "phi3")]
+use anyhow::Context;
+use anyhow::Result;
 use async_trait::async_trait;
 use std::path::Path;
+#[cfg(feature = "phi3")]
 use std::sync::Arc;
+#[cfg(feature = "phi3")]
 use tokio::sync::Mutex;
 
 #[cfg(feature = "phi3")]
@@ -432,9 +436,49 @@ impl Phi3Medium {
     }
 }
 
+/// Cache-identity fixture. No model is loaded.
+#[cfg(all(test, not(feature = "phi3"), feature = "llm_cache"))]
+impl Phi3Medium {
+    pub(crate) fn for_cache_probe(model_path: impl Into<String>, config: Phi3Config) -> Self {
+        Self {
+            config,
+            model_path: model_path.into(),
+        }
+    }
+}
+
 /// Implement LlmClient trait for seamless integration
 #[async_trait]
 impl LlmClient for Phi3Medium {
+    fn llm_cache_client_id(&self) -> String {
+        use std::any::Any;
+
+        // `generate` loops `max_tokens` and samples with `top_p`,
+        // `repeat_penalty`, and the tensor `device`. Temperature and the
+        // model path stay on the cache key. `use_kv_cache` is not read.
+        fn push_counted(out: &mut String, value: &str) {
+            use std::fmt::Write;
+            let _ = write!(out, "{}:{value}", value.len());
+            out.push(';');
+        }
+
+        let mut id = String::new();
+        push_counted(&mut id, &format!("{:?}", self.type_id()));
+        push_counted(&mut id, &self.config.max_tokens.to_string());
+        push_counted(&mut id, &format!("{:?}", self.config.top_p));
+        push_counted(&mut id, &format!("{:?}", self.config.repeat_penalty));
+        push_counted(&mut id, &format!("{:?}", self.config.device));
+        id
+    }
+
+    fn llm_cache_model_id(&self) -> &str {
+        &self.model_path
+    }
+
+    fn llm_cache_temperature(&self) -> f32 {
+        self.config.temperature
+    }
+
     async fn complete(&self, prompt: &str) -> Result<String> {
         #[cfg(feature = "phi3")]
         {

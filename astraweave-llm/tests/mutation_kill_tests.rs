@@ -684,7 +684,7 @@ mod cache_tests {
     #[test]
     fn prompt_cache_not_empty_after_put() {
         let cache = PromptCache::new(10);
-        let key = PromptKey::new("hello world", "model-a", 0.7, &["MoveTo"]);
+        let key = PromptKey::new("hello world", "client", "model-a", 0.7, &["MoveTo"]);
         cache.put(key, make_cached_plan("p1"));
         assert!(!cache.is_empty());
         assert_eq!(cache.len(), 1);
@@ -693,7 +693,7 @@ mod cache_tests {
     #[test]
     fn prompt_cache_exact_hit() {
         let cache = PromptCache::new(10);
-        let key = PromptKey::new("attack the enemy", "model-a", 0.7, &["MoveTo"]);
+        let key = PromptKey::new("attack the enemy", "client", "model-a", 0.7, &["MoveTo"]);
         cache.put(key.clone(), make_cached_plan("exact-hit"));
         let result = cache.get(&key);
         assert!(result.is_some());
@@ -705,7 +705,7 @@ mod cache_tests {
     #[test]
     fn prompt_cache_miss() {
         let cache = PromptCache::new(10);
-        let key = PromptKey::new("attack the enemy", "model-a", 0.7, &["MoveTo"]);
+        let key = PromptKey::new("attack the enemy", "client", "model-a", 0.7, &["MoveTo"]);
         let result = cache.get(&key);
         assert!(result.is_none());
     }
@@ -716,6 +716,7 @@ mod cache_tests {
         let cache = PromptCache::with_similarity_threshold(10, 0.3);
         let key1 = PromptKey::new(
             "move companion to enemy position attack",
+            "client",
             "model-a",
             0.7,
             &["MoveTo"],
@@ -725,6 +726,7 @@ mod cache_tests {
         // Different but overlapping prompt (same model + temperature)
         let key2 = PromptKey::new(
             "move companion towards enemy position for attack",
+            "client",
             "model-a",
             0.7,
             &["MoveTo"],
@@ -743,11 +745,11 @@ mod cache_tests {
     #[test]
     fn prompt_cache_similarity_skips_different_model() {
         let cache = PromptCache::with_similarity_threshold(10, 0.01);
-        let key1 = PromptKey::new("move to enemy", "model-a", 0.7, &["MoveTo"]);
+        let key1 = PromptKey::new("move to enemy", "client", "model-a", 0.7, &["MoveTo"]);
         cache.put(key1, make_cached_plan("plan-a"));
 
         // Same prompt but different model — should NOT match via similarity
-        let key2 = PromptKey::new("move to enemy", "model-b", 0.7, &["MoveTo"]);
+        let key2 = PromptKey::new("move to enemy", "client", "model-b", 0.7, &["MoveTo"]);
         let result = cache.get(&key2);
         assert!(
             result.is_none(),
@@ -758,21 +760,41 @@ mod cache_tests {
     #[test]
     fn prompt_cache_similarity_skips_distant_temperature() {
         let cache = PromptCache::with_similarity_threshold(10, 0.01);
-        let key1 = PromptKey::new("move to enemy", "model-a", 0.7, &["MoveTo"]);
+        let key1 = PromptKey::new("move to enemy", "client", "model-a", 0.7, &["MoveTo"]);
         cache.put(key1, make_cached_plan("plan-a"));
 
         // Same prompt but temperature diff > 0.1
-        let key2 = PromptKey::new("move to enemy", "model-a", 1.0, &["MoveTo"]);
+        let key2 = PromptKey::new("move to enemy", "client", "model-a", 1.0, &["MoveTo"]);
         let result = cache.get(&key2);
         assert!(result.is_none(), "temperature diff > 0.1 should not match");
     }
 
     #[test]
+    fn prompt_cache_similarity_skips_different_client_at_threshold_one() {
+        let cache = PromptCache::with_similarity_threshold(10, 1.0);
+        let prompt = "move companion to enemy position attack";
+        let key_client_a = PromptKey::new(prompt, "client-a", "model-a", 0.7, &["MoveTo"]);
+        cache.put(key_client_a, make_cached_plan("client-a-plan"));
+
+        let key_client_b = PromptKey::new(prompt, "client-b", "model-a", 0.7, &["MoveTo"]);
+        let result = cache.get(&key_client_b);
+        assert!(
+            result.is_none(),
+            "identical prompt at similarity 1.0 must miss across clients"
+        );
+        assert_eq!(
+            cache.stats().similarity_hits,
+            0,
+            "cross-client lookup must not count as similarity hit"
+        );
+    }
+
+    #[test]
     fn prompt_cache_eviction_increments_counter() {
         let cache = PromptCache::new(2);
-        let k1 = PromptKey::new("prompt one", "m", 0.5, &[]);
-        let k2 = PromptKey::new("prompt two", "m", 0.5, &[]);
-        let k3 = PromptKey::new("prompt three", "m", 0.5, &[]);
+        let k1 = PromptKey::new("prompt one", "client", "m", 0.5, &[]);
+        let k2 = PromptKey::new("prompt two", "client", "m", 0.5, &[]);
+        let k3 = PromptKey::new("prompt three", "client", "m", 0.5, &[]);
         cache.put(k1, make_cached_plan("p1"));
         cache.put(k2, make_cached_plan("p2"));
         cache.put(k3, make_cached_plan("p3")); // evicts LRU
@@ -784,7 +806,7 @@ mod cache_tests {
     #[test]
     fn prompt_cache_clear_resets_stats() {
         let cache = PromptCache::new(10);
-        let key = PromptKey::new("test", "model", 0.5, &[]);
+        let key = PromptKey::new("test", "client", "model", 0.5, &[]);
         cache.put(key.clone(), make_cached_plan("p"));
         cache.get(&key);
         cache.clear();
@@ -797,11 +819,11 @@ mod cache_tests {
     #[test]
     fn prompt_cache_stats_hit_rate() {
         let cache = PromptCache::new(10);
-        let key = PromptKey::new("test", "model", 0.5, &[]);
+        let key = PromptKey::new("test", "client", "model", 0.5, &[]);
         cache.put(key.clone(), make_cached_plan("p"));
         cache.get(&key); // hit
         cache.get(&key); // hit
-        let missing = PromptKey::new("missing", "model", 0.5, &[]);
+        let missing = PromptKey::new("missing", "client", "model", 0.5, &[]);
         cache.get(&missing); // miss
         let stats = cache.stats();
         assert_eq!(stats.hits, 2);
@@ -812,8 +834,8 @@ mod cache_tests {
 
     #[test]
     fn prompt_key_equality_ignores_normalized_prompt() {
-        let k1 = PromptKey::new("hello world test", "m", 0.5, &["a"]);
-        let k2 = PromptKey::new("hello world test", "m", 0.5, &["a"]);
+        let k1 = PromptKey::new("hello world test", "client", "m", 0.5, &["a"]);
+        let k2 = PromptKey::new("hello world test", "client", "m", 0.5, &["a"]);
         assert_eq!(k1, k2);
     }
 
@@ -822,8 +844,8 @@ mod cache_tests {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        let k1 = PromptKey::new("hello", "m", 0.5, &["a"]);
-        let k2 = PromptKey::new("hello", "m", 0.5, &["a"]);
+        let k1 = PromptKey::new("hello", "client", "m", 0.5, &["a"]);
+        let k2 = PromptKey::new("hello", "client", "m", 0.5, &["a"]);
         let mut h1 = DefaultHasher::new();
         let mut h2 = DefaultHasher::new();
         k1.hash(&mut h1);
