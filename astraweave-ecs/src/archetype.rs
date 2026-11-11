@@ -1201,6 +1201,21 @@ mod tests {
     }
 
     #[test]
+    fn remove_entity_components_skips_a_shorter_tick_column() {
+        use crate::component_meta::ComponentMeta;
+
+        let mut metas = HashMap::new();
+        metas.insert(TypeId::of::<Health>(), ComponentMeta::of::<Health>());
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new_with_blob(ArchetypeId(0), sig, metas);
+        let entity = unsafe { Entity::from_raw(1) };
+        archetype.add_entity_typed_raw_with_tick(entity, &[], 7);
+        archetype.remove_entity_components(entity);
+        assert!(archetype.entities_vec().is_empty());
+        assert!(archetype.get_change_tick::<Health>(entity).is_none());
+    }
+
+    #[test]
     fn stamp_by_type_writes_the_tick_callers_read() {
         use crate::component_meta::ComponentMeta;
 

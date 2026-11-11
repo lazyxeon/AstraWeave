@@ -23,7 +23,7 @@ The percentages below are this audit's 2026-03-13 figures from cargo-mutants 26.
 | `astraweave-physics` | 45,216 | **98.0%** | **98.0%** | Full + spatial hash | ✅ Complete |
 | `astraweave-terrain` | 43,500 | **100%** | **100%** | Targeted (voxel mesh, LOD) | ✅ Complete |
 | `astraweave-ai` | 38,932 | **99.7%** | **100%** | Full crate (GOAP + AI core, 29 files) | ✅ 2026-03-13 audit, not the nightly score |
-| `astraweave-ecs` | 21,454 | **97.56%** (2026-03-13 audit, raw) | **97.60%** (adjusted, same audit) | Full crate (excl. Kani+counting_alloc) | ✅ Complete |
+| `astraweave-ecs` | 21,454 | **97.56%** (2026-03-13 audit, raw) | **97.60%** (adjusted, same audit) | Full crate (excl. Kani+counting_alloc) | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-core` | 18,705 | **98.62%** | **99.53%** | Full crate (excl. Kani) | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-math` | 4,363 | **92.2%** | **100%** | Full crate (excl. Kani) | ✅ Complete |
 | `astraweave-sdk` | 2,536 | **96.3%** | **100%** | Full crate (excl. Kani) | ✅ Complete |
@@ -803,8 +803,8 @@ These crates have no unsafe code but contain important business logic, data pers
 | 10 | `astraweave-llm` | 30,763 | 973 | **31.6** | ✅ **COMPLETE** (59.4% raw, 100% adj) | ✅ **COMPLETE** |
 | 11 | `astraweave-weaving` | 17,438 | 614 → **796** | 45.6 | 344 pub fns, large API surface | ✅ **COMPLETE** |
 | 12 | `astraweave-blend` | 34,874 | 2,242 | **64.3** | High density helps, but 35K LOC | 2 sessions |
-| 13 | `astraweave-nav` | 9,849 | 496 | 50.4 | Pathfinding correctness | ✅ **COMPLETE** |
-| 14 | `astraweave-behavior` | 8,434 | 458 | 54.3 | BehaviorTree execution logic | ✅ **COMPLETE** |
+| 13 | `astraweave-nav` | 9,849 | 496 | 50.4 | Pathfinding correctness | ✅ 2026-03-13 audit, not the nightly score |
+| 14 | `astraweave-behavior` | 8,434 | 458 | 54.3 | BehaviorTree execution logic | ✅ 2026-03-13 audit, not the nightly score |
 | 15 | `astraweave-security` | 9,385 | 419 → **423** | 45.1 | Auth/authz correctness | ✅ **COMPLETE** |
 | 16 | `veilweaver_slice_runtime` | 17,551 | 460 → **683** | **38.9** | ✅ **COMPLETE** (75.7% raw, 100% adj) | ✅ **COMPLETE** |
 | 17 | `astraweave-coordination` | 6,471 | 94 → **118** | 18.2 | **LOWEST density**, 85 serde | ✅ **COMPLETE** |
@@ -2359,9 +2359,9 @@ Target: `astraweave-ecs`, `astraweave-math`, `astraweave-core` (remaining), `ast
 
 | Crate | Unsafe | Kill Rate (Adj) | Status |
 |-------|--------|-----------------|--------|
-| `astraweave-ecs` | 187 | **97.60%** (2026-03-13 audit, adjusted; not the nightly caught/(caught+missed) score) | ✅ Complete |
+| `astraweave-ecs` | 187 | **97.60%** (2026-03-13 audit, adjusted; not the nightly caught/(caught+missed) score) | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-math` | 22 | **100%** | ✅ Complete |
-| `astraweave-core` | 30 | **99.53%** | ✅ Complete |
+| `astraweave-core` | 30 | **99.53%** | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-sdk` | 22 | **100%** | ✅ Complete |
 
 **Result**: ✅ ALL COMPLETE — ≥97% adjusted kill rate on all 4 crates, 0 undetected mutations in unsafe blocks.
@@ -2372,7 +2372,7 @@ Target: `astraweave-fluids`, `astraweave-ai`, `astraweave-gameplay`, `astraweave
 | Crate | LOC | Sessions | Priority |
 |-------|-----|----------|----------|
 | `astraweave-fluids` | 81,658 | — | ✅ **COMPLETE** (100% adj) |
-| `astraweave-ai` | 38,932 | — | ✅ **COMPLETE** (100% adj) |
+| `astraweave-ai` | 38,932 | — | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-gameplay` | 16,629 | — | ✅ **COMPLETE** (100% adj) |
 | `astraweave-scripting` | 4,001 | — | ✅ **COMPLETE** (100% adj) |
 

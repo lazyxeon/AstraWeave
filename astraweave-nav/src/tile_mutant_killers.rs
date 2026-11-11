@@ -6,8 +6,8 @@
 use super::{
     adjacent_tile, build_slot, cos_deg, dist2_milli, hash_sources, manhattan, mix, normal_y,
     portal_id, slot_overlaps, tri_normal, CoverSite, NavChange, NavChangeKind, NavScratch,
-    NavTiles, Portal, Slot, SourceTri, TileSideBuffer, TileTri, Triangle, Vec3, MAX_TRIS,
-    TILE_SIZE_M,
+    NavTiles, Portal, Slot, SourceTri, TileSideBuffer, TileTri, Triangle, Vec3, MAX_NODES,
+    MAX_TRIS, TILE_SIZE_M,
 };
 
 fn up_tri(origin: Vec3) -> [Vec3; 3] {
@@ -151,7 +151,7 @@ fn heap_orders_by_cost_then_lower_node() {
     let mut scratch = NavScratch::new();
     let items = [(5, 2u32), (3, 4), (3, 1), (7, 0), (3, 0), (1, 9)];
     for (cost, node) in items {
-        tiles.heap_push(&mut scratch, cost, node);
+        assert!(tiles.heap_push(&mut scratch, cost, node));
     }
     let mut got = Vec::new();
     for _ in 0..items.len() {
@@ -308,6 +308,55 @@ fn two_triangle_path_appends_the_goal() {
     assert_eq!(n, 2);
     assert_eq!(scratch.waypoints[0], Vec3::new(0.6, 0.0, 0.6));
     assert_eq!(scratch.waypoints[1], Vec3::new(1.4, 0.0, 1.4));
+}
+
+struct StepCapReset;
+
+impl Drop for StepCapReset {
+    fn drop(&mut self) {
+        super::set_search_step_cap(None);
+    }
+}
+
+#[test]
+fn path_search_gives_up_at_the_step_cap() {
+    let _reset = StepCapReset;
+    let mut tiles = NavTiles::new(0.4, 45.0);
+    let tris = [
+        Triangle::new(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(0.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        ),
+        Triangle::new(
+            Vec3::new(0.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        ),
+        Triangle::new(
+            Vec3::new(2.0, 0.0, 2.0),
+            Vec3::new(4.0, 0.0, 2.0),
+            Vec3::new(2.0, 0.0, 0.0),
+        ),
+    ];
+    assert_eq!(tiles.ingest(&tris), 3);
+    let start = Vec3::new(0.4, 0.0, 0.4);
+    let goal = Vec3::new(3.0, 0.0, 1.2);
+    let mut scratch = NavScratch::new();
+    assert!(tiles.query_path(&mut scratch, start, goal) > 0);
+    super::set_search_step_cap(Some(2));
+    assert_eq!(tiles.query_path(&mut scratch, start, goal), 0);
+}
+
+#[test]
+fn heap_push_gives_up_on_the_385th_entry() {
+    let tiles = NavTiles::new(0.4, 45.0);
+    let mut scratch = NavScratch::new();
+    for i in 0..MAX_NODES {
+        assert!(tiles.heap_push(&mut scratch, i as u32, i as u32));
+    }
+    assert!(!tiles.heap_push(&mut scratch, 0, 0));
+    assert_eq!(scratch.heap_len as usize, MAX_NODES);
 }
 
 #[test]

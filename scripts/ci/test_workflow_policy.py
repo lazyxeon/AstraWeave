@@ -225,6 +225,8 @@ class _WorkflowLoader(yaml.SafeLoader):
         tag = event.tag
         # `!` is the non-specific tag, and `!<!> ` is that tag written
         # verbatim. Both are explicit. The checker fails closed on them.
+        # `explicit` is recorded before resolve, so an edit inside the
+        # unresolved arm does not change the flag.
         explicit = tag is not None
         if tag is None:
             tag = self.resolve(yaml.ScalarNode, event.value, event.implicit)
@@ -278,13 +280,16 @@ def _tracked_action_paths(root: Path) -> list[Path]:
         capture_output=True,
     )
     if listed.returncode != 0:
-        return []
+        detail = listed.stderr.decode("utf-8", "replace").strip()
+        raise RuntimeError(f"git ls-files failed in {root}: {detail}")
     found: list[Path] = []
     for raw in listed.stdout.split(b"\0"):
         if not raw:
             continue
         rel = raw.decode("utf-8", "surrogateescape").replace("\\", "/")
         name = rel.rsplit("/", 1)[-1]
+        # Tracked action names are already lowercase, so a lowercased
+        # comparison accepts the same paths.
         if name not in ("action.yml", "action.yaml"):
             continue
         if rel.split("/", 1)[0] in _PRUNE_ROOT_DIRS:
@@ -422,8 +427,8 @@ def _mapping_from_step(step: object) -> dict | None:
     if isinstance(loaded, list):
         if len(loaded) == 1 and isinstance(loaded[0], dict):
             return loaded[0]
-        # Several mappings in one step string are not one step. Using the
-        # first item would ignore a later continue-on-error.
+        # Several mappings in one step string are not one step. The first
+        # item and the last item are both the wrong step to keep.
         if len(loaded) > 1:
             return {"continue-on-error": _YamlScalar("", "!")}
         return None
@@ -494,19 +499,42 @@ def nightly_failure_watched_workflows(text: str) -> list[str]:
     return watched
 
 
+def trigger_has_pull_request(doc: object) -> bool:
+    """True when the workflow trigger lists `pull_request`.
+
+    The trigger key is `on`. Stock YAML also reads that bare word as boolean
+    true, so that key counts. A root that is not a mapping, a missing trigger,
+    an empty trigger, or a trigger value this checker cannot name raises.
+    """
+    if not isinstance(doc, dict):
+        raise ValueError("workflow root is not a mapping")
+    found = [key for key in ("on", True) if key in doc]
+    if len(found) != 1:
+        raise ValueError("workflow trigger cannot be classified")
+    block = doc[found[0]]
+    if isinstance(block, str):
+        if block == "":
+            raise ValueError("workflow trigger cannot be classified")
+        names = {block}
+    elif isinstance(block, list):
+        names = set()
+        for item in block:
+            if not isinstance(item, str):
+                raise ValueError("workflow trigger list cannot be classified")
+            names.add(item)
+    elif isinstance(block, dict):
+        names = set()
+        for key in block:
+            if not isinstance(key, str):
+                raise ValueError("workflow trigger mapping cannot be classified")
+            names.add(key)
+    else:
+        raise ValueError("workflow trigger cannot be classified")
+    return "pull_request" in names
+
+
 def has_pull_request(text: str) -> bool:
-    # Quoted "on" (scorecard) and bare on: both count.
-    in_on = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped in {"on:", '"on":'}:
-            in_on = True
-            continue
-        if in_on and line and not line.startswith(" ") and not line.startswith("#"):
-            in_on = False
-        if in_on and stripped.startswith("pull_request:"):
-            return True
-    return False
+    return trigger_has_pull_request(_load_workflow(text))
 
 
 def jobs_missing_timeout(text: str) -> list[str]:
@@ -1545,6 +1573,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             }
             files["tools/target/zz/action.yml"] = composite
             files["tools/node_modules/zz/action.yml"] = composite
+            files["node_modules/zz/action.yml"] = composite
             for rel, text in files.items():
                 path = root / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -1561,6 +1590,7 @@ class WorkflowPolicyTest(unittest.TestCase):
                     "tools/local/action.yml",
                     "tools/target/zz/action.yml",
                     "tools/node_modules/zz/action.yml",
+                    "node_modules/zz/action.yml",
                 },
             )
             self.assertTrue(all("second" in item for item in violations))
@@ -1572,6 +1602,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             path = root / ".github" / "workflows" / "empty.yml"
             path.parent.mkdir(parents=True)
             path.write_text("jobs:\n  build:\n    steps: []\n", encoding="utf-8")
+            _track_tree(root)
             violations = scan_policy_tree(root)
             self.assertTrue(any("steps key yielded no steps" in item for item in violations))
 
@@ -1591,6 +1622,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             path = root / ".github" / "workflows" / "two.yml"
             path.parent.mkdir(parents=True)
             path.write_text(document, encoding="utf-8")
+            _track_tree(root)
             self.assertEqual(scan_policy_tree(root), [])
             saved = iter_workflow_steps
 
@@ -1641,6 +1673,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             path = root / ".github" / "workflows" / "bad.yml"
             path.parent.mkdir(parents=True)
             path.write_text(document, encoding="utf-8")
+            _track_tree(root)
             with self.assertRaises(ValueError):
                 scan_policy_tree(root)
 
@@ -1653,6 +1686,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             path = root / ".github" / "workflows" / "bad.yml"
             path.parent.mkdir(parents=True)
             path.write_text(document, encoding="utf-8")
+            _track_tree(root)
             with self.assertRaises(yaml.YAMLError):
                 scan_policy_tree(root)
 
@@ -1709,6 +1743,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             path = root / ".github" / "workflows" / "merge.yml"
             path.parent.mkdir(parents=True)
             path.write_text(text, encoding="utf-8")
+            _track_tree(root)
             violations = scan_policy_tree(root)
             self.assertTrue(any("walked 0 != parsed 1" in item for item in violations))
 
@@ -1721,8 +1756,54 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_multi_mapping_step_text_fails_closed(self) -> None:
         several = "- continue-on-error: false\n- continue-on-error: true\n"
         self.assertTrue(step_continue_on_error(several))
+        reversed_order = "- continue-on-error: true\n- continue-on-error: false\n"
+        self.assertTrue(step_continue_on_error(reversed_order))
         one = "- continue-on-error: true\n"
         self.assertTrue(step_continue_on_error(one))
+
+    def test_git_ls_files_failure_is_not_an_empty_action_list(self) -> None:
+        composite = (
+            "name: demo\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - name: bad\n"
+            "      shell: bash\n"
+            "      run: echo\n"
+            "      continue-on-error: true\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            planted = root / "tools" / "local" / "action.yml"
+            planted.parent.mkdir(parents=True)
+            planted.write_text(composite, encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                scan_policy_tree(root)
+
+    def test_pull_request_trigger_forms(self) -> None:
+        present = (
+            "'on':\n  pull_request:\n",
+            "on: [pull_request]\n",
+            "on: {pull_request: {branches: [main]}}\n",
+            'on:\n  "pull_request":\n',
+            "on:\n  pull_request :\n",
+        )
+        for text in present:
+            self.assertTrue(has_pull_request(text), text)
+        self.assertFalse(has_pull_request("on:\n  push:\n    branches: [main]\n"))
+        stock = yaml.safe_load("on:\n  pull_request:\n")
+        self.assertIn(True, stock)
+        self.assertTrue(trigger_has_pull_request(stock))
+        stock_flow = yaml.safe_load("on: [pull_request]\n")
+        self.assertTrue(trigger_has_pull_request(stock_flow))
+        for text in (
+            "name: only\n",
+            "on:\n",
+            "on:\n  - pull_request: {}\n",
+            "on: !!int 3\n",
+        ):
+            with self.assertRaises(ValueError):
+                has_pull_request(text)
 
     def test_folded_false_is_forbidden(self) -> None:
         folded = "name: bad\ncontinue-on-error: >-\n  false\n"

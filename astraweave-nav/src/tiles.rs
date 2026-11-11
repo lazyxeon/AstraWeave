@@ -34,58 +34,55 @@ const MAX_PENDING: usize = 16;
 const MAX_SITES: usize = 16;
 const MAX_NODES: usize = MAX_SLOTS * MAX_TRIS;
 const MAX_WAYPOINTS: usize = 32;
-/// Pops a correct `heap_pop` never reaches. A body replaced with a constant
-/// does not drain the heap, so the query loop would not terminate.
+/// Pops after which [`NavTiles::query_path`] gives up and returns no path.
+/// A correct search of the fixed node table finishes before this. Tests can
+/// substitute a smaller cap.
 const SEARCH_STEP_CAP: u32 = 65_536;
 
+#[cfg(test)]
+std::thread_local! {
+    static SEARCH_STEP_CAP_OVERRIDE: std::cell::Cell<Option<u32>> =
+        const { std::cell::Cell::new(None) };
+}
+
+fn search_step_cap() -> u32 {
+    #[cfg(test)]
+    {
+        if let Some(cap) = SEARCH_STEP_CAP_OVERRIDE.with(|cell| cell.get()) {
+            return cap;
+        }
+    }
+    SEARCH_STEP_CAP
+}
+
+#[cfg(test)]
+fn set_search_step_cap(cap: Option<u32>) {
+    SEARCH_STEP_CAP_OVERRIDE.with(|cell| cell.set(cap));
+}
+
 /// Advance a scan cursor by one.
-///
-/// `+= 1` mutated to `*= 1`, or the body replaced with `0` or `1`,
-/// leaves the cursor in place, so `clear_dirty_slot` does not terminate.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn step_index(index: usize) -> usize {
     index + 1
 }
 
 /// Advance the path-search counter by one.
-///
-/// Replacing the call with `0` keeps the counter at zero, so
-/// [`search_budget_left`] never stops a heap that does not shrink.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn step_u32(index: u32) -> u32 {
     index + 1
 }
 
 /// Shrink a counted length by one.
-///
-/// `-= 1` mutated to `/= 1` leaves the heap, the dirty list, or the
-/// waypoint cursor unchanged, so the surrounding loop does not terminate.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn pred_u16(len: u16) -> u16 {
     len - 1
 }
 
 /// Shrink a sort cursor by one.
-///
-/// `-= 1` mutated to `/= 1` repeats the same swap.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn pred_usize(len: usize) -> usize {
     len - 1
 }
 
 /// `true` while the open set may still be popped.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn search_budget_left(steps: u32) -> bool {
-    steps < SEARCH_STEP_CAP
-}
-
-/// `true` when a binary-heap parent index moves toward the root.
-///
-/// A parent that does not decrease repeats the sift. Returning `true`
-/// does the same, so the body is skipped.
-#[cfg_attr(mutants_skip, mutants::skip)]
-fn parent_moves_up(parent: usize, index: usize) -> bool {
-    parent < index
+    steps < search_step_cap()
 }
 
 /// Which destruction command produced a [`NavChange`].
@@ -491,7 +488,9 @@ impl NavTiles {
         }
         let stamp = scratch.stamp;
         scratch.heap_len = 0;
-        self.heap_push(scratch, 0, start_n);
+        if !self.heap_push(scratch, 0, start_n) {
+            return 0;
+        }
         scratch.seen[start_n as usize] = stamp;
         scratch.g[start_n as usize] = 0;
         scratch.parent[start_n as usize] = start_n;
@@ -508,7 +507,9 @@ impl NavTiles {
                 break;
             }
             let g = scratch.g[node as usize];
-            self.relax_neighbors(scratch, node, g, goal_n, stamp);
+            if !self.relax_neighbors(scratch, node, g, goal_n, stamp) {
+                return 0;
+            }
         }
         if !found {
             return 0;
@@ -857,12 +858,21 @@ impl NavTiles {
         best.map(|(node, _)| node)
     }
 
-    fn relax_neighbors(&self, scratch: &mut NavScratch, node: u32, g: u32, goal: u32, stamp: u32) {
+    fn relax_neighbors(
+        &self,
+        scratch: &mut NavScratch,
+        node: u32,
+        g: u32,
+        goal: u32,
+        stamp: u32,
+    ) -> bool {
         let (slot, local) = decode_node(node);
         let tri = &self.slots[slot].tris[local];
         for i in 0..tri.neighbor_count as usize {
             let next = encode_node(slot, tri.neighbors[i] as usize);
-            self.relax(scratch, node, next, g, goal, stamp);
+            if !self.relax(scratch, node, next, g, goal, stamp) {
+                return false;
+            }
         }
         for i in 0..self.portal_count as usize {
             let portal = &self.portals[i];
@@ -877,15 +887,26 @@ impl NavTiles {
                 None
             };
             if let Some(next) = next {
-                self.relax(scratch, node, next, g, goal, stamp);
+                if !self.relax(scratch, node, next, g, goal, stamp) {
+                    return false;
+                }
             }
         }
+        true
     }
 
-    fn relax(&self, scratch: &mut NavScratch, from: u32, to: u32, g: u32, goal: u32, stamp: u32) {
+    fn relax(
+        &self,
+        scratch: &mut NavScratch,
+        from: u32,
+        to: u32,
+        g: u32,
+        goal: u32,
+        stamp: u32,
+    ) -> bool {
         let (slot, local) = decode_node(to);
         if slot >= MAX_SLOTS || !self.slots[slot].tris[local].live {
-            return;
+            return true;
         }
         let (from_slot, from_local) = decode_node(from);
         let step = manhattan(
@@ -895,7 +916,7 @@ impl NavTiles {
         let ng = g.saturating_add(step);
         let seen = scratch.seen[to as usize] == stamp;
         if seen && ng >= scratch.g[to as usize] {
-            return;
+            return true;
         }
         scratch.seen[to as usize] = stamp;
         scratch.g[to as usize] = ng;
@@ -904,12 +925,13 @@ impl NavTiles {
             self.slots[slot].tris[local].center,
             self.slots[decode_node(goal).0].tris[decode_node(goal).1].center,
         );
-        self.heap_push(scratch, ng.saturating_add(h), to);
+        self.heap_push(scratch, ng.saturating_add(h), to)
     }
 
-    fn heap_push(&self, scratch: &mut NavScratch, f: u32, node: u32) {
+    /// Push one open node. A full heap is a give-up: the entry is not stored.
+    fn heap_push(&self, scratch: &mut NavScratch, f: u32, node: u32) -> bool {
         if scratch.heap_len as usize >= MAX_NODES {
-            return;
+            return false;
         }
         let mut i = scratch.heap_len as usize;
         scratch.heap_f[i] = f;
@@ -917,9 +939,6 @@ impl NavTiles {
         scratch.heap_len += 1;
         while i > 0 {
             let parent = (i - 1) / 2;
-            if !parent_moves_up(parent, i) {
-                break;
-            }
             let worse = scratch.heap_f[i] < scratch.heap_f[parent]
                 || (scratch.heap_f[i] == scratch.heap_f[parent]
                     && scratch.heap_n[i] < scratch.heap_n[parent]);
@@ -930,6 +949,7 @@ impl NavTiles {
             scratch.heap_n.swap(i, parent);
             i = parent;
         }
+        true
     }
 
     fn heap_pop(&self, scratch: &mut NavScratch) -> u32 {

@@ -322,7 +322,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 - **Does any shipping app insert a `NavMesh` ECS resource?** Closed for the script tick: `script_system` does not read `NavMesh` (#317). `examples/scripting_advanced_demo` still inserts one. No non-example shipping binary was found. Whether a runtime app should insert the resource for a non-script consumer remains open.
 - **Should `crates/astraweave-nav/` be reconciled?** It is an orphan (no manifest, stale bench copy). Its existence can mislead grep-based discovery into thinking there are two nav crates. (Surfaced factually per §6; disposition is the owner's call.)
 - **`max_step` (closed 2026-10-15):** a shared XZ edge links only when the vertical gap is at most `max_step`. Coplanar edges are unchanged. The stair golden is `max_step_links_a_low_ledge_and_rejects_a_tall_one`.
-- **`partial_rebake` (closed 2026-10-15):** relinks triangles that meet a dirty AABB and leaves other vertices in place. Tiled commits live in `src/tiles.rs` and stop at `TILE_COMMITS_PER_TICK` (4).
+- **`partial_rebake` (closed 2026-10-15):** relinks triangles that meet a dirty AABB and leaves other vertices in place. Tiled commits live in `src/tiles.rs` and stop at `TILE_COMMITS_PER_TICK` (4). `NavTiles::query_path` gives up and returns no path after 65536 heap pops. A push onto a full 384-node heap also gives up: the entry is not stored, and the search returns no path.
 - **Scaling:** 10K-tri bake at 473 ms (O(n²) adjacency) is flagged "must be async" in the benchmark report. Is large-mesh baking expected to move off the main thread or precompute offline?
 
 ---

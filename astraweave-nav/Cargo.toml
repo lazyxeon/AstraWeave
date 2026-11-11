@@ -16,9 +16,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "navmesh_benchmarks"
 harness = false
 
-# `mutants_skip` is set by cargo-mutants when it builds a mutant.
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(mutants_skip)'] }
+# cargo-mutants 27.1.0 reads `cfg_attr(mutants_skip, mutants::skip)` from source.
+# It does not set `cfg(mutants_skip)`. This crate no longer uses that attribute,
+# so it does not list the cfg under `unexpected_cfgs`.
 
 # P1 unwrap guidance. Warn, matching the old non-blocking P1 matrix.
 [lints.clippy]

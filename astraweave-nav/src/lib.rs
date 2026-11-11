@@ -824,19 +824,11 @@ fn closest_tri(tris: &[NavTri], p: Vec3) -> Option<usize> {
 }
 
 /// Add an edge cost onto a g-score.
-///
-/// The body is skipped. Replacing `+` with `-` makes a g-score fall on a
-/// cyclic mesh, so [`astar_tri`] does not terminate.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn accumulate_cost(gi: f32, cost: f32) -> f32 {
     gi + cost
 }
 
 /// `true` when `ng` is a strictly better g-score than `old`.
-///
-/// `<` mutated to `<=` pushes the same node again, so the search does
-/// not terminate.
-#[cfg_attr(mutants_skip, mutants::skip)]
 fn score_improves(ng: f32, old: f32) -> bool {
     ng < old
 }
