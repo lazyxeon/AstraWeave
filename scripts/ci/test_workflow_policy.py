@@ -15,7 +15,6 @@ import string
 import subprocess
 import sys
 import tempfile
-import unicodedata
 import unittest
 from pathlib import Path
 
@@ -159,12 +158,6 @@ def _uses_scan_lines(text: str) -> list[str]:
             out[blank] = ""
         index = cursor
     return out
-
-
-def _unquote_scalar(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    return value
 
 
 class _MarkedDict(dict):
@@ -1037,7 +1030,8 @@ _EDITOR_TEST_STRATEGY = {
 }
 _PINNED_REPORT_NAME_VALUES = frozenset(_PINNED_REPORT_NAMES.values())
 _PINNED_REPORT_NAME_FOLDED = frozenset(name.casefold() for name in _PINNED_REPORT_NAME_VALUES)
-# Exact upload names outside the two coverage workflows. Any other ${{ fails.
+# Exact upload names allowed outside coverage.yml and aw-editor-tests.yml.
+# Those two files reject every ${{. Any other ${{ name fails.
 _PUBLISHED_EXPRESSION_ARTIFACT_NAMES = frozenset(
     {
         "alloc-measure-${{ matrix.crate }}",
@@ -1886,8 +1880,9 @@ def coverage_permission_violations(text: str, *, path: str = "") -> list[str]:
     Top-level permissions must be {}. A missing key fails. write-all, and any
     permission value write, fail, including a flow mapping or a quoted key.
     The upload job's keys are exactly name, needs, permissions, runs-on,
-    timeout-minutes, and steps. needs is exactly the job coverage. The
-    coverage job's keys are name, permissions, runs-on, timeout-minutes,
+    timeout-minutes, and steps. needs is the job coverage, as that string
+    or as [coverage]. The coverage job's keys are name, permissions,
+    runs-on, timeout-minutes,
     and steps. Its permissions map is exactly contents: read. An added,
     removed, or changed scope fails. Its last step is the upload-artifact
     whose with.name is the pinned report. A job-level if:, a step if:, a
@@ -2254,9 +2249,8 @@ def rust_ci_setup_violations(text: str, *, path: str = "") -> list[str]:
     `.github/actions/rust-nightly/action.yml`. Each of those files must
     exist, and `action.yaml` must not sit beside it. Every local `uses:`
     must exactly match one of those two paths or an entry on the
-    reusable-workflow allowlist. That allowlist is empty. A path under
-    `.github/workflows`, including a directory, is not exempt. A
-    non-mapping document fails.
+    reusable-workflow allowlist. That allowlist is empty. A directory
+    under `.github/workflows` fails. A non-mapping document fails.
     """
     prefix = f"{path}: " if path else ""
     doc, err = load_workflow_yaml(text)
@@ -2319,88 +2313,40 @@ def _has_overwrite(node: object) -> bool:
     return any(isinstance(key, str) and key.casefold() == "overwrite" for key in node)
 
 
-def _expression_end(name: str, start: int) -> int | None:
-    """Index just after the closing `}}`, or None when the scan does not finish.
-
-    Actions expressions quote strings with `'`. `"` is also treated as a
-    quote so a double-quoted `}}` cannot end the scan early. The expression
-    text is not evaluated. If the index does not advance, the scan fails
-    closed instead of looping.
-    """
-    quote: str | None = None
-    index = start
-    while index < len(name):
-        previous = index
-        char = name[index]
-        if quote is not None:
-            if char == quote:
-                quote = None
-        elif char in "'\"":
-            quote = char
-        elif name.startswith("}}", index):
-            return index + 2
-        index = previous + 1
-        if index <= previous:
-            return None
-    return None
-
-
-def _walk_expressions(name: str) -> bool:
-    """True when every `${{` closes and the scan advances.
-
-    A scan that does not advance fails closed. The caller rejects every
-    other `${{` name.
-    """
-    index = 0
-    while index < len(name):
-        previous = index
-        if name.startswith("${{", index):
-            end = _expression_end(name, index + 3)
-            if not isinstance(end, int) or end <= previous:
-                return False
-            index = end
-        else:
-            index = previous + 1
-        if index <= previous:
-            return False
-    return True
-
-
 def _name_form_rejected(name: str) -> bool:
     """True when the name is not its ASCII-trimmed form, or contains
-    non-ASCII whitespace or a format character.
+    a character outside printable ASCII.
 
-    ASCII trim is `string.whitespace` only. The character class is the
-    Unicode category, not a list of code points.
+    ASCII trim is `string.whitespace` only. Printable ASCII is 0x20
+    through 0x7E. The check is that range, not a category list.
     """
     if name != name.strip(string.whitespace):
         return True
     for char in name:
-        if ord(char) < 128:
+        code = ord(char)
+        if 0x20 <= code <= 0x7E:
             continue
-        category = unicodedata.category(char)
-        if category == "Cf" or category.startswith("Z"):
-            return True
+        return True
     return False
 
 
-def _could_be_pinned_report_name(name: object) -> bool:
+def _could_be_pinned_report_name(name: object, path: str = "") -> bool:
     """True when an upload name fails closed or is a pinned report.
 
     A name that is not equal to its ASCII-trimmed form fails. A name that
-    contains non-ASCII whitespace or a format character fails. A name that
-    contains `${{` fails, and the expression is not evaluated, unless that
-    exact string is an artifact name already published outside the two
-    coverage workflows. Literal text around `${{` is not matched. A name
-    that remains is compared without case. An expression that does not
-    close fails.
+    contains a character outside printable ASCII (0x20-0x7E) fails. A name
+    that contains `${{` fails. The expression is not evaluated. In
+    coverage.yml and aw-editor-tests.yml every such name fails. Elsewhere
+    the name is allowed only when it is an exact member of the published
+    artifact names. Literal text around `${{` is not matched. A name that
+    remains is compared without case.
     """
     if not isinstance(name, str):
         return False
     if _name_form_rejected(name):
         return True
     if "${{" in name:
-        if not _walk_expressions(name):
+        if Path(path).name in _PINNED_REPORT_NAMES:
             return True
         return name not in _PUBLISHED_EXPRESSION_ARTIFACT_NAMES
     return name.casefold() in _PINNED_REPORT_NAME_FOLDED
@@ -2412,14 +2358,15 @@ def coverage_report_publish_violations(
     """Only the producer upload may publish the pinned report name.
 
     coverage-xml and aw-editor-lcov are those names. A name that is not
-    equal to its ASCII-trimmed form fails. A name that contains non-ASCII
-    whitespace or a format character fails. A name that contains `${{` fails,
-    and the expression is not evaluated, unless that exact string is an
-    artifact name already published outside these two workflows. Literal
-    text around `${{` is not matched. A name that remains is compared
-    without case. An expression that does not close fails. The one plain
-    producer upload in coverage.yml or aw-editor-tests.yml is the exception
-    when the name is exactly that report. archive fails unless it is absent or true. A
+    equal to its ASCII-trimmed form fails. A name that contains a character
+    outside printable ASCII (0x20-0x7E) fails. A name that contains `${{`
+    fails. The expression is not evaluated. In coverage.yml and
+    aw-editor-tests.yml every such name fails. Elsewhere the name is
+    allowed only when it is an exact member of the published artifact
+    names. Literal text around `${{` is not matched. A name that remains
+    is compared without case. The one plain producer upload in coverage.yml
+    or aw-editor-tests.yml is the exception when the name is exactly that
+    report. archive fails unless it is absent or true. A
     repeated key in an upload with: fails, including a later case-variant.
     The first and last values are not used. A sub-path of
     actions/upload-artifact, including merge, is the same upload, and that
@@ -2461,7 +2408,7 @@ def coverage_report_publish_violations(
         if plain_producer:
             pinned_jobs.append(job_id)
             continue
-        if _could_be_pinned_report_name(name):
+        if _could_be_pinned_report_name(name, path):
             violations.append(f"{prefix}{_step_line(step)}: {PINNED_REPORT_MSG}")
     if allowed is not None:
         if any(job_id != "coverage" for job_id in pinned_jobs):
@@ -7865,11 +7812,12 @@ jobs:
         )
 
     def test_pinned_report_names_reject_expressions_and_other_files(self) -> None:
-        """An upload name that contains ${{ fails unless it is an exact published name.
+        """A ${{ upload name fails unless it is an exact published name.
 
-        The expression is not evaluated. Literal text around ${{ is not
-        matched. A literal name that is not pinned is allowed. The same name
-        check applies to a composite file and to a workflow file.
+        coverage.yml and aw-editor-tests.yml reject every ${{ name. The
+        expression is not evaluated. Literal text around ${{ is not matched.
+        A literal name that is not pinned is allowed. The same name check
+        applies to a composite file and to a workflow file.
         """
         coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
         report = "          name: coverage-report\n"
@@ -8368,19 +8316,13 @@ jobs:
             )
 
     def test_expression_guards_fail_closed(self) -> None:
-        """An unclosed expression and a quoted marker stay on the live scan.
-
-        The scan index moves, and a scan that cannot close returns None.
-        """
+        """An unclosed or quoted ${{ name fails by exact membership."""
         unclosed = "coverage-xml ${{ no-close"
-        self.assertIsNone(_expression_end(unclosed, unclosed.index("${{") + 3))
+        self.assertNotIn(unclosed, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
         self.assertTrue(_could_be_pinned_report_name(unclosed))
         quoted = "ok-${{'}}'}}-tail"
-        start = quoted.index("${{") + 3
-        end = _expression_end(quoted, start)
-        self.assertIsNotNone(end)
-        self.assertGreater(end, start)
-        self.assertGreater(end, quoted.index("'}}'"))
+        self.assertNotIn(quoted, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
+        self.assertTrue(_could_be_pinned_report_name(quoted))
         hits = rust_ci_setup_violations(
             "[]\n",
             path=".github/actions/rust-ci-setup/action.yml",
@@ -8474,13 +8416,7 @@ jobs:
             " ".join(coverage_report_publish_violations(workflow_uses, path=".github/workflows/ci.yml")),
         )
         sample = "zz-${{ github.sha }}"
-        sample_start = sample.index("${{") + 3
-        sample_end = _expression_end(sample, sample_start)
-        self.assertIsNotNone(sample_end)
-        self.assertGreater(sample_end, sample_start)
-        self.assertTrue(_walk_expressions(sample))
-        self.assertFalse(_walk_expressions("${{ 'x'"))
-        self.assertIsNone(_expression_end("${{ 'x'", 3))
+        self.assertNotIn(sample, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
         self.assertTrue(_could_be_pinned_report_name("${{ 'x'"))
         self.assertTrue(_could_be_pinned_report_name(sample))
         plain = WORKFLOWS / "probe-not-yaml.txt"
@@ -8517,7 +8453,7 @@ jobs:
             shutil.rmtree(outside, ignore_errors=True)
 
     def test_workflow_directory_action_is_not_allowlisted(self) -> None:
-        """A directory under .github/workflows is a local action and must be listed."""
+        """A directory under .github/workflows is a local action and fails."""
         action_dir = WORKFLOWS / "sub"
         action = action_dir / "action.yml"
         caller = (WORKFLOWS / "miri.yml").read_text(encoding="utf-8")
@@ -8690,7 +8626,7 @@ jobs:
                     continue
                 self.assertNotIn(path.name, _PINNED_REPORT_NAMES, name)
                 found.add(name)
-                self.assertFalse(_could_be_pinned_report_name(name), name)
+                self.assertFalse(_could_be_pinned_report_name(name, path.as_posix()), name)
                 self.assertFalse(_name_form_rejected(name), name)
         self.assertEqual(found, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
         variant = "Benchmark-results-${{ github.sha }}"
@@ -8714,8 +8650,73 @@ jobs:
             [],
         )
 
+    def test_unspaced_expression_names_fail_closed(self) -> None:
+        """${{ with no space is still an expression and fails exact membership."""
+        names = ("${{matrix.x}}", "x${{github.sha}}")
+        for name in names:
+            self.assertNotIn(name, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES, name)
+            self.assertIn("${{", name, name)
+            self.assertNotIn("${{ ", name, name)
+            self.assertTrue(_could_be_pinned_report_name(name, "other.yml"), name)
+            text = (
+                "name: t\n"
+                "on: push\n"
+                "jobs:\n"
+                "  build:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - uses: actions/upload-artifact@v7\n"
+                "        with:\n"
+                f"          name: {name}\n"
+                "          path: out\n"
+            )
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, name)
+            loaded = doc["jobs"]["build"]["steps"][0]["with"]["name"]
+            self.assertEqual(loaded, name, name)
+            hits = coverage_report_publish_violations(
+                text, path=".github/workflows/other.yml"
+            )
+            self.assertIn(PINNED_REPORT_MSG, " ".join(hits), name)
+
+    def test_coverage_workflows_reject_every_expression_name(self) -> None:
+        """The two coverage workflows reject a published ${{ name."""
+        published = "benchmark-results-${{ github.sha }}"
+        sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
+        self.assertIn(published, _PUBLISHED_EXPRESSION_ARTIFACT_NAMES)
+        self.assertFalse(_could_be_pinned_report_name(published, "other.yml"))
+        self.assertTrue(_could_be_pinned_report_name(published, "coverage.yml"))
+        self.assertTrue(
+            _could_be_pinned_report_name(published, ".github/workflows/coverage.yml")
+        )
+        self.assertTrue(_could_be_pinned_report_name(published, "aw-editor-tests.yml"))
+        for filename in ("coverage.yml", "aw-editor-tests.yml"):
+            base = (WORKFLOWS / filename).read_text(encoding="utf-8")
+            job = (
+                "\n"
+                "  extra:\n"
+                "    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                f"      - uses: actions/upload-artifact@{sha}\n"
+                "        with:\n"
+                f"          name: {published}\n"
+                "          path: out\n"
+            )
+            text = base.rstrip() + job
+            doc, err = load_workflow_yaml(text)
+            self.assertIsNone(err, filename)
+            loaded = doc["jobs"]["extra"]["steps"][0]["with"]["name"]
+            self.assertEqual(loaded, published, filename)
+            hits = " ".join(coverage_report_publish_violations(text, path=filename))
+            self.assertIn(PINNED_REPORT_MSG, hits, filename)
+
     def test_upload_name_form_fails_closed(self) -> None:
-        """A name that is not its ASCII-trimmed form, or that contains ${{, fails."""
+        """A protected name must be printable ASCII and its trimmed form.
+
+        Each rejected class fails on the publish path, including both
+        edges of each pinned name for U+0085 and U+00A0. The other classes
+        are a format character, NUL, U+001F, DEL, and a non-ASCII letter.
+        """
         sha = "cf430e030ddbb5b0abf93d22962f4752f3646cd9"
         editor = (WORKFLOWS / "aw-editor-tests.yml").read_text(encoding="utf-8")
         coverage = (WORKFLOWS / "coverage.yml").read_text(encoding="utf-8")
@@ -8727,6 +8728,19 @@ jobs:
             "expression": "zz-${{ github.sha }}",
             "format": "aw-editor-lcov\u200b",
             "ascii-space": " other ",
+            "nbsp-editor-prefix": "\u00a0aw-editor-lcov",
+            "nbsp-editor-suffix": "aw-editor-lcov\u00a0",
+            "nbsp-coverage-prefix": "\u00a0coverage-xml",
+            "nbsp-coverage-suffix": "coverage-xml\u00a0",
+            "word-joiner": "aw-editor-lcov\u2060",
+            "nel-coverage-prefix": "\u0085coverage-xml",
+            "nel-coverage-suffix": "coverage-xml\u0085",
+            "nel-editor-prefix": "\u0085aw-editor-lcov",
+            "nel-editor-suffix": "aw-editor-lcov\u0085",
+            "nul": "cover\x00age-xml",
+            "unit-separator": "cover\x1fage-xml",
+            "ascii-control": "cover\x7fage-xml",
+            "homoglyph": "coverage-xm\u0406",
         }
         files = {
             "editor-prefix": (editor, "aw-editor-tests.yml"),
@@ -8736,6 +8750,19 @@ jobs:
             "expression": (editor, "aw-editor-tests.yml"),
             "format": (editor, "aw-editor-tests.yml"),
             "ascii-space": (editor, "aw-editor-tests.yml"),
+            "nbsp-editor-prefix": (editor, "aw-editor-tests.yml"),
+            "nbsp-editor-suffix": (editor, "aw-editor-tests.yml"),
+            "nbsp-coverage-prefix": (coverage, "coverage.yml"),
+            "nbsp-coverage-suffix": (coverage, "coverage.yml"),
+            "word-joiner": (editor, "aw-editor-tests.yml"),
+            "nel-coverage-prefix": (coverage, "coverage.yml"),
+            "nel-coverage-suffix": (coverage, "coverage.yml"),
+            "nel-editor-prefix": (editor, "aw-editor-tests.yml"),
+            "nel-editor-suffix": (editor, "aw-editor-tests.yml"),
+            "nul": (coverage, "coverage.yml"),
+            "unit-separator": (editor, "aw-editor-tests.yml"),
+            "ascii-control": (coverage, "coverage.yml"),
+            "homoglyph": (coverage, "coverage.yml"),
         }
         for label, name in names.items():
             base, path = files[label]
@@ -8842,6 +8869,36 @@ jobs:
         finally:
             if not nightly.exists():
                 nightly.write_text(held, encoding="utf-8")
+            if sibling.exists():
+                sibling.unlink()
+
+    def test_rust_ci_setup_action_file_must_exist_without_yaml_sibling(self) -> None:
+        """rust-ci-setup action.yml must exist, with no action.yaml beside it."""
+        setup = ROOT / _RUST_CI_SETUP_PATH
+        sibling = setup.with_name("action.yaml")
+        held = setup.read_text(encoding="utf-8")
+        caller = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+        nightly = ROOT / _RUST_NIGHTLY_PATH
+        self.assertTrue(nightly.is_file())
+        self.assertFalse(nightly.with_name("action.yaml").exists())
+        self.assertTrue(_locked_action_files_ok())
+        self.assertEqual(rust_ci_setup_violations(caller, path=".github/workflows/ci.yml"), [])
+        try:
+            sibling.write_text("name: other\n", encoding="utf-8")
+            self.assertTrue(setup.is_file())
+            self.assertTrue(nightly.is_file())
+            self.assertFalse(_locked_action_files_ok())
+            hits = rust_ci_setup_violations(caller, path=".github/workflows/ci.yml")
+            self.assertIn(LOCKED_ACTION_FILE_MSG, " ".join(hits))
+            sibling.unlink()
+            setup.unlink()
+            self.assertFalse(setup.exists())
+            self.assertTrue(nightly.is_file())
+            missing = rust_ci_setup_violations(caller, path=".github/workflows/ci.yml")
+            self.assertIn(LOCKED_ACTION_FILE_MSG, " ".join(missing))
+        finally:
+            if not setup.exists():
+                setup.write_text(held, encoding="utf-8")
             if sibling.exists():
                 sibling.unlink()
 
