@@ -838,6 +838,49 @@ def _bind_tool(script: Path, literal: str, replacement: Path) -> None:
     )
 
 
+def _fixture_node() -> str:
+    """A node binary the shim can exec. The prefetch script does not search PATH."""
+    for candidate in (
+        "/opt/homebrew/bin/node",
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+    ):
+        if os.access(candidate, os.X_OK):
+            return candidate
+    found = shutil.which("node")
+    if not found:
+        raise AssertionError("node fixture is missing")
+    return found
+
+
+def _bind_fetch_node(script: Path, replacement: Path) -> None:
+    _bind_tool(script, _NODE_BIND, replacement)
+
+
+def _write_stage_planter(work: Path, plant: str) -> None:
+    """Node shim that runs the real interpreter, then edits the staged tree."""
+    real = shlex.quote(_fixture_node())
+    shim = (
+        "#!/bin/sh\n"
+        f"real={real}\n"
+        "mode=\n"
+        "for arg in \"$@\"; do\n"
+        "  case \"$arg\" in\n"
+        "    stage) mode=stage ;;\n"
+        "  esac\n"
+        "done\n"
+        "if [ \"$mode\" = stage ]; then\n"
+        "  \"$real\" \"$@\" || exit $?\n"
+        "  dest=\n"
+        "  for arg in \"$@\"; do dest=$arg; done\n"
+        f"  {plant}\n"
+        "  exit 0\n"
+        "fi\n"
+        "exec \"$real\" \"$@\"\n"
+    )
+    _write_exe(work / "bin", "node", shim)
+
+
 def _script_copy(directory: Path) -> Path:
     source = ROOT / "scripts" / "ci" / "fetch_sccache_release.sh"
     dest = directory / "fetch.sh"
@@ -1040,7 +1083,11 @@ _ALLOWED_SCRIPTS_CI_LINES = frozenset(
         _FETCH_RUN_LINE,
         "run: bash scripts/ci/gpu_frame_budget.sh",
         'run: bash scripts/ci/deepen_for_merge_base.sh "${{ github.base_ref }}"',
-        "python3 scripts/ci/affected_crates.py \\",
+        'python3 scripts/ci/affected_crates.py --base "HEAD^1" --head HEAD --github-output "$GITHUB_OUTPUT"',
+        'python3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope net --github-output "$GITHUB_OUTPUT"',
+        'python3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope render-device --github-output "$GITHUB_OUTPUT"',
+        'python3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope aravath-determinism --github-output "$GITHUB_OUTPUT"',
+        'python3 scripts/ci/affected_crates.py --base "origin/${{ github.base_ref }}" --head HEAD --scope aravath --github-output "$GITHUB_OUTPUT"',
         "run: bash scripts/ci/player_facing_names.sh",
         "run: python3 scripts/ci/test_workflow_policy.py",
         "run: bash scripts/ci/run-gate.sh",
@@ -1052,6 +1099,11 @@ _ALLOWED_SCRIPTS_CI_LINES = frozenset(
         'counts=$(python3 scripts/ci/mutation_ai_outcomes.py "${ai_files[@]}") || exit 1',
     }
 )
+# The first node candidate in the prefetch. Tests bind a shim over this path
+# so the script never depends on which absolute node the host has.
+_NODE_BIND = "/opt/homebrew/bin/node"
+_LAUNCHERS = frozenset({"exec", "env", "xargs", "pushd", "popd"})
+_BARE_ARGV0 = re.compile(r"^[A-Za-z0-9_./+\[\]-]+$")
 _ASSIGN_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 
 
@@ -1071,28 +1123,43 @@ class _PolicyScanError(Exception):
     pass
 
 
-def _sccache_policy_texts() -> list[tuple[str, str]]:
-    paths = [ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml"]
-    paths.extend(sorted((ROOT / ".github" / "workflows").glob("*.yml")))
-    return [
-        (str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")) for path in paths
-    ]
+def _policy_names(names: list[str] | None = None) -> list[str]:
+    """Workflow YAML plus every composite action, from git ls-files."""
+    if names is None:
+        raw = subprocess.check_output(["git", "ls-files", "-z", ".github"], cwd=ROOT)
+        names = [item for item in raw.decode().split("\0") if item]
+    selected: list[str] = []
+    for name in names:
+        if name.startswith(".github/workflows/") and name.endswith((".yml", ".yaml")):
+            selected.append(name)
+        elif name.startswith(".github/actions/") and name.endswith(
+            ("/action.yml", "/action.yaml")
+        ):
+            selected.append(name)
+    return selected
+
+
+def _sccache_policy_texts(names: list[str] | None = None) -> list[tuple[str, str]]:
+    texts: list[tuple[str, str]] = []
+    for name in _policy_names(names):
+        path = ROOT / name
+        if path.is_file():
+            texts.append((name, path.read_text(encoding="utf-8")))
+    return texts
+
+
+def _normalized_command(command: str) -> str:
+    return " ".join(command.split())
 
 
 def _allowlisted_command(command: str) -> bool:
-    stripped = command.strip()
+    stripped = _normalized_command(command)
     if not stripped:
         return False
-    if stripped in _ALLOWED_SCRIPTS_CI_LINES or f"run: {stripped}" in _ALLOWED_SCRIPTS_CI_LINES:
-        return True
-    for item in _ALLOWED_SCRIPTS_CI_LINES:
-        if not item.rstrip().endswith("\\"):
-            continue
-        prefix = item[4:].strip() if item.startswith("run: ") else item
-        prefix = prefix.rstrip("\\").strip()
-        if stripped == prefix or stripped.startswith(prefix + " "):
-            return True
-    return False
+    return (
+        stripped in _ALLOWED_SCRIPTS_CI_LINES
+        or f"run: {stripped}" in _ALLOWED_SCRIPTS_CI_LINES
+    )
 
 
 def _drop_quotes_and_escapes(text: str) -> str:
@@ -1229,6 +1296,11 @@ def _split_commands(text: str) -> list[str]:
             buf = []
             index += 2
             continue
+        if char == "|":
+            parts.append("".join(buf))
+            buf = []
+            index += 1
+            continue
         buf.append(char)
         index += 1
     parts.append("".join(buf))
@@ -1330,17 +1402,19 @@ def _logical_shell_lines(body: str) -> list[str]:
             if raw.strip() == heredoc:
                 heredoc = None
             continue
-        if not _unclosed_quote(buf):
-            match = _HEREDOC_RE.search(raw)
+        visible = raw
+        if not pending and not _unclosed_quote(buf):
+            visible = _strip_shell_comment(raw)
+            match = _HEREDOC_RE.search(visible)
             if match is not None:
                 heredoc = match.group(1)
-        stripped = raw.rstrip()
+        stripped = visible.rstrip()
         continued = (
             not _unclosed_quote(buf + stripped)
             and stripped.endswith("\\")
             and not stripped.endswith("\\\\")
         )
-        piece = (stripped[:-1] + " ") if continued else raw
+        piece = (stripped[:-1] + " ") if continued else visible
         if pending or (buf and _unclosed_quote(buf)):
             buf += piece if pending else "\n" + piece
         else:
@@ -1466,6 +1540,113 @@ def _command_names_scripts_ci(
     return named or nonliteral, env, cwd
 
 
+_ASSIGN_PREFIX = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_SHELL_KEYWORDS = frozenset(
+    {
+        "!",
+        "{",
+        "}",
+        "if",
+        "then",
+        "else",
+        "elif",
+        "fi",
+        "do",
+        "done",
+        "while",
+        "for",
+        "until",
+        "case",
+        "esac",
+        "in",
+        "time",
+    }
+)
+
+
+_ENUMERATED_COMMANDS = frozenset({'"${args[@]}"'})
+_ARRAY_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+=")
+
+
+def _command_indirection(command: str) -> bool:
+    """Fail closed unless argv0 is a literal bare word and the line is direct.
+
+    Launchers and indirections are refused here. An exact allowlisted or
+    enumerated line never reaches this check. An assignment, a case label,
+    or a shell keyword is not argv0.
+    """
+    if _normalized_command(command) in _ENUMERATED_COMMANDS:
+        return False
+    if re.search(r"(^|\s)CDPATH=", command):
+        return True
+    try:
+        words = shlex.split(command, posix=True)
+    except ValueError:
+        return True
+    if "-exec" in words:
+        return True
+    redirect = False
+    for token in _raw_words(command):
+        if token in {">", ">>", "<", ">&", "&>"} or re.fullmatch(r"[0-9]+>>?", token):
+            redirect = True
+            continue
+        if redirect:
+            redirect = False
+            continue
+        if token in {"case", "for", "while", "until"}:
+            return False
+        if token in _SHELL_KEYWORDS:
+            continue
+        if (
+            token == ":"
+            or _ASSIGN_PREFIX.match(token)
+            or _ARRAY_ASSIGN.match(token)
+            or (token.endswith(")") and not any(mark in token for mark in "$`\"'"))
+            or token.startswith("((")
+        ):
+            return False
+        if _BARE_ARGV0.fullmatch(token) is None:
+            return True
+        base = token.rsplit("/", 1)[-1]
+        if base in _LAUNCHERS:
+            return True
+        if base in _INTERPRETERS or base.endswith("bash"):
+            if "-c" in words:
+                return True
+        return False
+    return False
+
+
+def _body_has_fetch_pin(body: str) -> bool:
+    for raw_line in _logical_shell_lines(body):
+        command = _strip_shell_comment(raw_line).strip()
+        if _normalized_command(command) == SCCACHE_FETCH_COMMAND:
+            return True
+    return False
+
+
+def _fetch_changes_directory(body: str) -> bool:
+    for raw_line in _logical_shell_lines(body):
+        command = _strip_shell_comment(raw_line).strip()
+        if not command:
+            continue
+        if _normalized_command(command) == SCCACHE_FETCH_COMMAND:
+            return False
+        for part in _split_commands(command):
+            try:
+                words = shlex.split(part, posix=True)
+            except ValueError:
+                continue
+            index = 0
+            while index < len(words) and (
+                words[index] in _SHELL_KEYWORDS or _ASSIGN_PREFIX.match(words[index])
+            ):
+                index += 1
+            if index < len(words) and words[index] == "cd":
+                return True
+    return False
+
+
 def _run_body_violations(
     label: str,
     body: str,
@@ -1474,9 +1655,16 @@ def _run_body_violations(
     shell: str | None = None,
 ) -> list[str]:
     violations: list[str] = []
-    if shell and shell.split()[0].lower() in {"pwsh", "powershell", "pwsh.exe"}:
+    if shell == "pwsh":
         if _names_scripts_ci(body):
             violations.append(f"{label} is not an allowlisted scripts/ci command")
+        return violations
+    if (
+        shell is not None
+        and shell != "bash"
+        and not _body_has_fetch_pin(body)
+    ):
+        violations.append(f"{label} shell is not bash or pwsh")
         return violations
     cwd = _cwd_parts(workdir)
     local = dict(env)
@@ -1497,6 +1685,9 @@ def _run_body_violations(
             named, local, cwd = _command_names_scripts_ci(part, local, cwd)
             if named:
                 violations.append(f"{label} is not an allowlisted scripts/ci command")
+                return violations
+            if _command_indirection(part):
+                violations.append(f"{label} could not classify the command")
                 return violations
     return violations
 
@@ -1544,7 +1735,7 @@ def _classify_defaults(value: object, where: str) -> tuple[str | None, list[str]
     return shell, []
 
 
-_FETCH_SHELL_ENV_KEYS = frozenset({"BASH_ENV", "ENV"})
+_FETCH_SHELL_ENV_KEYS = frozenset({"BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS"})
 
 
 def _fetch_shell_env_violations(where: str, env: dict[str, str]) -> list[str]:
@@ -1581,6 +1772,19 @@ def _env_names_scripts_ci(where: str, env: dict[str, str]) -> list[str]:
     return violations
 
 
+def _local_action_file(uses: object) -> str | None:
+    if not isinstance(uses, str):
+        return None
+    text = uses.strip().split()[0] if uses.strip() else ""
+    if text.startswith("./"):
+        text = text[2:]
+    if not text.startswith(".github/actions/"):
+        return None
+    if text.endswith(("/action.yml", "/action.yaml")):
+        return text
+    return text.rstrip("/") + "/action.yml"
+
+
 def _scan_step(
     label: str,
     step: object,
@@ -1588,6 +1792,7 @@ def _scan_step(
     workflow_env: dict[str, str],
     default_shell: str | None,
     default_wd: str | None,
+    known_actions: frozenset[str],
 ) -> tuple[list[str], int]:
     if not isinstance(step, dict):
         raise _PolicyScanError(f"{label} step")
@@ -1602,6 +1807,15 @@ def _scan_step(
     violations.extend(_env_names_scripts_ci(label, step_env))
     if "with" in step:
         violations.extend(_with_violations(label, step.get("with")))
+    local_action = _local_action_file(step.get("uses")) if "uses" in step else None
+    if local_action is not None and local_action not in known_actions:
+        alt = (
+            local_action[:-4] + "yaml"
+            if local_action.endswith(".yml")
+            else local_action[:-5] + "yml"
+        )
+        if alt not in known_actions:
+            raise _PolicyScanError(f"{label} uses")
     shell = default_shell
     if "shell" in step:
         shell = _optional_string(step.get("shell"), f"{label} shell")
@@ -1619,14 +1833,13 @@ def _scan_step(
         raise _PolicyScanError(f"{label} run")
     if not isinstance(run, str):
         raise _PolicyScanError(f"{label} run")
-    if run.strip() == SCCACHE_FETCH_COMMAND:
+    if _body_has_fetch_pin(run):
         found = 1
         if "env" in step:
             violations.append(f"{label} fetch step sets env")
-        if "working-directory" in step:
+        if "working-directory" in step or _fetch_changes_directory(run):
             violations.append(f"{label} fetch step sets working-directory")
-        own_shell = step.get("shell") if "shell" in step else None
-        if "shell" in step and own_shell != "bash":
+        if "shell" in step and step.get("shell") != "bash":
             violations.append(f"{label} fetch step shell is not bash")
         elif "shell" not in step and default_shell not in (None, "bash"):
             violations.append(f"{label} fetch step shell is not bash")
@@ -1634,9 +1847,13 @@ def _scan_step(
     return violations, found
 
 
-def _scan_document(label: str, data: object) -> tuple[list[str], int]:
+def _scan_document(
+    label: str, data: object, known_actions: frozenset[str] | None = None
+) -> tuple[list[str], int]:
     if not isinstance(data, dict):
         raise _PolicyScanError("root")
+    if known_actions is None:
+        known_actions = frozenset(_policy_names())
     violations: list[str] = []
     found = 0
     workflow_env = _string_env(data.get("env"), label)
@@ -1689,7 +1906,7 @@ def _scan_document(label: str, data: object) -> tuple[list[str], int]:
     fetch_jobs: set[str] = set()
     for step_label, step, job_env, job_shell, job_id in indexed:
         step_violations, step_found = _scan_step(
-            step_label, step, job_env, workflow_env, job_shell, None
+            step_label, step, job_env, workflow_env, job_shell, None, known_actions
         )
         violations.extend(step_violations)
         found += step_found
@@ -2609,7 +2826,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             work = Path(tmp)
             script = _script_copy(work)
             _write_exe(work / "bin", "node", "#!/bin/sh\nexit 1\n")
-            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+            _bind_fetch_node(script, work / "bin" / "node")
             result, output = _run_fetch(work, script=script)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(output, "available=false\n")
@@ -2642,7 +2859,7 @@ exit 1
             work = Path(tmp)
             script = _script_copy(work)
             _write_exe(work / "bin", "node", node)
-            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(b"not-the-archive", status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -2673,7 +2890,7 @@ exit 1
             work = Path(tmp)
             script = _script_copy(work)
             _write_exe(work / "bin", "node", node)
-            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(b"archive-bytes", status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -2684,7 +2901,7 @@ exit 1
                 tool_cache_exists = (work / "tool-cache").exists()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(output, "available=false\n")
-        self.assertIn("unexpected error", result.stderr)
+        self.assertIn("archive has a symlink or non-regular entry", result.stderr)
         self.assertFalse(tool_cache_exists)
         self.assertNotIn("checksum mismatch", result.stderr)
 
@@ -2954,10 +3171,9 @@ exit 1
         self.assertIn("pick_tool /usr/bin/cp /bin/cp", script_text)
         self.assertNotIn("for candidate in", script_text)
         self.assertIn('if ! plain_directory "$inner"; then', script_text)
-        self.assertLess(
-            script_text.find("archive_plain_members"),
-            script_text.find('"$TAR_BIN" -xzf'),
-        )
+        self.assertEqual(script_text.count("fs.readFileSync(archive)"), 1)
+        self.assertIn('read_archive "$tmp/pkg.tar.gz" stage', script_text)
+        self.assertNotIn('"$TAR_BIN"', script_text)
         plain_binary = script_text.split("plain_binary() {", 1)[1].split("plain_directory() {", 1)[0]
         self.assertIn("fs.lstatSync", plain_binary)
         self.assertNotIn("fs.statSync", plain_binary)
@@ -2969,10 +3185,7 @@ exit 1
         marker_token = "printf '' > \"${dest}.complete\""
         self.assertEqual(script_text.count(marker_token), 1)
         marker_at = script_text.find(marker_token)
-        self.assertLess(
-            script_text.find('archive_plain_members "$tmp/pkg.tar.gz"'),
-            script_text.find('"$TAR_BIN" -xzf'),
-        )
+        self.assertEqual(script_text.count('read_archive "$tmp/pkg.tar.gz" stage'), 1)
         self.assertGreater(echo_at, 0)
         self.assertLess(echo_at, available_at)
         self.assertLess(available_at, marker_at)
@@ -3133,8 +3346,7 @@ exit 1
             self.assertIn("cached at", result.stdout)
 
     def test_sccache_prefetch_uses_sccache_exe_on_win32(self) -> None:
-        real_node = shutil.which("node")
-        self.assertIsNotNone(real_node)
+        real_node = _fixture_node()
         windows = "sccache-v0.19.0-x86_64-pc-windows-msvc.tar.gz"
         payload = b"#!/bin/sh\necho sccache 0.19.0\n"
         node = f"""#!/bin/sh
@@ -3158,7 +3370,7 @@ exec {real_node} "$@"
                     filename=windows,
                 )
                 script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
-                _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+                _bind_fetch_node(script, work / "bin" / "node")
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
@@ -3190,7 +3402,7 @@ exec {real_node} "$@"
                     filename=windows,
                 )
                 script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
-                _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+                _bind_fetch_node(script, work / "bin" / "node")
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
@@ -4135,8 +4347,8 @@ exit 0
             outside.chmod(0o400)
             blob = _valid_sccache_archive(work)
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
-            _write_exe(work / "bin", "tar", planting)
-            _bind_tool(script, "/usr/bin/tar", work / "bin" / "tar")
+            _write_stage_planter(work, 'ln -s "$AW_OUTSIDE" "$dest/planted"')
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -4188,8 +4400,12 @@ exit 0
                 ],
             )
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
-            _write_exe(work / "bin", "tar", planting_tar)
-            _bind_tool(script, "/usr/bin/tar", work / "bin" / "tar")
+            _write_stage_planter(
+                work,
+                "find \"$dest\" -type f -name README.md -exec sh -c "
+                "'rm -f \"$1\"; ln -s /etc/hostname \"$1\"' sh {} \\;",
+            )
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -4331,8 +4547,7 @@ exit 0
         self.assertEqual(marker, "")
 
     def test_sccache_prefetch_uses_sccache_on_darwin(self) -> None:
-        real_node = shutil.which("node")
-        self.assertIsNotNone(real_node)
+        real_node = _fixture_node()
         darwin = "sccache-v0.19.0-x86_64-apple-darwin.tar.gz"
         payload = b"#!/bin/sh\necho sccache 0.19.0\n"
         node = f"""#!/bin/sh
@@ -4355,7 +4570,7 @@ exec {real_node} "$@"
                 filename=darwin,
             )
             script = _script_pinned_named(work, darwin, hashlib.sha256(blob).hexdigest())
-            _bind_tool(script, "/usr/local/bin/node", work / "bin" / "node")
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -4538,8 +4753,12 @@ exit 0
             work = Path(tmp)
             blob = _packed_archive(work, [("sccache", "file", payload)])
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
-            _write_exe(work / "bin", "tar", planting_tar)
-            _bind_tool(script, "/usr/bin/tar", work / "bin" / "tar")
+            _write_stage_planter(
+                work,
+                "find \"$dest\" -type f -name sccache -exec sh -c "
+                "'ln \"$1\" \"$(dirname \"$1\")/sccache-alias\"' sh {} \\;",
+            )
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -4774,8 +4993,7 @@ exit 0
             _sccache_policy_texts = saved
 
     def test_sccache_prefetch_closes_any_reader_failure(self) -> None:
-        real_node = "/usr/local/bin/node"
-        self.assertTrue(Path(real_node).exists())
+        real_node = shlex.quote(_fixture_node())
         shim = (
             "#!/bin/sh\n"
             "for arg in \"$@\"; do\n"
@@ -4789,7 +5007,7 @@ exit 0
             blob = _valid_sccache_archive(work)
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
             _write_exe(work / "bin", "node", shim)
-            _bind_tool(script, real_node, work / "bin" / "node")
+            _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -4950,7 +5168,7 @@ exit 0
                 self.assertEqual(logged, "")
 
     def test_sccache_prefetch_falls_back_when_a_resolved_tool_is_missing(self) -> None:
-        for name in ("curl", "mktemp", "rm", "chmod", "mkdir", "sleep", "tar", "cp"):
+        for name in ("curl", "mktemp", "rm", "chmod", "mkdir", "sleep", "cp"):
             with self.subTest(name=name):
                 with tempfile.TemporaryDirectory() as tmp:
                     work = Path(tmp)
@@ -5590,11 +5808,266 @@ exit 0
                   - run: echo hello
             """
         )
+        shellopts = probe(
+            f"""
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                env:
+                  SHELLOPTS: braceexpand
+                steps:
+                  - shell: bash
+                    run: {pin}
+            """
+        )
         self.assertTrue(any("sets BASH_ENV" in item for item in workflow_env), workflow_env)
         self.assertTrue(any("sets ENV" in item for item in job_env), job_env)
         self.assertTrue(any("sets BASH_ENV" in item for item in later_step), later_step)
+        self.assertTrue(any("sets SHELLOPTS" in item for item in shellopts), shellopts)
         self.assertEqual(sibling, [])
         self.assertEqual(unrelated, [])
+
+    def test_sccache_fetch_fail_closed_arms(self) -> None:
+        pin = SCCACHE_FETCH_COMMAND
+
+        def probe(body: str) -> list[str]:
+            return sccache_fetch_run_violations(
+                [("probe.yml", textwrap.dedent(body).lstrip())]
+            )
+
+        def job(run: str, *, shell: str = "bash", workdir: str | None = None) -> list[str]:
+            lines = [
+                "name: probe",
+                "on: push",
+                "jobs:",
+                "  build:",
+                "    runs-on: ubuntu-latest",
+                "    steps:",
+                f'      - shell: "{shell}"',
+            ]
+            if workdir is not None:
+                lines.append(f"        working-directory: {workdir}")
+            lines.append("        run: |")
+            lines.extend(f"          {line}" for line in run.splitlines())
+            return probe("\n".join(lines) + "\n")
+
+        parsed = sccache_fetch_run_violations([("probe.yml", "jobs: [\n")])
+        self.assertTrue(any("could not classify" in item for item in parsed), parsed)
+        mapped = probe(
+            """
+            name: probe
+            on: push
+            env: nope
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: echo hi
+            """
+        )
+        self.assertTrue(any("could not classify" in item for item in mapped), mapped)
+        listed = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run:
+                      - echo
+                      - hi
+            """
+        )
+        self.assertTrue(any("could not classify" in item for item in listed), listed)
+        numbered = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - run: 1
+            """
+        )
+        self.assertTrue(any("could not classify" in item for item in numbered), numbered)
+        directory = job(pin, workdir="/tmp")
+        self.assertTrue(any("working-directory" in item for item in directory), directory)
+        changed = job(f"cd /tmp\n{pin}")
+        self.assertTrue(any("working-directory" in item for item in changed), changed)
+        unclassified = job('cd "$D"\nbash ./x.sh')
+        self.assertTrue(any("allowlisted" in item for item in unclassified), unclassified)
+        powershell = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: pwsh
+                    run: echo scripts/ci/other.sh
+            """
+        )
+        self.assertTrue(any("allowlisted" in item for item in powershell), powershell)
+        parent = job("cd scripts/x/../ci\nbash ./other.sh")
+        self.assertTrue(any("allowlisted" in item for item in parent), parent)
+        option = job('bash -x "$F"')
+        self.assertTrue(any("allowlisted" in item for item in option), option)
+        boundary = job("python3 scripts/ci/affected_crates.pyX")
+        self.assertTrue(any("allowlisted" in item for item in boundary), boundary)
+        for shell in ("sh", "bash {0}", "bash -x {0}"):
+            with self.subTest(shell=shell):
+                found = probe(
+                    f"""
+                    name: probe
+                    on: push
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - shell: {shell}
+                            run: {pin}
+                    """
+                )
+                self.assertTrue(any("shell is not bash" in item for item in found), found)
+        globbed = job("timeout 60 scr?pts/ci/other.sh")
+        self.assertTrue(any("allowlisted" in item for item in globbed), globbed)
+        chained = job("echo hi && X=scripts && bash $X/ci/other.sh")
+        self.assertTrue(any("allowlisted" in item for item in chained), chained)
+        assigned = job("X=scripts echo $X/ci/other.sh")
+        self.assertTrue(any("allowlisted" in item for item in assigned), assigned)
+        for label, body in (
+            (
+                "step",
+                """
+                name: probe
+                on: push
+                jobs:
+                  other:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo hi
+                        env:
+                          BASH_ENV: scripts/ci/other.sh
+                """,
+            ),
+            (
+                "job",
+                """
+                name: probe
+                on: push
+                jobs:
+                  other:
+                    runs-on: ubuntu-latest
+                    env:
+                      ENV: scripts/ci/other.sh
+                    steps:
+                      - run: echo hi
+                """,
+            ),
+            (
+                "workflow",
+                """
+                name: probe
+                on: push
+                env:
+                  SHELLOPTS: scripts/ci/other.sh
+                jobs:
+                  other:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo hi
+                """,
+            ),
+        ):
+            with self.subTest(env=label):
+                found = probe(body)
+                self.assertTrue(any("allowlisted" in item for item in found), found)
+        classes = {
+            "exec": "exec echo hi",
+            "env": "env echo hi",
+            "xargs": "xargs echo",
+            "find-exec": "find . -exec echo {} +",
+            "pushd": "pushd /tmp",
+            "popd": "popd",
+            "cdpath": "CDPATH=/tmp echo hi",
+            "dash-c": "bash -c 'echo hi'",
+            "argv0": '"$D"/echo hi',
+        }
+        for name, command in classes.items():
+            with self.subTest(command=name):
+                found = job(command)
+                self.assertTrue(any("could not classify" in item for item in found), found)
+        names = _policy_names(
+            [
+                ".github/workflows/probe.yaml",
+                ".github/actions/rust-nightly/action.yml",
+                ".github/workflows/notes.md",
+            ]
+        )
+        self.assertEqual(
+            names,
+            [
+                ".github/workflows/probe.yaml",
+                ".github/actions/rust-nightly/action.yml",
+            ],
+        )
+        live = _policy_names()
+        self.assertIn(".github/actions/rust-nightly/action.yml", live)
+        self.assertIn(".github/actions/rust-ci-setup/action.yml", live)
+        missing = probe(
+            """
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - uses: ./.github/actions/not-a-real-action
+            """
+        )
+        self.assertTrue(any("could not classify" in item for item in missing), missing)
+        noted = probe(
+            f"""
+            name: probe
+            on: push
+            jobs:
+              build:
+                runs-on: ubuntu-latest
+                steps:
+                  - shell: bash
+                    run: |
+                      {pin} # kept
+            """
+        )
+        self.assertEqual(noted, [])
+
+    def test_sccache_prefetch_refuses_a_nonzero_prefix(self) -> None:
+        _filename, arch, root = self._release_root()
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+        header = bytearray(
+            _ustar_header(f"{root}/sccache".encode(), 48, len(payload), prefix=b"pre")
+        )
+        header[257:262] = b"\0\0\0\0\0"
+        header[148:156] = b"        "
+        total = sum(32 if 148 <= index < 156 else byte for index, byte in enumerate(header))
+        header[148:156] = f"{total:06o}".encode() + b"\0 "
+        blob = _gzip_tar([bytes(header), _pad_block(payload)])
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            result, output = _fetch_blob(work, blob)
+        _assert_prefetch_fell_back(
+            self,
+            result,
+            output,
+            work,
+            arch,
+            message="archive has a symlink or non-regular entry",
+        )
 
     def test_cargo_incremental_step_has_no_if(self) -> None:
         paths = [ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml"]

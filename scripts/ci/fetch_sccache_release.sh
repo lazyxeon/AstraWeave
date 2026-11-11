@@ -27,10 +27,10 @@
 # A failure to remove the temp directory cannot change the exit or the
 # recorded output. A failed download retries with backoff.
 #
-# Before extraction, the script reads archive headers and allows a regular
-# file or a zero-size directory only when it can classify the header. A size
-# or checksum field that is not plain octal is refused. A header the reader
-# will not classify is refused before tar. Links and devices are refused.
+# One node process reads the downloaded bytes once. It hashes those bytes,
+# gunzips that buffer, classifies every header, and writes the tree from
+# that buffer. A size or checksum field that is not plain octal is refused.
+# A non-zero name prefix is refused. Links and devices are refused.
 # After extraction, an lstat walk rejects a symlink or any entry that is not
 # a regular file or a directory. Cleanup does not chmod a symbolic link. The
 # archive must contain exactly one top-level entry, a real directory named
@@ -45,7 +45,7 @@
 # /usr/bin/bash. The command passes HOME, GITHUB_OUTPUT, RUNNER_TOOL_CACHE,
 # and RUNNER_OS. It does not pass PATH. The job environment and the step
 # shell are trusted until /usr/bin/env starts. curl, mktemp, rm, chmod,
-# mkdir, sleep, tar, and cp are absolute paths for Darwin, Linux, or
+# mkdir, sleep, and cp are absolute paths for Darwin, Linux, or
 # Windows Git Bash. cygpath is an absolute path and runs only when
 # RUNNER_OS is Windows. A missing tool fails closed. Nothing is resolved
 # from PATH. node is an absolute path. echo and printf are shell builtins.
@@ -158,7 +158,7 @@ if [ "$ATTEMPTS" -lt 1 ]; then
 fi
 
 NODE_BIN=""
-for _aw_node in "/usr/local/bin/node" "/usr/bin/node" "/c/Program Files/nodejs/node.exe"; do
+for _aw_node in "/opt/homebrew/bin/node" "/usr/local/bin/node" "/usr/bin/node" "/c/Program Files/nodejs/node.exe"; do
   if [ -x "$_aw_node" ]; then
     NODE_BIN="$_aw_node"
     break
@@ -233,7 +233,7 @@ pick_tool() {
 }
 
 # Darwin uses /bin for rm, chmod, mkdir, sleep, and cp, and /usr/bin for
-# curl, mktemp, and tar. Linux uses /usr/bin, then /bin. Windows Git Bash
+# curl and mktemp. Linux uses /usr/bin, then /bin. Windows Git Bash
 # uses /usr/bin with and without .exe. curl may live under /mingw64/bin.
 # cygpath runs only when RUNNER_OS is Windows, by an absolute path.
 case "$node_platform" in
@@ -244,7 +244,6 @@ case "$node_platform" in
     CHMOD_BIN="$(pick_tool /bin/chmod /usr/bin/chmod)" || fail_closed "chmod is missing"
     MKDIR_BIN="$(pick_tool /bin/mkdir /usr/bin/mkdir)" || fail_closed "mkdir is missing"
     SLEEP_BIN="$(pick_tool /bin/sleep /usr/bin/sleep)" || fail_closed "sleep is missing"
-    TAR_BIN="$(pick_tool /usr/bin/tar /bin/tar)" || fail_closed "tar is missing"
     CP_BIN="$(pick_tool /bin/cp /usr/bin/cp)" || fail_closed "cp is missing"
     ;;
   win32)
@@ -254,7 +253,6 @@ case "$node_platform" in
     CHMOD_BIN="$(pick_tool /usr/bin/chmod /usr/bin/chmod.exe)" || fail_closed "chmod is missing"
     MKDIR_BIN="$(pick_tool /usr/bin/mkdir /usr/bin/mkdir.exe)" || fail_closed "mkdir is missing"
     SLEEP_BIN="$(pick_tool /usr/bin/sleep /usr/bin/sleep.exe)" || fail_closed "sleep is missing"
-    TAR_BIN="$(pick_tool /usr/bin/tar /usr/bin/tar.exe)" || fail_closed "tar is missing"
     CP_BIN="$(pick_tool /usr/bin/cp /usr/bin/cp.exe)" || fail_closed "cp is missing"
     ;;
   linux)
@@ -264,7 +262,6 @@ case "$node_platform" in
     CHMOD_BIN="$(pick_tool /usr/bin/chmod /bin/chmod)" || fail_closed "chmod is missing"
     MKDIR_BIN="$(pick_tool /usr/bin/mkdir /bin/mkdir)" || fail_closed "mkdir is missing"
     SLEEP_BIN="$(pick_tool /usr/bin/sleep /bin/sleep)" || fail_closed "sleep is missing"
-    TAR_BIN="$(pick_tool /usr/bin/tar /bin/tar)" || fail_closed "tar is missing"
     CP_BIN="$(pick_tool /usr/bin/cp /bin/cp)" || fail_closed "cp is missing"
     ;;
   *)
@@ -307,7 +304,7 @@ plain_tree() {
 # Exit 2 is an archive this parser cannot read. The hash mode prints the
 # sha256 of one named member from these bytes.
 read_archive() {
-  "$NODE_BIN" -e 'const fs=require("fs"),zlib=require("zlib"),crypto=require("crypto"); const archive=process.argv[1]; const mode=process.argv[2]; const want=process.argv[3]||""; let buf; try { buf=zlib.gunzipSync(fs.readFileSync(archive)); } catch (e) { process.exit(2); } function plainOctal(header, start, length) { const bytes=header.subarray(start, start+length); let i=0; while (i<bytes.length && bytes[i]===32) i++; if (i>=bytes.length) return 0; if (bytes[i]===0) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0) return null; return 0; } let value=0; let saw=false; for (; i<bytes.length; i++) { const c=bytes[i]; if (c===0 || c===32) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0 && bytes[j]!==32) return null; return saw?value:0; } if (c<48 || c>55) return null; saw=true; value=value*8+(c-48); if (!Number.isSafeInteger(value)) return null; } return saw?value:0; } function nameEndsWithSlash(header) { let end=0; while (end<100 && header[end]!==0) end++; return end>0 && header[end-1]===47; } function nameLength(header) { let end=0; while (end<100 && header[end]!==0) end++; return end; } function isUstar(header) { return header[257]===117 && header[258]===115 && header[259]===116 && header[260]===97 && header[261]===114; } function prefixLength(header) { let end=0; while (end<155 && header[345+end]!==0) end++; return end; } function memberName(header) { const n=nameLength(header); let name=""; for (let i=0;i<n;i++) name+=String.fromCharCode(header[i]); return name; } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) { if (mode==="hash") process.exit(2); process.exit(0); } let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=plainOctal(h, 148, 8); if (recorded===null || recorded!==sum) process.exit(2); if (nameLength(h)===0) process.exit(1); if (isUstar(h) && prefixLength(h)!==0) process.exit(1); const typ=h[156]; const size=plainOctal(h, 124, 12); if (size===null || size<0) process.exit(2); const directoryLike=typ===53 || ((typ===0 || typ===48) && nameEndsWithSlash(h)); if (directoryLike) { if (size!==0) process.exit(1); off+=512; continue; } if (!(typ===0 || typ===48)) process.exit(1); const blocks=Math.ceil(size/512); const dataOff=off+512; if (mode==="hash" && memberName(h)===want) { if (dataOff+size>buf.length) process.exit(2); const hsh=crypto.createHash("sha256"); hsh.update(buf.subarray(dataOff, dataOff+size)); process.stdout.write(hsh.digest("hex")); process.exit(0); } off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$@"
+  "$NODE_BIN" -e 'const fs=require("fs"),zlib=require("zlib"),crypto=require("crypto"); const archive=process.argv[1]; const mode=process.argv[2]; const want=process.argv[3]||""; const destDir=process.argv[4]||""; let raw; try { raw=fs.readFileSync(archive); } catch (e) { process.exit(2); } const fileHash=crypto.createHash("sha256").update(raw).digest("hex"); if (mode==="stage") process.stdout.write(fileHash+"\n"); let buf; try { buf=zlib.gunzipSync(raw); } catch (e) { process.exit(2); } const staged=[]; let memberHash=""; function plainOctal(header, start, length) { const bytes=header.subarray(start, start+length); let i=0; while (i<bytes.length && bytes[i]===32) i++; if (i>=bytes.length) return 0; if (bytes[i]===0) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0) return null; return 0; } let value=0; let saw=false; for (; i<bytes.length; i++) { const c=bytes[i]; if (c===0 || c===32) { for (let j=i; j<bytes.length; j++) if (bytes[j]!==0 && bytes[j]!==32) return null; return saw?value:0; } if (c<48 || c>55) return null; saw=true; value=value*8+(c-48); if (!Number.isSafeInteger(value)) return null; } return saw?value:0; } function nameEndsWithSlash(header) { let end=0; while (end<100 && header[end]!==0) end++; return end>0 && header[end-1]===47; } function nameLength(header) { let end=0; while (end<100 && header[end]!==0) end++; return end; } function isUstar(header) { return header[257]===117 && header[258]===115 && header[259]===116 && header[260]===97 && header[261]===114; } function prefixLength(header) { let end=0; while (end<155 && header[345+end]!==0) end++; return end; } function memberName(header) { const n=nameLength(header); let name=""; for (let i=0;i<n;i++) name+=String.fromCharCode(header[i]); return name; } let off=0; while (off+512<=buf.length) { const h=buf.subarray(off, off+512); let zero=true; for (let i=0;i<512;i++) if (h[i]!==0) { zero=false; break; } if (zero) { if (mode==="hash") process.exit(2); if (mode==="stage") { const path=require("path"); for (const item of staged) { if (item.dir) continue; const out=path.join(destDir, item.name); fs.mkdirSync(path.dirname(out), {recursive:true}); fs.writeFileSync(out, item.bytes, {mode: item.mode & 511}); } for (const item of staged) { if (!item.dir) continue; const out=path.join(destDir, item.name.replace(/\/+$/, "")); fs.mkdirSync(out, {recursive:true}); fs.chmodSync(out, item.mode & 511); } if (memberHash) process.stdout.write(memberHash+"\n"); process.exit(0); } process.exit(0); } let sum=0; for (let i=0;i<512;i++) sum+=(i>=148 && i<156)?32:h[i]; const recorded=plainOctal(h, 148, 8); if (recorded===null || recorded!==sum) process.exit(2); if (nameLength(h)===0) process.exit(1); if (prefixLength(h)!==0) process.exit(1); const typ=h[156]; const size=plainOctal(h, 124, 12); if (size===null || size<0) process.exit(2); const directoryLike=typ===53 || ((typ===0 || typ===48) && nameEndsWithSlash(h)); if (directoryLike) { if (size!==0) process.exit(1); if (mode==="stage") { const perm=plainOctal(h, 100, 8); if (perm===null) process.exit(2); staged.push({name:memberName(h), dir:true, mode:perm}); } off+=512; continue; } if (!(typ===0 || typ===48)) process.exit(1); const blocks=Math.ceil(size/512); const dataOff=off+512; if (mode==="stage") { if (dataOff+size>buf.length) process.exit(2); const perm=plainOctal(h, 100, 8); if (perm===null) process.exit(2); const bytes=Buffer.from(buf.subarray(dataOff, dataOff+size)); const name=memberName(h); staged.push({name:name, bytes:bytes, mode:perm}); if (name===want) memberHash=crypto.createHash("sha256").update(bytes).digest("hex"); } if (mode==="hash" && memberName(h)===want) { if (dataOff+size>buf.length) process.exit(2); const hsh=crypto.createHash("sha256"); hsh.update(buf.subarray(dataOff, dataOff+size)); process.stdout.write(hsh.digest("hex")); process.exit(0); } off+=512*(1+blocks); if (off>buf.length) process.exit(2); } process.exit(2);' "$@"
 }
 
 archive_plain_members() {
@@ -382,32 +379,33 @@ if ! download_archive; then
   fail_closed "release download failed after ${ATTEMPTS} attempts (${url})"
 fi
 
-got="$(sha256_file "$tmp/pkg.tar.gz")"
+release_root="${filename%.tar.gz}"
+"$RM_BIN" -rf "$tmp/extract"
+"$MKDIR_BIN" -p "$tmp/extract" || fail_closed "could not create the extract directory"
+stage_status=0
+stage_out="$(read_archive "$tmp/pkg.tar.gz" stage "${release_root}/${binary_name}" "$tmp/extract")" || stage_status=$?
+got="${stage_out%%$'\n'*}"
+member_sum=""
+if [ "$stage_out" != "$got" ]; then
+  member_sum="${stage_out#*$'\n'}"
+  member_sum="${member_sum%%$'\n'*}"
+fi
 want="$(pinned_sha256 "$filename")"
-if [ "${#want}" -ne 64 ] || [ "$got" != "$want" ]; then
+if [ "${#want}" -ne 64 ] || { [ "${#got}" -eq 64 ] && [ "$got" != "$want" ]; }; then
   trap - ERR
   builtin printf 'sccache checksum mismatch for %s\n' "$filename" >&2
   exit 1
 fi
-
-member_status=0
-archive_plain_members "$tmp/pkg.tar.gz" || member_status=$?
-if [ "$member_status" -eq 1 ]; then
+if [ "$stage_status" -eq 1 ]; then
   fail_closed "archive has a symlink or non-regular entry"
 fi
-if [ "$member_status" -ne 0 ]; then
+if [ "$stage_status" -ne 0 ] || [ "${#got}" -ne 64 ]; then
   fail_closed "could not extract the archive"
 fi
-
-"$RM_BIN" -rf "$tmp/extract"
-"$MKDIR_BIN" -p "$tmp/extract" || fail_closed "could not create the extract directory"
-"$TAR_BIN" -xzf "$tmp/pkg.tar.gz" -C "$tmp/extract" || fail_closed "could not extract the archive"
 
 if ! plain_tree "$tmp/extract"; then
   fail_closed "archive has a symlink or non-regular entry"
 fi
-
-release_root="${filename%.tar.gz}"
 top_name="$("$NODE_BIN" -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1) process.exit(1); process.stdout.write(names[0]);' "$tmp/extract")" || fail_closed "archive does not contain exactly one release root"
 if [ "$top_name" != "$release_root" ]; then
   fail_closed "archive release root does not match the asset"
@@ -435,7 +433,6 @@ fi
 if ! "$NODE_BIN" -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1 || names[0]!==process.argv[2]) process.exit(1);' "$dest" "$binary_name"; then
   fail_closed "tool cache is missing the sccache binary"
 fi
-member_sum="$(archive_member_sha256 "$tmp/pkg.tar.gz" "${release_root}/${binary_name}")" || member_sum=""
 dst_sum="$(sha256_file "${dest}/${binary_name}")"
 if [ -z "$member_sum" ] || [ "$member_sum" != "$dst_sum" ]; then
   fail_closed "tool cache is missing the sccache binary"
