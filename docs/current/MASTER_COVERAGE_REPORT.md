@@ -328,11 +328,11 @@ Kani uses CBMC bounded model checking. Math proofs use concrete representative i
 | **Wave 3 Total** | | **463** | **22** | **3** | **1** | **95.5%** |
 
 **Terrain remaining MISSED** (4 in latest v4 run):
-- `heightmap.rs:152–153`: `replace - with +` and `replace - with /` in `Heightmap::sample_bilinear` — bilinear interpolation weight calculations require exact-value regression tests
-- All 4 are arithmetic operator mutations in interpolation weight computation
+- `heightmap.rs:152–153`: `replace - with +` and `replace - with /` on the neighbour-index clamps `(x0 + 1).min(self.resolution - 1)` and `(z0 + 1).min(self.resolution - 1)` in `Heightmap::sample_bilinear`. Equivalent. The clamps at `:147–148` cap the sample at `resolution as f32 - 1.001`, so `x0 + 1` and `z0 + 1` are already at most `resolution - 1` and the `min` never changes the index.
+- All 4 are those neighbour-index clamp mutants. The interpolation weights at `:163–166` are a different site.
 
 **Render remaining MISSED** (5 in v2 run):
-- `environment.rs:63`: `replace - with +` in `get_sun_position` — full-period shift. `current_time - 12.0` becomes `current_time + 12.0`, which adds 2π to the azimuth, so sine and cosine do not change. Equivalent.
+- `environment.rs:63`: `replace - with +` in `get_sun_position` — full-period shift. `current_time - 12.0` becomes `current_time + 12.0`, which adds 2π to the azimuth over the reals. In `f32`, `sin` and `cos` still change by rounding, by at most about 1.4e-6. Not equivalent. The current sun-position assertions use tolerances of about `1e-3` and wider, so they do not detect that delta.
 - `environment.rs:69`: `replace < with ==` and `replace < with <=` in `get_sun_position` — boundary condition in sun hemisphere check
 - `renderer.rs:6950`: `replace set_weather with ()` — requires GPU context for full validation
 - `biome_transition.rs:96`: `replace < with <=` in `EasingFunction::apply` — EaseInOut boundary at `t < 0.5`. Both branches return 0.5 at `t = 0.5`, so this mutant is equivalent.
