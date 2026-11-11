@@ -223,9 +223,13 @@ class _WorkflowLoader(yaml.SafeLoader):
     def compose_scalar_node(self, anchor):  # type: ignore[no-untyped-def]
         event = self.get_event()
         tag = event.tag
-        explicit = tag is not None and tag != "!"
-        if tag is None or tag == "!":
+        # `!` is the non-specific tag, and `!<!> ` is that tag written
+        # verbatim. Both are explicit. The checker fails closed on them.
+        explicit = tag is not None
+        if tag is None:
             tag = self.resolve(yaml.ScalarNode, event.value, event.implicit)
+        elif tag == "!":
+            tag = "tag:yaml.org,2002:str"
         node = yaml.ScalarNode(
             tag,
             event.value,
@@ -239,12 +243,15 @@ class _WorkflowLoader(yaml.SafeLoader):
         return node
 
 
+# `add_constructor` copies the class dict when the name is not already
+# in `cls.__dict__`. Assigning a copy is the same map the method would copy.
 _WorkflowLoader.yaml_constructors = dict(yaml.SafeLoader.yaml_constructors)
 _WorkflowLoader.yaml_implicit_resolvers = {}
 
 
 def _construct_kept_scalar(loader: yaml.SafeLoader, node: yaml.Node) -> _YamlScalar:
     text = loader.construct_scalar(node)
+    # `construct_scalar` returns a str. The fallback is the same value.
     if not isinstance(text, str):
         text = str(text)
     return _YamlScalar(text, node.style, explicit_tag=bool(getattr(node, "explicit_tag", False)))
@@ -258,14 +265,40 @@ def _load_workflow(text: str) -> object:
     return loaded
 
 
-_SKIP_ACTION_DIRS = frozenset({".git", "target", "node_modules"})
+# Only the repo-root checkout and build trees. A tracked action under
+# `tools/target` or `tools/node_modules` is still a workflow step.
+_PRUNE_ROOT_DIRS = frozenset({".git", "target"})
+
+
+def _tracked_action_paths(root: Path) -> list[Path]:
+    """Tracked `action.yml` and `action.yaml` files, from `git ls-files`."""
+    listed = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z"],
+        check=False,
+        capture_output=True,
+    )
+    if listed.returncode != 0:
+        return []
+    found: list[Path] = []
+    for raw in listed.stdout.split(b"\0"):
+        if not raw:
+            continue
+        rel = raw.decode("utf-8", "surrogateescape").replace("\\", "/")
+        name = rel.rsplit("/", 1)[-1]
+        if name not in ("action.yml", "action.yaml"):
+            continue
+        if rel.split("/", 1)[0] in _PRUNE_ROOT_DIRS:
+            continue
+        found.append(root / rel)
+    return found
 
 
 def policy_yaml_paths(root: Path | None = None) -> list[Path]:
     """Workflow files and composite actions the step check reads.
 
-    Action files are every `action.yml` and `action.yaml` under `root`.
-    Directories named `.git`, `target`, or `node_modules` are not walked.
+    Workflows are the files in `.github/workflows`. Action files are the
+    tracked `action.yml` and `action.yaml` names from `git ls-files`.
+    A path whose first component is `target` or `.git` is not scanned.
     """
     root = ROOT if root is None else root
     workflows = root / ".github" / "workflows"
@@ -273,14 +306,14 @@ def policy_yaml_paths(root: Path | None = None) -> list[Path]:
     if workflows.is_dir():
         paths.extend(workflows.glob("*.yml"))
         paths.extend(workflows.glob("*.yaml"))
-    if root.is_dir():
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [name for name in dirnames if name not in _SKIP_ACTION_DIRS]
-            for filename in filenames:
-                if filename not in ("action.yml", "action.yaml"):
-                    continue
-                paths.append(Path(dirpath) / filename)
+    paths.extend(_tracked_action_paths(root))
     return sorted(set(paths))
+
+
+def _track_tree(root: Path) -> None:
+    """Stage every file under `root`, including gitignored paths."""
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A", "-f"], cwd=root, check=True)
 
 
 def _append_step_list(found: list[tuple[str, object]], owner: str, steps: object) -> None:
@@ -389,6 +422,10 @@ def _mapping_from_step(step: object) -> dict | None:
     if isinstance(loaded, list):
         if len(loaded) == 1 and isinstance(loaded[0], dict):
             return loaded[0]
+        # Several mappings in one step string are not one step. Using the
+        # first item would ignore a later continue-on-error.
+        if len(loaded) > 1:
+            return {"continue-on-error": _YamlScalar("", "!")}
         return None
     if isinstance(loaded, dict):
         return loaded
@@ -888,7 +925,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             text = (WORKFLOWS / name).read_text(encoding="utf-8")
             self.assertFalse(has_pull_request(text), name)
 
-    def test_pull_request_runs_thread_sanitizer_only(self) -> None:
+    def test_pull_request_sanitizer_jobs(self) -> None:
         text = (WORKFLOWS / "sanitizers.yml").read_text(encoding="utf-8")
         self.assertTrue(has_pull_request(text))
         thread = text.split("\n  thread-sanitizer:\n", 1)[1].split("\n  determinism:\n", 1)[0]
@@ -896,8 +933,16 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("-Zbuild-std", thread)
         self.assertIn('-Zsanitizer=thread', thread)
         self.assertNotIn("RUSTFLAGS=", thread)
+        self.assertIn("-p astraweave-ai", thread)
+        self.assertIn("-p astraweave-coordination", thread)
+        self.assertIn("-p astraweave-ecs", thread)
+        self.assertIn('"$GITHUB_WORKSPACE/scripts/tsan_suppressions.txt"', thread)
+        self.assertNotIn("suppressions=scripts/tsan_suppressions.txt", thread)
         asan = text.split("\n  asan-critical:\n", 1)[1].split("\n  asan-full:\n", 1)[0]
         self.assertIn("github.event_name != 'pull_request'", asan)
+        leak = text.split("\n  leak-sanitizer:\n", 1)[1].split("\n  thread-sanitizer:\n", 1)[0]
+        self.assertNotIn("\n    if:", leak)
+        self.assertIn("-p aw-save", leak)
 
     def test_ci_gate_is_required_before_heavy_jobs(self) -> None:
         text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
@@ -1498,10 +1543,13 @@ class WorkflowPolicyTest(unittest.TestCase):
                 "tools/local/action.yml": composite,
                 "target/hidden/action.yml": composite,
             }
+            files["tools/target/zz/action.yml"] = composite
+            files["tools/node_modules/zz/action.yml"] = composite
             for rel, text in files.items():
                 path = root / rel
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="utf-8")
+            _track_tree(root)
             violations = scan_policy_tree(root)
             flagged = {item.split(" step ", 1)[0] for item in violations}
             self.assertEqual(
@@ -1511,6 +1559,8 @@ class WorkflowPolicyTest(unittest.TestCase):
                     ".github/workflows/extra.yaml",
                     ".github/actions/demo/action.yml",
                     "tools/local/action.yml",
+                    "tools/target/zz/action.yml",
+                    "tools/node_modules/zz/action.yml",
                 },
             )
             self.assertTrue(all("second" in item for item in violations))
@@ -1632,6 +1682,47 @@ class WorkflowPolicyTest(unittest.TestCase):
             mapping = _load_workflow(form)
             self.assertTrue(step_continue_on_error(mapping), form)
             self.assertIsNotNone(step_continue_on_error_value(mapping), form)
+        for form in (
+            "continue-on-error: ! false\n",
+            "continue-on-error: !<!> false\n",
+        ):
+            mapping = _load_workflow(form)
+            self.assertTrue(step_continue_on_error(mapping), form)
+            self.assertTrue(
+                step_continue_on_error_forbidden(step_continue_on_error_value(mapping)),
+                form,
+            )
+
+    def test_merge_key_steps_disagree_with_the_safe_loader(self) -> None:
+        text = (
+            "base: &base\n"
+            "  steps:\n"
+            "    - run: echo one\n"
+            "jobs:\n"
+            "  build:\n"
+            "    <<: *base\n"
+        )
+        self.assertEqual(iter_workflow_steps(text), [])
+        self.assertEqual(parsed_step_count(text), 1)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / ".github" / "workflows" / "merge.yml"
+            path.parent.mkdir(parents=True)
+            path.write_text(text, encoding="utf-8")
+            violations = scan_policy_tree(root)
+            self.assertTrue(any("walked 0 != parsed 1" in item for item in violations))
+
+    def test_reusable_call_without_steps_is_not_a_step_list(self) -> None:
+        text = "jobs:\n  call:\n    uses: org/repo/.github/workflows/ci.yml@main\n"
+        self.assertEqual(iter_workflow_steps(text), [])
+        self.assertEqual(parsed_step_count(text), 0)
+        self.assertFalse(document_has_steps(text))
+
+    def test_multi_mapping_step_text_fails_closed(self) -> None:
+        several = "- continue-on-error: false\n- continue-on-error: true\n"
+        self.assertTrue(step_continue_on_error(several))
+        one = "- continue-on-error: true\n"
+        self.assertTrue(step_continue_on_error(one))
 
     def test_folded_false_is_forbidden(self) -> None:
         folded = "name: bad\ncontinue-on-error: >-\n  false\n"
@@ -1896,6 +1987,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             )
             (workflow_dir / "extra.yaml").write_text(workflow, encoding="utf-8")
             (action_dir / "action.yaml").write_text(composite, encoding="utf-8")
+            _track_tree(root)
             found = {path.relative_to(root).as_posix(): path.read_text(encoding="utf-8") for path in policy_yaml_paths(root)}
             self.assertIn(".github/workflows/extra.yaml", found)
             self.assertIn(".github/actions/demo/action.yaml", found)
@@ -2007,6 +2099,8 @@ class WorkflowPolicyTest(unittest.TestCase):
             run = job_step_block(job, f"Run mutation testing on {crate}")
             self.assertNotIn("if: always()", run, job_id)
         ecs = text.split("  mutants-ecs:\n", 1)[1].split("\n  mutants-core:\n", 1)[0]
+        ecs_run = job_step_block(ecs, "Run mutation testing on astraweave-ecs")
+        self.assertIn("--test-threads=1", ecs_run)
         report = job_step_block(ecs, "Generate mutation report")
         self.assertIn("if: always()", report)
         self.assertNotIn("continue-on-error", report)

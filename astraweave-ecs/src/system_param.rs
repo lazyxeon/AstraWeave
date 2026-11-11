@@ -117,10 +117,10 @@ impl<'w, T: Component> Query<'w, T> {
 
 /// Advance a query cursor by one.
 ///
-/// `cargo-mutants` replaces `+= 1` with `*= 1`. On a zero cursor that
-/// replacement does not terminate, and a timeout fails the mutation
-/// workflow before any other result is reported. The body is skipped for
-/// that reason. Call sites are listed in `.cargo/mutants.toml`.
+/// Replacing this body with `0`, with `1`, or `+` with `*` leaves a zero
+/// cursor in place. The query loop does not terminate, and the timeout
+/// fails the mutation job before any other result is reported. The body
+/// is skipped for that hang.
 #[cfg_attr(mutants_skip, mutants::skip)]
 fn step_index(index: usize) -> usize {
     index + 1

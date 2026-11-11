@@ -722,10 +722,8 @@ mod tests {
     }
 
     fn write_index_map(label: &str, body: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "aw_arrays_{label}_{}.toml",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("aw_arrays_{label}_{}.toml", std::process::id()));
         std::fs::write(&path, body).unwrap();
         path
     }
@@ -751,21 +749,13 @@ mod tests {
                 "[layers]\ngrass = \"0\"\n",
                 "must be a non-negative integer",
             ),
-            (
-                "negative",
-                "[layers]\ngrass = -1\n",
-                "0 through 31",
-            ),
+            ("negative", "[layers]\ngrass = -1\n", "0 through 31"),
             (
                 "duplicate",
                 "[layers]\ngrass = 0\nrock = 0\n",
                 "is duplicated",
             ),
-            (
-                "past_pack",
-                "[layers]\ngrass = 32\n",
-                "0 through 31",
-            ),
+            ("past_pack", "[layers]\ngrass = 32\n", "0 through 31"),
         ];
         for (label, body, needle) in cases {
             let path = write_index_map(label, body);

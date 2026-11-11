@@ -16,6 +16,10 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "navmesh_benchmarks"
 harness = false
 
+# `mutants_skip` is set by cargo-mutants when it builds a mutant.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(mutants_skip)'] }
+
 # P1 unwrap guidance. Warn, matching the old non-blocking P1 matrix.
 [lints.clippy]
 unwrap_used = "warn"

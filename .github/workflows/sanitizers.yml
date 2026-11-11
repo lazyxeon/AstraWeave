@@ -1,6 +1,6 @@
 # AstraWeave Sanitizer CI Workflow
 # Runs LLVM Sanitizers (ASan, LSan, TSan) on critical crates
-# Schedule: Every push to main, nightly for full suite
+# Schedule: push to main and develop, pull requests to main, nightly 03:00 UTC, and workflow_dispatch.
 #
 # ⚠️ IMPORTANT: astraweave-render is EXCLUDED from all sanitizer testing
 # GPU driver allocations cause false positives. Use wgpu validation instead.
@@ -87,7 +87,7 @@ jobs:
           echo "✅ No cargo-mutants artifacts found"
 
   # ──────────────────────────────────────────────────────
-  # Fast ASan check on critical crates (every PR)
+  # Fast ASan check on critical crates. Not a pull-request job.
   # NOTE: Excludes render crate due to GPU driver false positives
   # ──────────────────────────────────────────────────────
   asan-critical:
@@ -95,12 +95,9 @@ jobs:
     needs: [source-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Run on all triggers except when force_full_suite is requested via workflow_dispatch
-    # (force_full_suite defers to asan-full which covers a superset of these crates).
-    # Previously excluded schedule runs; removed that exclusion so critical crates
-    # always receive a fast sanity check on every nightly run in addition to asan-full.
-    # Pull requests run ThreadSanitizer only. workflow_dispatch is not
-    # available to the integration that opens pull requests (HTTP 403).
+    # Skips pull requests. Skips workflow_dispatch when force_full_suite is
+    # set, because asan-full covers these crates then. Runs on push and on
+    # the nightly schedule. Pull requests run LeakSanitizer and ThreadSanitizer.
     if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
     env:
       # Disable leak detection here — the dedicated LSan job handles it.
@@ -375,9 +372,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     if: github.event_name == 'pull_request' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
-    env:
-      # Suppressions file is committed at scripts/tsan_suppressions.txt
-      TSAN_OPTIONS: suppressions=scripts/tsan_suppressions.txt:second_deadlock_stack=1
     steps:
       - uses: actions/checkout@v7
 
@@ -391,13 +385,18 @@ jobs:
         with:
           components: rust-src
 
-      - name: Verify TSan suppressions file
+      - name: Point TSan at the suppressions file
         run: |
-          if [ ! -f scripts/tsan_suppressions.txt ]; then
-            echo "::error::scripts/tsan_suppressions.txt is missing — commit it to the repo"
+          # -Zbuild-std places the test binary under target/<triple>/. TSan
+          # resolves a relative suppressions path from that binary, so job
+          # 130250756401 exited 66 opening scripts/tsan_suppressions.txt.
+          file="$GITHUB_WORKSPACE/scripts/tsan_suppressions.txt"
+          if [ ! -f "$file" ]; then
+            echo "::error::$file is missing — commit it to the repo"
             exit 1
           fi
-          echo "✅ TSan suppressions file found ($(wc -l < scripts/tsan_suppressions.txt) lines)"
+          echo "TSAN_OPTIONS=suppressions=${file}:second_deadlock_stack=1" >> "$GITHUB_ENV"
+          echo "TSan suppressions: $file ($(wc -l < "$file") lines)"
 
       - name: Run TSan on astraweave-ai
         run: |

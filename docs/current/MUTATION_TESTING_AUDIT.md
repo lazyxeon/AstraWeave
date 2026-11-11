@@ -9,9 +9,9 @@
 
 ## Executive Summary
 
-AstraWeave has completed mutation testing on **59 library crates** covering **~771K LOC** — the **entire library crate inventory**. **Phase 1 (Safety-Critical) is 100% complete**, **Phase 2 (Simulation & AI) is 100% complete**, **Phase 3/4 (Supporting Systems) is 100% complete**, and **Phase 5 (Tools & Macros) is 100% complete**. All 4 crates containing `unsafe` code in Tier 1 have been verified. 3 library crates have 0 tests (noted as excluded). 1 crate (`astraweave-stress-test`) excluded due to broken baseline tests. 67 binary/demo/example crates are out of scope for mutation testing.
+AstraWeave has completed mutation testing on **59 library crates** covering **~771K LOC** — the **entire library crate inventory**. **Phase 1 (Safety-Critical) is 100% complete**, **Phase 2 (Simulation & AI) is 100% complete in this 2026-03-13 audit (not the nightly score)**, **Phase 3/4 (Supporting Systems) is 100% complete**, and **Phase 5 (Tools & Macros) is 100% complete**. All 4 crates containing `unsafe` code in Tier 1 have been verified. 3 library crates have 0 tests (noted as excluded). 1 crate (`astraweave-stress-test`) excluded due to broken baseline tests. 67 binary/demo/example crates are out of scope for mutation testing.
 
-The `astraweave-ecs` percentages below are this audit's 2026-03-13 figures from cargo-mutants 26.2.0 (raw and adjusted kill rates). They are not the nightly workflow score. That workflow uses caught / (caught + missed). Job `129623992106` on run `42753998469` measured 329 caught and 163 missed (about 66.9%) on that basis, and a miss fails the ecs job.
+The percentages below are this audit's 2026-03-13 figures from cargo-mutants 26.2.0 (raw and adjusted kill rates). They are not the nightly workflow score. That workflow uses caught / (caught + missed), and a miss or a timeout fails the job. Run `42753998469` measured: ecs job `129623992106` 329 caught and 163 missed (about 66.9%); nav 266 missed and 8 timeouts; each of the eight ai shards 61–70 missed and 1–5 timeouts; behavior 13 missed; core 0 mutants tested because the baseline could not find `libudev.pc`.
 
 ### Current Mutation Testing Coverage
 
@@ -22,15 +22,15 @@ The `astraweave-ecs` percentages below are this audit's 2026-03-13 figures from 
 | `astraweave-fluids` | 81,658 | **98.5%** | **100%** | Full crate (35 files, excl. GPU-dep) | ✅ Complete |
 | `astraweave-physics` | 45,216 | **98.0%** | **98.0%** | Full + spatial hash | ✅ Complete |
 | `astraweave-terrain` | 43,500 | **100%** | **100%** | Targeted (voxel mesh, LOD) | ✅ Complete |
-| `astraweave-ai` | 38,932 | **99.7%** | **100%** | Full crate (GOAP + AI core, 29 files) | ✅ Complete |
+| `astraweave-ai` | 38,932 | **99.7%** | **100%** | Full crate (GOAP + AI core, 29 files) | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-ecs` | 21,454 | **97.56%** (2026-03-13 audit, raw) | **97.60%** (adjusted, same audit) | Full crate (excl. Kani+counting_alloc) | ✅ Complete |
-| `astraweave-core` | 18,705 | **98.62%** | **99.53%** | Full crate (excl. Kani) | ✅ Complete |
+| `astraweave-core` | 18,705 | **98.62%** | **99.53%** | Full crate (excl. Kani) | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-math` | 4,363 | **92.2%** | **100%** | Full crate (excl. Kani) | ✅ Complete |
 | `astraweave-sdk` | 2,536 | **96.3%** | **100%** | Full crate (excl. Kani) | ✅ Complete |
 | `astraweave-gameplay` | 16,629 | **97.8%** | **100%** | Full crate (combat, water, portals) | ✅ Complete |
 | `astraweave-scripting` | 4,001 | **87.8%** | **100%** | Full crate (script system, API, loader) | ✅ Complete |
-| `astraweave-behavior` | 8,434 | **98.1%** | **100%** | Full crate (BehaviorTree + GOAP planner) | ✅ Complete |
-| `astraweave-nav` | 9,849 | **98.9%** | **100%** | Full crate (NavMesh, A*, pathfinding) | ✅ Complete |
+| `astraweave-behavior` | 8,434 | **98.1%** | **100%** | Full crate (BehaviorTree + GOAP planner) | ✅ 2026-03-13 audit, not the nightly score |
+| `astraweave-nav` | 9,849 | **98.9%** | **100%** | Full crate (NavMesh, A*, pathfinding) | ✅ 2026-03-13 audit, not the nightly score |
 | `astraweave-security` | 9,385 | **92.0%** | **100%** | Full crate (auth, anti-cheat, deserialization) | ✅ Complete |
 | `astraweave-coordination` | 6,471 | **94.1%** | **100%** | Full crate (agent coord, messaging, resources) | ✅ Complete |
 | `astraweave-scene` | 10,204 | **90.7%** | **100%** | Full crate (scene graph, world partition, streaming) | ✅ Complete |
@@ -79,7 +79,7 @@ The `astraweave-ecs` percentages below are this audit's 2026-03-13 figures from 
 | `aw-net-proto` | 163 | — | — | 0 tests, excluded | ⬜ Excluded |
 
 **Phase 1 (Safety-Critical)**: 9/9 crates ✅ — ALL ≥96% raw, ALL ≥97.5% adjusted  
-**Phase 2 (Simulation & AI)**: 4/4 crates ✅ — ALL verified at ≥97.8% raw, 100% adjusted  
+**Phase 2 (Simulation & AI)**: 4/4 crates in the 2026-03-13 audit — verified at ≥97.8% raw, 100% adjusted. That is not the nightly score (run `42753998469`).  
 **Phase 3/4 (Supporting Systems)**: 30/10+ crates ✅ — all supporting library crates verified at ≥99% adjusted  
 **Phase 5 (Tools & Macros)**: 5/5 crates ✅ — `aw-save`, `asset_signing`, `aw_debug`, `aw_asset_cli`, `astract-macro` verified  
 **Total verified**: ~771K LOC (91% of codebase)  
@@ -170,6 +170,8 @@ That pair is this audit's raw and adjusted kill rate, not the nightly workflow s
 
 ### 3. `astraweave-core` (remaining modules) — ✅ COMPLETED (98.62% raw / 99.53% adjusted)
 
+2026-03-13 audit figure, not the nightly score. Run `42753998469` tested 0 core mutants: the baseline could not find `libudev.pc`.
+
 | Metric | Value |
 |--------|-------|
 | LOC | 18,705 |
@@ -247,6 +249,8 @@ These crates affect simulation determinism, AI decision quality, or gameplay cor
 ---
 
 ### 6. `astraweave-ai` — ✅ COMPLETED (99.7% raw / 100% adjusted)
+
+2026-03-13 audit figure, not the nightly score. On run `42753998469` each of the eight ai shards had 61–70 missed and 1–5 timeouts.
 
 | Metric | Value |
 |--------|-------|
@@ -360,6 +364,8 @@ These crates affect simulation determinism, AI decision quality, or gameplay cor
 
 ### 9. `astraweave-behavior` — ✅ COMPLETED (98.1% raw / 100% adjusted)
 
+2026-03-13 audit figure, not the nightly score. Run `42753998469` had 13 behavior misses.
+
 | Metric | Value |
 |--------|-------|
 | LOC | 8,434 |
@@ -384,6 +390,8 @@ These crates affect simulation determinism, AI decision quality, or gameplay cor
 ---
 
 ### 10. `astraweave-nav` — ✅ COMPLETED (98.9% raw / 100% adjusted)
+
+2026-03-13 audit figure, not the nightly score. Run `42753998469` had 266 nav misses and 8 timeouts.
 
 | Metric | Value |
 |--------|-------|
@@ -2369,7 +2377,7 @@ Target: `astraweave-fluids`, `astraweave-ai`, `astraweave-gameplay`, `astraweave
 | `astraweave-scripting` | 4,001 | — | ✅ **COMPLETE** (100% adj) |
 
 **Success Criteria**: ≥95% kill rate, all AI decision paths verified.  
-**Status**: **4/4 complete. PHASE 2 COMPLETE.** ✅
+**Status**: **4/4 complete in the 2026-03-13 audit.** That is not the nightly score. ✅
 
 ### Phase 3 — Data & Persistence (Weeks 6-7)
 Target: `astraweave-memory`, `astraweave-weaving`, `astraweave-nav`, `astraweave-behavior`, `astraweave-coordination`
@@ -2425,7 +2433,7 @@ Target: All remaining Tier 3-4 crates, focused on low-density hotspots first.
 | Tier 1 unsafe crates untested | **0** ✅ | 0 |
 | Average kill rate (tested, adj) | **99.9%** | ≥97% |
 | Phase 1 (Safety-Critical) | **COMPLETE** ✅ | Complete |
-| Phase 2 (Simulation & AI) | **COMPLETE** ✅ | Complete |
+| Phase 2 (Simulation & AI) | **COMPLETE in the 2026-03-13 audit, not the nightly score** | Complete |
 | Phase 3/4 (Supporting Systems) | **COMPLETE** ✅ | Complete |
 | Phase 5 (Tools & Macros) | **COMPLETE** ✅ | Complete |
 | Excluded (0 tests) | 3 crates (5,947 LOC) | — |

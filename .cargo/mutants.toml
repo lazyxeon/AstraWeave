@@ -3,7 +3,27 @@
 # The proofs stay on the Kani path.
 exclude_globs = ["**/*_kani.rs"]
 
-# Helpers whose bodies are `#[cfg_attr(mutants_skip, mutants::skip)]`.
-# Listing them here stops a call from being replaced with `0`, which would
-# not terminate a query cursor.
-skip_calls = ["step_index", "positive_capacity", "pack_entity_raw"]
+# `skip_calls` is not set. On cargo-mutants 27.1.0 the mutant list for the
+# ecs helpers is the same with or without it. A hang is skipped with
+# `#[cfg_attr(mutants_skip, mutants::skip)]` on the helper whose body does
+# not terminate: `step_index` replaced with 0, with 1, or `+` with `*`.
+
+# `||` and `&&` both return false: an empty region list or an empty path
+# never enters the loop, which returns false either way.
+exclude_re = [
+    "replace \\|\\| with && in NavMesh::path_crosses_dirty_region",
+    # `(slot << 8) | local` and `^` match: local is a triangle index under 24, so it does not overlap the shifted slot.
+    "replace \\| with \\^ in NavTiles::collect_sites",
+    # The loop visits count 0..=23, and both MAX_TRIS+1 and MAX_TRIS/1 stay above 23, so min() is still count.
+    "replace - with \\+ in build_slot",
+    "replace - with / in build_slot",
+    # `capacity >= 0` is true for every usize. Returning true calls reserve(0), which does not change an empty BlobVec.
+    "replace > with >= in BlobVec::positive_capacity",
+    "replace BlobVec::positive_capacity -> bool with true",
+    # Generation occupies the high 32 bits, so `|` and `^` pack the same raw value.
+    "replace \\| with \\^ in Entity::pack_entity_raw",
+    # `row <= len` differs only when row == len. The row is below the tick column, and swap_remove(len) is out of range.
+    "replace < with <= in row_in_column",
+    # The row is below the tick column, so the branch always runs. `true` is that same branch.
+    "replace row_in_column -> bool with true",
+]

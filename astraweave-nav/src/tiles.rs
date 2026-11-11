@@ -34,6 +34,59 @@ const MAX_PENDING: usize = 16;
 const MAX_SITES: usize = 16;
 const MAX_NODES: usize = MAX_SLOTS * MAX_TRIS;
 const MAX_WAYPOINTS: usize = 32;
+/// Pops a correct `heap_pop` never reaches. A body replaced with a constant
+/// does not drain the heap, so the query loop would not terminate.
+const SEARCH_STEP_CAP: u32 = 65_536;
+
+/// Advance a scan cursor by one.
+///
+/// `+= 1` mutated to `*= 1`, or the body replaced with `0` or `1`,
+/// leaves the cursor in place, so `clear_dirty_slot` does not terminate.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn step_index(index: usize) -> usize {
+    index + 1
+}
+
+/// Advance the path-search counter by one.
+///
+/// Replacing the call with `0` keeps the counter at zero, so
+/// [`search_budget_left`] never stops a heap that does not shrink.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn step_u32(index: u32) -> u32 {
+    index + 1
+}
+
+/// Shrink a counted length by one.
+///
+/// `-= 1` mutated to `/= 1` leaves the heap, the dirty list, or the
+/// waypoint cursor unchanged, so the surrounding loop does not terminate.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn pred_u16(len: u16) -> u16 {
+    len - 1
+}
+
+/// Shrink a sort cursor by one.
+///
+/// `-= 1` mutated to `/= 1` repeats the same swap.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn pred_usize(len: usize) -> usize {
+    len - 1
+}
+
+/// `true` while the open set may still be popped.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn search_budget_left(steps: u32) -> bool {
+    steps < SEARCH_STEP_CAP
+}
+
+/// `true` when a binary-heap parent index moves toward the root.
+///
+/// A parent that does not decrease repeats the sift. Returning `true`
+/// does the same, so the body is skipped.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn parent_moves_up(parent: usize, index: usize) -> bool {
+    parent < index
+}
 
 /// Which destruction command produced a [`NavChange`].
 ///
@@ -324,7 +377,7 @@ impl NavTiles {
             }
             self.pending[i - 1] = cur;
             self.pending[i] = prev;
-            i -= 1;
+            i = pred_usize(i);
         }
     }
 
@@ -443,7 +496,12 @@ impl NavTiles {
         scratch.g[start_n as usize] = 0;
         scratch.parent[start_n as usize] = start_n;
         let mut found = false;
+        let mut steps = 0u32;
         while scratch.heap_len > 0 {
+            if !search_budget_left(steps) {
+                return 0;
+            }
+            steps = step_u32(steps);
             let node = self.heap_pop(scratch);
             if node == goal_n {
                 found = true;
@@ -479,7 +537,7 @@ impl NavTiles {
         }
         let mut hop = chain_len;
         while hop > 1 {
-            hop -= 1;
+            hop = pred_u16(hop);
             self.record_portal(scratch, chain[hop as usize], chain[(hop - 1) as usize]);
             let node = chain[(hop - 1) as usize];
             if node == goal_n {
@@ -610,9 +668,9 @@ impl NavTiles {
             if self.dirty[i] == slot {
                 let last = self.dirty_len as usize - 1;
                 self.dirty[i] = self.dirty[last];
-                self.dirty_len -= 1;
+                self.dirty_len = pred_u16(self.dirty_len);
             } else {
-                i += 1;
+                i = step_index(i);
             }
         }
     }
@@ -631,7 +689,7 @@ impl NavTiles {
                     break;
                 }
                 self.dirty.swap(j - 1, j);
-                j -= 1;
+                j = pred_usize(j);
             }
         }
     }
@@ -859,6 +917,9 @@ impl NavTiles {
         scratch.heap_len += 1;
         while i > 0 {
             let parent = (i - 1) / 2;
+            if !parent_moves_up(parent, i) {
+                break;
+            }
             let worse = scratch.heap_f[i] < scratch.heap_f[parent]
                 || (scratch.heap_f[i] == scratch.heap_f[parent]
                     && scratch.heap_n[i] < scratch.heap_n[parent]);
@@ -873,7 +934,7 @@ impl NavTiles {
 
     fn heap_pop(&self, scratch: &mut NavScratch) -> u32 {
         let out = scratch.heap_n[0];
-        scratch.heap_len -= 1;
+        scratch.heap_len = pred_u16(scratch.heap_len);
         let last = scratch.heap_len as usize;
         scratch.heap_f[0] = scratch.heap_f[last];
         scratch.heap_n[0] = scratch.heap_n[last];
@@ -1209,6 +1270,10 @@ fn push_quad(out: &mut Vec<Triangle>, x0: f32, z0: f32, x1: f32, z1: f32) {
         Vec3::new(x1, 0.0, z1),
     ));
 }
+
+#[cfg(test)]
+#[path = "tile_mutant_killers.rs"]
+mod mutant_killers;
 
 #[cfg(test)]
 mod tests {

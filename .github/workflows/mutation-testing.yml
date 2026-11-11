@@ -71,7 +71,9 @@ jobs:
             --features alloc-counter \
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-ecs-results \
-            --json
+            --json \
+            --cargo-test-arg=-- \
+            --cargo-test-arg=--test-threads=1
       
       - name: Generate mutation report
         if: always()

@@ -199,11 +199,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
-      pages: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Download book
         uses: actions/download-artifact@v8

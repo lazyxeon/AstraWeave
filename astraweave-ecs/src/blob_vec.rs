@@ -88,10 +88,9 @@ impl BlobVec {
         empty_blob(item_layout, drop_fn)
     }
 
-    /// `capacity > 0` mutated to `>=` is true for every `usize`, and
-    /// `reserve(0)` does not change an empty `BlobVec`. That mutant cannot
-    /// fail a test. The predicate lives here so it is not generated.
-    #[cfg_attr(mutants_skip, mutants::skip)]
+    /// `capacity > 0`. `>=` is true for every `usize`, and returning `true`
+    /// calls `reserve(0)` on an empty vec, which does not change it. Those
+    /// two mutants are excluded. `false`, `==`, and `<` are not.
     fn positive_capacity(capacity: usize) -> bool {
         capacity > 0
     }
@@ -649,6 +648,14 @@ unsafe impl Sync for BlobVec {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn with_capacity_reserves_a_positive_length_only() {
+        let empty = BlobVec::with_capacity::<u64>(0);
+        assert_eq!(empty.capacity(), 0);
+        let sized = BlobVec::with_capacity::<u64>(4);
+        assert!(sized.capacity() >= 4);
+    }
 
     #[derive(Clone, Copy, Debug, PartialEq)]
     struct Position {

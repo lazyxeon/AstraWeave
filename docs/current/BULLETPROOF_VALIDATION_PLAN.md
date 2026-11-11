@@ -181,7 +181,7 @@ A high mutation score proves test suite effectiveness.
 ### Current Coverage
 The existing `sanitizers.yml` covers:
 - ASan on: ecs, physics, memory
-- LSan on: aw-save
+- LSan on: astraweave-ecs, astraweave-core, astraweave-physics, aw-save
 - TSan on: pull requests, the nightly schedule, and `workflow_dispatch` with `force_full_suite`. A failure fails the Sanitizers workflow.
 
 ### Enhanced Coverage (IMPLEMENTED)
@@ -192,11 +192,12 @@ The existing `sanitizers.yml` covers:
 - P2 Support: `astraweave-behavior`, `astraweave-prompts`, `astraweave-embeddings`
 
 **LSan targets**:
-- `aw-save` (existing)
+- `astraweave-ecs`, `astraweave-core`, `astraweave-physics`, `aw-save`
 
 **TSan crates** (a failure fails the Sanitizers workflow):
 - `astraweave-ai`
 - `astraweave-coordination`
+- `astraweave-ecs`
 
 ### Success Criteria
 - [x] 12+ crates covered by at least one sanitizer *(achieved: 13)*

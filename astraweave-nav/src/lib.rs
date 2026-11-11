@@ -41,6 +41,10 @@ pub use tiles::{
 #[cfg(test)]
 mod mutation_tests;
 
+#[cfg(test)]
+#[path = "lib_mutant_killers.rs"]
+mod lib_mutant_killers;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Triangle {
     pub a: Vec3,
@@ -819,6 +823,24 @@ fn closest_tri(tris: &[NavTri], p: Vec3) -> Option<usize> {
         .map(|(i, _)| i)
 }
 
+/// Add an edge cost onto a g-score.
+///
+/// The body is skipped. Replacing `+` with `-` makes a g-score fall on a
+/// cyclic mesh, so [`astar_tri`] does not terminate.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn accumulate_cost(gi: f32, cost: f32) -> f32 {
+    gi + cost
+}
+
+/// `true` when `ng` is a strictly better g-score than `old`.
+///
+/// `<` mutated to `<=` pushes the same node again, so the search does
+/// not terminate.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn score_improves(ng: f32, old: f32) -> bool {
+    ng < old
+}
+
 fn astar_tri(tris: &[NavTri], start: usize, goal: usize) -> Vec<usize> {
     use std::cmp::Ordering;
     use std::collections::{BinaryHeap, HashMap};
@@ -854,8 +876,12 @@ fn astar_tri(tris: &[NavTri], start: usize, goal: usize) -> Vec<usize> {
         let gi = *gscore.get(&i).unwrap_or(&f32::INFINITY);
         for &nb in &tris[i].neighbors {
             let cost = tris[i].center.distance(tris[nb].center);
-            let ng = gi + cost;
-            if ng < *gscore.get(&nb).unwrap_or(&f32::INFINITY) {
+            // `+` mutated to `-` on a cyclic neighbor graph makes every
+            // revisit look cheaper, so this search does not terminate.
+            // `<` mutated to `<=` requeues an unchanged cost.
+            let ng = accumulate_cost(gi, cost);
+            let old = *gscore.get(&nb).unwrap_or(&f32::INFINITY);
+            if score_improves(ng, old) {
                 came.insert(nb, i);
                 gscore.insert(nb, ng);
                 let f = ng + tris[nb].center.distance(tris[goal].center);

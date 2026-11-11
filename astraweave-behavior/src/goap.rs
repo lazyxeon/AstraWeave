@@ -829,4 +829,35 @@ mod tests {
             vec!["step1", "step2"]
         );
     }
+
+    #[test]
+    fn equal_f_cost_prefers_the_shallower_node() {
+        use crate::test_support::TestValue;
+
+        // `depth + 1` mutated to `depth * 1` leaves every node at depth 0.
+        // Equal f then follows the action name, and `aaa_finish` would win.
+        let state = WorldState::new();
+        let goal = GoapGoal::new("g", WorldState::from_facts(&[("done", true)]));
+        let actions = vec![
+            GoapAction::new("zzz_short")
+                .with_effect("done", true)
+                .with_cost(3.0),
+            GoapAction::new("mmm_prep")
+                .with_effect("mid", true)
+                .with_cost(1.0),
+            GoapAction::new("aaa_finish")
+                .with_precondition("mid", true)
+                .with_effect("done", true)
+                .with_cost(2.0),
+        ];
+        let plan = GoapPlanner::new()
+            .plan(&state, &goal, &actions)
+            .test_unwrap();
+        assert_eq!(
+            plan.iter()
+                .map(|action| action.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["zzz_short"]
+        );
+    }
 }

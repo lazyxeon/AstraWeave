@@ -1103,4 +1103,22 @@ mod tests {
             .plan(&state, &goal, &actions)
             .is_none());
     }
+
+    #[test]
+    fn invalidating_one_key_keeps_the_other_in_the_queue() {
+        let mut cache = PlanCache::new(4);
+        let state_a = WorldState::from_facts(&[("a", false)]);
+        let state_b = WorldState::from_facts(&[("b", false)]);
+        let goal = GoapGoal::new("g", WorldState::from_facts(&[("done", true)]));
+        let actions = vec![GoapAction::new("move")];
+        let changed = vec![GoapAction::new("move").with_cost(9.0)];
+        cache.put(&state_a, &goal, &actions, vec![GoapAction::new("from-a")]);
+        cache.put(&state_b, &goal, &actions, vec![GoapAction::new("from-b")]);
+        let (key_a, _) = PlanCacheKey::with_action_validation(&state_a, &goal, &actions);
+        let (key_b, _) = PlanCacheKey::with_action_validation(&state_b, &goal, &actions);
+
+        assert!(cache.get(&state_a, &goal, &changed).is_none());
+        assert!(!cache.lru_queue.iter().any(|key| key == &key_a));
+        assert!(cache.lru_queue.iter().any(|key| key == &key_b));
+    }
 }

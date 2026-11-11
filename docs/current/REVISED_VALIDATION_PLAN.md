@@ -45,8 +45,8 @@ This document revises the original validation plan based on research into altern
 
 | Tool | What It Verifies | What It Can't Verify | Overhead | CI Feasibility | Setup Time | Maturity |
 |------|------------------|---------------------|----------|----------------|------------|----------|
-| **AddressSanitizer (ASan)** | Memory errors, heap/stack overflow, use-after-free, double-free | Data races (use TSan) | 2-3× runtime | ✅ PR checks (Linux/macOS) | 1h | Production |
-| **ThreadSanitizer (TSan)** | Data races, deadlocks | Memory errors, uninitialized reads | 5-15× runtime | ⚠️ Nightly only (slow) | 1h | Production |
+| **AddressSanitizer (ASan)** | Memory errors, heap/stack overflow, use-after-free, double-free | Data races (use TSan) | 2-3× runtime | Not a pull-request job. Critical ASan skips `pull_request`. Full ASan is the 03:00 UTC schedule or `workflow_dispatch` with `force_full_suite` | 1h | Production |
+| **ThreadSanitizer (TSan)** | Data races, deadlocks | Memory errors, uninitialized reads | 5-15× runtime | Pull requests, the 03:00 UTC schedule, and `workflow_dispatch` with `force_full_suite` | 1h | Production |
 | **MemorySanitizer (MSan)** | Uninitialized memory reads | FFI code unless also instrumented | 3× runtime | ❌ Too many false positives | 2h | Experimental |
 | **LeakSanitizer (LSan)** | Memory leaks | Intentional leaks (Rc cycles) | 1× runtime | ✅ PR checks | 30min | Production |
 | **Miri** | Pure Rust UB, aliasing violations | FFI, GPU calls, async runtime | 10-50× runtime | ⚠️ Nightly only | 1h | Production |
@@ -268,10 +268,10 @@ jobs:
 
 **Why**: AstraWeave's AI system uses async and multi-threading extensively.
 
-**Target crates**:
+**Target crates** (the ThreadSanitizer job in `.github/workflows/sanitizers.yml`):
 - `astraweave-ai` - Multi-agent planning
 - `astraweave-coordination` - Agent coordination
-- `astraweave-net` - Network protocol handling
+- `astraweave-ecs` - One thread per tick
 
 **The Sanitizers workflow fails when this job fails.** The job name is `ThreadSanitizer`. The old advisory label is gone. `sanitizer-summary` sets a failed workflow when `needs.thread-sanitizer.result` is `failure`. The job runs on pull requests, on the nightly schedule, and on `workflow_dispatch` with `force_full_suite`.
 
