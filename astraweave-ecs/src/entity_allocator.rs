@@ -90,6 +90,13 @@ impl Entity {
         self.generation
     }
 
+    /// `id | (generation << 32)` mutated to `^` is the same value: the
+    /// generation occupies the high 32 bits. That mutant cannot fail a test.
+    #[cfg_attr(mutants_skip, mutants::skip)]
+    fn pack_entity_raw(id: u32, generation: u32) -> u64 {
+        (id as u64) | ((generation as u64) << 32)
+    }
+
     /// Convert to raw u64 for serialization or external APIs.
     ///
     /// # Format
@@ -99,7 +106,7 @@ impl Entity {
     /// ```
     #[inline]
     pub fn to_raw(&self) -> u64 {
-        (self.id as u64) | ((self.generation as u64) << 32)
+        Self::pack_entity_raw(self.id, self.generation)
     }
 
     /// Reconstruct entity from raw u64.

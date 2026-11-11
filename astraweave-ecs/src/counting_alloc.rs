@@ -207,20 +207,50 @@ pub fn net_allocs() -> isize {
     allocs() as isize - deallocs() as isize
 }
 
+/// Store counter values for tests. `cargo test` does not install
+/// `CountingAlloc` as the global allocator, so the atomics stay at zero
+/// unless a test sets them. A getter replaced with `0` is then identical
+/// to the unmutated function.
+#[cfg(test)]
+pub fn set_counters_for_test(
+    alloc_count: usize,
+    dealloc_count: usize,
+    realloc_count: usize,
+    allocated: usize,
+    deallocated: usize,
+) {
+    ALLOCS.store(alloc_count, Ordering::SeqCst);
+    DEALLOCS.store(dealloc_count, Ordering::SeqCst);
+    REALLOCS.store(realloc_count, Ordering::SeqCst);
+    BYTES_ALLOCATED.store(allocated, Ordering::SeqCst);
+    BYTES_DEALLOCATED.store(deallocated, Ordering::SeqCst);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_counting_functions() {
-        // Just verify the functions work (actual counting requires global allocator)
-        let _ = allocs();
-        let _ = deallocs();
-        let _ = reallocs();
-        let _ = bytes_allocated();
-        let _ = bytes_deallocated();
-        let _ = net_allocs();
+    fn counters_return_the_stored_values() {
+        set_counters_for_test(4, 1, 2, 64, 16);
+        assert_eq!(allocs(), 4);
+        assert_eq!(deallocs(), 1);
+        assert_eq!(reallocs(), 2);
+        assert_eq!(bytes_allocated(), 64);
+        assert_eq!(bytes_deallocated(), 16);
+        assert_eq!(net_allocs(), 3);
+
         reset_allocs();
+        assert_eq!(allocs(), 0);
+        assert_eq!(deallocs(), 0);
+        assert_eq!(reallocs(), 0);
+        assert_eq!(bytes_allocated(), 0);
+        assert_eq!(bytes_deallocated(), 0);
+        assert_eq!(net_allocs(), 0);
+
+        set_counters_for_test(4, 1, 2, 64, 16);
         reset();
+        assert_eq!(allocs(), 0);
+        assert_eq!(net_allocs(), 0);
     }
 }

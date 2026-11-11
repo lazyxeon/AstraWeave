@@ -88,10 +88,18 @@ impl BlobVec {
         empty_blob(item_layout, drop_fn)
     }
 
+    /// `capacity > 0` mutated to `>=` is true for every `usize`, and
+    /// `reserve(0)` does not change an empty `BlobVec`. That mutant cannot
+    /// fail a test. The predicate lives here so it is not generated.
+    #[cfg_attr(mutants_skip, mutants::skip)]
+    fn positive_capacity(capacity: usize) -> bool {
+        capacity > 0
+    }
+
     /// Create a new BlobVec with specified capacity
     pub fn with_capacity<T: 'static>(capacity: usize) -> Self {
         let mut blob = Self::new::<T>();
-        if capacity > 0 {
+        if Self::positive_capacity(capacity) {
             blob.reserve(capacity);
         }
         blob
@@ -119,7 +127,7 @@ impl BlobVec {
         capacity: usize,
     ) -> Self {
         let mut blob = Self::from_layout(item_layout, drop_fn);
-        if capacity > 0 {
+        if Self::positive_capacity(capacity) {
             blob.reserve(capacity);
         }
         blob

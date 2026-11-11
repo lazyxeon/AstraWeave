@@ -42,6 +42,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+      
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
       
@@ -63,6 +68,7 @@ jobs:
         run: |
           cargo mutants \
             --package astraweave-ecs \
+            --features alloc-counter \
             --timeout-multiplier ${{ env.MUTANTS_TIMEOUT_MULTIPLIER }} \
             --output mutants-ecs-results \
             --json
@@ -106,6 +112,11 @@ jobs:
     if: github.event.inputs.crates == 'p0' || github.event.inputs.crates == 'astraweave-core' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v7
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -152,6 +163,11 @@ jobs:
         shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@v7
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
@@ -238,6 +254,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
+      
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
       
@@ -278,6 +299,11 @@ jobs:
     if: github.event.inputs.crates == 'p1' || github.event.inputs.crates == 'astraweave-nav' || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v7
+      
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libudev-dev
       
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0

@@ -1,0 +1,9 @@
+# cargo-mutants 27.1.0 parses `#[cfg(kani)]` modules and scores a passing
+# `cargo test` as a miss, because those files are not in the test binary.
+# The proofs stay on the Kani path.
+exclude_globs = ["**/*_kani.rs"]
+
+# Helpers whose bodies are `#[cfg_attr(mutants_skip, mutants::skip)]`.
+# Listing them here stops a call from being replaced with `0`, which would
+# not terminate a query cursor.
+skip_calls = ["step_index", "positive_capacity", "pack_entity_raw"]

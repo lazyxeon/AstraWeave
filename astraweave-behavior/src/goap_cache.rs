@@ -235,6 +235,19 @@ impl PlanCache {
         self.stats = CacheStats::default();
     }
 
+    /// Hit count stored on one cached plan. The field is otherwise unread,
+    /// so `+= 1` mutated to `*= 1` would not fail a test.
+    #[cfg(test)]
+    fn cached_hit_count(
+        &self,
+        current_state: &WorldState,
+        goal: &GoapGoal,
+        available_actions: &[GoapAction],
+    ) -> Option<usize> {
+        let (key, _) = PlanCacheKey::with_action_validation(current_state, goal, available_actions);
+        self.cache.get(&key).map(|cached| cached.hit_count)
+    }
+
     /// Get cache statistics
     pub fn stats(&self) -> &CacheStats {
         &self.stats
@@ -1033,5 +1046,61 @@ mod tests {
         // B should be evicted (oldest after A's access bump)
         let hit_b = cache.get(&state_b, &goal, &actions);
         assert!(hit_b.is_none(), "B should have been evicted (LRU oldest)");
+    }
+
+    #[test]
+    fn world_state_hash_depends_on_the_facts() {
+        let left = WorldState::from_facts(&[("a", true)]);
+        let right = WorldState::from_facts(&[("a", false)]);
+        assert_ne!(
+            PlanCacheKey::hash_world_state(&left),
+            PlanCacheKey::hash_world_state(&right)
+        );
+    }
+
+    #[test]
+    fn cache_hit_and_invalidation_move_the_counters_by_one() {
+        let mut cache = PlanCache::new(4);
+        let goal = create_test_goal();
+        let actions = create_test_actions();
+        let state = WorldState::from_facts(&[("agent", true)]);
+        cache.put(&state, &goal, &actions, vec![actions[0].clone()]);
+
+        assert!(cache.get(&state, &goal, &actions).is_some());
+        assert_eq!(cache.stats().hits, 1);
+        assert_eq!(cache.cached_hit_count(&state, &goal, &actions), Some(1));
+
+        // Same action count keeps the cache key. A different name changes
+        // the action hash, so the hit is invalidated instead of missed.
+        let changed: Vec<GoapAction> = actions
+            .iter()
+            .map(|action| {
+                GoapAction::new(format!("{}-changed", action.name)).with_cost(action.cost)
+            })
+            .collect();
+        assert!(cache.get(&state, &goal, &changed).is_none());
+        assert_eq!(cache.stats().invalidations, 1);
+        assert_eq!(cache.stats().misses, 1);
+    }
+
+    #[test]
+    fn with_planner_keeps_the_planner_it_was_given() {
+        use crate::goap::GoapPlanner;
+
+        let custom = GoapPlanner::new().with_max_iterations(1);
+        let cached = CachedGoapPlanner::with_planner(custom, 4);
+        let state = WorldState::new();
+        let goal = GoapGoal::new("g", WorldState::from_facts(&[("b", true), ("c", true)]));
+        let actions = vec![
+            GoapAction::new("ab").with_effect("b", true).with_cost(1.0),
+            GoapAction::new("bc")
+                .with_precondition("b", true)
+                .with_effect("c", true)
+                .with_cost(1.0),
+        ];
+        assert!(cached
+            .base_planner()
+            .plan(&state, &goal, &actions)
+            .is_none());
     }
 }

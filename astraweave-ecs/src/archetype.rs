@@ -1140,4 +1140,52 @@ mod tests {
         // Verify e1 is gone
         assert_eq!(storage.get_entity_archetype(e1), None);
     }
+
+    #[test]
+    fn remove_entity_components_drops_the_row_and_keeps_the_others() {
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new(ArchetypeId(0), sig);
+
+        let first = unsafe { Entity::from_raw(1) };
+        let middle = unsafe { Entity::from_raw(2) };
+        let last = unsafe { Entity::from_raw(3) };
+        for (entity, hp) in [(first, 10), (middle, 20), (last, 30)] {
+            let mut data = HashMap::new();
+            data.insert(
+                TypeId::of::<Health>(),
+                Box::new(Health(hp)) as Box<dyn std::any::Any + Send + Sync>,
+            );
+            archetype.add_entity(entity, data);
+        }
+
+        archetype.remove_entity_components(last);
+        assert!(archetype.entity_index.get(last).is_none());
+        assert_eq!(archetype.entities_vec(), &[first, middle]);
+        assert_eq!(archetype.get::<Health>(first).map(|h| h.0), Some(10));
+        assert_eq!(archetype.get::<Health>(middle).map(|h| h.0), Some(20));
+
+        archetype.remove_entity_components(first);
+        assert!(archetype.entity_index.get(first).is_none());
+        assert_eq!(archetype.entities_vec(), &[middle]);
+        assert_eq!(archetype.get::<Health>(middle).map(|h| h.0), Some(20));
+    }
+
+    #[test]
+    fn stamp_by_type_writes_the_tick_callers_read() {
+        use crate::component_meta::ComponentMeta;
+
+        let mut metas = HashMap::new();
+        metas.insert(TypeId::of::<Health>(), ComponentMeta::of::<Health>());
+        let sig = ArchetypeSignature::new(vec![TypeId::of::<Health>()]);
+        let mut archetype = Archetype::new_with_blob(ArchetypeId(0), sig, metas);
+        let entity = unsafe { Entity::from_raw(1) };
+        archetype.entity_index.insert(entity);
+        archetype.entities.push(entity);
+        archetype.push_component_typed_with_tick(Health(1), 0);
+
+        archetype.stamp_change_tick_by_type(entity, TypeId::of::<Health>(), 9);
+        assert_eq!(archetype.get_change_tick::<Health>(entity), Some(9));
+        archetype.stamp_change_tick::<Health>(entity, 4);
+        assert_eq!(archetype.get_change_tick::<Health>(entity), Some(4));
+    }
 }

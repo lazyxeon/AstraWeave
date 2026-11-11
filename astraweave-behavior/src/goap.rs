@@ -747,4 +747,86 @@ mod tests {
             "Invalidated plan should be complete (cleared)"
         );
     }
+
+    #[test]
+    fn plan_node_eq_is_state_equality() {
+        let state = WorldState::from_facts(&[("s", true)]);
+        let other = WorldState::from_facts(&[("s", false)]);
+        let left = PlanNode {
+            state: state.clone(),
+            parent: None,
+            action: None,
+            g_cost: 0.0,
+            h_cost: 0.0,
+            depth: 0,
+        };
+        let same = PlanNode {
+            state,
+            parent: None,
+            action: None,
+            g_cost: 4.0,
+            h_cost: 1.0,
+            depth: 3,
+        };
+        let different = PlanNode {
+            state: other,
+            parent: None,
+            action: None,
+            g_cost: 0.0,
+            h_cost: 0.0,
+            depth: 0,
+        };
+        assert_eq!(left, same);
+        assert_ne!(left, different);
+    }
+
+    #[test]
+    fn iteration_limit_allows_the_step_that_reaches_the_goal() {
+        use crate::test_support::TestValue;
+
+        // The goal node is popped on the iteration after it is expanded,
+        // so a one-step plan is the second iteration. `>` still allows it.
+        // `==` and `>=` return None on that iteration.
+        let planner = GoapPlanner::new().with_max_iterations(2);
+        let state = WorldState::from_facts(&[("ready", true)]);
+        let goal = GoapGoal::new("g", WorldState::from_facts(&[("done", true)]));
+        let actions = vec![GoapAction::new("finish")
+            .with_precondition("ready", true)
+            .with_effect("done", true)
+            .with_cost(1.0)];
+        let plan = planner.plan(&state, &goal, &actions).test_unwrap();
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].name, "finish");
+    }
+
+    #[test]
+    fn plan_cost_is_a_sum_so_the_cheap_path_wins() {
+        use crate::test_support::TestValue;
+
+        let state = WorldState::from_facts(&[("ready", true)]);
+        let goal = GoapGoal::new("g", WorldState::from_facts(&[("done", true)]));
+        let actions = vec![
+            GoapAction::new("greedy")
+                .with_precondition("ready", true)
+                .with_effect("done", true)
+                .with_cost(10.0),
+            GoapAction::new("step1")
+                .with_precondition("ready", true)
+                .with_effect("mid", true)
+                .with_cost(1.0),
+            GoapAction::new("step2")
+                .with_precondition("mid", true)
+                .with_effect("done", true)
+                .with_cost(1.0),
+        ];
+        let plan = GoapPlanner::new()
+            .plan(&state, &goal, &actions)
+            .test_unwrap();
+        assert_eq!(
+            plan.iter()
+                .map(|action| action.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["step1", "step2"]
+        );
+    }
 }
