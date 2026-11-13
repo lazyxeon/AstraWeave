@@ -8,13 +8,13 @@ publish.workspace = true
 
 [dependencies]
 # Tracy profiling (feature-gated for zero-cost when disabled)
-tracy-client = { version = "0.18", optional = true, default-features = false }
+tracy-client = { version = "0.19", optional = true, default-features = false }
 
 # Workspace dependencies
 anyhow.workspace = true
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 
 [[bench]]
 name = "profiling_adversarial"

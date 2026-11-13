@@ -16,11 +16,11 @@ astraweave-gameplay = { path = "../astraweave-gameplay" }
 noise = "0.9"
 rayon = "1.11"
 tokio = { version = "1", features = ["sync", "rt"] }
-thiserror = "1"
-bincode = "1.3"           # Phase 10: Terrain persistence serialization
-miniz_oxide = "0.8"       # Phase 10: Compression for terrain saves
+thiserror = "2"
+bincode = "2.0"           # Phase 10: Terrain persistence serialization
+miniz_oxide = "0.9"       # Phase 10: Compression for terrain saves
 serde_json.workspace = true  # BiomePack manifest parsing
-ron = "0.11"              # Phase 1.X-F.4.B: RegionalArchetypeMask metadata persistence
+ron = "0.12"              # Phase 1.X-F.4.B: RegionalArchetypeMask metadata persistence
 
 [features]
 default = ["hybrid-voxel", "simd-noise"]

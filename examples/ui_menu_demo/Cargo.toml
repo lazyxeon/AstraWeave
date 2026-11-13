@@ -12,7 +12,7 @@ winit = { workspace = true }
 env_logger = "0.11"
 log = "0.4"
 anyhow = { workspace = true }
-pollster = "0.4"
+pollster = "1.0"
 glam = { workspace = true, optional = true }  # Week 5 Day 2: For vec3 (audio feature only)
 
 [features]
