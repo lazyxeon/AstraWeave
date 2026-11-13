@@ -49,7 +49,7 @@ astraweave-cinematics = { path = "../astraweave-cinematics" }
 astraweave-terrain = { path = "../astraweave-terrain" }
 astraweave-profiling = { path = "../astraweave-profiling", optional = true }
 astraweave-alloc = { workspace = true, optional = true }
-tracy-client = { version = "0.18", optional = true }
+tracy-client = { version = "0.19", optional = true }
 log = "0.4"
 libc = "0.2"
 egui = { workspace = true }
@@ -62,7 +62,7 @@ astraweave-security = { workspace = true, optional = true }
 tobj = { version = "4", optional = true }
 astraweave-asset = { path = "../astraweave-asset" }
 aw_asset_cli = { path = "../tools/aw_asset_cli" }
-ktx2 = "0.4"
+ktx2 = "0.5"
 basis-universal = "0.3.1"
 texture2ddecoder = "0.1"
 serde = { workspace = true }
@@ -83,7 +83,7 @@ serde = { version = "1", features = ["derive"] }
 png = "0.18"
 bytes = "1"
 approx = "0.5"
-naga = { version = "25.0.1", features = ["wgsl-in"] }
+naga = { version = "27.0.3", features = ["wgsl-in"] }
 glob = "0.3"
 image = "0.25"
 sha2 = { workspace = true }
