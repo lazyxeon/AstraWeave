@@ -1,9 +1,11 @@
 # Tests that request only a software adapter while AW_GPU_SKIP_IF_UNAVAILABLE
-# is set. Profile ci has no default-filter, and macOS Test full does not set
-# AW_CI_PROFILE, so it runs these default-feature tests. Each name must appear
-# in the skip log. A log that contains some other line does not cover a missing
-# name. Hardware probes are not listed: Metal still runs them. Ignored tests
-# are not listed: nextest does not run them.
+# is set. Profile ci has no default-filter. macOS Test full partitions set
+# AW_CI_PROFILE=ci-full-archive, which inherits ci and drops only the four
+# CARGO_BIN_EXE binaries, so these default-feature tests still run. Each name
+# must appear in the concatenated partition skip logs. A log that contains
+# some other line does not cover a missing name. Hardware probes are not
+# listed: Metal still runs them. Ignored tests are not listed: nextest does
+# not run them.
 #
 # golden_backend_tests compiles under profile ci. An integration test sets
 # cfg(test), so test_backend_detection, golden_triangle_render, and
