@@ -3179,11 +3179,28 @@ mod tests {
 
     #[test]
     fn unresolved_missing_parent_keeps_its_error_class() {
-        let missing = std::env::temp_dir()
-            .join("astraweave-missing-parent-guard")
-            .join("file.bin");
+        // `read_unresolved` refuses a symlink component. On macOS the temp
+        // directory is reached through `/var`, which is a symlink, so that
+        // walk never reaches the missing parent. Canonicalize the scratch
+        // directory first. The missing component stays unresolved.
+        let scratch = tempfile::tempdir().expect("tempdir");
+        let base = std::fs::canonicalize(scratch.path()).expect("canonical");
+        let missing = base.join("absent").join("file.bin");
         let err = read_unresolved(&missing, 64, "").expect_err("missing");
         assert_keeps_not_found(&err);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unresolved_symlink_ancestor_is_not_a_missing_file() {
+        let scratch = tempfile::tempdir().expect("tempdir");
+        let real = scratch.path().join("real");
+        std::fs::create_dir(&real).expect("real");
+        let link = scratch.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).expect("symlink");
+        let missing = link.join("absent").join("file.bin");
+        let err = read_unresolved(&missing, 64, "").expect_err("link ancestor");
+        assert!(err.to_string().contains("not a regular file"), "{err}");
     }
 
     #[test]
