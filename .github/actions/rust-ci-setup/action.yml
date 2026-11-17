@@ -63,9 +63,7 @@ runs:
     - name: Note sccache unavailable
       if: steps.sccache_fetch.outputs.available != 'true'
       shell: bash
-      run: |
-        echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
-        echo "::warning::sccache unavailable, building without cache"
+      run: echo "::warning::sccache unavailable, building without cache"
 
     - name: Disable incremental compilation
       shell: bash

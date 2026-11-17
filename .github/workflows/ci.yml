@@ -120,7 +120,6 @@ jobs:
 
       - name: Rust CI setup
         id: rust_ci
-        if: needs.changes.outputs.docs_only != 'true'
         uses: ./.github/actions/rust-ci-setup
 
       - name: Fmt, clippy, check
@@ -186,8 +185,8 @@ jobs:
           cargo build --locked --profile test -p astraweave-audio --bin aw_audio_probe
           stage="${RUNNER_TEMP}/linux-nextest"
           mkdir -p "$stage"
-          cp target/nextest-archive.tar.zst "$stage/"
-          cp target/debug/aw_audio_probe "$stage/aw_audio_probe"
+          cp target/nextest-archive.tar.zst "${RUNNER_TEMP}/linux-nextest/"
+          cp target/debug/aw_audio_probe "${RUNNER_TEMP}/linux-nextest/aw_audio_probe"
 
       - name: Upload the archive
         uses: actions/upload-artifact@v7

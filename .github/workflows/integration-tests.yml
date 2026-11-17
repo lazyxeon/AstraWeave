@@ -51,7 +51,6 @@ jobs:
         if: steps.sccache_fetch.outputs.available != 'true'
         shell: bash
         run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
           echo "::warning::sccache unavailable, building without cache"
 
       - name: Disable incremental compilation
@@ -123,7 +122,6 @@ jobs:
         if: steps.sccache_fetch.outputs.available != 'true'
         shell: bash
         run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
           echo "::warning::sccache unavailable, building without cache"
 
       - name: Disable incremental compilation
@@ -189,7 +187,6 @@ jobs:
         if: steps.sccache_fetch.outputs.available != 'true'
         shell: bash
         run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
           echo "::warning::sccache unavailable, building without cache"
 
       - name: Disable incremental compilation
@@ -255,7 +252,6 @@ jobs:
         if: steps.sccache_fetch.outputs.available != 'true'
         shell: bash
         run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
           echo "::warning::sccache unavailable, building without cache"
 
       - name: Disable incremental compilation
@@ -316,7 +312,6 @@ jobs:
         if: steps.sccache_fetch.outputs.available != 'true'
         shell: bash
         run: |
-          echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
           echo "::warning::sccache unavailable, building without cache"
 
       - name: Disable incremental compilation

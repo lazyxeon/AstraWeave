@@ -27,14 +27,13 @@
 # A failure to remove the temp directory cannot change the exit or the
 # recorded output. A failed download retries with backoff.
 #
-# The shell hashes the downloaded bytes with /usr/bin/sha256sum or
-# /usr/bin/shasum and compares that digest to the pinned constant before
-# node reads the archive. A mismatch exits 1. Node then reads those bytes
-# once and compares its digest to the same pin before any mkdir, chmod, or
-# write. A mismatch exits before a member is written. When the hash matches,
-# the process accepts the release layout and writes only the one binary at
-# the expected name. LICENSE and README.md may be present and are not
-# written. A size or mode field is refused unless every byte is an octal
+# The shell reads the download once, hashes that stream with /usr/bin/sha256sum
+# or /usr/bin/shasum, and keeps the same bytes. A mismatch exits 1. Node is
+# given that buffer on stdin. It hashes the buffer and parses that same
+# buffer before any mkdir, chmod, or write. A mismatch exits before a member
+# is written. When the hash matches, the process accepts the release layout
+# and writes only the one binary at the expected name. LICENSE and README.md
+# may be present and are not written. A size or mode field is refused unless every byte is an octal
 # digit or a trailing NUL. A space-padded size is refused. A checksum field
 # is the same, plus the ustar trailer of a NUL followed by spaces. A
 # high-bit size is refused. A non-zero name prefix is refused. Links, devices, extra names, a leading
@@ -44,15 +43,16 @@
 # directory itself is a symbolic link. The installed name is sccache.exe on
 # win32 and sccache otherwise. That file must be one regular file with a
 # link count of 1. The script copies that file alone and checks the tool
-# cache holds only that file. The installed bytes are compared to the member
-# hash of the already-verified buffer.
+# cache holds only that file. The shell hashes the installed file with
+# /usr/bin/sha256sum or /usr/bin/shasum and compares it to the member digest
+# pinned below.
 #
 # Workflow steps start this script with /usr/bin/env -i and an absolute bash
 # --noprofile --norc. Darwin uses /bin/bash. Every other OS uses
 # /usr/bin/bash. The command passes HOME, GITHUB_OUTPUT, RUNNER_TOOL_CACHE,
 # and RUNNER_OS. It does not pass PATH. The job environment and the step
 # shell are trusted until /usr/bin/env starts. curl, mktemp, rm, chmod,
-# mkdir, sleep, and cp are absolute paths for Darwin, Linux, or
+# mkdir, sleep, cp, and tee are absolute paths for Darwin, Linux, or
 # Windows Git Bash. Windows curl is /c/Windows/System32/curl.exe.
 # cygpath is an absolute path and runs only when RUNNER_OS is Windows.
 # A missing tool fails closed. Nothing is resolved from PATH. node is one
@@ -62,7 +62,9 @@
 # does not read a curlrc. --release-base is for the policy test harness.
 # Workflows call this script with no arguments.
 # SCCACHE_READER_CHECK, when set, runs the archive reader on that path and
-# exits with the reader's status. The fetch command does not pass it.
+# exits with the reader's status. SCCACHE_STAGE_CHECK, when set, runs the
+# stage reader on that file's bytes and exits with its status. The fetch
+# command passes neither.
 # -E runs the ERR trap inside functions and command substitutions.
 set -eEuo pipefail
 
@@ -153,6 +155,36 @@ pinned_sha256() {
   esac
 }
 
+# sha256 of the sccache binary inside each pinned archive.
+pinned_member_sha256() {
+  case "$1" in
+    sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz)
+      printf '%s\n' '0b44834be857e21b026f7db49a7762023fedb5eb5ed60725a66f698d8d79a34b'
+      ;;
+    sccache-v0.19.0-aarch64-unknown-linux-musl.tar.gz)
+      printf '%s\n' 'c192919f21426298532538710488c6c2f0784516ee8b34bb971fb003963526b4'
+      ;;
+    sccache-v0.19.0-armv7-unknown-linux-musleabi.tar.gz)
+      printf '%s\n' 'a7d867dda28d27b5e87d042e708236d7eb4c288949d4737e3f79aea3d37e53d3'
+      ;;
+    sccache-v0.19.0-x86_64-apple-darwin.tar.gz)
+      printf '%s\n' '3cfabdf4d282e8c83cf98ff935cf368a73efab42c70c3efeaa14cfe5083a310e'
+      ;;
+    sccache-v0.19.0-aarch64-apple-darwin.tar.gz)
+      printf '%s\n' 'd81ba04c41e6d772f7ecc83fe8f26f2f8b25f2cf3a730049c926c7592c819290'
+      ;;
+    sccache-v0.19.0-x86_64-pc-windows-msvc.tar.gz)
+      printf '%s\n' 'ba5542107b245431e37011110c1929d635e3a8e52cc98d35c4b01d0aa328b5a5'
+      ;;
+    sccache-v0.19.0-aarch64-pc-windows-msvc.tar.gz)
+      printf '%s\n' 'b31f677701b0a1ddc1790c4b5705d2ad7f6f9ba5f80a559c369b61172358dbf4'
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 case "$ATTEMPTS" in
   ''|*[!0-9]*) fail_closed "SCCACHE_FETCH_ATTEMPTS must be a positive integer" ;;
 esac
@@ -228,6 +260,9 @@ url="${release_base}/${filename}"
 if ! pinned_sha256 "$filename" >/dev/null; then
   fail_closed "no pinned checksum for ${filename}"
 fi
+if ! pinned_member_sha256 "$filename" >/dev/null; then
+  fail_closed "no pinned checksum for ${filename}"
+fi
 
 # First executable in the argument list. Callers pass absolute paths.
 # PATH is not searched. A miss returns 1.
@@ -256,6 +291,7 @@ case "$node_platform" in
     MKDIR_BIN="$(pick_tool /bin/mkdir /usr/bin/mkdir)" || fail_closed "mkdir is missing"
     SLEEP_BIN="$(pick_tool /bin/sleep /usr/bin/sleep)" || fail_closed "sleep is missing"
     CP_BIN="$(pick_tool /bin/cp /usr/bin/cp)" || fail_closed "cp is missing"
+    TEE_BIN="$(pick_tool /usr/bin/tee /bin/tee)" || fail_closed "tee is missing"
     ;;
   win32)
     CURL_BIN="/c/Windows/System32/curl.exe"
@@ -268,6 +304,7 @@ case "$node_platform" in
     MKDIR_BIN="$(pick_tool /usr/bin/mkdir /usr/bin/mkdir.exe)" || fail_closed "mkdir is missing"
     SLEEP_BIN="$(pick_tool /usr/bin/sleep /usr/bin/sleep.exe)" || fail_closed "sleep is missing"
     CP_BIN="$(pick_tool /usr/bin/cp /usr/bin/cp.exe)" || fail_closed "cp is missing"
+    TEE_BIN="$(pick_tool /usr/bin/tee /usr/bin/tee.exe /bin/tee)" || fail_closed "tee is missing"
     ;;
   linux)
     CURL_BIN="$(pick_tool /usr/bin/curl)" || fail_closed "curl is missing"
@@ -277,6 +314,7 @@ case "$node_platform" in
     MKDIR_BIN="$(pick_tool /usr/bin/mkdir /bin/mkdir)" || fail_closed "mkdir is missing"
     SLEEP_BIN="$(pick_tool /usr/bin/sleep /bin/sleep)" || fail_closed "sleep is missing"
     CP_BIN="$(pick_tool /usr/bin/cp /bin/cp)" || fail_closed "cp is missing"
+    TEE_BIN="$(pick_tool /usr/bin/tee /bin/tee)" || fail_closed "tee is missing"
     ;;
   *)
     fail_closed "unsupported platform ${node_platform}"
@@ -289,13 +327,13 @@ if [ "${RUNNER_OS:-}" = "Windows" ]; then
   tool_cache="$("$CYGPATH_BIN" -u "$RUNNER_TOOL_CACHE")" || fail_closed "could not convert the tool cache path"
 fi
 
-sha256_file() {
-  "$NODE_BIN" -e 'const fs=require("fs"),crypto=require("crypto");const h=crypto.createHash("sha256");h.update(fs.readFileSync(process.argv[1]));process.stdout.write(h.digest("hex"));' "$1"
+# Hash with /usr/bin/sha256sum or /usr/bin/shasum -a 256. A missing flag on
+# shasum is not this hash. Absolute paths only.
+_shell_sha256_parse() {
+  local out="$1"
+  printf '%s\n' "${out%%[[:space:]]*}"
 }
 
-# Hash the archive in the shell before node reports a digest. Absolute
-# paths only. sha256sum is preferred; shasum covers a Darwin host that
-# does not ship sha256sum.
 shell_sha256() {
   local out
   if [ -x /usr/bin/sha256sum ]; then
@@ -305,7 +343,19 @@ shell_sha256() {
   else
     return 1
   fi
-  printf '%s\n' "${out%%[[:space:]]*}"
+  _shell_sha256_parse "$out"
+}
+
+shell_sha256_stdin() {
+  local out
+  if [ -x /usr/bin/sha256sum ]; then
+    out="$(/usr/bin/sha256sum)" || return 1
+  elif [ -x /usr/bin/shasum ]; then
+    out="$(/usr/bin/shasum -a 256)" || return 1
+  else
+    return 1
+  fi
+  _shell_sha256_parse "$out"
 }
 
 # One regular file. lstat does not follow a link, and a link count above 1
@@ -344,7 +394,7 @@ const pin = process.argv[4];
 const mktempBin = process.argv[5];
 const parentDir = process.argv[6];
 let raw;
-try { raw = fs.readFileSync(archive); } catch (e) { process.exit(2); }
+try { raw = archive === "-" ? fs.readFileSync(0) : fs.readFileSync(archive); } catch (e) { process.exit(2); }
 const fileHash = crypto.createHash("sha256").update(raw).digest("hex");
 function finish(code, reason) {
   if (mode === "stage" && fileHash !== pin) {
@@ -358,7 +408,6 @@ function finish(code, reason) {
     }
     process.exit(code);
   }
-  if (mode !== "stage") process.exit(0);
 }
 let buf;
 try { buf = zlib.gunzipSync(raw); } catch (e) { finish(2, ""); }
@@ -412,7 +461,7 @@ function faultAt(code, reason) {
 }
 let off = 0;
 let sawEnd = false;
-while (fault === 0 && off + 512 <= buf.length) {
+while (fault === 0 && off < buf.length) {
   const h = buf.subarray(off, off + 512);
   let zero = true;
   for (let i = 0; i < 512; i++) if (h[i] !== 0) { zero = false; break; }
@@ -420,7 +469,7 @@ while (fault === 0 && off + 512 <= buf.length) {
   let sum = 0;
   for (let i = 0; i < 512; i++) sum += (i >= 148 && i < 156) ? 32 : h[i];
   const recorded = plainOctal(h, 148, 8, true);
-  if (recorded === null || recorded !== sum) { faultAt(2, ""); break; }
+  if (recorded !== sum) { faultAt(2, ""); break; }
   const uname = fieldName(h);
   if (uname === null || uname.length === 0 || dangerous(uname) || prefixLength(h) !== 0) {
     faultAt(1, "special");
@@ -486,8 +535,6 @@ const destStat = fs.lstatSync(dest);
 if (!destStat.isDirectory() || destStat.isSymbolicLink()) finish(2, "");
 const rootDir = path.join(dest, root);
 fs.mkdirSync(rootDir);
-const created = fs.lstatSync(rootDir);
-if (created.isSymbolicLink()) finish(1, "special");
 const rootParent = fs.realpathSync(dest);
 const rootReal = fs.realpathSync(rootDir);
 if (!rootReal.startsWith(rootParent + path.sep)) finish(1, "special");
@@ -551,6 +598,16 @@ if [ -n "${SCCACHE_READER_CHECK:-}" ]; then
   exit "$reader_status"
 fi
 
+if [ -n "${SCCACHE_STAGE_CHECK:-}" ]; then
+  stage_status=0
+  stage_parent="$("$MKTEMP_BIN" -d)" || exit 1
+  read_archive - stage "${SCCACHE_STAGE_NAME:-sccache-v0.19.0-test/sccache}" "${SCCACHE_STAGE_PIN:-}" "$MKTEMP_BIN" "$stage_parent" < "$SCCACHE_STAGE_CHECK" || stage_status=$?
+  if [ -z "${SCCACHE_STAGE_KEEP:-}" ]; then
+    "$RM_BIN" -rf "$stage_parent" || true
+  fi
+  exit "$stage_status"
+fi
+
 tmp="$("$MKTEMP_BIN" -d)" || fail_closed "could not create a temp directory"
 trap cleanup_tmp EXIT
 
@@ -579,14 +636,15 @@ fi
 
 release_root="${filename%.tar.gz}"
 want="$(pinned_sha256 "$filename")"
-shell_got="$(shell_sha256 "$tmp/pkg.tar.gz")" || fail_closed "could not hash the archive"
+captured="$tmp/hashed.bin"
+shell_got="$("$TEE_BIN" "$captured" < "$tmp/pkg.tar.gz" | shell_sha256_stdin)" || fail_closed "could not hash the archive"
 if [ "${#want}" -ne 64 ] || [ "$shell_got" != "$want" ]; then
   trap - ERR
   builtin printf 'sccache checksum mismatch for %s\n' "$filename" >&2
   exit 1
 fi
 stage_status=0
-stage_out="$(read_archive "$tmp/pkg.tar.gz" stage "${release_root}/${binary_name}" "$want" "$MKTEMP_BIN" "$tmp")" || stage_status=$?
+stage_out="$(read_archive - stage "${release_root}/${binary_name}" "$want" "$MKTEMP_BIN" "$tmp" < "$captured")" || stage_status=$?
 got="${stage_out%%$'\n'*}"
 rest="${stage_out#*$'\n'}"
 member_sum=""
@@ -657,8 +715,9 @@ fi
 if ! "$NODE_BIN" -e 'const fs=require("fs"); const names=fs.readdirSync(process.argv[1]); if (names.length!==1 || names[0]!==process.argv[2]) process.exit(1);' "$dest" "$binary_name"; then
   fail_closed "tool cache is missing the sccache binary"
 fi
-dst_sum="$(sha256_file "${dest}/${binary_name}")"
-if [ -z "$member_sum" ] || [ "$member_sum" != "$dst_sum" ]; then
+dst_sum="$(shell_sha256 "${dest}/${binary_name}")" || fail_closed "could not hash the installed binary"
+member_pin="$(pinned_member_sha256 "$filename")" || fail_closed "tool cache is missing the sccache binary"
+if [ "$dst_sum" != "$member_pin" ]; then
   fail_closed "tool cache is missing the sccache binary"
 fi
 

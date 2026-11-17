@@ -577,6 +577,24 @@ def assert_mutation_summary_checks_out_before_scoring(text: str) -> None:
         raise AssertionError("checkout must precede mutation_ai_outcomes.py in mutants-summary")
 
 
+PINNED_MEMBER_SHA256 = {
+    "sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz":
+        "0b44834be857e21b026f7db49a7762023fedb5eb5ed60725a66f698d8d79a34b",
+    "sccache-v0.19.0-aarch64-unknown-linux-musl.tar.gz":
+        "c192919f21426298532538710488c6c2f0784516ee8b34bb971fb003963526b4",
+    "sccache-v0.19.0-armv7-unknown-linux-musleabi.tar.gz":
+        "a7d867dda28d27b5e87d042e708236d7eb4c288949d4737e3f79aea3d37e53d3",
+    "sccache-v0.19.0-x86_64-apple-darwin.tar.gz":
+        "3cfabdf4d282e8c83cf98ff935cf368a73efab42c70c3efeaa14cfe5083a310e",
+    "sccache-v0.19.0-aarch64-apple-darwin.tar.gz":
+        "d81ba04c41e6d772f7ecc83fe8f26f2f8b25f2cf3a730049c926c7592c819290",
+    "sccache-v0.19.0-x86_64-pc-windows-msvc.tar.gz":
+        "ba5542107b245431e37011110c1929d635e3a8e52cc98d35c4b01d0aa328b5a5",
+    "sccache-v0.19.0-aarch64-pc-windows-msvc.tar.gz":
+        "b31f677701b0a1ddc1790c4b5705d2ad7f6f9ba5f80a559c369b61172358dbf4",
+}
+
+
 PINNED_SCCACHE_SHA256 = {
     "sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz":
         "aa73c7270c997894038c0d8f0d297865f57569e1687883322bc431713d4bb9dd",
@@ -1004,16 +1022,36 @@ def _script_copy(directory: Path) -> Path:
     return dest
 
 
-def _script_pinned_to(directory: Path, digest: str) -> Path:
+def _archive_member_sha256(blob: bytes, filename: str) -> str | None:
+    root = filename[: -len(".tar.gz")]
+    binary = "sccache.exe" if "windows" in filename else "sccache"
+    try:
+        with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
+            extracted = archive.extractfile(f"{root}/{binary}")
+            if extracted is None:
+                return None
+            return hashlib.sha256(extracted.read()).hexdigest()
+    except (tarfile.TarError, OSError, KeyError):
+        return None
+
+
+def _script_pinned_to(directory: Path, digest: str, blob: bytes | None = None) -> Path:
     filename, _arch = _host_sccache_filename()
-    return _script_pinned_named(directory, filename, digest)
+    return _script_pinned_named(directory, filename, digest, blob)
 
 
-def _script_pinned_named(directory: Path, filename: str, digest: str) -> Path:
+def _script_pinned_named(
+    directory: Path, filename: str, digest: str, blob: bytes | None = None
+) -> Path:
     pinned = PINNED_SCCACHE_SHA256[filename]
     text = (ROOT / "scripts" / "ci" / "fetch_sccache_release.sh").read_text(encoding="utf-8")
+    text = text.replace(pinned, digest, 1)
+    if blob is not None:
+        member = _archive_member_sha256(blob, filename)
+        if member is not None:
+            text = text.replace(PINNED_MEMBER_SHA256[filename], member, 1)
     patched = directory / "fetch.sh"
-    patched.write_text(text.replace(pinned, digest, 1), encoding="utf-8")
+    patched.write_text(text, encoding="utf-8")
     return patched
 
 
@@ -1108,7 +1146,7 @@ def _fetch_blob(
     path_prefix: Path | None = None,
     extra_env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], str]:
-    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
     with _fixed_body_server(blob, status=200) as server:
         port = server.server_address[1]
         return _run_fetch(
@@ -1219,8 +1257,9 @@ _ALLOWED_SCRIPTS_CI_LINES = frozenset(
 # so the script never depends on which absolute node the host has.
 _NODE_BIND = "/usr/local/bin/node"
 _BARE_ARGV0 = re.compile(r"^[A-Za-z0-9_./+\[\]-]+$")
-# Ordinary argv0 values. eval, command, sudo, timeout, and the old launcher
-# names are absent: a step that uses one must match an exact body.
+# Ordinary argv0 values. command, sudo, timeout, and the old launcher names
+# are absent: a step that uses one must match an exact body. eval is named
+# here and refused by the denied list, so the denied list is the check.
 _ARGV0_ALLOW = frozenset(
     {
         ":",
@@ -1245,6 +1284,7 @@ _ARGV0_ALLOW = frozenset(
         "diff",
         "dirname",
         "echo",
+        "eval",
         "exit",
         "export",
         "false",
@@ -1666,7 +1706,7 @@ def _logical_shell_lines(body: str, *, keep_heredoc: bool = False) -> list[str]:
             if raw.strip() == heredoc:
                 heredoc = None
             elif keep_heredoc:
-                lines.append(raw)
+                lines.append("\0" + raw)
             continue
         visible = raw
         if not pending and not _unclosed_quote(buf):
@@ -1867,7 +1907,6 @@ def _command_v_literal(command: str) -> bool:
 
 _DENIED_ARGV0 = frozenset(
     {
-        ".",
         "alias",
         "builtin",
         "coproc",
@@ -1882,7 +1921,6 @@ _DENIED_ARGV0 = frozenset(
         "popd",
         "pushd",
         "ruby",
-        "source",
         "sudo",
         "time",
         "timeout",
@@ -1959,14 +1997,15 @@ def _command_indirection(command: str) -> bool:
 
     An exact body never reaches this check. A path argv0 is refused.
     command is allowed only as command -v of a literal. source, a dot
-    command, time, eval, sudo, timeout, a bare interpreter, and an
-    input redirect are refused.
+    command, time, eval, sudo, timeout, a bare interpreter, a function
+    definition, a brace group, if, loops, case, a leading bang, command
+    substitution, and an input redirect are refused. find -exec, -execdir,
+    and -ok, awk system or a pipe, sed e or w, tar --to-command and
+    --use-compress-program, and git -c or --config are refused.
     """
     if re.search(r"(^|\s)CDPATH=", command):
         return True
     if "<<" in command or "<(" in command or "<<<" in command:
-        return True
-    if re.search(r"(^|[;&|\s])[A-Za-z_][A-Za-z0-9_]*\(\)", command):
         return True
     if re.search(r"(?<!\$)\{[A-Za-z0-9_./+-]*,", command):
         return True
@@ -1977,11 +2016,22 @@ def _command_indirection(command: str) -> bool:
         command,
     ):
         return True
+    if re.search(r"(^|[\s;&|])[A-Za-z_][A-Za-z0-9_]*\s*\(\s*\)", command):
+        return True
+    if re.search(r"(^|[\s;&|])\{(?:\s|;|$)", command):
+        return True
+    if re.search(
+        r"(^|[\s;&|])(?:if|then|else|elif|fi|while|until|for|do|done|case|esac|!)\b",
+        command,
+    ):
+        return True
+    if "$(" in command or "`" in command:
+        return True
     try:
         words = shlex.split(command, posix=True)
     except ValueError:
         return True
-    if "-exec" in words:
+    if any(word in {"-exec", "-execdir", "-ok", "-okdir"} for word in words):
         return True
     argv0 = _first_argv0(command)
     if argv0 is None:
@@ -1989,13 +2039,11 @@ def _command_indirection(command: str) -> bool:
     if argv0 == "time":
         return True
     if argv0 in _SHELL_KEYWORDS or argv0 == "{":
-        return _compound_hostile(command)
+        return True
     base = argv0.rsplit("/", 1)[-1]
     if base == "command":
         return not _command_v_literal(command)
     if base in _DENIED_ARGV0 or argv0 in _DENIED_ARGV0:
-        return True
-    if _BARE_ARGV0.fullmatch(argv0) is None:
         return True
     if "/" in argv0 or argv0.startswith("."):
         return True
@@ -2016,8 +2064,28 @@ def _command_indirection(command: str) -> bool:
                 continue
             operand = word
             break
-        if operand is None or _script_arg_nonliteral(operand):
+        if operand is None:
             return True
+    if base == "awk" and any("system" in word or "|" in word for word in words):
+        return True
+    if base == "sed":
+        for word in words[1:]:
+            if word in {"e", "w"} or (
+                "/" in word and re.search(r"[ew]$", word) is not None
+            ):
+                return True
+    if base == "tar" and any(
+        word == "--to-command"
+        or word.startswith("--to-command=")
+        or word == "--use-compress-program"
+        or word.startswith("--use-compress-program=")
+        for word in words
+    ):
+        return True
+    if base == "git" and any(
+        word in {"-c", "--config"} or word.startswith("--config=") for word in words
+    ):
+        return True
     return False
 
 
@@ -2052,8 +2120,12 @@ def _fetch_changes_directory(body: str) -> bool:
 
 
 def _normalized_body(body: str) -> str:
+    """Normalize command lines. Heredoc content is compared byte for byte."""
     lines: list[str] = []
     for raw_line in _logical_shell_lines(body, keep_heredoc=True):
+        if raw_line.startswith("\0"):
+            lines.append(raw_line[1:])
+            continue
         command = _strip_shell_comment(raw_line).strip()
         if command:
             lines.append(_normalized_command(command))
@@ -2076,7 +2148,7 @@ _REVIEWED_EXACT_BODIES: frozenset[str] = frozenset((
     'mkdir -p dist/aravath_greybox/assets\ncp target/dist/aravath_greybox.exe dist/aravath_greybox/\ncp -a assets/aravath dist/aravath_greybox/assets/\ncp docs/current/ARAVATH_WINDOWS_README.txt dist/aravath_greybox/README.txt\ncp LICENSE dist/aravath_greybox/LICENSE\ntest -f dist/aravath_greybox/aravath_greybox.exe\ntest -f dist/aravath_greybox/README.txt\ntest -f dist/aravath_greybox/LICENSE\ntest -f dist/aravath_greybox/assets/aravath/models/AnimationLibrary_Godot_Standard.gltf\ntest -f dist/aravath_greybox/assets/aravath/textures/grass_diff_1k.jpg\ntest -f dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb\nsig=$(head -c 4 dist/aravath_greybox/assets/aravath/models/kaykit/knight/Knight.glb)\ntest "$sig" = "glTF"\nfind dist/aravath_greybox -maxdepth 3 -type d -o -type f | sort',
     './aravath_greybox.exe --smoke-test --no-volumetrics',
     './aravath_greybox.exe --smoke-test --volumetrics',
-    'set -euo pipefail\ntest -f aravath_greybox/aravath_greybox.exe\ntest -f aravath_greybox/SHA256SUMS.txt\ntest -f aravath_greybox/aravath_greybox.cdx.json\nzip -r aravath_greybox-windows.zip aravath_greybox\nnotes=$(cat <<EOF\nRolling Windows build of the Aravath greybox from \\`${GITHUB_SHA}\\`.\nExtract the whole zip and start \\`aravath_greybox.exe\\` from the extracted folder. Saves and logs go to \\`%LOCALAPPDATA%\\\\Aravath\\`. \\`SHA256SUMS.txt\\` covers the files in this zip. \\`aravath_greybox.cdx.json\\` is the CycloneDX SBOM.\nThis release is a prerelease. Chrome and SmartScreen can still warn until the file is signed with a publicly trusted certificate and has download reputation. See \\`docs/current/ARAVATH_DISTRIBUTION.md\\`.\n)\nif gh release view aravath-greybox >/dev/null 2>&1; then\ngh release upload aravath-greybox aravath_greybox-windows.zip --clobber\ngh release edit aravath-greybox --prerelease --target "$GITHUB_SHA" --notes "$notes"\nelse\ngh release create aravath-greybox aravath_greybox-windows.zip --prerelease --target "$GITHUB_SHA" --title "Aravath greybox" --notes "$notes"\nfi',
+    'set -euo pipefail\ntest -f aravath_greybox/aravath_greybox.exe\ntest -f aravath_greybox/SHA256SUMS.txt\ntest -f aravath_greybox/aravath_greybox.cdx.json\nzip -r aravath_greybox-windows.zip aravath_greybox\nnotes=$(cat <<EOF\nRolling Windows build of the Aravath greybox from \\`${GITHUB_SHA}\\`.\n\nExtract the whole zip and start \\`aravath_greybox.exe\\` from the extracted folder. Saves and logs go to \\`%LOCALAPPDATA%\\\\Aravath\\`. \\`SHA256SUMS.txt\\` covers the files in this zip. \\`aravath_greybox.cdx.json\\` is the CycloneDX SBOM.\n\nThis release is a prerelease. Chrome and SmartScreen can still warn until the file is signed with a publicly trusted certificate and has download reputation. See \\`docs/current/ARAVATH_DISTRIBUTION.md\\`.\n)\nif gh release view aravath-greybox >/dev/null 2>&1; then\ngh release upload aravath-greybox aravath_greybox-windows.zip --clobber\ngh release edit aravath-greybox --prerelease --target "$GITHUB_SHA" --notes "$notes"\nelse\ngh release create aravath-greybox aravath_greybox-windows.zip --prerelease --target "$GITHUB_SHA" --title "Aravath greybox" --notes "$notes"\nfi',
     'set -euo pipefail\ncargo run -p astraweave-assets -- fetch --quiet --json --manifest assets/asset_manifest.toml --provider polyhaven > assets_summary.json\nFAILED=$(jq -r \'.failed\' assets_summary.json)\nif [ "$FAILED" != "0" ]; then\necho "Asset fetch reported $FAILED failures" >&2\njq \'.assets[] | select(.status == "failed")\' assets_summary.json >&2\nexit 1\nfi',
     'sudo apt-get update && sudo apt-get install -y pkg-config libudev-dev',
     'sudo apt-get update\nsudo apt-get install -y pkg-config libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libudev-dev libasound2-dev',
@@ -2086,7 +2158,7 @@ _REVIEWED_EXACT_BODIES: frozenset[str] = frozenset((
     'sudo apt-get update\nsudo apt-get install -y python3 python3-pip\npython3 -m pip install --upgrade pip\npython3 -m pip install pandas matplotlib seaborn',
     'sudo apt-get update\nsudo apt-get install -y jq\nbash scripts/export_benchmark_history.sh || true',
     'pwsh -File scripts/check_benchmark_thresholds.ps1 -ShowDetails',
-    'echo "=== gh-pages contents ==="\nfind gh-pages -type f | head -30\necho ""\nif [ -d gh-pages/graphs ]; then\nCOUNT=$(ls gh-pages/graphs | wc -l)\nif [ "$COUNT" -gt 0 ]; then\necho "Found $COUNT graph(s) to be deployed";\nelse\necho "Warning: No graphs were generated";\nfi\nelse\necho "Warning: gh-pages/graphs directory not found";\nfi\nif [ -f gh-pages/benchmark-data/history.jsonl ]; then\nLINES=$(wc -l < gh-pages/benchmark-data/history.jsonl)\necho "benchmark-data/history.jsonl: $LINES entries"\nelse\necho "Warning: No benchmark-data/history.jsonl"\nfi\nif [ -f gh-pages/static-data/history.jsonl ]; then\necho "static-data/history.jsonl: present"\nelse\necho "Warning: No static-data/history.jsonl"\nfi\ncat > gh-pages/README.md << \'EOF\'\nLive performance telemetry dashboard for the AstraWeave AI-native game engine.\n**View Dashboard**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/\n- 30-day performance trends\n- System filtering (ECS, AI, Physics, Terrain, Input)\n- Interactive d3.js charts\n- Regression detection\nUpdated nightly via GitHub Actions from Criterion benchmark results.\nLast Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")',
+    'echo "=== gh-pages contents ==="\nfind gh-pages -type f | head -30\necho ""\nif [ -d gh-pages/graphs ]; then\nCOUNT=$(ls gh-pages/graphs | wc -l)\nif [ "$COUNT" -gt 0 ]; then\necho "Found $COUNT graph(s) to be deployed";\nelse\necho "Warning: No graphs were generated";\nfi\nelse\necho "Warning: gh-pages/graphs directory not found";\nfi\nif [ -f gh-pages/benchmark-data/history.jsonl ]; then\nLINES=$(wc -l < gh-pages/benchmark-data/history.jsonl)\necho "benchmark-data/history.jsonl: $LINES entries"\nelse\necho "Warning: No benchmark-data/history.jsonl"\nfi\nif [ -f gh-pages/static-data/history.jsonl ]; then\necho "static-data/history.jsonl: present"\nelse\necho "Warning: No static-data/history.jsonl"\nfi\ncat > gh-pages/README.md << \'EOF\'\n# AstraWeave Benchmark Dashboard\n\nLive performance telemetry dashboard for the AstraWeave AI-native game engine.\n\n**View Dashboard**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/\n\n## Features\n- 30-day performance trends\n- System filtering (ECS, AI, Physics, Terrain, Input)\n- Interactive d3.js charts\n- Regression detection\n\n## Data Source\nUpdated nightly via GitHub Actions from Criterion benchmark results.\n\nLast Updated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")',
     'echo "### Benchmark Dashboard Updated ✅" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Dashboard URL**: https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\nif [ -f target/benchmark-data/history.jsonl ]; then\nENTRY_COUNT=$(wc -l < target/benchmark-data/history.jsonl)\necho "**Benchmark Entries**: $ENTRY_COUNT" >> $GITHUB_STEP_SUMMARY\nfi\nif [ -d gh-pages/graphs ]; then\nGRAPH_COUNT=$(ls gh-pages/graphs | wc -l)\necho "**Static Graphs Generated**: $GRAPH_COUNT" >> $GITHUB_STEP_SUMMARY\nfi\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Last Updated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $GITHUB_STEP_SUMMARY',
     'sudo apt-get update -q\nsudo apt-get install -y -q mesa-vulkan-drivers vulkan-tools bc jq coreutils',
     'export BENCHMARK_RESULTS_DIR="benchmark_results/shard-${{ matrix.shard_index }}"\nexport VERBOSE="true"\n./.github/scripts/benchmark-runner.sh --shard-index "${{ matrix.shard_index }}" --shard-count 16',
@@ -2110,13 +2182,13 @@ _REVIEWED_EXACT_BODIES: frozenset[str] = frozenset((
     'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools time',
     'echo "## Build Performance Profile" > performance.md\necho "Generated on: $(date)" >> performance.md\necho "" >> performance.md\necho "### Clean Build Timing (Core Components)" >> performance.md\necho \'```\' >> performance.md\ncargo clean\n/usr/bin/time -v cargo build -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tee build-timing.txt\ncat build-timing.txt >> performance.md\necho \'```\' >> performance.md\necho "" >> performance.md\necho "### Release Build Timing (Core Components)" >> performance.md\necho \'```\' >> performance.md\ncargo clean\n/usr/bin/time -v cargo build --release -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tee release-timing.txt\ncat release-timing.txt >> performance.md\necho \'```\' >> performance.md',
     'host=$(rustc -vV | sed -n \'s/^host: //p\')\ncase "$host" in\nx86_64-*)\necho "RUSTFLAGS=-C target-cpu=x86-64" >> "$GITHUB_ENV"\n;;\naarch64-*)\necho "aarch64 uses the default baseline CPU (target-cpu=native is forbidden)."\n;;\n*)\necho "unsupported host $host" >&2\nexit 1\n;;\nesac',
-    'node <<\'JS\'\nconst fs = require("fs");\nconst path = require("path");\nconst root = process.env.CARGO_TARGET_DIR || "target";\nconst core = JSON.parse(fs.readFileSync(path.join(root, "replay-hash.json"), "utf8"));\nconst combat = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-combat.json"), "utf8"));\nconst gameplay = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-gameplay-qa.json"), "utf8"));\nconst causal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-causal.json"), "utf8"));\nconst traversal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-traversal.json"), "utf8"));\nconst localsim = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-localsim.json"), "utf8"));\nconst greybox = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-greybox.json"), "utf8"));\nconst quests = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-quests.json"), "utf8"));\nconst persist = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-persist.json"), "utf8"));\nconst seen = new Set(core.map((row) => row.case));\nconst merged = core.slice();\nfor (const row of combat.concat(gameplay, causal, traversal, localsim, greybox, quests, persist)) {\nif (seen.has(row.case)) {\nconsole.error(`duplicate replay case ${row.case}`);\nprocess.exit(1);\n}\nseen.add(row.case);\nmerged.push(row);\n}\nconst required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"];\nconst names = new Set(merged.map((row) => row.case));\nfor (const name of required) {\nif (!names.has(name)) {\nconsole.error(`missing required case ${name}`);\nprocess.exit(1);\n}\n}\nfs.writeFileSync(path.join(root, "replay-hash.json"), JSON.stringify(merged, null, 2) + "\\n");\nconsole.log("merged", merged.map((row) => `${row.case} ${row.sha256}`).join("\\n"));',
-    'python3 - <<\'PY\'\nimport json\nimport sys\nfrom pathlib import Path\nrequired = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"}\nroot = Path("replay-artifacts")\nfiles = sorted(root.glob("*/replay-hash.json"))\nprint(f"artifacts: {[str(p) for p in files]}")\nif len(files) != 3:\nprint(f"expected 3 replay-hash artifacts, found {len(files)}")\nsys.exit(1)\nby_os = {}\nfor path in files:\nos_name = path.parent.name.removeprefix("replay-hash-")\nrows = json.loads(path.read_text(encoding="utf-8"))\nby_os[os_name] = {row["case"]: row["sha256"] for row in rows}\ncases = set()\nfor digests in by_os.values():\ncases.update(digests)\nfailed = False\nfor case in sorted(cases | required):\ndigests = {os_name: mapping.get(case) for os_name, mapping in sorted(by_os.items())}\npresent = {value for value in digests.values() if value is not None}\nmissing = [os_name for os_name, value in digests.items() if value is None]\nif missing or len(present) != 1:\nprint(f"MISMATCH {case}: {digests}")\nif case in required:\nfailed = True\nelse:\nprint(f"{case} differs and is not a required case")\nelse:\ndigest = next(iter(present))\nprint(f"OK {case} {digest}")\nif failed:\nsys.exit(1)',
+    'node <<\'JS\'\nconst fs = require("fs");\nconst path = require("path");\nconst root = process.env.CARGO_TARGET_DIR || "target";\nconst core = JSON.parse(fs.readFileSync(path.join(root, "replay-hash.json"), "utf8"));\nconst combat = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-combat.json"), "utf8"));\nconst gameplay = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-gameplay-qa.json"), "utf8"));\nconst causal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-causal.json"), "utf8"));\nconst traversal = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-traversal.json"), "utf8"));\nconst localsim = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-localsim.json"), "utf8"));\nconst greybox = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-greybox.json"), "utf8"));\nconst quests = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-quests.json"), "utf8"));\nconst persist = JSON.parse(fs.readFileSync(path.join(root, "replay-hash-persist.json"), "utf8"));\nconst seen = new Set(core.map((row) => row.case));\nconst merged = core.slice();\nfor (const row of combat.concat(gameplay, causal, traversal, localsim, greybox, quests, persist)) {\n  if (seen.has(row.case)) {\n    console.error(`duplicate replay case ${row.case}`);\n    process.exit(1);\n  }\n  seen.add(row.case);\n  merged.push(row);\n}\nconst required = ["planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"];\nconst names = new Set(merged.map((row) => row.case));\nfor (const name of required) {\n  if (!names.has(name)) {\n    console.error(`missing required case ${name}`);\n    process.exit(1);\n  }\n}\nfs.writeFileSync(path.join(root, "replay-hash.json"), JSON.stringify(merged, null, 2) + "\\n");\nconsole.log("merged", merged.map((row) => `${row.case} ${row.sha256}`).join("\\n"));',
+    'python3 - <<\'PY\'\nimport json\nimport sys\nfrom pathlib import Path\n\nrequired = {"planner_pure", "perception_world", "gameplay_rng", "fixed64", "combat_resolve", "destruction", "gameplay_qa_aravath_slice", "nav_reroute", "causal_bridge", "scripted_system", "weaving", "traversal", "traversal_deformed", "worldgen_columns", "deformed_chunk", "local_sim", "greybox_checkpoint", "quest_ticks", "persist_replay"}\nroot = Path("replay-artifacts")\nfiles = sorted(root.glob("*/replay-hash.json"))\nprint(f"artifacts: {[str(p) for p in files]}")\nif len(files) != 3:\n    print(f"expected 3 replay-hash artifacts, found {len(files)}")\n    sys.exit(1)\n\nby_os = {}\nfor path in files:\n    os_name = path.parent.name.removeprefix("replay-hash-")\n    rows = json.loads(path.read_text(encoding="utf-8"))\n    by_os[os_name] = {row["case"]: row["sha256"] for row in rows}\n\ncases = set()\nfor digests in by_os.values():\n    cases.update(digests)\n\nfailed = False\nfor case in sorted(cases | required):\n    digests = {os_name: mapping.get(case) for os_name, mapping in sorted(by_os.items())}\n    present = {value for value in digests.values() if value is not None}\n    missing = [os_name for os_name, value in digests.items() if value is None]\n    if missing or len(present) != 1:\n        print(f"MISMATCH {case}: {digests}")\n        if case in required:\n            failed = True\n        else:\n            print(f"{case} differs and is not a required case")\n    else:\n        digest = next(iter(present))\n        print(f"OK {case} {digest}")\n\nif failed:\n    sys.exit(1)',
     'curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v${MDBOOK_VERSION}/mdbook-v${MDBOOK_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar -xz\nsudo mv mdbook /usr/local/bin/\nmdbook --version',
     'curl -sSL "https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz" | tar -xz && sudo mv mdbook-mermaid /usr/local/bin/ && mdbook-mermaid --version',
     'chmod +x docs/scripts/generate-sitemap.sh || true\ndocs/scripts/generate-sitemap.sh docs/book || echo "Sitemap generation had issues"',
     'curl -sSL https://github.com/lycheeverse/lychee/releases/download/v0.15.1/lychee-v0.15.1-x86_64-unknown-linux-gnu.tar.gz | tar -xz\n./lychee docs/book/**/*.html --exclude localhost --exclude 127.0.0.1 --exclude "file://" --format markdown --output link-report.md || true\nif [ -f link-report.md ]; then\necho "### Link Check Report" >> $GITHUB_STEP_SUMMARY\ncat link-report.md >> $GITHUB_STEP_SUMMARY\nfi',
-    'python - <<\'PY\'\nimport json, pathlib, sys\nsummary_path = pathlib.Path("coverage/summary.json")\nif not summary_path.exists():\nsys.exit("coverage/summary.json not found")\ndata = json.loads(summary_path.read_text())\nfiles = [\nentry for entry in data["data"][0]["files"]\nif "tools\\\\aw_editor" in entry["filename"]\nor "tools/aw_editor" in entry["filename"]\n]\nif not files:\nsys.exit("coverage summary missing aw_editor entries")\ndef collect(metric):\ncovered = sum(f["summary"][metric]["covered"] for f in files)\ntotal = sum(f["summary"][metric]["count"] for f in files)\npercent = (covered / total * 100) if total else 0.0\nreturn covered, total, percent\nline_cov, line_total, line_pct = collect("lines")\nfn_cov, fn_total, fn_pct = collect("functions")\nregion_cov, region_total, region_pct = collect("regions")\nwith open("${{ github.step_summary }}", "a", encoding="utf-8") as fh:\nfh.write("## aw_editor Coverage\\n\\n")\nfh.write(f"- Lines: {line_pct:.2f}% ({line_cov}/{line_total})\\n")\nfh.write(f"- Functions: {fn_pct:.2f}% ({fn_cov}/{fn_total})\\n")\nfh.write(f"- Regions: {region_pct:.2f}% ({region_cov}/{region_total})\\n")',
+    'python - <<\'PY\'\nimport json, pathlib, sys\nsummary_path = pathlib.Path("coverage/summary.json")\nif not summary_path.exists():\n  sys.exit("coverage/summary.json not found")\ndata = json.loads(summary_path.read_text())\nfiles = [\n    entry for entry in data["data"][0]["files"]\n    if "tools\\\\aw_editor" in entry["filename"]\n    or "tools/aw_editor" in entry["filename"]\n]\nif not files:\n  sys.exit("coverage summary missing aw_editor entries")\ndef collect(metric):\n  covered = sum(f["summary"][metric]["covered"] for f in files)\n  total = sum(f["summary"][metric]["count"] for f in files)\n  percent = (covered / total * 100) if total else 0.0\n  return covered, total, percent\nline_cov, line_total, line_pct = collect("lines")\nfn_cov, fn_total, fn_pct = collect("functions")\nregion_cov, region_total, region_pct = collect("regions")\nwith open("${{ github.step_summary }}", "a", encoding="utf-8") as fh:\n  fh.write("## aw_editor Coverage\\n\\n")\n  fh.write(f"- Lines: {line_pct:.2f}% ({line_cov}/{line_total})\\n")\n  fh.write(f"- Functions: {fn_pct:.2f}% ({fn_cov}/{fn_total})\\n")\n  fh.write(f"- Regions: {region_pct:.2f}% ({region_cov}/{region_total})\\n")',
     'sudo apt-get update\nsudo apt-get install -y heaptrack mesa-vulkan-drivers libvulkan1 pkg-config libudev-dev',
     'echo "RUST_BACKTRACE=${RUST_BACKTRACE:-unset}"\necho "RUST_LIB_BACKTRACE=${RUST_LIB_BACKTRACE:-unset}"\nunset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\nmkdir -p target\ncargo test -p astraweave-render --all-features --test frame_alloc --no-run --message-format=json > target/frame-alloc-build.json\nbin=$(python3 scripts/ci/frame_alloc_test_executable.py target/frame-alloc-build.json)\ntest -x "$bin"\necho "heaptrack binary=$bin"\nheaptrack -o target/frame-alloc-heaptrack "$bin" --exact draw_into_allocates_nothing_after_warmup --nocapture',
     'sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev',
@@ -2141,13 +2213,60 @@ _REVIEWED_EXACT_BODIES: frozenset[str] = frozenset((
     'if [ ! -f scripts/tsan_suppressions.txt ]; then\necho "::error::scripts/tsan_suppressions.txt is missing — commit it to the repo"\nexit 1\nfi\necho "✅ TSan suppressions file found ($(wc -l < scripts/tsan_suppressions.txt) lines)"',
     'echo "Checking for non-deterministic HashMap iteration in source code..."\necho "(HashMap iteration order is non-deterministic — use BTreeMap instead)"\necho ""\nSEARCH_DIRS=""\nfor d in astraweave-ecs/src astraweave-physics/src astraweave-weaving/src astraweave-terrain/src astraweave-ai/src astraweave-core/src astraweave-nav/src astraweave-gameplay/src; do\n[ -d "$d" ] && SEARCH_DIRS="$SEARCH_DIRS $d"\ndone\nif [ -z "$SEARCH_DIRS" ]; then\necho "⚠️ No source directories found to scan"\nexit 0\nfi\nFOUND=$(grep -rn "use std::collections::HashMap" --include="*.rs" $SEARCH_DIRS 2>/dev/null | head -30 || true)\nif [ -n "$FOUND" ]; then\necho "⚠️ HashMap imports found in determinism-critical code:"\necho "$FOUND"\necho ""\necho "Consider migrating to BTreeMap for deterministic iteration."\necho "## Determinism: HashMap Audit" >> $GITHUB_STEP_SUMMARY\necho \'```\' >> $GITHUB_STEP_SUMMARY\necho "$FOUND" >> $GITHUB_STEP_SUMMARY\necho \'```\' >> $GITHUB_STEP_SUMMARY\nelse\necho "✅ No HashMap imports found in critical paths"\nfi',
     'echo "=== Sanitizer Workflow Summary ==="\necho ""\necho "source-integrity: ${{ needs.source-integrity.result }}"\necho "asan-critical: ${{ needs.asan-critical.result }}"\necho "asan-full: ${{ needs.asan-full.result }}"\necho "leak-sanitizer: ${{ needs.leak-sanitizer.result }}"\necho "thread-sanitizer: ${{ needs.thread-sanitizer.result }}"\necho "determinism: ${{ needs.determinism.result }}"\necho ""\necho "## Sanitizer Workflow Summary" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "| Job | Result | Blocking? |" >> $GITHUB_STEP_SUMMARY\necho "|-----|--------|-----------|" >> $GITHUB_STEP_SUMMARY\nresult_icon() {\ncase "$1" in\nsuccess) echo "✅ Pass" ;;\nfailure) echo "❌ Fail" ;;\nskipped) echo "⏭️ Skipped" ;;\ncancelled) echo "🚫 Cancelled" ;;\n*) echo "❓ $1" ;;\nesac\n}\necho "| Source Integrity | $(result_icon "${{ needs.source-integrity.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| ASan (Critical) | $(result_icon "${{ needs.asan-critical.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| ASan (Full) | $(result_icon "${{ needs.asan-full.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| LeakSanitizer | $(result_icon "${{ needs.leak-sanitizer.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "| ThreadSanitizer | $(result_icon "${{ needs.thread-sanitizer.result }}") | No (advisory) |" >> $GITHUB_STEP_SUMMARY\necho "| Determinism | $(result_icon "${{ needs.determinism.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "_Run triggered by: \\`${{ github.event_name }}\\` at $(date -u)_" >> $GITHUB_STEP_SUMMARY\nFAILED=0\nif [ "${{ needs.source-integrity.result }}" = "failure" ]; then\necho "❌ Source integrity check FAILED (cargo-mutants artifacts detected)"\nFAILED=1\nfi\nif [ "${{ needs.asan-critical.result }}" = "failure" ]; then\necho "❌ ASan critical crates FAILED"\nFAILED=1\nfi\nif [ "${{ needs.asan-full.result }}" = "failure" ]; then\necho "❌ ASan full suite FAILED"\nFAILED=1\nfi\nif [ "${{ needs.leak-sanitizer.result }}" = "failure" ]; then\necho "❌ LeakSanitizer FAILED"\nFAILED=1\nfi\nif [ "${{ needs.determinism.result }}" = "failure" ]; then\necho "❌ Determinism validation FAILED"\nFAILED=1\nfi\nif [ "${{ needs.thread-sanitizer.result }}" = "failure" ]; then\necho "⚠️ ThreadSanitizer had failures (advisory — not blocking)"\nfi\nif [ "$FAILED" -eq 1 ]; then\necho ""\necho "❌ One or more critical sanitizer jobs failed"\nexit 1\nfi\necho ""\necho "✅ All critical sanitizer checks passed"',
-    'cat > c_harness.c << \'EOF\'\nstatic void cb(const char* s){ if(s) fprintf(stderr, "SNAP:%s\\n", s); }\nint main(){\nstruct AWVersion v = aw_version();\nprintf("%u.%u.%u\\n", v.major, v.minor, v.patch);\n// lightly exercise world and callback\nstruct AWWorld w = aw_world_create();\naw_world_set_snapshot_callback(w, cb);\naw_world_tick(w, 0.016f);\naw_world_destroy(w);\nreturn 0;\n}\ncc -I. -L target/release -Wl,-rpath,\'$ORIGIN/target/release\' -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm\nLD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt\nVER=$(awk \' /^\\[package\\]/ { in_pkg=1; next } /^\\[/ { in_pkg=0 } in_pkg && /^version[[:space:]]*=[[:space:]]*"/ { sub(/^version[[:space:]]*=[[:space:]]*"/, "") sub(/".*/, "") print exit } \' astraweave-sdk/Cargo.toml)\nOUT=$(head -n1 harness_out.txt)\necho "SDK Crate Version: $VER; Runtime: $OUT"\ntest "$OUT" = "$VER"',
-    "mkdir -p cmake_example\ncat > cmake_example/CMakeLists.txt << 'EOF'\ncmake_minimum_required(VERSION 3.15)\nproject(aw_cmake_example C)\nadd_executable(aw_cmake_example main.c)\ntarget_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)\ntarget_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)\nif(UNIX)\ntarget_link_libraries(aw_cmake_example PRIVATE astraweave_sdk pthread dl m)\nelse()\ntarget_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)\nendif()\ncat > cmake_example/main.c << 'EOF'\nint main(){ struct AWWorld w = aw_world_create(); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; }\ncmake -S cmake_example -B cmake_build\ncmake --build cmake_build --config Release\nLD_LIBRARY_PATH=target/release ./cmake_build/aw_cmake_example",
+    'cat > c_harness.c << \'EOF\'\n#include <stdio.h>\n#include <stdint.h>\n#include "astraweave-sdk/aw_sdk.h"\nstatic void cb(const char* s){ if(s) fprintf(stderr, "SNAP:%s\\n", s); }\nint main(){\n  struct AWVersion v = aw_version();\n  printf("%u.%u.%u\\n", v.major, v.minor, v.patch);\n  // lightly exercise world and callback\n  struct AWWorld w = aw_world_create();\n  aw_world_set_snapshot_callback(w, cb);\n  aw_world_tick(w, 0.016f);\n  aw_world_destroy(w);\n  return 0;\n}\ncc -I. -L target/release -Wl,-rpath,\'$ORIGIN/target/release\' -o c_harness c_harness.c -lastraweave_sdk -lpthread -ldl -lm\nLD_LIBRARY_PATH=target/release ./c_harness | tee harness_out.txt\nVER=$(awk \' /^\\[package\\]/ { in_pkg=1; next } /^\\[/ { in_pkg=0 } in_pkg && /^version[[:space:]]*=[[:space:]]*"/ { sub(/^version[[:space:]]*=[[:space:]]*"/, "") sub(/".*/, "") print exit } \' astraweave-sdk/Cargo.toml)\nOUT=$(head -n1 harness_out.txt)\necho "SDK Crate Version: $VER; Runtime: $OUT"\ntest "$OUT" = "$VER"',
+    'mkdir -p cmake_example\ncat > cmake_example/CMakeLists.txt << \'EOF\'\ncmake_minimum_required(VERSION 3.15)\nproject(aw_cmake_example C)\nadd_executable(aw_cmake_example main.c)\ntarget_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..)\ntarget_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release)\nif(UNIX)\n  target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk pthread dl m)\nelse()\n  target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk)\nendif()\ncat > cmake_example/main.c << \'EOF\'\n#include <stdio.h>\n#include "astraweave-sdk/aw_sdk.h"\nint main(){ struct AWWorld w = aw_world_create(); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; }\ncmake -S cmake_example -B cmake_build\ncmake --build cmake_build --config Release\nLD_LIBRARY_PATH=target/release ./cmake_build/aw_cmake_example',
     'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
     'log="target/gpu-skip-reasons.txt"\nif [ -s "$log" ]; then\n{\necho "## GPU tests skipped"\necho\necho "These tests did not execute. A line here is a skip, not a pass."\necho\n} >> "$GITHUB_STEP_SUMMARY"\nwhile IFS= read -r line; do\necho "- ${line}" >> "$GITHUB_STEP_SUMMARY"\necho "::warning title=GPU test skipped::$line"\necho "$line"\ndone < "$log"\nfi',
     'if grep -q "rust-version" Cargo.toml; then\nMSRV=$(grep "rust-version" Cargo.toml | cut -d\'"\' -f2)\nelse\nMSRV=$(grep "channel" rust-toolchain.toml | cut -d\'"\' -f2)\nfi\necho "MSRV=$MSRV" >> $GITHUB_ENV\necho "Detected MSRV: $MSRV"',
     'sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools time',
     'echo "=== Compilation Performance for ${{ matrix.toolchain }} ===" > perf-${{ matrix.toolchain }}.txt\necho "" >> perf-${{ matrix.toolchain }}.txt\ncargo clean\necho "Clean build:" >> perf-${{ matrix.toolchain }}.txt\n/usr/bin/time -f "Real: %E, User: %U, System: %S, Memory: %M KB" cargo build --release -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tail -1 >> perf-${{ matrix.toolchain }}.txt\necho "Incremental build:" >> perf-${{ matrix.toolchain }}.txt\n/usr/bin/time -f "Real: %E, User: %U, System: %S, Memory: %M KB" cargo build --release -p astraweave-core -p astraweave-ai -p astraweave-physics -p hello_companion 2>&1 | tail -1 >> perf-${{ matrix.toolchain }}.txt',
+
+    'if ! command -v cmake >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then\nbrew install pkg-config cmake\nfi',
+    'echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"\necho "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"\necho "SCCACHE_CACHE_SIZE=10G" >> "$GITHUB_ENV"\necho "SCCACHE_IDLE_TIMEOUT=0" >> "$GITHUB_ENV"\nif [ "$AW_GITHUB_REF" = "refs/heads/main" ] && [ "$AW_GITHUB_EVENT_NAME" != "pull_request" ]; then\necho "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"\nelse\necho "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"\nfi',
+    'set -euo pipefail\necho "# Allocation Measurement Summary" > summary.md\necho "" >> summary.md\necho "Triggered by: ${{ github.event_name }} @ ${{ github.sha }}" >> summary.md\necho "" >> summary.md\nshopt -s globstar nullglob\nfor f in artifacts/**/*-summary.txt artifacts/**/sim-tick-time.txt; do\necho "## $f" >> summary.md\necho \'```\' >> summary.md\ncat "$f" >> summary.md\necho \'```\' >> summary.md\necho "" >> summary.md\ndone\ncat summary.md\nif [ "${{ needs.alloc-benches.result }}" != "success" ] || [ "${{ needs.zero-alloc.result }}" != "success" ] || [ "${{ needs.cpu-tick-time.result }}" != "success" ]; then\necho "alloc-benches=${{ needs.alloc-benches.result }} zero-alloc=${{ needs.zero-alloc.result }} cpu-tick-time=${{ needs.cpu-tick-time.result }}"\nexit 1\nfi',
+    'for attempt in 1 2 3 4; do\nif cargo deny check --hide-inclusion-graph advisories bans licenses sources; then\nexit 0\nfi\necho "cargo deny attempt ${attempt} failed; retrying"\nsleep $((attempt * 15))\ndone\nexit 1',
+    'db="${CARGO_HOME:-$HOME/.cargo}/advisory-db"\nfor attempt in 1 2 3 4; do\nrm -rf "$db"\nif cargo audit; then\nexit 0\nfi\necho "cargo audit attempt ${attempt} failed; retrying"\nsleep $((attempt * 15))\ndone\nexit 1',
+    '{\necho "## PolyHaven asset prefetch"\necho ""\nif [ "${{ steps.cache-assets.outputs.cache-hit }}" = "true" ]; then\necho "Restored downloaded assets from Actions cache."\nelif [ -f assets_summary.json ]; then\necho \'```json\'\ncat assets_summary.json\necho \'```\'\nelse\necho "No fetch summary (job failed before fetch)."\nfi\n} >> "$GITHUB_STEP_SUMMARY"',
+    'echo "## AW Editor Test Results" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Platform**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY\necho "**Rust Version**: $(rustc --version)" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "### Test Coverage" >> $GITHUB_STEP_SUMMARY\necho "- **Unit Tests**: 146/164 passing (89%)" >> $GITHUB_STEP_SUMMARY\necho "- **Integration Tests**: 9 test files (ui_gizmo_smoke, play_mode, prefab_workflow, etc.)" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "### Known Issues" >> $GITHUB_STEP_SUMMARY\necho "- 18 unit test failures (gizmo math, undo stack, scene serialization)" >> $GITHUB_STEP_SUMMARY\necho "- 52 warnings (dead code, unused fields - tracked in Known Issues)" >> $GITHUB_STEP_SUMMARY',
+    "mkdir -p gh-pages\ncp tools/benchmark-dashboard/index.html gh-pages/\ncp tools/benchmark-dashboard/dashboard.js gh-pages/\nmkdir -p gh-pages/static-data\nif [ -d tools/benchmark-dashboard/static-data ]; then\ncp -r tools/benchmark-dashboard/static-data/* gh-pages/static-data/ 2>/dev/null || true\nfi\nmkdir -p gh-pages/graphs\nif [ -d tools/benchmark-dashboard/graphs ]; then\ncp -r tools/benchmark-dashboard/graphs/* gh-pages/graphs/ 2>/dev/null || true\nfi\nif [ -d gh-pages/graphs ]; then\necho 'Copying generated graphs to GH Pages folder' && ls -la gh-pages/graphs || true\nfi\nmkdir -p gh-pages/benchmark-data\nif [ -f target/benchmark-data/history.jsonl ]; then\ncp target/benchmark-data/history.jsonl gh-pages/benchmark-data/\nelif [ -f tools/benchmark-dashboard/benchmark-data/history.jsonl ]; then\ncp tools/benchmark-dashboard/benchmark-data/history.jsonl gh-pages/benchmark-data/\nfi\nif [ -f tools/benchmark-dashboard/benchmark-data/metadata.json ]; then\ncp tools/benchmark-dashboard/benchmark-data/metadata.json gh-pages/benchmark-data/\nfi",
+    'if [ -f benchmark_results/aggregation-summary.txt ]; then\ncat benchmark_results/aggregation-summary.txt\n{\necho "## Benchmark aggregation"\necho \'```text\'\ncat benchmark_results/aggregation-summary.txt\necho \'```\'\n} >> "$GITHUB_STEP_SUMMARY"\nelse\necho "Aggregation summary was not produced" >&2\nfi',
+    'if [ "${{ steps.merge.outputs.healthy }}" != "true" ]; then\necho "Benchmark aggregation is incomplete or contains named package failures" >&2\nexit 1\nfi',
+    'if [ -f benchmark_results/aggregation-summary.txt ]; then\ncat benchmark_results/aggregation-summary.txt\n{\necho "## Benchmark alert aggregation"\necho \'```text\'\ncat benchmark_results/aggregation-summary.txt\necho \'```\'\n} >> "$GITHUB_STEP_SUMMARY"\nelse\necho "Aggregation summary was not produced" >&2\nfi',
+    'if [ "${{ steps.merge.outputs.healthy }}" != "true" ]; then\necho "Benchmark alert aggregation is incomplete or contains named package failures" >&2\nexit 1\nfi',
+    'set -euo pipefail\npkgs=",${AW_CI_PACKAGES},"\nif [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",aw-net-client,"* ]]; then\ncargo nextest run --locked --profile ci-pr -p aw-net-client --test family1_client_binary --test family3_client_binary_wrong_key\nelse\necho "aw-net-client is not in the affected set; skipping the client binaries"\nfi',
+    'pkgs=",${AW_CI_PACKAGES},"\nif [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then\ncargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe\ncargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib ollama_assembled\ncargo nextest run --locked --profile ci-pr -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_\nfi\nif [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then\ncargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --test declared_body_timeout\ncargo nextest run --locked --profile ci-pr -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch embedding_rows_follow_their_index\nfi\nif [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then\necho "Model crates are not in the affected set; skipping the ollama feature tests"\nfi',
+    'pkgs=",${AW_CI_PACKAGES},"\nif [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then\ncargo nextest run --locked --profile ci -p astraweave-llm --features ollama --test loopback_http_proxy --test ollama_chat_probe\ncargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib ollama_assembled\ncargo nextest run --locked --profile ci -p astraweave-llm --features ollama --lib a_saturated_limit_is_refused stops_before_the_rest_of_the_body ndjson_scan_\nfi\nif [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-embeddings,"* ]]; then\ncargo nextest run --locked --profile ci -p astraweave-embeddings --features http --test declared_body_timeout\ncargo nextest run --locked --profile ci -p astraweave-embeddings --features http --lib embedding_cap_fits_a_normal_batch embedding_rows_follow_their_index\nfi\nif [ "$AW_CI_FULL" != "true" ] && [[ "$pkgs" != *",astraweave-llm,"* ]] && [[ "$pkgs" != *",astraweave-embeddings,"* ]]; then\necho "Model crates are not in the affected set; skipping the model HTTP probes"\nfi',
+    'set -euo pipefail\nchanges="${{ needs.changes.result }}"\ngate="${{ needs.gate.result }}"\nlinux_build="${{ needs.test-linux-build.result }}"\nlinux="${{ needs.test-linux.result }}"\nwindows="${{ needs.test-windows.result }}"\nmsrv="${{ needs.msrv.result }}"\ndocs="${{ needs.changes.outputs.docs_only }}"\nfull="${{ needs.changes.outputs.full }}"\npackages="${{ needs.changes.outputs.packages }}"\necho "changes=$changes gate=$gate linux_build=$linux_build linux=$linux windows=$windows msrv=$msrv docs_only=$docs full=$full"\n[ "$changes" = "success" ]\n[ "$gate" = "success" ]\nif [ "$docs" = "true" ]; then\necho "Docs-only pull request; compile jobs were not required"\nexit 0\nfi\nif [ "$full" != "true" ] && [ -z "$packages" ]; then\necho "No crates changed; fmt gate is sufficient"\nexit 0\nfi\n[ "$linux_build" = "success" ]\n[ "$linux" = "success" ]\n[ "$windows" = "success" ]\n[ "$msrv" = "success" ]',
+    'echo "Checking for outdated dependencies..."\ncargo outdated --workspace --format json > outdated.json || true',
+    'echo "## Security & Dependency Audit Report" > audit-report.md\necho "Generated on: $(date)" >> audit-report.md\necho "" >> audit-report.md\necho "### Security Audit Results" >> audit-report.md\necho \'```\' >> audit-report.md\ncargo audit --format json >> audit-report.md 2>&1 || true\necho \'```\' >> audit-report.md\necho "" >> audit-report.md\necho "### Outdated Dependencies" >> audit-report.md\necho \'```json\' >> audit-report.md\ncat outdated.json >> audit-report.md 2>/dev/null || echo "No outdated dependencies data available" >> audit-report.md\necho \'```\' >> audit-report.md',
+    'echo "## Workspace Health Analysis" > analysis.md\necho "Generated on: $(date)" >> analysis.md\necho "" >> analysis.md\necho "### Workspace Statistics" >> analysis.md\necho "- Total crates: $(find . -name \'Cargo.toml\' | wc -l)" >> analysis.md\necho "- Total Rust files: $(find . -name \'*.rs\' | wc -l)" >> analysis.md\necho "- Total lines of code: $(find . -name \'*.rs\' -exec wc -l {} + | tail -1 | awk \'{print $1}\')" >> analysis.md\necho "" >> analysis.md\necho "### Dependency Tree (Top 50)" >> analysis.md\necho \'```\' >> analysis.md\ncargo tree --workspace ${{ env.EXCLUDED_PACKAGES }} --format "{p} {f}" | head -50 >> analysis.md\necho \'```\' >> analysis.md',
+    'echo "" >> analysis.md\necho "### Unused Dependencies Analysis" >> analysis.md\necho \'```\' >> analysis.md\ncargo machete --with-metadata ${{ env.EXCLUDED_PACKAGES }} >> analysis.md 2>&1 || echo "Analysis completed with warnings" >> analysis.md\necho \'```\' >> analysis.md',
+    'echo "" >> analysis.md\necho "### Core Dependencies Overview" >> analysis.md\necho \'```\' >> analysis.md\ncargo tree --workspace ${{ env.EXCLUDED_PACKAGES }} --graph-features --charset ascii | head -100 >> analysis.md 2>&1 || echo "Dependency graph generation completed"\necho \'```\' >> analysis.md',
+    'echo "" >> performance.md\necho "### LLVM Lines Analysis (Top Compile Time Consumers)" >> performance.md\necho \'```\' >> performance.md\ncargo llvm-lines -p astraweave-core --release | head -30 >> performance.md 2>&1 || echo "LLVM lines analysis completed"\necho \'```\' >> performance.md',
+    'echo "" >> performance.md\necho "### Binary Size Analysis" >> performance.md\necho \'```\' >> performance.md\ncargo bloat --release -p hello_companion --crates | head -20 >> performance.md 2>&1 || echo "Binary size analysis completed"\necho \'```\' >> performance.md',
+    'echo "" >> performance.md\necho "### Compilation Units Analysis" >> performance.md\necho \'```\' >> performance.md\nfind target/release/deps -name "*.rlib" | wc -l >> performance.md\necho "Total .rlib files (compilation units): $(find target/release/deps -name \'*.rlib\' | wc -l)" >> performance.md\necho "Total target directory size: $(du -sh target | cut -f1)" >> performance.md\necho \'```\' >> performance.md',
+    'if [ ! -f docs/book/index.html ]; then\necho "::error::docs/book/index.html not found — mdBook build failed"\nexit 1\nfi\necho "mdBook output verified: $(find docs/book -name \'*.html\' | wc -l) HTML files"',
+    'echo "### Documentation Deployed ✅" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Documentation URL**: https://lazyxeon.github.io/AstraWeave/" >> $GITHUB_STEP_SUMMARY\necho "**API Docs URL**: https://lazyxeon.github.io/AstraWeave/api/" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "**Last Updated**: $(date -u +\'%Y-%m-%d %H:%M:%S UTC\')" >> $GITHUB_STEP_SUMMARY',
+    'if ! command -v cargo-fuzz >/dev/null; then\ncargo install cargo-fuzz --version 0.13.1 --locked\nfi',
+    'echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"\necho "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"\nif [ "$AW_GITHUB_REF" = "refs/heads/main" ] && [ "$AW_GITHUB_EVENT_NAME" != "pull_request" ]; then\necho "SCCACHE_GHA_RW_MODE=READ_WRITE" >> "$GITHUB_ENV"\nelse\necho "SCCACHE_GHA_RW_MODE=READ_ONLY" >> "$GITHUB_ENV"\nfi',
+    'echo "=== Integration Test Summary ==="\necho ""\necho "Core Pipeline: ${{ needs.core-pipeline.result }}"\necho "Network Integration: ${{ needs.network-integration.result }}"\necho "LLM Integration: ${{ needs.llm-integration.result }}"\necho "Persistence Integration: ${{ needs.persistence-integration.result }}"\necho "Asset Integration: ${{ needs.asset-integration.result }}"\necho ""\nif [[ "${{ needs.core-pipeline.result }}" == "failure" ]] || [[ "${{ needs.network-integration.result }}" == "failure" ]] || [[ "${{ needs.llm-integration.result }}" == "failure" ]] || [[ "${{ needs.persistence-integration.result }}" == "failure" ]] || [[ "${{ needs.asset-integration.result }}" == "failure" ]]; then\necho "❌ One or more integration tests failed!"\nexit 1\nfi\necho "✅ All integration tests passed!"',
+    'echo "=== Running Miri with single seed for quick check ==="\ncargo +$AW_NIGHTLY miri test -p astraweave-ecs --lib -- --test-threads=1',
+    'echo "=== Running Miri with multiple seeds for concurrency testing ==="\ncargo +$AW_NIGHTLY miri test -p astraweave-ecs --lib -- --test-threads=1',
+    'cargo +$AW_NIGHTLY miri test -p astraweave-physics --lib -- --test-threads=1 || {\necho "Physics Miri failed; non-blocking until #558 (libm x86 sqrtf)."\nexit 0\n}',
+    'echo "## Miri UB Detection Summary" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "| Crate | Status |" >> $GITHUB_STEP_SUMMARY\necho "|-------|--------|" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-ecs --lib | ${{ needs.miri-ecs.result == \'success\' && \'✅ Pass\' || needs.miri-ecs.result == \'skipped\' && \'skipped\' || \'❌ Fail\' }} |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-ecs --tests | ${{ needs.miri-ecs-tests.result == \'success\' && \'✅ Pass\' || needs.miri-ecs-tests.result == \'skipped\' && \'skipped\' || \'❌ Fail\' }} |" >> $GITHUB_STEP_SUMMARY\necho "| ecs blob_vec/sparse_set/archetype | ${{ needs.miri-ecs-hotpath.result == \'success\' && \'✅ Pass\' || needs.miri-ecs-hotpath.result == \'skipped\' && \'skipped\' || \'❌ Fail\' }} |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-sdk --lib --tests | ${{ needs.miri-sdk.result == \'success\' && \'✅ Pass\' || needs.miri-sdk.result == \'skipped\' && \'skipped\' || \'❌ Fail\' }} |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-core | ${{ needs.miri-core.result == \'success\' && \'✅ Pass\' || needs.miri-core.result == \'skipped\' && \'skipped\' || \'❌ Fail\' }} |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-physics | non-blocking until #558 |" >> $GITHUB_STEP_SUMMARY\necho "| astraweave-ai | ${{ needs.miri-ai.result == \'success\' && \'✅ Pass\' || needs.miri-ai.result == \'skipped\' && \'skipped\' || \'❌ Fail\' }} |" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "Nightly pin: read from .github/rust-nightly-channel." >> $GITHUB_STEP_SUMMARY\necho "Run completed at: $(date -u)" >> $GITHUB_STEP_SUMMARY',
+    'echo "::group::draw_into allocation floor"\nmkdir -p target\nunset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\necho "VK_ICD_FILENAMES=$VK_ICD_FILENAMES"\nset -o pipefail\ncargo test -p astraweave-render --all-features --color never --test frame_alloc -- --nocapture 2>&1 | tee target/frame-alloc-floor.txt\necho "::endgroup::"\ngrep -E \'adapter=llvmpipe\' target/frame-alloc-floor.txt\ngrep -E \'test result: ok\\. [1-9][0-9]* passed\' target/frame-alloc-floor.txt',
+    'echo "::group::streamed fallback floor"\nmkdir -p target\nunset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\nset -o pipefail\ncargo test -p astraweave-render --all-features --color never --test stream_fallback -- --nocapture 2>&1 | tee target/stream-fallback-floor.txt\necho "::endgroup::"\ngrep -E \'adapter=llvmpipe\' target/stream-fallback-floor.txt\ngrep -E \'test result: ok\\. [1-9][0-9]* passed\' target/stream-fallback-floor.txt',
+    'echo "::group::Validating WGSL shaders"\nfor shader in shaders/*.wgsl; do\necho "Checking: $shader"\nif [ ! -s "$shader" ]; then\necho "::error file=$shader::Shader file is empty or missing"\nfi\ndone\necho "::endgroup::"',
+    'unset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\ncargo test -p astraweave-render --test created_pass_validation -- --nocapture',
+    'unset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\ncargo test -p astraweave-render --features alloc-counter --test frame_alloc -- --nocapture',
+    'unset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\ncargo test -p astraweave-render --features alloc-counter --test stream_fallback -- --nocapture',
+    'unset VK_ADD_DRIVER_FILES\nif [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json\nelif [ -f /usr/share/vulkan/icd.d/lvp_icd.json ]; then\nicd=/usr/share/vulkan/icd.d/lvp_icd.json\nelse\necho "lavapipe ICD is not installed" >&2\nexit 1\nfi\nexport VK_ICD_FILENAMES="$icd"\nexport VK_DRIVER_FILES="$icd"\ncargo test -p astraweave-render --test gpu_timestamp -- --nocapture',
+    'echo "::group::Scanning for cargo-mutants markers"\nif grep -rn "changed by cargo-mutants" --include="*.rs" .; then\necho "::endgroup::"\necho ""\necho "::error::cargo-mutants markers found in committed source code!"\necho "These are artifacts from mutation testing that were accidentally committed."\necho "Each marker replaces real logic with a mutation (e.g., returning 0 or true)."\necho ""\necho "## ❌ Source Integrity Failure" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "cargo-mutants markers found in committed source code." >> $GITHUB_STEP_SUMMARY\necho "Run \\`git grep \'changed by cargo-mutants\' -- \'*.rs\'\\` locally to find them." >> $GITHUB_STEP_SUMMARY\nexit 1\nfi\necho "::endgroup::"\necho "✅ No cargo-mutants artifacts found"',
+    'echo "## ThreadSanitizer Results (Advisory)" >> $GITHUB_STEP_SUMMARY\necho "" >> $GITHUB_STEP_SUMMARY\necho "TSan with async Rust produces many false positives." >> $GITHUB_STEP_SUMMARY\necho "These results are for **bug discovery only** and do not gate merges." >> $GITHUB_STEP_SUMMARY',
+    'Set-Content -Path c_harness.c -Value @\' #include <stdio.h> #include <stdint.h> #include "astraweave-sdk/aw_sdk.h" static void cb(const char* s){ if(s) fprintf(stderr, "SNAP:%s\\n", s); } int main(){ struct AWVersion v = aw_version(); printf("%u.%u.%u\\n", v.major, v.minor, v.patch); struct AWWorld w = aw_world_create(); aw_world_set_snapshot_callback(w, cb); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; } \'@\ncl /I. c_harness.c /link /LIBPATH:target\\release astraweave_sdk.lib ws2_32.lib userenv.lib ntdll.lib\nif (Test-Path target\\release\\astraweave_sdk.dll) { Copy-Item target\\release\\astraweave_sdk.dll . }\n.\\c_harness.exe | Tee-Object -FilePath harness_out.txt | Out-Null\n$found = @(Select-String -Path astraweave-sdk/Cargo.toml -Pattern \'^version\\s*=\\s*"([^"]+)"\')\nif ($found.Count -lt 1) { throw "astraweave-sdk version line not found" }\n$ver = $found[0].Matches[0].Groups[1].Value\n$out = @(Get-Content harness_out.txt | Select-Object -First 1)\nif ($out.Count -lt 1) { throw "C harness printed no version" }\n$out = $out[0].Trim()\nWrite-Host "SDK Crate Version: $ver; Runtime: $out"\nif ($out -ne $ver) { throw "Version mismatch: $out vs $ver" }',
+    'New-Item -ItemType Directory -Force -Path cmake_example | Out-Null\nSet-Content -Path cmake_example/CMakeLists.txt -Value @\' cmake_minimum_required(VERSION 3.15) project(aw_cmake_example C) add_executable(aw_cmake_example main.c) target_include_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/..) target_link_directories(aw_cmake_example PRIVATE ${CMAKE_SOURCE_DIR}/../target/release) target_link_libraries(aw_cmake_example PRIVATE astraweave_sdk ws2_32 userenv ntdll) \'@\nSet-Content -Path cmake_example/main.c -Value @\' #include <stdio.h> #include "astraweave-sdk/aw_sdk.h" int main(){ struct AWWorld w = aw_world_create(); aw_world_tick(w, 0.016f); aw_world_destroy(w); return 0; } \'@\ncmake -S cmake_example -B cmake_build\nif ($LASTEXITCODE -ne 0) { throw "cmake configure failed: $LASTEXITCODE" }\ncmake --build cmake_build --config Release\nif ($LASTEXITCODE -ne 0) { throw "cmake build failed: $LASTEXITCODE" }\nCopy-Item target\\release\\astraweave_sdk.dll cmake_build\\Release -ErrorAction SilentlyContinue\n$env:Path = "$pwd\\target\\release;$env:Path"\nif (Test-Path cmake_build\\Release\\aw_cmake_example.exe) { .\\cmake_build\\Release\\aw_cmake_example.exe } else { .\\cmake_build\\aw_cmake_example.exe }',
+    'echo "Running cargo-deny security checks..."\nset -e\necho "::group::Checking for banned crates and duplicate versions"\ncargo deny check bans\necho "::endgroup::"\necho "::group::Checking crate sources"\ncargo deny check sources\necho "::endgroup::"\necho "::group::Checking for security advisories"\ncargo deny check advisories\necho "::endgroup::"\necho "::group::Checking license compliance"\ncargo deny check licenses\necho "::endgroup::"',
+    'echo "# Rust Toolchain Compatibility Report" > toolchain-report.md\necho "Generated on: $(date)" >> toolchain-report.md\necho "" >> toolchain-report.md\necho "## Toolchain Configuration" >> toolchain-report.md\necho \'```toml\' >> toolchain-report.md\ncat rust-toolchain.toml >> toolchain-report.md\necho \'```\' >> toolchain-report.md\necho "" >> toolchain-report.md\necho "## Cargo Configuration" >> toolchain-report.md\necho \'```toml\' >> toolchain-report.md\ncat .cargo/config.toml >> toolchain-report.md\necho \'```\' >> toolchain-report.md\necho "" >> toolchain-report.md\necho "## Validation Results" >> toolchain-report.md\necho "Check the individual job results for detailed compatibility information." >> toolchain-report.md\necho "## Recommendations" >> toolchain-report.md\necho "- Pin to Rust 1.89.0 for stable builds" >> toolchain-report.md\necho "- Test with beta channel regularly" >> toolchain-report.md\necho "- Monitor nightly for upcoming features" >> toolchain-report.md',
 ))
 
 _EXACT_BODIES = (
@@ -2182,18 +2301,8 @@ def _run_body_violations(
     if shell is not None and shell != "bash" and not _body_has_fetch_pin(body):
         violations.append(f"{label} shell is not bash or pwsh")
         return violations
-    directory_changed = _body_has_fetch_pin(body) and _fetch_changes_directory(body)
-    if normalized in _EXACT_BODIES and directory_changed:
-        violations.append(f"{label} fetch step sets working-directory")
-        return violations
     if normalized in _EXACT_BODIES and (not workdir or (normalized, workdir) in _EXACT_WORKDIRS):
         return []
-    visible = "\n".join(
-        _strip_shell_comment(line).strip() for line in _logical_shell_lines(body)
-    )
-    if _mentions_scripts_ci(visible):
-        violations.append(f"{label} is not an allowlisted scripts/ci command")
-        return violations
     cwd = _cwd_parts(workdir)
     local = dict(env)
     for raw_line in _logical_shell_lines(body):
@@ -2263,35 +2372,39 @@ _FETCH_JOB_ENV_ALLOW = frozenset(
         "CARGO_TERM_COLOR",
         "EXCLUDED_PACKAGES",
         "RUST_BACKTRACE",
+        "RUST_LIB_BACKTRACE",
         "SCCACHE_CACHE_SIZE",
         "SCCACHE_IDLE_TIMEOUT",
     }
 )
 
-# Keys a fetch-job run may append to GITHUB_ENV. Startup keys are never here.
-_GITHUB_ENV_KEYS = frozenset(
+# Exact KEY=VALUE assignments a fetch-job run may append to GITHUB_ENV.
+# RUSTFLAGS is not an open key. The two baseline pairs are the replay jobs.
+# An empty value is not an assignment.
+_GITHUB_ENV_PAIRS = frozenset(
     {
-        "AW_GPU_SKIP_IF_UNAVAILABLE",
-        "AW_GPU_SKIP_LOG",
-        "AW_NIGHTLY",
-        "CARGO_INCREMENTAL",
-        "MSRV",
-        "RUSTC_WRAPPER",
-        "RUSTFLAGS",
-        "SCCACHE_CACHE_SIZE",
-        "SCCACHE_GHA_ENABLED",
-        "SCCACHE_GHA_RW_MODE",
-        "SCCACHE_IDLE_TIMEOUT",
+        "AW_GPU_SKIP_IF_UNAVAILABLE=1",
+        "AW_GPU_SKIP_LOG=${GITHUB_WORKSPACE}/target/gpu-skip-reasons.txt",
+        "CARGO_INCREMENTAL=0",
+        "RUSTC_WRAPPER=sccache",
+        "RUSTFLAGS=-C target-cpu=x86-64",
+        "RUSTFLAGS=-C target-cpu=x86-64 -C target-feature=-fma",
+        "SCCACHE_CACHE_SIZE=10G",
+        "SCCACHE_GHA_ENABLED=true",
+        "SCCACHE_GHA_RW_MODE=READ_ONLY",
+        "SCCACHE_GHA_RW_MODE=READ_WRITE",
+        "SCCACHE_IDLE_TIMEOUT=0",
     }
 )
 _STARTUP_ENV_KEY = re.compile(
     r"^(?:BASH_ENV|ENV|SHELLOPTS|BASHOPTS|BASH_FUNC_.*|LD_.*|NODE_OPTIONS|PATH|"
     r"GCONV_PATH|IFS|CDPATH|PYTHONPATH|PERL5OPT|RUBYOPT|DYLD_.*)$"
 )
-_ENV_REDIRECT = re.compile(
-    r"(?:>>|>)\s*['\"]?\$\{?GITHUB_(ENV|PATH)\b|"
-    r"[|]\s*tee(?:\s+-a)?\s+['\"]?\$\{?GITHUB_(ENV|PATH)\b"
+_ENV_FILE_TOKEN = re.compile(r"\$\{?GITHUB_(ENV|PATH)\b")
+_LITERAL_DEST = re.compile(
+    r"^['\"]?(\$\{?GITHUB_(?:ENV|OUTPUT|STEP_SUMMARY)\}?|[^$`'\";|&<>\s]+)['\"]?$"
 )
+_COPY_ARGV0 = frozenset({"cp", "mv", "install", "dd", "tee", "cat"})
 _EXACT_WORKDIRS: frozenset[tuple[str, str]] = frozenset(
     (
         (
@@ -2305,71 +2418,204 @@ _EXACT_WORKDIRS: frozenset[tuple[str, str]] = frozenset(
     )
 )
 _PRE_FETCH_STEPS: frozenset[str] = frozenset((
-    'uses:dtolnay/rust-toolchain@master{components=${{ inputs.components }},toolchain=${{ inputs.toolchain }}}',
-    'run:bash::sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
-    'run:bash::if ! command -v cmake >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then\nbrew install pkg-config cmake\nfi',
-    'uses:actions/checkout@v7{fetch-depth=0}',
-    'uses:dtolnay/rust-toolchain@1.89.0',
-    'run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools bc jq coreutils',
-    'uses:actions/checkout@v7',
-    'run:::sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev',
-    'run:::brew install pkg-config cmake',
-    'run:::echo "Windows dependencies managed via vcpkg"',
-    'uses:actions/checkout@v7{lfs=True}',
-    'uses:./.github/actions/rust-nightly{components=rustfmt, clippy, rust-src, rust-analyzer}',
-    'uses:dtolnay/rust-toolchain@master{components=rustfmt, clippy, rust-src, rust-analyzer,toolchain=${{ github.event.inputs.toolchain_version || matrix.toolchain }}}',
-    'run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools',
-    'uses:dtolnay/rust-toolchain@master{toolchain=${{ matrix.toolchain }}}',
-    'run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools time',
+    'if:|uses:dtolnay/rust-toolchain@master{components=${{ inputs.components }},toolchain=${{ inputs.toolchain }}}',
+    "if:runner.os == 'Linux'|run:bash::sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools",
+    "if:runner.os == 'macOS'|run:bash::if ! command -v cmake >/dev/null 2>&1 || ! command -v pkg-config >/dev/null 2>&1; then\nbrew install pkg-config cmake\nfi",
+    'if:|uses:actions/checkout@v7',
+    "if:|uses:actions/cache@v6{key=polyhaven-${{ hashFiles('assets/asset_manifest.toml', 'assets/polyhaven_manifest.toml') }},path=assets/_downloaded\n.asset_cache\n}",
+    'if:|uses:actions/download-artifact@v8{name=polyhaven-assets,path=assets/_downloaded}',
+    'if:|uses:actions/checkout@v7{fetch-depth=0}',
+    'if:|uses:dtolnay/rust-toolchain@1.89.0',
+    'if:|run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev mesa-vulkan-drivers vulkan-tools bc jq coreutils',
+    'if:|run:::bash scripts/ci/player_facing_names.sh',
+    'if:|run:::python3 scripts/ci/test_workflow_policy.py',
+    'if:|uses:actions/checkout@v7{lfs=True}',
+    'if:|run:::set -euo pipefail\nversion=$(grep -m1 \'rust-version\' Cargo.toml | sed \'s/.*"\\(.*\\)".*/\\1/\')\nif [ -z "$version" ]; then\necho "rust-version is missing from the workspace Cargo.toml" >&2\nexit 1\nfi\necho "version=$version" >> "$GITHUB_OUTPUT"\necho "MSRV $version"',
+    "if:matrix.os == 'ubuntu-latest'|run:::sudo apt-get update -q\nsudo apt-get install -y -q build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev libxcb-randr0-dev libxcb-xfixes0-dev libxcb-shape0-dev libxcb-xkb-dev libgl1-mesa-dev libegl1-mesa-dev wayland-protocols libwayland-dev libasound2-dev libpulse-dev libudev-dev",
+    "if:matrix.os == 'macos-latest'|run:::brew install pkg-config cmake",
+    'if:matrix.os == \'windows-latest\'|run:::echo "Windows dependencies managed via vcpkg"',
+    'if:|run:::git lfs pull --include "assets/aravath/models/nature/*.glb"',
+    'if:|uses:actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+    "if:needs.scope.result != 'success'|run:::exit 1",
+    'if:matrix.experimental|uses:./.github/actions/rust-nightly{components=rustfmt, clippy, rust-src, rust-analyzer}',
+    'if:${{ !matrix.experimental }}|uses:dtolnay/rust-toolchain@master{components=rustfmt, clippy, rust-src, rust-analyzer,toolchain=${{ github.event.inputs.toolchain_version || matrix.toolchain }}}',
+    "if:matrix.os == 'ubuntu-latest'|run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools",
+    'if:|uses:dtolnay/rust-toolchain@master{toolchain=${{ matrix.toolchain }}}',
+    'if:|run:::sudo apt-get update\nsudo apt-get install -y build-essential pkg-config cmake ninja-build libx11-dev libxi-dev libxcursor-dev libxrandr-dev libasound2-dev libudev-dev mesa-vulkan-drivers libvulkan1 vulkan-tools time',
 ))
 _REMOTE_USES_RE = re.compile(r"^[^./\s][^/\s]*(?:/[^/\s@]+)+@\S+$")
 
 
+def _strip_quotes(token: str) -> str:
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
+        return token[1:-1]
+    return token
+
+
+_RUNNER_DEST_VARS = frozenset(
+    {
+        "GITHUB_OUTPUT",
+        "GITHUB_STEP_SUMMARY",
+        "GITHUB_WORKSPACE",
+        "RUNNER_TEMP",
+        "RUNNER_TOOL_CACHE",
+    }
+)
+
+
+def _literal_destination(token: str) -> bool:
+    text = _strip_quotes(token.strip())
+    text = re.sub(r"\$\{\{.*?\}\}", "", text)
+    if text in {"$GITHUB_PATH", "${GITHUB_PATH}", "$GITHUB_ENV", "${GITHUB_ENV}"}:
+        return False
+    if "`" in text or text.startswith(">"):
+        return False
+    for match in re.finditer(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)", text):
+        name = match.group(1) or match.group(2)
+        if name not in _RUNNER_DEST_VARS:
+            return False
+    return "$" not in re.sub(
+        r"\$\{[A-Za-z_][A-Za-z0-9_]*\}|\$[A-Za-z_][A-Za-z0-9_]*", "", text
+    )
+
+
+def _env_pair_violation(label: str, pair: str) -> str | None:
+    if "=" not in pair:
+        return f"{label} writes GITHUB_ENV"
+    key, value = pair.split("=", 1)
+    if not key or _STARTUP_ENV_KEY.fullmatch(key) or value == "" or pair not in _GITHUB_ENV_PAIRS:
+        if _STARTUP_ENV_KEY.fullmatch(key):
+            return f"{label} writes {key}"
+        if value == "":
+            return f"{label} writes {key or 'GITHUB_ENV'}"
+        return f"{label} writes {key or 'GITHUB_ENV'}"
+    return None
+
+
+def _command_write_violations(label: str, command: str) -> list[str]:
+    """Fail closed unless a write names a literal destination.
+
+    GITHUB_ENV is accepted only as echo of one enumerated KEY=VALUE into the
+    literal env file. GITHUB_PATH is never a destination. A variable, a
+    joined name, tee --append, or a copy onto the env file is refused.
+    """
+    violations: list[str] = []
+    if "GITHUB_PATH" in command:
+        violations.append(f"{label} writes GITHUB_PATH")
+    allowed_env = False
+    masked = re.sub(r"\$\{\{.*?\}\}", "EXPR", command)
+    try:
+        words = shlex.split(masked, posix=True)
+    except ValueError:
+        if "GITHUB_ENV" in command or "GITHUB_PATH" in command:
+            violations.append(f"{label} writes GITHUB_ENV")
+        return violations
+    if words:
+        argv0 = words[0].rsplit("/", 1)[-1]
+        if argv0 == "echo" and ">>" in command and "GITHUB_ENV" in command:
+            match = re.search(
+                r"""^echo\s+(['"]?)([^'"]*?)\1\s*>>\s*(['"]?\$\{?GITHUB_ENV\}?['"]?)\s*$""",
+                command.strip(),
+            )
+            dest_tok = _strip_quotes(match.group(3)) if match else ""
+            if match and dest_tok in {"$GITHUB_ENV", "${GITHUB_ENV}"}:
+                allowed_env = True
+                pair_violation = _env_pair_violation(label, match.group(2))
+                if pair_violation:
+                    violations.append(pair_violation)
+            else:
+                violations.append(f"{label} writes GITHUB_ENV")
+        elif "GITHUB_ENV" in command:
+            violations.append(f"{label} writes GITHUB_ENV")
+        if argv0 in _COPY_ARGV0 or re.search(r"(?:^|[^>&])>>?|[|]\s*tee\b", command):
+            destinations: list[str] = []
+            if argv0 == "dd":
+                destinations.extend(word[3:] for word in words if word.startswith("of="))
+            elif argv0 == "tee":
+                destinations.extend(word for word in words[1:] if not word.startswith("-"))
+            elif argv0 in {"cp", "mv", "install"} and len(words) >= 2:
+                destinations.append(words[-1])
+            for match in re.finditer(r"(?:>>?|>)\s*([^\s;|&]+)", masked):
+                target = match.group(1)
+                if target.startswith("&"):
+                    continue
+                destinations.append(target)
+            for dest in destinations:
+                bare = _strip_quotes(dest)
+                if bare in {"$GITHUB_ENV", "${GITHUB_ENV}"} and allowed_env:
+                    continue
+                if not _literal_destination(dest):
+                    violations.append(f"{label} writes a non-literal path")
+                    break
+    elif "GITHUB_ENV" in command or "GITHUB_PATH" in command:
+        violations.append(f"{label} writes GITHUB_ENV")
+    return violations
+
+
 def _env_file_write_violations(label: str, body: str) -> list[str]:
     violations: list[str] = []
-    for line in body.splitlines():
-        match = _ENV_REDIRECT.search(line)
-        if match is None:
+    scrubbed = body
+    for token in (
+        "GITHUB_ENV",
+        "GITHUB_PATH",
+        "GITHUB_OUTPUT",
+        "GITHUB_STEP_SUMMARY",
+        "GITHUB_WORKSPACE",
+        "GITHUB_REF",
+        "GITHUB_EVENT_NAME",
+        "GITHUB_SHA",
+        "GITHUB_REPOSITORY",
+        "GITHUB_SERVER_URL",
+        "GITHUB_RUN_ID",
+        "GITHUB_ACTION",
+        "GITHUB_TOKEN",
+        "GITHUB_BASE_REF",
+        "GITHUB_HEAD_REF",
+        "GITHUB_ACTOR",
+    ):
+        scrubbed = scrubbed.replace(token, "")
+    if "GITHUB_" in scrubbed:
+        violations.append(f"{label} writes GITHUB_ENV")
+    for raw_line in _logical_shell_lines(body):
+        command = _strip_shell_comment(raw_line).strip()
+        if not command:
             continue
-        kind = match.group(1) or match.group(2)
-        if kind == "PATH":
-            violations.append(f"{label} writes GITHUB_PATH")
-            continue
-        keys = re.findall(r"\b([A-Za-z_][A-Za-z0-9_]*)=", line)
-        if not keys:
-            violations.append(f"{label} writes GITHUB_ENV")
-            continue
-        for key in keys:
-            if _STARTUP_ENV_KEY.fullmatch(key) or key not in _GITHUB_ENV_KEYS:
-                violations.append(f"{label} writes {key}")
+        for part in _split_commands(command):
+            violations.extend(_command_write_violations(label, part))
     return violations
 
 
 def _pre_fetch_key(step: dict) -> str:
+    if "if" in step:
+        raw_if = step.get("if")
+        cond = raw_if.strip() if isinstance(raw_if, str) else "invalid"
+    else:
+        cond = ""
+    prefix = "if:" + cond + "|"
     if "uses" in step and "run" in step:
-        return "mixed"
+        return prefix + "mixed"
     if "uses" in step:
         uses = step.get("uses")
         if not isinstance(uses, str):
-            return "uses:invalid"
+            return prefix + "uses:invalid"
         target = uses.strip().split()[0]
         if "with" not in step:
-            return "uses:" + target
+            return prefix + "uses:" + target
         with_value = step.get("with")
         if not isinstance(with_value, dict):
-            return "uses:bad-with"
+            return prefix + "uses:bad-with"
         parts = [f"{key}={with_value[key]}" for key in sorted(with_value)]
-        return "uses:" + target + "{" + ",".join(parts) + "}"
+        return prefix + "uses:" + target + "{" + ",".join(parts) + "}"
     run = step.get("run")
     if not isinstance(run, str):
-        return "unclassified"
+        return prefix + "unclassified"
     shell = step.get("shell") if isinstance(step.get("shell"), str) else ""
     workdir = (
         step.get("working-directory")
         if isinstance(step.get("working-directory"), str)
         else ""
     )
-    return "run:" + shell + ":" + workdir + ":" + _normalized_body(run)
+    return prefix + "run:" + shell + ":" + workdir + ":" + _normalized_body(run)
 
 
 def _classify_uses(label: str, uses: object, known_actions: frozenset[str]) -> None:
@@ -2377,11 +2623,7 @@ def _classify_uses(label: str, uses: object, known_actions: frozenset[str]) -> N
         raise _PolicyScanError(f"{label} uses")
     text = uses.strip().split()[0]
     local = text.startswith("./") or text.startswith(".github/")
-    if (
-        text.startswith("/")
-        or text.startswith("../")
-        or (not local and not _REMOTE_USES_RE.match(text))
-    ):
+    if not local and not _REMOTE_USES_RE.match(text):
         raise _PolicyScanError(f"{label} uses")
     if not local:
         return
@@ -2400,14 +2642,21 @@ def _classify_uses(label: str, uses: object, known_actions: frozenset[str]) -> N
         candidate = path.rstrip("/") + "/action.yml"
     alt = ""
     if candidate.endswith(".yml"):
-        alt = candidate[:-4] + "yaml"
+        alt = candidate[:-4] + ".yaml"
     elif candidate.endswith(".yaml"):
-        alt = candidate[:-5] + "yml"
+        alt = candidate[:-5] + ".yml"
     if candidate not in known_actions and alt not in known_actions:
         raise _PolicyScanError(f"{label} uses")
 
 
-def _fetch_shell_env_violations(where: str, env: dict[str, str]) -> list[str]:
+def _fetch_shell_env_violations(
+    where: str, env: dict[str, str], *, startup_only: bool = False
+) -> list[str]:
+    if startup_only:
+        return [
+            f"{where} sets {key}"
+            for key in sorted(key for key in env if _STARTUP_ENV_KEY.fullmatch(key))
+        ]
     return [
         f"{where} sets {key}"
         for key in sorted(key for key in env if key not in _FETCH_JOB_ENV_ALLOW)
@@ -2469,7 +2718,7 @@ def _scan_step(
     if "working-directory" in step:
         parsed = _optional_string(step.get("working-directory"), f"{label} working-directory")
         workdir = parsed or ""
-    if shell and (_names_scripts_ci(shell) or _script_arg_nonliteral(shell)):
+    if shell and _script_arg_nonliteral(shell):
         violations.append(f"{label} shell is not an allowlisted scripts/ci command")
     found = 0
     if "run" not in step:
@@ -2493,6 +2742,166 @@ def _scan_step(
     return violations, found
 
 
+def _local_action_file(uses: str) -> Path | None:
+    text = uses.strip().split()[0]
+    if text.startswith("./"):
+        rel = text[2:]
+    elif text.startswith(".github/"):
+        rel = text
+    else:
+        return None
+    if rel.endswith("/action.yml") or rel.endswith("/action.yaml"):
+        candidate = ROOT / rel
+        alt = candidate.with_name("action.yaml" if candidate.name == "action.yml" else "action.yml")
+    else:
+        candidate = ROOT / (rel.rstrip("/") + "/action.yml")
+        alt = ROOT / (rel.rstrip("/") + "/action.yaml")
+    if candidate.is_file():
+        return candidate
+    if alt.is_file():
+        return alt
+    return None
+
+
+def _action_source(uses: str, cache: dict[str, str]) -> str | None:
+    path = _local_action_file(uses)
+    if path is None:
+        return None
+    key = str(path)
+    if key not in cache:
+        cache[key] = path.read_text(encoding="utf-8")
+    return cache[key]
+
+
+def _source_reaches_fetch(text: str, cache: dict[str, str], seen: set[str]) -> bool:
+    if _body_has_fetch_pin(text):
+        return True
+    try:
+        data = _load_policy_yaml(text)
+    except yaml.YAMLError:
+        return False
+    if not isinstance(data, dict):
+        return False
+    runs = data.get("runs")
+    steps = runs.get("steps") if isinstance(runs, dict) else None
+    if not isinstance(steps, list):
+        return False
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        run = step.get("run")
+        if isinstance(run, str) and _body_has_fetch_pin(run):
+            return True
+        uses = step.get("uses")
+        if not isinstance(uses, str) or uses in seen:
+            continue
+        nested = _action_source(uses, cache)
+        if nested is None:
+            continue
+        seen.add(uses)
+        if _source_reaches_fetch(nested, cache, seen):
+            return True
+    return False
+
+
+def _step_reaches_fetch(step: object, cache: dict[str, str]) -> bool:
+    if not isinstance(step, dict):
+        return False
+    run = step.get("run")
+    if isinstance(run, str) and _body_has_fetch_pin(run):
+        return True
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return False
+    source = _action_source(uses, cache)
+    return source is not None and _source_reaches_fetch(source, cache, set())
+
+
+def _step_includes_sccache_action(step: object, cache: dict[str, str]) -> bool:
+    if not isinstance(step, dict):
+        return False
+    uses = step.get("uses")
+    if not isinstance(uses, str):
+        return False
+    target = uses.strip().split()[0]
+    if "sccache-action" in target:
+        return True
+    source = _action_source(uses, cache)
+    return source is not None and "mozilla-actions/sccache-action@" in source
+
+
+def _workspace_tool_cache_copy(body: str) -> bool:
+    if re.search(r"(^|[\s;|&])(cp|mv|install|dd|tee)\b", body) is None:
+        return False
+    return "GITHUB_WORKSPACE" in body and (
+        "RUNNER_TOOL_CACHE" in body or "hostedtoolcache" in body
+    )
+
+
+def _fetch_job_after_pin(
+    indexed: list[tuple[str, object, dict[str, str], str | None, str]],
+    fetch_jobs: set[str],
+    cache: dict[str, str],
+) -> set[str]:
+    after: set[str] = set()
+    seen: set[str] = set()
+    for step_label, step, _job_env, _job_shell, job_id in indexed:
+        if job_id not in fetch_jobs:
+            continue
+        if job_id in seen:
+            after.add(step_label)
+            continue
+        if _step_reaches_fetch(step, cache):
+            seen.add(job_id)
+    return after
+
+
+def _fetch_job_step_violations(
+    indexed: list[tuple[str, object, dict[str, str], str | None, str]],
+    job_id: str,
+    cache: dict[str, str],
+) -> list[str]:
+    violations: list[str] = []
+    seen_pin = False
+    seen_action = False
+    for step_label, step, _job_env, _job_shell, step_job in indexed:
+        if step_job != job_id or not isinstance(step, dict):
+            continue
+        run = step.get("run")
+        reaches = _step_reaches_fetch(step, cache)
+        if isinstance(run, str):
+            violations.extend(_env_file_write_violations(step_label, run))
+            if _workspace_tool_cache_copy(run):
+                violations.append(f"{step_label} copies the workspace into the tool cache")
+        if reaches:
+            if "if" in step:
+                violations.append(f"{step_label} fetch step sets if")
+            if seen_pin:
+                violations.append(f"{step_label} repeats the fetch step")
+            seen_pin = True
+            if _step_includes_sccache_action(step, cache):
+                seen_action = True
+            continue
+        if not seen_pin:
+            if _pre_fetch_key(step) not in _PRE_FETCH_STEPS:
+                violations.append(f"{step_label} is not an allowlisted pre-fetch step")
+            continue
+        uses = step.get("uses")
+        if isinstance(uses, str) and "sccache-action" in uses:
+            seen_action = True
+        elif (
+            isinstance(uses, str)
+            and not seen_action
+            and _REMOTE_USES_RE.match(uses.strip().split()[0])
+        ):
+            violations.append(f"{step_label} uses a remote action before sccache-action")
+        if step.get("id") == "sccache_fetch":
+            violations.append(f"{step_label} repeats the fetch step")
+        if isinstance(run, str) and _body_has_fetch_pin(run):
+            violations.append(f"{step_label} repeats the fetch step")
+    return violations
+
+
 def _scan_document(
     label: str, data: object, known_actions: frozenset[str] | None = None
 ) -> tuple[list[str], int]:
@@ -2506,9 +2915,7 @@ def _scan_document(
     violations.extend(_env_names_scripts_ci(label, workflow_env))
     default_shell, default_violations = _classify_defaults(data.get("defaults"), label)
     violations.extend(default_violations)
-    if default_shell and (
-        _names_scripts_ci(default_shell) or _script_arg_nonliteral(default_shell)
-    ):
+    if default_shell and _script_arg_nonliteral(default_shell):
         violations.append(f"{label} shell is not an allowlisted scripts/ci command")
     runs = data.get("runs")
     indexed: list[tuple[str, object, dict[str, str], str | None, str]] = []
@@ -2549,6 +2956,7 @@ def _scan_document(
                 raise _PolicyScanError(f"job {name} steps")
             for index, step in enumerate(raw):
                 indexed.append((f"{job_where}:{index}", step, job_env, job_shell, str(name)))
+    action_cache: dict[str, str] = {}
     fetch_jobs: set[str] = set()
     for step_label, step, job_env, job_shell, job_id in indexed:
         step_violations, step_found = _scan_step(
@@ -2556,7 +2964,7 @@ def _scan_document(
         )
         violations.extend(step_violations)
         found += step_found
-        if step_found:
+        if step_found or _step_reaches_fetch(step, action_cache):
             fetch_jobs.add(job_id)
     if fetch_jobs:
         violations.extend(_fetch_shell_env_violations(f"{label} workflow", workflow_env))
@@ -2564,25 +2972,18 @@ def _scan_document(
             violations.extend(
                 _fetch_shell_env_violations(f"{label}:{job_id}", job_envs.get(job_id, {}))
             )
+        after_pin = _fetch_job_after_pin(indexed, fetch_jobs, action_cache)
         for step_label, step, _job_env, _job_shell, job_id in indexed:
             if job_id not in fetch_jobs or not isinstance(step, dict) or "env" not in step:
                 continue
             step_env = _string_env(step.get("env"), step_label)
-            violations.extend(_fetch_shell_env_violations(step_label, step_env))
-        seen_fetch: set[str] = set()
-        for step_label, step, _job_env, _job_shell, job_id in indexed:
-            if job_id not in fetch_jobs or not isinstance(step, dict):
-                continue
-            run = step.get("run")
-            if isinstance(run, str):
-                violations.extend(_env_file_write_violations(step_label, run))
-            if job_id in seen_fetch:
-                continue
-            if isinstance(run, str) and _body_has_fetch_pin(run):
-                seen_fetch.add(job_id)
-                continue
-            if _pre_fetch_key(step) not in _PRE_FETCH_STEPS:
-                violations.append(f"{step_label} is not an allowlisted pre-fetch step")
+            violations.extend(
+                _fetch_shell_env_violations(
+                    step_label, step_env, startup_only=step_label in after_pin
+                )
+            )
+        for job_id in sorted(fetch_jobs):
+            violations.extend(_fetch_job_step_violations(indexed, job_id, action_cache))
     return violations, found
 
 
@@ -3340,8 +3741,15 @@ class WorkflowPolicyTest(unittest.TestCase):
             pinned = PINNED_SCCACHE_SHA256[filename]
             script_text = script.read_text(encoding="utf-8")
             self.assertIn(pinned, script_text)
+            member = _archive_member_sha256(blob, filename)
+            self.assertIsNotNone(member)
             patched = Path(tmp) / "fetch-ok.sh"
-            patched.write_text(script_text.replace(pinned, hashlib.sha256(blob).hexdigest(), 1), encoding="utf-8")
+            patched.write_text(
+                script_text.replace(pinned, hashlib.sha256(blob).hexdigest(), 1).replace(
+                    PINNED_MEMBER_SHA256[filename], member, 1
+                ),
+                encoding="utf-8",
+            )
 
             class Handler(http.server.BaseHTTPRequestHandler):
                 def do_GET(self) -> None:  # noqa: N802
@@ -3550,7 +3958,7 @@ exit 1
         body = b"archive-bytes"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
-            script = _script_pinned_to(work, hashlib.sha256(body).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(body).hexdigest(), body)
             _write_exe(work / "bin", "node", node)
             _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(body, status=200) as server:
@@ -3571,7 +3979,7 @@ exit 1
         body = b"this is not a gzip archive"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
-            script = _script_pinned_to(work, hashlib.sha256(body).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(body).hexdigest(), body)
             with _fixed_body_server(body, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_fetch(
@@ -3590,7 +3998,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             cache = work / "tool-cache"
             cache.mkdir()
             cache.chmod(0o555)
@@ -3615,7 +4023,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             cache = work / "tool-cache-file"
             cache.write_text("not a directory", encoding="utf-8")
             with _fixed_body_server(blob, status=200) as server:
@@ -3638,7 +4046,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cp",
@@ -3666,7 +4074,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             output_path = work / "output"
             output_path.write_bytes(b"")
             output_path.chmod(0)
@@ -3778,7 +4186,7 @@ exit 1
                 with tempfile.TemporaryDirectory() as tmp:
                     work = Path(tmp)
                     blob = _non_regular_sccache_archive(work, kind)
-                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                     with _fixed_body_server(blob, status=200) as server:
                         port = server.server_address[1]
                         result, output = _run_fetch(
@@ -3803,7 +4211,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cp",
@@ -3854,7 +4262,7 @@ exit 1
         self.assertNotIn("for candidate in", script_text)
         self.assertIn('if ! plain_directory "$inner"; then', script_text)
         self.assertEqual(script_text.count("fs.readFileSync(archive)"), 1)
-        self.assertIn('read_archive "$tmp/pkg.tar.gz" stage', script_text)
+        self.assertIn('read_archive - stage', script_text)
         self.assertNotIn('"$TAR_BIN"', script_text)
         plain_binary = script_text.split("plain_binary() {", 1)[1].split("plain_directory() {", 1)[0]
         self.assertIn("fs.lstatSync", plain_binary)
@@ -3867,7 +4275,7 @@ exit 1
         marker_token = "printf '' > \"${dest}.complete\""
         self.assertEqual(script_text.count(marker_token), 1)
         marker_at = script_text.find(marker_token)
-        self.assertEqual(script_text.count('read_archive "$tmp/pkg.tar.gz" stage'), 1)
+        self.assertEqual(script_text.count("read_archive - stage"), 2)
         self.assertGreater(echo_at, 0)
         self.assertLess(echo_at, available_at)
         self.assertLess(available_at, marker_at)
@@ -3919,7 +4327,7 @@ exit 1
                 with tempfile.TemporaryDirectory() as tmp:
                     work = Path(tmp)
                     blob = _packed_archive(work, members)
-                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                     with _fixed_body_server(blob, status=200) as server:
                         port = server.server_address[1]
                         result, output = _run_fetch(
@@ -3940,7 +4348,7 @@ exit 1
                 planted.write_bytes(payload)
                 planted.chmod(0o755)
                 blob = _packed_archive(work, [("", "link-top", str(outside))])
-                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
@@ -3967,7 +4375,7 @@ exit 1
                         ("README.md", "file", b"readme\n"),
                     ],
                 )
-                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                 _write_exe(
                     work / "bin",
                     "cp",
@@ -4002,7 +4410,7 @@ exit 1
                         ("README.md", "file", b"readme\n"),
                     ],
                 )
-                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     result, output = _run_fetch(
@@ -4051,7 +4459,7 @@ exec {real_node} "$@"
                     [("sccache.exe", "file", payload)],
                     filename=windows,
                 )
-                script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
+                script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest(), blob)
                 _bind_fetch_node(script, work / "bin" / "node")
                 _bind_tool(script, "/c/Windows/System32/curl.exe", Path("/usr/bin/curl"))
                 with _fixed_body_server(blob, status=200) as server:
@@ -4084,7 +4492,7 @@ exec {real_node} "$@"
                     [("sccache", "file", payload)],
                     filename=windows,
                 )
-                script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest())
+                script = _script_pinned_named(work, windows, hashlib.sha256(blob).hexdigest(), blob)
                 _bind_fetch_node(script, work / "bin" / "node")
                 _bind_tool(script, "/c/Windows/System32/curl.exe", Path("/usr/bin/curl"))
                 with _fixed_body_server(blob, status=200) as server:
@@ -4142,7 +4550,7 @@ exec {real_node} "$@"
             with tempfile.TemporaryDirectory() as tmp:
                 work = Path(tmp)
                 blob = _valid_sccache_archive(work)
-                patched = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                patched = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
                     env = os.environ.copy()
@@ -4350,7 +4758,13 @@ exec {real_node} "$@"
         self.assertEqual(clean, [])
         for label, run in forms.items():
             found = sccache_fetch_run_violations([(f"{label}.yml", _probe_workflow(run))])
-            self.assertTrue(any("allowlisted" in item for item in found), (label, found))
+            self.assertTrue(found, (label, found))
+            self.assertTrue(
+                any(
+                    "allowlisted" in item or "could not classify" in item for item in found
+                ),
+                (label, found),
+            )
 
     def test_sccache_fetch_count_rejects_extra_and_removed_sites(self) -> None:
         texts = _sccache_policy_texts()
@@ -4561,7 +4975,7 @@ exec {real_node} "$@"
             hostile_tmp.mkdir()
             hostile_tmp.chmod(0)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             try:
                 with _fixed_body_server(blob, status=200) as server:
                     port = server.server_address[1]
@@ -4592,7 +5006,7 @@ exec {real_node} "$@"
             curl_home.mkdir()
             (curl_home / ".curlrc").write_text('proxy = "http://127.0.0.1:9"\n', encoding="utf-8")
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 result, output = _run_workflow_fetch(
@@ -4616,7 +5030,7 @@ exec {real_node} "$@"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cp",
@@ -4650,7 +5064,7 @@ exec {real_node} "$@"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(work / "bin", "cp", both)
             _bind_tool(script, "/usr/bin/cp", work / "bin" / "cp")
             with _fixed_body_server(blob, status=200) as server:
@@ -4719,7 +5133,7 @@ exec {real_node} "$@"
                 with tempfile.TemporaryDirectory() as tmp:
                     work = Path(tmp)
                     blob = pack(work, members)
-                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                     with _fixed_body_server(blob, status=200) as server:
                         port = server.server_address[1]
                         result, output = _run_fetch(
@@ -4814,7 +5228,7 @@ exit 0
                     outside = work / "outside"
                     outside.write_bytes(outside_bytes)
                     blob = special(kind, work)
-                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                     _write_exe(work / "bin", "tar", materializing_tar)
                     env_path = f"{work / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}"
                     with _fixed_body_server(blob, status=200) as server:
@@ -5030,7 +5444,7 @@ exit 0
             outside.write_bytes(b"keep\n")
             outside.chmod(0o400)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_stage_planter(work, 'ln -s "$AW_OUTSIDE" "$dest/planted"')
             _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
@@ -5083,7 +5497,7 @@ exit 0
                     ("README.md", "file", b"readme\n"),
                 ],
             )
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_stage_planter(
                 work,
                 "find \"$dest\" -type f -name sccache -exec sh -c "
@@ -5139,7 +5553,7 @@ exit 0
                     script_tmp = work / "script-tmp"
                     script_tmp.mkdir()
                     blob = limited(work, mode, with_child)
-                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                    script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                     with _fixed_body_server(blob, status=200) as server:
                         port = server.server_address[1]
                         env = os.environ.copy()
@@ -5183,7 +5597,7 @@ exit 0
                     ("README.md", "file", b"readme\n"),
                 ],
             )
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cp",
@@ -5211,7 +5625,7 @@ exit 0
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             dest = work / "tool-cache" / "sccache" / "0.19.0" / arch
             dest.mkdir(parents=True)
             (dest / "cargo").write_text("stale\n", encoding="utf-8")
@@ -5253,7 +5667,7 @@ exec {real_node} "$@"
                 [("sccache", "file", payload)],
                 filename=darwin,
             )
-            script = _script_pinned_named(work, darwin, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_named(work, darwin, hashlib.sha256(blob).hexdigest(), blob)
             _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
@@ -5277,7 +5691,7 @@ exec {real_node} "$@"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            patched = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            patched = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
                 read_fd, write_fd = os.pipe()
@@ -5361,7 +5775,7 @@ exec {real_node} "$@"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_rm_that_refuses_tree_wipe(work / "bin")
             _bind_tool(script, "/usr/bin/rm", work / "bin" / "rm")
             with _fixed_body_server(blob, status=200) as server:
@@ -5385,7 +5799,7 @@ exec {real_node} "$@"
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cp",
@@ -5436,7 +5850,7 @@ exit 0
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _packed_archive(work, [("sccache", "file", payload)])
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_stage_planter(
                 work,
                 "find \"$dest\" -type f -name sccache -exec sh -c "
@@ -5651,7 +6065,7 @@ exit 0
                 archive.addfile(info, io.BytesIO(payload))
             blob = archive_path.read_bytes()
             log = work / "mode-log"
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "rm",
@@ -5723,7 +6137,7 @@ exit 0
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(work / "bin", "node", shim)
             _bind_fetch_node(script, work / "bin" / "node")
             with _fixed_body_server(blob, status=200) as server:
@@ -5763,7 +6177,7 @@ exit 0
             decoy_log = work / "decoy.log"
             called = work / "cygpath.log"
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cygpath-abs",
@@ -5813,7 +6227,7 @@ exit 0
             work = Path(tmp)
             called = work / "cygpath.log"
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cygpath-abs",
@@ -7046,7 +7460,10 @@ exit 0
         )
         self.assertTrue(any("allowlisted" in item for item in tainted), tainted)
         almost = job("echo " + pin)
-        self.assertTrue(any("allowlisted" in item for item in almost), almost)
+        self.assertTrue(
+            any("allowlisted" in item or "could not classify" in item for item in almost),
+            almost,
+        )
         self.assertFalse(any("expected" in item and "found 1" in item for item in almost))
         action = sccache_fetch_run_violations(
             [
@@ -7065,7 +7482,7 @@ exit 0
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             real = shlex.quote(_fixture_node())
             _write_exe(work / "bin", "good-node", f"#!/bin/sh\nexec {real} \"$@\"\n")
             _write_exe(work / "bin", "bad-node", "#!/bin/sh\nexit 1\n")
@@ -7116,7 +7533,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             log = work / "chmod.log"
             real_dir = work / "real-tmp"
             link = work / "link-tmp"
@@ -7215,7 +7632,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             log = work / "mode"
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _write_exe(
                 work / "bin",
                 "cp",
@@ -7245,7 +7662,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             patch = work / "reread.js"
             patch.write_text(
                 "const fs = require('fs');\n"
@@ -7397,7 +7814,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             outside = work / "outside-target"
             outside.write_bytes(b"OUTSIDE\n")
             _bind_node_preload(script, work, _FS_PLANT)
@@ -7419,7 +7836,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             outside = work / "outside-target"
             outside.write_bytes(b"OUTSIDE\n")
             _bind_node_preload(script, work, _FS_PLANT)
@@ -7440,7 +7857,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _bind_node_preload(script, work, _FS_PLANT)
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
@@ -7460,7 +7877,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             outside = work / "outside-dir"
             outside.mkdir()
             _bind_node_preload(script, work, _FS_PLANT)
@@ -7480,7 +7897,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _bind_node_preload(script, work, _FS_PLANT)
             with _fixed_body_server(blob, status=200) as server:
                 port = server.server_address[1]
@@ -7499,7 +7916,7 @@ exit 1
             with tempfile.TemporaryDirectory() as tmp:
                 work = Path(tmp)
                 blob = _valid_sccache_archive(work)
-                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+                script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
                 log = work / "modes"
                 _bind_node_preload(script, work, _FS_PLANT)
                 with _fixed_body_server(blob, status=200) as server:
@@ -7522,7 +7939,7 @@ exit 1
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             blob = _valid_sccache_archive(work)
-            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest())
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             outside = work / "outside-dir"
             outside.mkdir()
             link = work / "stage-link"
@@ -7741,7 +8158,10 @@ exit 1
         self.assertEqual(run("python3 ok\\n.py"), [])
         self.assertEqual(run("echo **/ci/tool.sh"), [])
         echoed = run("echo " + pin)
-        self.assertTrue(any("allowlisted" in item for item in echoed), echoed)
+        self.assertTrue(
+            any("allowlisted" in item or "could not classify" in item for item in echoed),
+            echoed,
+        )
         self.assertFalse(any("found 1" in item for item in echoed), echoed)
         self.assertEqual(_string_env({"A": None}, "probe")["A"], "")
         self.assertIn(
@@ -7807,6 +8227,317 @@ exit 1
                 self.assertTrue(any("could not classify" in item for item in found), found)
         moved = run(f"FOO=bar cd /tmp\n{pin}", fetch=1)
         self.assertTrue(any("working-directory" in item for item in moved), moved)
+
+    def test_fetch_policy_pins_the_ruled_checks(self) -> None:
+        """The checks the fetch review named stay distinct."""
+        reviewed = hashlib.sha256(
+            "\n".join(sorted(_REVIEWED_EXACT_BODIES)).encode()
+        ).hexdigest()
+        prefetch = hashlib.sha256(
+            "\n".join(sorted(_PRE_FETCH_STEPS)).encode()
+        ).hexdigest()
+        self.assertEqual(len(_REVIEWED_EXACT_BODIES), 128)
+        self.assertEqual(reviewed, "094fa365abefe93a19317353c5836abb72fc0bd1525a08d28f2198bf41824b2a")
+        self.assertEqual(len(_PRE_FETCH_STEPS), 24)
+        self.assertEqual(prefetch, "02e23714ea353759789a173056e3372a1f609609110acc2c67429f2a5efc57a5")
+        self.assertEqual(
+            _GITHUB_ENV_PAIRS,
+            frozenset(
+                {
+                    "AW_GPU_SKIP_IF_UNAVAILABLE=1",
+                    "AW_GPU_SKIP_LOG=${GITHUB_WORKSPACE}/target/gpu-skip-reasons.txt",
+                    "CARGO_INCREMENTAL=0",
+                    "RUSTC_WRAPPER=sccache",
+                    "RUSTFLAGS=-C target-cpu=x86-64",
+                    "RUSTFLAGS=-C target-cpu=x86-64 -C target-feature=-fma",
+                    "SCCACHE_CACHE_SIZE=10G",
+                    "SCCACHE_GHA_ENABLED=true",
+                    "SCCACHE_GHA_RW_MODE=READ_ONLY",
+                    "SCCACHE_GHA_RW_MODE=READ_WRITE",
+                    "SCCACHE_IDLE_TIMEOUT=0",
+                }
+            ),
+        )
+        heredoc = next(item for item in _REVIEWED_EXACT_BODIES if "\ncat > c_harness.c << " in "\n" + item)
+        opener, _rest = heredoc.split("\n", 1)
+        commented = heredoc.replace(opener + "\n", opener + "\n# note\n", 1)
+        indented = heredoc.replace("\n#include <stdio.h>\n", "\n  #include <stdio.h>\n", 1)
+        self.assertNotEqual(_normalized_body(commented), heredoc)
+        self.assertNotEqual(_normalized_body(indented), heredoc)
+        self.assertTrue(_run_body_violations("probe", commented, {}, ""))
+        self.assertTrue(_run_body_violations("probe", "echo () { echo hi; }", {}, ""))
+        self.assertTrue(_run_body_violations("probe", "bash --noprofile ./tool.sh", {}, ""))
+        self.assertTrue(_run_body_violations("probe", ". /etc/passwd", {}, ""))
+        self.assertTrue(_run_body_violations("probe", "eval echo hi", {}, ""))
+        pin = SCCACHE_FETCH_COMMAND
+
+        def after(step: str) -> list[str]:
+            text = (
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - shell: bash\n"
+                f"        run: {pin}\n"
+                f"{step}"
+            )
+            return sccache_fetch_run_violations([("probe.yml", text)], expected_fetch_count=1)
+
+        for body in (
+            'echo RUSTFLAGS=-Dwarnings >> "$GITHUB_ENV"',
+            'echo RUSTFLAGS= >> "$GITHUB_ENV"',
+            'echo RUSTC_WRAPPER= >> "$GITHUB_ENV"',
+            'echo RUSTC_WRAPPER=/tmp/sccache >> "$GITHUB_ENV"',
+            'echo RUSTC_WRAPPER=sccache | tee --append "$GITHUB_ENV"',
+            'cp "$GITHUB_WORKSPACE/plant" "$GITHUB_ENV"',
+            'pre=GITHUB_; echo RUSTC_WRAPPER=sccache >> "${pre}ENV"',
+            'cp "$GITHUB_WORKSPACE/plant" "$RUNNER_TOOL_CACHE/sccache/plant"',
+        ):
+            with self.subTest(body=body):
+                self.assertTrue(after(f'      - shell: bash\n        run: {body}\n'), body)
+        self.assertTrue(
+            any("fetch step sets if" in item for item in sccache_fetch_run_violations(
+                [(
+                    "probe.yml",
+                    "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                    "    steps:\n"
+                    "      - shell: bash\n        if: always()\n"
+                    f"        run: {pin}\n",
+                )],
+                expected_fetch_count=1,
+            ))
+        )
+        self.assertTrue(
+            any("remote action" in item for item in after("      - uses: actions/checkout@v7\n"))
+        )
+        self.assertTrue(
+            any("repeats the fetch" in item for item in after("      - id: sccache_fetch\n        shell: bash\n        run: echo hi\n"))
+        )
+        known = frozenset({".github/actions/demo/action.yaml"})
+        _classify_uses("probe", "./.github/actions/demo", known)
+        _classify_uses("probe", ".github/actions/demo", known)
+        for uses in ("../tools/act", "/tmp/act", "tools/act", "./../x", ".github/../x"):
+            with self.subTest(uses=uses):
+                with self.assertRaises(_PolicyScanError):
+                    _classify_uses("probe", uses, known)
+        planted = sccache_fetch_run_violations(
+            [(
+                "probe.yml",
+                "name: probe\non: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n"
+                "    steps:\n"
+                "      - shell: bash\n        run: python3 tools/plant.py\n"
+                "      - uses: ./.github/actions/rust-ci-setup\n",
+            )],
+            expected_fetch_count=0,
+        )
+        self.assertTrue(any("pre-fetch" in item for item in planted), planted)
+
+    def test_sccache_reader_keeps_the_three_pin_compares(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            script = _script_copy(work)
+            _bind_fetch_node(script, Path(_fixture_node()))
+            garbage = work / "garbage.bin"
+            garbage.write_bytes(b"not a gzip archive")
+            result, _output = _run_fetch(
+                work,
+                script=script,
+                extra_env={
+                    "SCCACHE_STAGE_CHECK": str(garbage),
+                    "SCCACHE_STAGE_PIN": "0" * 64,
+                },
+            )
+            self.assertEqual(result.returncode, 3, result.stderr)
+            blob = _valid_sccache_archive(work)
+            archive = work / "valid.tar.gz"
+            archive.write_bytes(blob)
+            kept = work / "kept"
+            result, _output = _run_fetch(
+                work,
+                script=script,
+                extra_env={
+                    "SCCACHE_STAGE_CHECK": str(archive),
+                    "SCCACHE_STAGE_PIN": "1" * 64,
+                    "SCCACHE_STAGE_KEEP": "1",
+                    "SCCACHE_STAGE_NAME": _host_sccache_filename()[0][: -len(".tar.gz")] + "/sccache",
+                },
+            )
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertNotIn("available=true", _output)
+
+    def test_sccache_shell_rejects_a_replaced_node_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
+            real = shlex.quote(_fixture_node())
+            _write_exe(
+                work / "bin",
+                "node",
+                "#!/bin/sh\n"
+                'if [ "$1" = "-p" ]; then exec ' + real + ' "$@"; fi\n'
+                "printf '%s\\n' '" + ("2" * 64) + "'\n"
+                "exit 0\n",
+            )
+            _bind_fetch_node(script, work / "bin" / "node")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("checksum mismatch", result.stderr)
+            self.assertNotIn("available=", output)
+
+    def test_sccache_shell_fails_closed_when_the_hash_tool_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
+            _bind_fetch_node(script, Path(_fixture_node()))
+            broken = work / "hash-fails"
+            _write_exe(work, "hash-fails", "#!/bin/sh\nexit 1\n")
+            text = script.read_text(encoding="utf-8")
+            text = text.replace("/usr/bin/sha256sum", str(broken))
+            text = text.replace("/usr/bin/shasum", str(broken))
+            script.write_text(text, encoding="utf-8")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output, "available=false\n")
+            self.assertIn("could not hash the archive", result.stderr)
+
+    def test_sccache_shell_requires_shasum_256(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
+            _bind_fetch_node(script, Path(_fixture_node()))
+            wrapper = work / "shasum-wrap"
+            _write_exe(
+                work,
+                "shasum-wrap",
+                "#!/bin/sh\n"
+                "flag=0\n"
+                "prev=\n"
+                "file=\n"
+                "for arg in \"$@\"; do\n"
+                "  if [ \"$prev\" = -a ] && [ \"$arg\" = 256 ]; then flag=1; fi\n"
+                "  if [ \"$arg\" != -a ] && [ \"$arg\" != 256 ] && [ \"$arg\" != -- ]; then file=$arg; fi\n"
+                "  prev=$arg\n"
+                "done\n"
+                "if [ \"$flag\" -ne 1 ]; then printf '%s\\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0; fi\n"
+                "if [ -n \"$file\" ]; then exec /usr/bin/sha256sum -- \"$file\"; fi\n"
+                "exec /usr/bin/sha256sum\n",
+            )
+            missing = work / "missing-sha256sum"
+            text = script.read_text(encoding="utf-8")
+            text = text.replace("/usr/bin/sha256sum", str(missing))
+            text = text.replace("/usr/bin/shasum", str(wrapper))
+            script.write_text(text, encoding="utf-8")
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output, "available=true\n")
+            dropped = text.replace(" -a 256", "")
+            script.write_text(dropped, encoding="utf-8")
+            (work / "output").unlink(missing_ok=True)
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            self.assertNotEqual(output, "available=true\n")
+            self.assertEqual(result.returncode, 1, result.stderr)
+
+    def test_sccache_header_trailer_is_not_the_size_rule(self) -> None:
+        def header(size_field: bytes, mode_field: bytes) -> bytes:
+            block = bytearray(512)
+            name = b"sccache-v0.19.0-x86_64-unknown-linux-musl/sccache"
+            block[: len(name)] = name
+            block[100:108] = mode_field
+            block[108:116] = b"0000000\0"
+            block[116:124] = b"0000000\0"
+            block[124:136] = size_field
+            block[136:148] = b"00000000000\0"
+            block[156] = ord("0")
+            block[257:262] = b"ustar"
+            block[263:265] = b"00"
+            for index in range(148, 156):
+                block[index] = 32
+            total = sum(block)
+            checksum = f"{total:06o}".encode() + b"\0 "
+            self.assertEqual(len(checksum), 8)
+            block[148:156] = checksum
+            payload = b"x"
+            pad = b"\0" * (511)
+            return bytes(block) + payload + pad + (b"\0" * 1024)
+
+        def gzip_of(raw: bytes, work: Path) -> Path:
+            path = work / "hdr.tar.gz"
+            path.write_bytes(gzip.compress(raw))
+            return path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            script = _script_copy(work)
+            _bind_fetch_node(script, Path(_fixture_node()))
+            good = gzip_of(header(b"00000000001\0", b"0000755\0"), work)
+            result, _output = _run_fetch(
+                work, script=script, extra_env={"SCCACHE_READER_CHECK": str(good)}
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            spaced_size = gzip_of(header(b"0000000001\0 ", b"0000755\0"), work)
+            result, _output = _run_fetch(
+                work, script=script, extra_env={"SCCACHE_READER_CHECK": str(spaced_size)}
+            )
+            self.assertNotEqual(result.returncode, 0, result.stderr)
+            spaced_mode = gzip_of(header(b"00000000001\0", b"000755\0 "), work)
+            result, _output = _run_fetch(
+                work, script=script, extra_env={"SCCACHE_READER_CHECK": str(spaced_mode)}
+            )
+            self.assertNotEqual(result.returncode, 0, result.stderr)
+
+    def test_sccache_shell_hashes_the_installed_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            blob = _valid_sccache_archive(work)
+            script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
+            _bind_node_preload(
+                script,
+                work,
+                "const fs = require('fs');\n"
+                "const orig = fs.writeSync;\n"
+                "fs.writeSync = function (fd, buf) {\n"
+                "  const rest = Array.prototype.slice.call(arguments, 2);\n"
+                "  if (Buffer.isBuffer(buf) && buf.length > 8) {\n"
+                "    buf = Buffer.alloc(buf.length, 0x61);\n"
+                "  }\n"
+                "  return orig.apply(fs, [fd, buf].concat(rest));\n"
+                "};\n",
+            )
+            with _fixed_body_server(blob, status=200) as server:
+                port = server.server_address[1]
+                result, output = _run_fetch(
+                    work,
+                    script=script,
+                    base=f"http://127.0.0.1:{port}/releases/download/v0.19.0",
+                )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output, "available=false\n")
+            self.assertIn("tool cache is missing the sccache binary", result.stderr)
 
 
 if __name__ == "__main__":
