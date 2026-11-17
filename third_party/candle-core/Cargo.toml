@@ -198,11 +198,11 @@ optional = true
 version = "0.7.2"
 features = ["derive"]
 
-# zip >= 9.0.0 is the patched line for RUSTSEC-2026-0367, 0368, and 0369.
-# 1.1.4 is yanked and still vulnerable. default-features stays off, matching
-# the crates.io 0.8.4 crate, so this copy does not enable new codecs.
+# Pinned to the workspace zip release. Older lines are unpatched.
+# default-features stays off, matching the crates.io 0.8.4 crate, so this
+# copy does not enable new codecs.
 [dependencies.zip]
-version = "=9.0.3"
+version = "9.7.0"
 default-features = false
 
 [dev-dependencies.anyhow]
