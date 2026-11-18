@@ -34,6 +34,7 @@ pub mod rhai_reload;
 pub mod runtime;
 pub mod scene_serialization;
 pub mod scene_state;
+pub mod session_files;
 pub mod tab_viewer;
 pub mod terrain_integration;
 pub mod ui;

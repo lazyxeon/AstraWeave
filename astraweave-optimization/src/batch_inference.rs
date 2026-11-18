@@ -332,13 +332,14 @@ impl BatchInferenceEngine {
                 // Check if we should create a new batch
                 let should_schedule = {
                     let queue = request_queue.read().await;
-
-                    queue.len() >= config.min_batch_size
-                        || (!queue.is_empty()
-                            && crate::utc_stamp::saturating_std(
-                                now - last_schedule,
-                                Duration::ZERO,
-                            ) >= config.batch_timeout)
+                    let elapsed =
+                        crate::utc_stamp::saturating_std(now - last_schedule, Duration::ZERO);
+                    Self::should_schedule_batch(
+                        queue.len(),
+                        elapsed,
+                        config.min_batch_size,
+                        config.batch_timeout,
+                    )
                 };
 
                 if should_schedule {
@@ -369,7 +370,7 @@ impl BatchInferenceEngine {
                 let mut m = metrics.write().await;
 
                 // Calculate throughput
-                let completed_diff = m.completed_requests - last_completed;
+                let completed_diff = Self::completed_since(m.completed_requests, last_completed);
                 let time_diff =
                     crate::utc_stamp::saturating_std(now - last_time, Duration::from_secs(1))
                         .as_secs_f32();
@@ -518,6 +519,19 @@ impl BatchInferenceEngine {
             "Completed batch {} with {}/{} successful requests in {}ms",
             result.batch_id, result.success_count, result.batch_size, result.processing_time_ms
         );
+    }
+
+    fn should_schedule_batch(
+        queue_len: usize,
+        elapsed: Duration,
+        min_batch_size: usize,
+        batch_timeout: Duration,
+    ) -> bool {
+        queue_len >= min_batch_size || (queue_len > 0 && elapsed >= batch_timeout)
+    }
+
+    fn completed_since(total: u64, previous: u64) -> u64 {
+        total - previous
     }
 
     /// Schedule a new batch from the request queue
@@ -714,5 +728,111 @@ mod tests {
         let batch_size = BatchInferenceEngine::calculate_dynamic_batch_size(&queue, &config);
         assert!(batch_size > 0);
         assert!(batch_size <= config.max_batch_size);
+    }
+
+    fn request_due(seconds_left: i64) -> BatchRequest {
+        let now = time::OffsetDateTime::now_utc();
+        BatchRequest {
+            id: format!("req-{seconds_left}"),
+            prompt: "p".into(),
+            parameters: InferenceParameters::default(),
+            priority: RequestPriority::Normal,
+            created_at: now,
+            timeout_at: now
+                + time::Duration::seconds(seconds_left)
+                + time::Duration::milliseconds(200),
+            response_sender: None,
+        }
+    }
+
+    #[test]
+    fn schedule_predicate_matches_queue_length_and_timeout() {
+        let min = 4;
+        let timeout = Duration::from_millis(100);
+        let due = |len, elapsed_ms| {
+            BatchInferenceEngine::should_schedule_batch(
+                len,
+                Duration::from_millis(elapsed_ms),
+                min,
+                timeout,
+            )
+        };
+        assert!(due(4, 0));
+        assert!(due(5, 0));
+        assert!(!due(3, 0));
+        assert!(!due(0, 500));
+        assert!(due(1, 100));
+        assert!(due(1, 101));
+        assert!(!due(1, 99));
+    }
+
+    #[test]
+    fn completed_since_is_a_difference() {
+        assert_eq!(BatchInferenceEngine::completed_since(10, 4), 6);
+        assert_eq!(BatchInferenceEngine::completed_since(4, 4), 0);
+    }
+
+    #[tokio::test]
+    async fn submit_request_sets_a_future_timeout_and_schedule_batch_drains_the_queue() {
+        let engine =
+            BatchInferenceEngine::new(vec![Arc::new(MockLlm)], BatchInferenceConfig::default());
+        let before = time::OffsetDateTime::now_utc();
+        engine
+            .submit_request(
+                "p".into(),
+                InferenceParameters::default(),
+                RequestPriority::High,
+            )
+            .await
+            .unwrap();
+        let queued = engine.request_queue.read().await;
+        assert!(queued[0].timeout_at > queued[0].created_at);
+        assert!(queued[0].timeout_at >= before + time::Duration::seconds(29));
+        drop(queued);
+        let metrics = engine.get_metrics().await;
+        assert_eq!(metrics.total_requests, 1);
+
+        let config = BatchInferenceConfig {
+            enable_dynamic_batching: false,
+            max_batch_size: 2,
+            ..BatchInferenceConfig::default()
+        };
+        let queue = Arc::new(RwLock::new(vec![request_due(30), request_due(30)]));
+        let batches = Arc::new(RwLock::new(HashMap::new()));
+        BatchInferenceEngine::schedule_batch(&queue, &batches, &config).await;
+        assert!(queue.read().await.is_empty());
+        assert_eq!(batches.read().await.len(), 1);
+        assert_eq!(
+            batches.read().await.values().next().unwrap().requests.len(),
+            2
+        );
+    }
+
+    #[test]
+    fn dynamic_batch_size_treats_under_five_seconds_as_urgent() {
+        let config = BatchInferenceConfig {
+            min_batch_size: 1,
+            ..BatchInferenceConfig::default()
+        };
+        let urgent = vec![request_due(4), request_due(4), request_due(4)];
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&urgent, &config),
+            1
+        );
+        let on_boundary = vec![request_due(5), request_due(5), request_due(5)];
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&on_boundary, &config),
+            3
+        );
+        let comfortable = vec![request_due(6), request_due(6), request_due(6)];
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&comfortable, &config),
+            3
+        );
+        let full: Vec<_> = (0..20).map(|_| request_due(30)).collect();
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&full, &config),
+            config.optimal_batch_size
+        );
     }
 }

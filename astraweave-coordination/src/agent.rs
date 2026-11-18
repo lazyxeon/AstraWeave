@@ -484,8 +484,12 @@ impl AgentGoal {
 
     /// Check if goal is overdue
     pub fn is_overdue(&self) -> bool {
+        self.is_overdue_at(time::OffsetDateTime::now_utc())
+    }
+
+    pub fn is_overdue_at(&self, now: time::OffsetDateTime) -> bool {
         if let Some(deadline) = &self.deadline {
-            time::OffsetDateTime::now_utc() > *deadline && self.status != GoalStatus::Completed
+            now > *deadline && self.status != GoalStatus::Completed
         } else {
             false
         }
@@ -528,8 +532,12 @@ impl Task {
 
     /// Check if task is overdue
     pub fn is_overdue(&self) -> bool {
+        self.is_overdue_at(time::OffsetDateTime::now_utc())
+    }
+
+    pub fn is_overdue_at(&self, now: time::OffsetDateTime) -> bool {
         if let Some(deadline) = &self.deadline {
-            time::OffsetDateTime::now_utc() > *deadline
+            now > *deadline
         } else {
             false
         }
@@ -831,5 +839,35 @@ mod tests {
         // No deadline → false
         let task3 = Task::new("t3".into(), "d".into());
         assert!(!task3.is_overdue(), "No deadline should NOT be overdue");
+    }
+
+    #[test]
+    fn deadline_equal_to_now_is_not_overdue() {
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_000);
+        let mut goal = AgentGoal::new("g".into(), GoalType::Achieve, 0.5);
+        goal.deadline = Some(now);
+        goal.status = GoalStatus::Active;
+        assert!(!goal.is_overdue_at(now));
+        assert!(goal.is_overdue_at(now + time::Duration::nanoseconds(1)));
+        assert!(!goal.is_overdue_at(now - time::Duration::seconds(1)));
+        goal.status = GoalStatus::Completed;
+        assert!(!goal.is_overdue_at(now + time::Duration::hours(1)));
+        goal.deadline = None;
+        goal.status = GoalStatus::Active;
+        assert!(!goal.is_overdue_at(now + time::Duration::hours(1)));
+
+        let mut task = Task::new("t".into(), "d".into());
+        task.deadline = Some(now);
+        assert!(!task.is_overdue_at(now));
+        assert!(task.is_overdue_at(now + time::Duration::nanoseconds(1)));
+        assert!(!task.is_overdue_at(now - time::Duration::seconds(1)));
+        task.deadline = None;
+        assert!(!task.is_overdue_at(now + time::Duration::hours(1)));
+
+        goal.deadline = Some(time::OffsetDateTime::UNIX_EPOCH);
+        goal.status = GoalStatus::Active;
+        assert!(goal.is_overdue());
+        task.deadline = Some(time::OffsetDateTime::now_utc() + time::Duration::hours(48));
+        assert!(!task.is_overdue());
     }
 }

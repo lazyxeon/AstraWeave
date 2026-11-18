@@ -27,4 +27,5 @@ async-trait = "0.1"
 rand = { workspace = true }
 
 [dev-dependencies]
+astraweave-embeddings = { path = "../astraweave-embeddings" }
 criterion = { version = "0.5", features = ["html_reports"] }

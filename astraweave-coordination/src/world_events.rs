@@ -603,10 +603,10 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             total_phases: storyline_data.total_phases,
             participants: Vec::new(),
             start_time: time::OffsetDateTime::now_utc(),
-            estimated_end_time: Some(
-                time::OffsetDateTime::now_utc()
-                    + time::Duration::hours(storyline_data.total_phases as i64),
-            ),
+            estimated_end_time: Some(Self::estimated_storyline_end(
+                time::OffsetDateTime::now_utc(),
+                storyline_data.total_phases,
+            )),
             status: StorylineStatus::Planning,
             branching_points: Vec::new(), // Would be parsed from storyline_data
         };
@@ -690,6 +690,11 @@ Focus on narrative consistency, logical causation, and player engagement opportu
 
     /// Check if event generation should occur
     async fn should_generate_event(&self) -> bool {
+        self.should_generate_event_at(time::OffsetDateTime::now_utc())
+            .await
+    }
+
+    async fn should_generate_event_at(&self, now: time::OffsetDateTime) -> bool {
         let world_state = self.world_state.read().await;
         let event_history = self.event_history.read().await;
 
@@ -700,8 +705,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
 
         // Check time since last event
         if let Some(last_event) = event_history.last() {
-            let time_since_last =
-                time::OffsetDateTime::now_utc() - last_event.generation_context.generated_at;
+            let time_since_last = now - last_event.generation_context.generated_at;
             if time_since_last.whole_milliseconds()
                 < i128::from(self.config.generation_interval_ms as i64)
             {
@@ -711,6 +715,10 @@ Focus on narrative consistency, logical causation, and player engagement opportu
 
         // Check if player is in a suitable state for events
         !world_state.player_data.recent_actions.is_empty()
+    }
+
+    fn estimated_storyline_end(start: time::OffsetDateTime, phases: u32) -> time::OffsetDateTime {
+        start + time::Duration::hours(i64::from(phases))
     }
 
     /// Determine the type of trigger for the next event
@@ -741,7 +749,10 @@ Focus on narrative consistency, logical causation, and player engagement opportu
 
         context.insert(
             "current_time".to_string(),
-            serde_json::Value::String(crate::utc_stamp::format_utc(world_state.current_time, true)),
+            serde_json::Value::String(crate::utc_stamp::format_utc(
+                world_state.current_time,
+                true,
+            )?),
         );
         context.insert(
             "player_level".to_string(),
@@ -1080,5 +1091,164 @@ mod cap_tests {
         let err = astraweave_llm::parse_bounded_model_json::<serde_json::Value>(&huge)
             .expect_err("over cap");
         assert!(format!("{err:#}").contains("64 KiB"));
+    }
+}
+
+#[cfg(test)]
+mod survivor_tests {
+    use super::*;
+    use crate::agent::EventSeverity;
+    use std::sync::Arc;
+
+    fn generator() -> WorldEventGenerator {
+        let embeddings = Arc::new(astraweave_embeddings::MockEmbeddingClient::new());
+        let store = Arc::new(astraweave_rag::VectorStoreWrapper::new(
+            astraweave_embeddings::VectorStore::new(384),
+        ));
+        let rag = Arc::new(RagPipeline::new(
+            embeddings,
+            store,
+            None,
+            astraweave_rag::RagConfig::default(),
+        ));
+        WorldEventGenerator::new(
+            Arc::new(astraweave_llm::MockLlm),
+            rag,
+            EventGenerationConfig::default(),
+        )
+        .unwrap()
+    }
+
+    fn history_event(when: time::OffsetDateTime) -> GeneratedEvent {
+        GeneratedEvent {
+            event: WorldEvent {
+                id: "e".into(),
+                event_type: "travel".into(),
+                description: "d".into(),
+                location: None,
+                participants: Vec::new(),
+                event_data: serde_json::json!({}),
+                timestamp: when,
+                severity: EventSeverity::Minor,
+            },
+            generation_context: EventGenerationContext {
+                template_used: None,
+                trigger_type: TriggerType::Time,
+                world_state_snapshot: String::new(),
+                generation_reasoning: String::new(),
+                coherence_score: 0.0,
+                generated_at: when,
+            },
+            outcome: None,
+            related_events: Vec::new(),
+            storyline_id: None,
+        }
+    }
+
+    #[test]
+    fn storyline_end_is_start_plus_phase_hours() {
+        let start = time::OffsetDateTime::UNIX_EPOCH;
+        let end = WorldEventGenerator::estimated_storyline_end(start, 4);
+        assert_eq!(end, start + time::Duration::hours(4));
+        assert_eq!(
+            WorldEventGenerator::estimated_storyline_end(start, 0),
+            start
+        );
+    }
+
+    #[tokio::test]
+    async fn world_updates_and_context_keep_player_fields() {
+        let generator = generator();
+        let mut updates = HashMap::new();
+        updates.insert("player_level".into(), serde_json::json!(9));
+        updates.insert("player_location".into(), serde_json::json!("harbor"));
+        updates.insert("storm".into(), serde_json::json!(true));
+        updates.insert(
+            "weather".into(),
+            serde_json::json!({
+                "condition": "rain",
+                "intensity": 0.4,
+                "duration_hours": 2,
+                "effects": []
+            }),
+        );
+        generator.update_world_state(updates).await.unwrap();
+
+        let state = generator.world_state.read().await;
+        assert_eq!(state.player_data.level, 9);
+        assert_eq!(state.player_data.location, "harbor");
+        assert_eq!(state.world_flags.get("storm"), Some(&true));
+        assert_eq!(state.weather.condition, "rain");
+        drop(state);
+
+        let context = generator.build_world_context().await.unwrap();
+        assert_eq!(
+            context.get("player_level").and_then(|v| v.as_u64()),
+            Some(9)
+        );
+        assert_eq!(
+            context.get("player_location").and_then(|v| v.as_str()),
+            Some("harbor")
+        );
+        let stamp = context
+            .get("current_time")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert!(stamp.contains('T'));
+        assert!(!context.contains_key("xyzzy"));
+        assert!(context.len() > 2);
+    }
+
+    #[tokio::test]
+    async fn event_generation_respects_capacity_actions_and_interval() {
+        let generator = generator();
+        {
+            let mut state = generator.world_state.write().await;
+            state.ongoing_events = vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()];
+            state.player_data.recent_actions.push("walk".into());
+        }
+        assert!(!generator.should_generate_event().await);
+
+        {
+            let mut state = generator.world_state.write().await;
+            state.ongoing_events.pop();
+        }
+        assert!(generator.should_generate_event().await);
+
+        {
+            let mut state = generator.world_state.write().await;
+            state.ongoing_events.clear();
+        }
+        assert!(generator.should_generate_event().await);
+
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(10_000);
+        let interval = i64::try_from(generator.config.generation_interval_ms).unwrap();
+        {
+            let mut history = generator.event_history.write().await;
+            history.push(history_event(now - time::Duration::milliseconds(interval)));
+        }
+        assert!(generator.should_generate_event_at(now).await);
+
+        {
+            let mut history = generator.event_history.write().await;
+            history.clear();
+            history.push(history_event(
+                now - time::Duration::milliseconds(interval - 1),
+            ));
+        }
+        assert!(!generator.should_generate_event_at(now).await);
+
+        {
+            let mut history = generator.event_history.write().await;
+            history.clear();
+            history.push(history_event(now - time::Duration::seconds(120)));
+        }
+        assert!(generator.should_generate_event_at(now).await);
+
+        {
+            let mut state = generator.world_state.write().await;
+            state.player_data.recent_actions.clear();
+        }
+        assert!(!generator.should_generate_event_at(now).await);
     }
 }

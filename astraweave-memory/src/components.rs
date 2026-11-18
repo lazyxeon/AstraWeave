@@ -461,9 +461,11 @@ impl WorkingMemoryComponent {
 
     /// Clean up old tasks based on retention duration
     pub fn cleanup_old_tasks(&mut self) {
-        let now = time::OffsetDateTime::now_utc();
-        let cutoff = now - time::Duration::seconds(self.retention_duration as i64);
+        self.cleanup_old_tasks_at(time::OffsetDateTime::now_utc());
+    }
 
+    fn cleanup_old_tasks_at(&mut self, now: time::OffsetDateTime) {
+        let cutoff = now - time::Duration::seconds(self.retention_duration as i64);
         self.active_tasks.retain(|task| task.added_at > cutoff);
     }
 }
@@ -533,9 +535,13 @@ impl LearningMemoryComponent {
             difficulty,
         };
 
-        // Find or create the learning domain
-        let domain_exists = self.learning_domains.iter().any(|d| d.name == domain_name);
-        if !domain_exists {
+        let domain_index = self
+            .learning_domains
+            .iter()
+            .position(|domain| domain.name == domain_name);
+        let domain_index = if let Some(domain_index) = domain_index {
+            domain_index
+        } else {
             self.learning_domains.push(LearningDomain {
                 name: domain_name.clone(),
                 proficiency: 0.0,
@@ -543,13 +549,9 @@ impl LearningMemoryComponent {
                 first_encountered: time::OffsetDateTime::now_utc(),
                 last_practice: time::OffsetDateTime::now_utc(),
             });
-        }
-
-        let domain = self
-            .learning_domains
-            .iter_mut()
-            .find(|d| d.name == domain_name)
-            .expect("domain was just created above");
+            self.learning_domains.len() - 1
+        };
+        let domain = &mut self.learning_domains[domain_index];
 
         domain.practice_sessions.push(session);
         domain.last_practice = time::OffsetDateTime::now_utc();
@@ -557,5 +559,86 @@ impl LearningMemoryComponent {
         // Update proficiency based on performance
         let learning_adjustment = performance_score * self.learning_rate;
         domain.proficiency = (domain.proficiency + learning_adjustment).clamp(0.0, 1.0);
+    }
+}
+
+#[cfg(test)]
+mod survivor_tests {
+    use super::*;
+
+    #[test]
+    fn add_task_returns_the_id_it_stores() {
+        let mut memory = WorkingMemoryComponent::default();
+        let id = memory.add_task("fetch water".into(), 0.4, serde_json::json!({"n": 1}));
+        assert_eq!(memory.active_tasks.len(), 1);
+        assert_eq!(memory.active_tasks[0].id, id);
+        assert_ne!(id, "xyzzy");
+        assert!(!id.is_empty());
+        assert!((memory.active_tasks[0].priority - 0.4).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn cleanup_drops_tasks_older_than_retention_and_keeps_new_ones() {
+        let mut memory = WorkingMemoryComponent {
+            retention_duration: 60.0,
+            ..WorkingMemoryComponent::default()
+        };
+        let old = memory.add_task("old".into(), 0.2, serde_json::json!(null));
+        let fresh = memory.add_task("fresh".into(), 0.8, serde_json::json!(null));
+        memory.active_tasks[0].added_at =
+            time::OffsetDateTime::now_utc() - time::Duration::seconds(120);
+        memory.cleanup_old_tasks();
+        let ids: Vec<_> = memory
+            .active_tasks
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect();
+        assert!(!ids.contains(&old.as_str()));
+        assert!(ids.contains(&fresh.as_str()));
+
+        let at = time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(10_000);
+        let mut boundary = WorkingMemoryComponent {
+            retention_duration: 60.0,
+            ..WorkingMemoryComponent::default()
+        };
+        let exact = boundary.add_task("exact".into(), 0.2, serde_json::json!(null));
+        let newer = boundary.add_task("newer".into(), 0.2, serde_json::json!(null));
+        boundary.active_tasks[0].added_at = at;
+        boundary.active_tasks[1].added_at = at + time::Duration::nanoseconds(1);
+        boundary.cleanup_old_tasks_at(at + time::Duration::seconds(60));
+        let ids: Vec<_> = boundary
+            .active_tasks
+            .iter()
+            .map(|task| task.id.as_str())
+            .collect();
+        assert!(!ids.contains(&exact.as_str()));
+        assert!(ids.contains(&newer.as_str()));
+    }
+
+    #[test]
+    fn update_relationship_counts_a_new_contact() {
+        let mut social = SocialMemoryComponent::default();
+        social.update_relationship("npc".into(), "Mira".into(), RelationshipType::Friend);
+        let rel = social.known_entities.get("npc").unwrap();
+        assert_eq!(rel.name, "Mira");
+        assert_eq!(rel.interaction_count, 1);
+        social.update_relationship("npc".into(), "Mira".into(), RelationshipType::Friend);
+        assert_eq!(
+            social.known_entities.get("npc").unwrap().interaction_count,
+            2
+        );
+    }
+
+    #[test]
+    fn record_practice_creates_a_domain_and_raises_proficiency() {
+        let mut learning = LearningMemoryComponent::default();
+        learning.record_practice("bow".into(), 12.0, 0.5, 0.3);
+        learning.record_practice("bow".into(), 4.0, 0.5, 0.3);
+        assert_eq!(learning.learning_domains.len(), 1);
+        let domain = &learning.learning_domains[0];
+        assert_eq!(domain.name, "bow");
+        assert_eq!(domain.practice_sessions.len(), 2);
+        assert!((domain.proficiency - 0.1).abs() < 1e-5);
+        assert!((domain.practice_sessions[0].duration - 12.0).abs() < f32::EPSILON);
     }
 }

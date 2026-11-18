@@ -2,12 +2,13 @@
 //!
 //! A whole second has no fraction. Milliseconds use three digits, microseconds
 //! six, and anything finer nine. `zulu` selects the `Z` suffix; otherwise the
-//! suffix is `+00:00`. Years in `0..=9999` use four digits. Every other year
-//! keeps a sign and at least four digits of magnitude.
+//! suffix is `+00:00`. Years in `0..=9999` use four digits. Negative years through `-9999` keep a
+//! sign and four digits. A year outside `-9999..=9999` is rejected; `large-dates`
+//! is not enabled.
 use time::{OffsetDateTime, UtcOffset};
 
-/// Four digits for years `0..=9999`. Any other year keeps a sign and at least
-/// four digits of magnitude.
+/// Four digits for years `0..=9999`. A negative year keeps a sign and four
+/// digits. Values outside `-9999..=9999` are not stored.
 fn year_text(year: i32) -> String {
     if !(0..=9999).contains(&year) {
         format!("{year:+05}")
@@ -26,8 +27,10 @@ pub(crate) fn format_utc_date(dt: OffsetDateTime) -> String {
     )
 }
 
-pub(crate) fn format_utc(dt: OffsetDateTime, zulu: bool) -> String {
-    let utc = dt.to_offset(UtcOffset::UTC);
+pub(crate) fn format_utc(dt: OffsetDateTime, zulu: bool) -> Result<String, time::error::Parse> {
+    let utc = dt
+        .checked_to_offset(UtcOffset::UTC)
+        .ok_or_else(invalid_year)?;
     let mut out = format!(
         "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
         year_text(utc.year()),
@@ -43,7 +46,7 @@ pub(crate) fn format_utc(dt: OffsetDateTime, zulu: bool) -> String {
     } else {
         out.push_str("+00:00");
     }
-    out
+    Ok(out)
 }
 
 fn push_fraction(out: &mut String, nano: u32) {
@@ -70,12 +73,16 @@ pub(crate) fn parse_utc_rfc3339(text: &str) -> Result<OffsetDateTime, time::erro
     if text.starts_with('+') || text.starts_with('-') {
         parse_signed_year(text, rfc3339)
     } else {
-        OffsetDateTime::parse(text, rfc3339).map(|dt| dt.to_offset(UtcOffset::UTC))
+        OffsetDateTime::parse(text, rfc3339).and_then(|dt| {
+            dt.checked_to_offset(UtcOffset::UTC)
+                .ok_or_else(invalid_year)
+        })
     }
 }
 
 /// A leading sign is outside `time`'s RFC 3339 year. The magnitude is at least
-/// four digits. The remainder keeps its offset, then the result is stored as UTC.
+/// four digits. The remainder is parsed as year 2000 so a leap day survives,
+/// then the result is stored as UTC.
 fn parse_signed_year(
     text: &str,
     rfc3339: &time::format_description::well_known::Rfc3339,
@@ -92,7 +99,7 @@ fn parse_signed_year(
     } else {
         magnitude
     };
-    let parsed = OffsetDateTime::parse(&format!("1970{}", &rest[digits..]), rfc3339)?;
+    let parsed = OffsetDateTime::parse(&format!("2000{}", &rest[digits..]), rfc3339)?;
     let date = time::Date::from_calendar_date(year, parsed.month(), parsed.day())
         .map_err(|_| invalid_year())?;
     OffsetDateTime::new_in_offset(date, parsed.time(), parsed.offset())
@@ -106,7 +113,8 @@ pub(crate) mod serde_rfc3339 {
     use time::OffsetDateTime;
 
     pub fn serialize<S: Serializer>(dt: &OffsetDateTime, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&format_utc(*dt, true))
+        let text = format_utc(*dt, true).map_err(serde::ser::Error::custom)?;
+        serializer.serialize_str(&text)
     }
 
     pub fn deserialize<'de, D: Deserializer<'de>>(
@@ -127,7 +135,10 @@ pub(crate) mod serde_rfc3339 {
             serializer: S,
         ) -> Result<S::Ok, S::Error> {
             match dt {
-                Some(value) => serializer.serialize_some(&format_utc(*value, true)),
+                Some(value) => {
+                    let text = format_utc(*value, true).map_err(serde::ser::Error::custom)?;
+                    serializer.serialize_some(&text)
+                }
                 None => serializer.serialize_none(),
             }
         }
@@ -145,6 +156,9 @@ pub(crate) mod serde_rfc3339 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn fmt_utc(dt: OffsetDateTime, zulu: bool) -> String {
+        format_utc(dt, zulu).unwrap()
+    }
 
     fn at(nanos: i128) -> OffsetDateTime {
         OffsetDateTime::from_unix_timestamp_nanos(1_577_934_245_000_000_000 + nanos).unwrap()
@@ -152,45 +166,39 @@ mod tests {
 
     #[test]
     fn utc_text_matches_pinned_strings() {
-        assert_eq!(format_utc(at(0), false), "2020-01-02T03:04:05+00:00");
-        assert_eq!(format_utc(at(0), true), "2020-01-02T03:04:05Z");
+        assert_eq!(fmt_utc(at(0), false), "2020-01-02T03:04:05+00:00");
+        assert_eq!(fmt_utc(at(0), true), "2020-01-02T03:04:05Z");
         assert_eq!(
-            format_utc(at(100_000_000), false),
+            fmt_utc(at(100_000_000), false),
             "2020-01-02T03:04:05.100+00:00"
         );
+        assert_eq!(fmt_utc(at(100_000_000), true), "2020-01-02T03:04:05.100Z");
         assert_eq!(
-            format_utc(at(100_000_000), true),
-            "2020-01-02T03:04:05.100Z"
-        );
-        assert_eq!(
-            format_utc(at(100_000), false),
+            fmt_utc(at(100_000), false),
             "2020-01-02T03:04:05.000100+00:00"
         );
-        assert_eq!(format_utc(at(100_000), true), "2020-01-02T03:04:05.000100Z");
+        assert_eq!(fmt_utc(at(100_000), true), "2020-01-02T03:04:05.000100Z");
         assert_eq!(
-            format_utc(at(1_000_000), false),
+            fmt_utc(at(1_000_000), false),
             "2020-01-02T03:04:05.001+00:00"
         );
-        assert_eq!(format_utc(at(1_000_000), true), "2020-01-02T03:04:05.001Z");
+        assert_eq!(fmt_utc(at(1_000_000), true), "2020-01-02T03:04:05.001Z");
+        assert_eq!(fmt_utc(at(1), false), "2020-01-02T03:04:05.000000001+00:00");
+        assert_eq!(fmt_utc(at(1), true), "2020-01-02T03:04:05.000000001Z");
         assert_eq!(
-            format_utc(at(1), false),
-            "2020-01-02T03:04:05.000000001+00:00"
-        );
-        assert_eq!(format_utc(at(1), true), "2020-01-02T03:04:05.000000001Z");
-        assert_eq!(
-            format_utc(at(123_456_789), false),
+            fmt_utc(at(123_456_789), false),
             "2020-01-02T03:04:05.123456789+00:00"
         );
         assert_eq!(
-            format_utc(at(123_456_789), true),
+            fmt_utc(at(123_456_789), true),
             "2020-01-02T03:04:05.123456789Z"
         );
         assert_eq!(
-            format_utc(at(123_400_000), false),
+            fmt_utc(at(123_400_000), false),
             "2020-01-02T03:04:05.123400+00:00"
         );
         assert_eq!(
-            format_utc(at(123_400_000), true),
+            fmt_utc(at(123_400_000), true),
             "2020-01-02T03:04:05.123400Z"
         );
         assert_eq!(format_utc_date(at(123_456_789)), "2020-01-02");
@@ -199,50 +207,50 @@ mod tests {
     #[test]
     fn parsed_offsets_become_utc() {
         assert_eq!(
-            format_utc(parse_utc_rfc3339("2020-01-02T03:04:05Z").unwrap(), true),
+            fmt_utc(parse_utc_rfc3339("2020-01-02T03:04:05Z").unwrap(), true),
             "2020-01-02T03:04:05Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("2020-01-02T03:04:05+00:00").unwrap(),
                 true
             ),
             "2020-01-02T03:04:05Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("2020-01-02T08:04:05+05:00").unwrap(),
                 true
             ),
             "2020-01-02T03:04:05Z"
         );
         assert_eq!(
-            format_utc(parse_utc_rfc3339("2020-01-02T03:04:05.100Z").unwrap(), true),
+            fmt_utc(parse_utc_rfc3339("2020-01-02T03:04:05.100Z").unwrap(), true),
             "2020-01-02T03:04:05.100Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("2020-01-02T03:04:05.000100+00:00").unwrap(),
                 true
             ),
             "2020-01-02T03:04:05.000100Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("2020-01-02T03:04:05.000000001Z").unwrap(),
                 true
             ),
             "2020-01-02T03:04:05.000000001Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("2020-01-02T03:04:05.123400Z").unwrap(),
                 true
             ),
             "2020-01-02T03:04:05.123400Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("2020-01-02T03:04:05.123456789+00:00").unwrap(),
                 true
             ),
@@ -271,7 +279,7 @@ mod tests {
         );
         let back: Row =
             serde_json::from_str("{\"timestamp\":\"2020-01-02T08:04:05+05:00\"}").unwrap();
-        assert_eq!(format_utc(back.timestamp, true), "2020-01-02T03:04:05Z");
+        assert_eq!(fmt_utc(back.timestamp, true), "2020-01-02T03:04:05Z");
         assert_eq!(
             serde_json::to_string(&Opt { timestamp: None }).unwrap(),
             "{\"timestamp\":null}"
@@ -293,11 +301,11 @@ mod tests {
 
     #[test]
     fn year_width_keeps_a_sign_and_four_digit_magnitude() {
-        assert_eq!(format_utc(civil(-1), true), "-0001-01-02T03:04:05Z");
-        assert_eq!(format_utc(civil(-1), false), "-0001-01-02T03:04:05+00:00");
-        assert_eq!(format_utc(civil(0), true), "0000-01-02T03:04:05Z");
-        assert_eq!(format_utc(civil(9999), true), "9999-01-02T03:04:05Z");
-        assert_eq!(format_utc(civil(-9999), true), "-9999-01-02T03:04:05Z");
+        assert_eq!(fmt_utc(civil(-1), true), "-0001-01-02T03:04:05Z");
+        assert_eq!(fmt_utc(civil(-1), false), "-0001-01-02T03:04:05+00:00");
+        assert_eq!(fmt_utc(civil(0), true), "0000-01-02T03:04:05Z");
+        assert_eq!(fmt_utc(civil(9999), true), "9999-01-02T03:04:05Z");
+        assert_eq!(fmt_utc(civil(-9999), true), "-9999-01-02T03:04:05Z");
         assert_eq!(year_text(10_000), "+10000");
         assert_eq!(year_text(-10_000), "-10000");
         assert_eq!(year_text(-1), "-0001");
@@ -308,22 +316,22 @@ mod tests {
     #[test]
     fn signed_years_parse_back_to_utc() {
         assert_eq!(
-            format_utc(parse_utc_rfc3339("-0001-01-02T03:04:05Z").unwrap(), true),
+            fmt_utc(parse_utc_rfc3339("-0001-01-02T03:04:05Z").unwrap(), true),
             "-0001-01-02T03:04:05Z"
         );
         assert_eq!(
-            format_utc(
+            fmt_utc(
                 parse_utc_rfc3339("-0001-01-01T01:00:00+05:00").unwrap(),
                 true
             ),
             "-0002-12-31T20:00:00Z"
         );
         assert_eq!(
-            format_utc(parse_utc_rfc3339("+2020-01-02T03:04:05Z").unwrap(), true),
+            fmt_utc(parse_utc_rfc3339("+2020-01-02T03:04:05Z").unwrap(), true),
             "2020-01-02T03:04:05Z"
         );
         assert_eq!(
-            format_utc(parse_utc_rfc3339("+0000-01-02T03:04:05Z").unwrap(), true),
+            fmt_utc(parse_utc_rfc3339("+0000-01-02T03:04:05Z").unwrap(), true),
             "0000-01-02T03:04:05Z"
         );
         assert!(parse_utc_rfc3339("-001-01-02T03:04:05Z").is_err());
@@ -345,5 +353,35 @@ mod tests {
         assert!(null.timestamp.is_none());
         let omitted: Opt = serde_json::from_str("{}").unwrap();
         assert!(omitted.timestamp.is_none());
+    }
+
+    #[test]
+    fn signed_leap_day_round_trips_and_a_non_leap_day_is_rejected() {
+        assert_eq!(
+            fmt_utc(parse_utc_rfc3339("-0004-02-29T00:00:00Z").unwrap(), true),
+            "-0004-02-29T00:00:00Z"
+        );
+        assert_eq!(
+            fmt_utc(parse_utc_rfc3339("+2020-02-29T00:00:00Z").unwrap(), true),
+            "2020-02-29T00:00:00Z"
+        );
+        assert!(parse_utc_rfc3339("-0001-02-29T00:00:00Z").is_err());
+    }
+
+    #[test]
+    fn years_outside_the_stored_range_are_rejected() {
+        assert!(parse_utc_rfc3339("+10000-01-02T03:04:05Z").is_err());
+        assert!(parse_utc_rfc3339("-10000-01-02T03:04:05Z").is_err());
+    }
+
+    #[test]
+    fn out_of_range_offset_fails_closed() {
+        assert!(parse_utc_rfc3339("9999-12-31T23:59:59-01:00").is_err());
+        let date = time::Date::from_calendar_date(9999, time::Month::December, 31).unwrap();
+        let clock = time::Time::from_hms(23, 59, 59).unwrap();
+        let offset = time::UtcOffset::from_hms(-1, 0, 0).unwrap();
+        let dt = time::OffsetDateTime::new_in_offset(date, clock, offset);
+        assert!(format_utc(dt, true).is_err());
+        assert!(format_utc(dt, false).is_err());
     }
 }

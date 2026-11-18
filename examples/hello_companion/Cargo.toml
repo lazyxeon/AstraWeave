@@ -39,6 +39,9 @@ egui-winit = { workspace = true, optional = true }
 egui-wgpu = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 
+[dev-dependencies]
+time = { version = "0.3" }
+
 [features]
 # mimalloc is on by default per the 2026-04-17 experiment (+43% FPS on the
 # profiling_demo reference workload; no regression on any measured bench). Opt

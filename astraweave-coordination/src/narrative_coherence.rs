@@ -1307,4 +1307,92 @@ mod tests {
 
         assert_eq!(plot_point.plot_type, PlotType::MainQuest);
     }
+
+    fn engine() -> NarrativeCoherenceEngine {
+        let embeddings = Arc::new(astraweave_embeddings::MockEmbeddingClient::new());
+        let store = Arc::new(astraweave_rag::VectorStoreWrapper::new(
+            astraweave_embeddings::VectorStore::new(384),
+        ));
+        let rag = Arc::new(RagPipeline::new(
+            embeddings,
+            store,
+            None,
+            astraweave_rag::RagConfig::default(),
+        ));
+        NarrativeCoherenceEngine::new(
+            Arc::new(astraweave_llm::MockLlm),
+            rag,
+            CoherenceConfig::default(),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn character_arc_records_guidance_progress_and_milestone() {
+        let engine = engine();
+        {
+            let mut arcs = engine.character_arcs.write().await;
+            arcs.insert(
+                "hero".into(),
+                CharacterArc {
+                    character_id: "hero".into(),
+                    arc_type: "growth".into(),
+                    starting_state: "lost".into(),
+                    desired_end_state: "found".into(),
+                    current_progress: 0.0,
+                    milestones: vec![
+                        ArcMilestone {
+                            description: "met the mentor".into(),
+                            achieved: false,
+                            achievement_date: None,
+                            impact_on_character: "hope".into(),
+                        },
+                        ArcMilestone {
+                            description: "met the mentor".into(),
+                            achieved: true,
+                            achievement_date: Some(time::OffsetDateTime::UNIX_EPOCH),
+                            impact_on_character: "already".into(),
+                        },
+                        ArcMilestone {
+                            description: "left home".into(),
+                            achieved: false,
+                            achievement_date: None,
+                            impact_on_character: "later".into(),
+                        },
+                    ],
+                    obstacles: Vec::new(),
+                    growth_catalysts: Vec::new(),
+                },
+            );
+        }
+        let guidance = CharacterGuidance {
+            arc_progress_assessment: ArcProgressAssessment {
+                current_milestone: "met the mentor".into(),
+                progress_percentage: 0.4,
+                next_development_needed: "leave home".into(),
+                timeline_appropriateness: 0.5,
+            },
+            suggested_developments: Vec::new(),
+            consistency_concerns: Vec::new(),
+            relationship_dynamics: RelationshipDynamics {
+                strongest_bond: String::new(),
+                most_tension: String::new(),
+                development_opportunities: Vec::new(),
+            },
+        };
+        engine
+            .update_character_arc("hero", &guidance)
+            .await
+            .unwrap();
+        let arcs = engine.character_arcs.read().await;
+        let arc = arcs.get("hero").unwrap();
+        assert!((arc.current_progress - 0.4).abs() < f32::EPSILON);
+        assert!(arc.milestones[0].achieved);
+        assert!(arc.milestones[0].achievement_date.is_some());
+        assert_eq!(
+            arc.milestones[1].achievement_date,
+            Some(time::OffsetDateTime::UNIX_EPOCH)
+        );
+        assert!(!arc.milestones[2].achieved);
+    }
 }

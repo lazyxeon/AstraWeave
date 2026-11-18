@@ -1632,9 +1632,8 @@ pub fn sign_asset_file(
         asset_hash: hash_hex,
         signature: sig_b64,
         signer_role: key_role.to_string(),
-        signed_at: time::OffsetDateTime::now_utc()
-            .format(&time::format_description::well_known::Rfc3339)
-            .expect("utc stamp"),
+        // `aw_asset_cli` writes this with `format_utc_rfc3339`, which ends in `+00:00`.
+        signed_at: format_utc_rfc3339(time::OffsetDateTime::now_utc()),
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }

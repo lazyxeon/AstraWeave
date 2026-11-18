@@ -2117,4 +2117,35 @@ mod tests {
             "Recent allocation usage should NOT be reset (kills >= → <)"
         );
     }
+
+    #[tokio::test]
+    async fn update_allocations_clears_usage_after_a_minute() {
+        let coordinator = AgentCoordinator::new(CoordinatorConfig::default());
+        let agent = TestAgent {
+            base: BaseAgent::new("old".into(), vec![]),
+        };
+        let agent_id = agent.agent_id().to_string();
+        coordinator.register_agent(Box::new(agent)).await.unwrap();
+        let req = crate::agent::ResourceRequirements {
+            llm_calls: 7,
+            memory_mb: 1,
+            compute_units: 0,
+            exclusive_resources: vec![],
+        };
+        coordinator
+            .resource_manager
+            .allocate_resources(&agent_id, &req)
+            .await
+            .unwrap();
+        {
+            let mut allocs = coordinator.resource_manager.allocations.write().await;
+            let alloc = allocs.get_mut(&agent_id).unwrap();
+            alloc.allocated_at = time::OffsetDateTime::now_utc() - time::Duration::minutes(2);
+        }
+        coordinator.resource_manager.update_allocations().await;
+        let allocs = coordinator.resource_manager.allocations.read().await;
+        let alloc = allocs.get(&agent_id).unwrap();
+        assert_eq!(alloc.llm_calls_used, 0);
+        assert!(alloc.allocated_at > time::OffsetDateTime::now_utc() - time::Duration::seconds(30));
+    }
 }

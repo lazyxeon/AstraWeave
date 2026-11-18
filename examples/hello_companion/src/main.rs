@@ -165,6 +165,7 @@ impl AIMetrics {
         }
     }
 
+    #[cfg(feature = "llm")]
     fn with_phase7_data(
         mut self,
         tools_used: Vec<String>,
@@ -204,7 +205,7 @@ fn main() -> Result<()> {
     #[cfg(feature = "metrics")]
     let export_metrics = args.contains(&"--export-metrics".to_string());
 
-    #[cfg(feature = "metrics")]
+    #[cfg(all(feature = "metrics", feature = "llm"))]
     let mut all_metrics: Vec<AIMetrics> = Vec::new();
 
     if demo_all {
@@ -274,7 +275,7 @@ fn main() -> Result<()> {
     #[cfg(feature = "metrics")]
     {
         if show_metrics {
-            print_metrics_table(&[metrics.clone()]);
+            print_metrics_table(std::slice::from_ref(&metrics));
         }
         if export_metrics {
             export_metrics_to_files(&[metrics])?;
@@ -409,7 +410,7 @@ fn run_single_demo(mode: AIMode) -> Result<AIMetrics> {
         println!("Enemy HP:  {}", enemy_hp.hp);
     }
 
-    let mut metrics = AIMetrics::new(
+    let metrics = AIMetrics::new(
         &mode.to_string(),
         plan.steps.len(),
         latency_ms,
@@ -418,10 +419,10 @@ fn run_single_demo(mode: AIMode) -> Result<AIMetrics> {
     );
 
     #[cfg(feature = "llm")]
-    {
+    let metrics = {
         let tools = extract_tools_used(&plan);
-        metrics = metrics.with_phase7_data(tools, None, None, None);
-    }
+        metrics.with_phase7_data(tools, None, None, None)
+    };
 
     Ok(metrics)
 }
@@ -1425,7 +1426,7 @@ fn export_metrics_to_files(metrics: &[AIMetrics]) -> Result<()> {
     Ok(())
 }
 
-#[cfg(feature = "metrics")]
+#[cfg(any(feature = "metrics", test))]
 /// Four digits for years `0..=9999`. Any other year keeps a sign and at least
 /// four digits of magnitude.
 fn year_text(year: i32) -> String {
@@ -1436,7 +1437,7 @@ fn year_text(year: i32) -> String {
     }
 }
 
-#[cfg(feature = "metrics")]
+#[cfg(any(feature = "metrics", test))]
 fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
     let utc = dt.to_offset(time::UtcOffset::UTC);
     let mut out = format!(
@@ -1462,10 +1463,12 @@ fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
     out
 }
 
-#[cfg(all(test, feature = "metrics"))]
+#[cfg(any(feature = "metrics", test))]
 mod utc_rfc3339_pins {
+    #[cfg_attr(not(test), allow(unused_imports))]
     use super::{format_utc_rfc3339, year_text};
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn at(nanos: i128) -> time::OffsetDateTime {
         time::OffsetDateTime::from_unix_timestamp_nanos(1_577_934_245_000_000_000 + nanos).unwrap()
     }
@@ -1499,6 +1502,7 @@ mod utc_rfc3339_pins {
         );
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn civil(year: i32) -> time::OffsetDateTime {
         let date = time::Date::from_calendar_date(year, time::Month::January, 2).unwrap();
         let clock = time::Time::from_hms(3, 4, 5).unwrap();

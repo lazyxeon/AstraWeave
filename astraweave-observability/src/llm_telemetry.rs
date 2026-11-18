@@ -749,9 +749,8 @@ impl LlmTelemetry {
             });
         }
 
-        // Keep only recent hourly data
-        while cost_tracker.hourly_costs.len() > 168 {
-            // Keep 1 week
+        // One call adds at most one hour, so one pop restores the week cap.
+        if cost_tracker.hourly_costs.len() > 168 {
             cost_tracker.hourly_costs.pop_front();
         }
 
@@ -942,13 +941,9 @@ impl LlmTelemetry {
     /// Calculate projected monthly cost
     fn calculate_projected_monthly_cost(&self, cost_tracker: &CostTracker) -> f32 {
         let days_in_month = 30.0;
-        let current_day = time::OffsetDateTime::now_utc().day() as f32;
-
-        if current_day > 0.0 {
-            (cost_tracker.current_month_spend / current_day) * days_in_month
-        } else {
-            0.0
-        }
+        // `OffsetDateTime::day` is the day of the month, 1..=31.
+        let current_day = f32::from(time::OffsetDateTime::now_utc().day());
+        (cost_tracker.current_month_spend / current_day) * days_in_month
     }
 
     /// Export traces to CSV format
@@ -1157,6 +1152,263 @@ mod tests {
         let metrics = telemetry.get_metrics().await;
         assert_eq!(metrics.total_requests, 1);
         assert_eq!(metrics.successful_requests, 1);
+    }
+
+    #[tokio::test]
+    async fn completed_trace_starts_before_it_ends_and_adds_cost() {
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        let tracker =
+            telemetry.start_request("cost-request".into(), "model".into(), "src".into(), 10);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        tracker
+            .complete(
+                "model".into(),
+                true,
+                5,
+                2.5,
+                None,
+                None,
+                "src".into(),
+                None,
+                None,
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+        let traces = telemetry.traces.read().await;
+        let trace = traces.back().unwrap();
+        assert!(trace.start_time < trace.end_time);
+        drop(traces);
+        let costs = telemetry.cost_tracker.read().await;
+        assert!((costs.current_day_spend - 2.5).abs() < 0.01);
+        assert!((costs.current_month_spend - 2.5).abs() < 0.01);
+        assert!((costs.cost_by_model.get("model").copied().unwrap_or(0.0) - 2.5).abs() < 0.01);
+        assert!((costs.cost_by_source.get("src").copied().unwrap_or(0.0) - 2.5).abs() < 0.01);
+        assert_eq!(costs.hourly_costs.len(), 1);
+        let hour = costs.hourly_costs.back().unwrap();
+        assert!((hour.cost_usd - 2.5).abs() < 0.01);
+        assert_eq!(hour.requests, 1);
+        assert_eq!(hour.tokens, 15);
+    }
+
+    #[tokio::test]
+    async fn track_cost_matches_the_hour_and_keeps_a_week() {
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        let epoch = time::OffsetDateTime::UNIX_EPOCH;
+        {
+            let mut costs = telemetry.cost_tracker.write().await;
+            costs.hourly_costs.push_back(HourlyCost {
+                hour: epoch,
+                cost_usd: 9.0,
+                requests: 9,
+                tokens: 9,
+            });
+        }
+        let tracker =
+            telemetry.start_request("other-hour".into(), "model".into(), "src".into(), 10);
+        tracker
+            .complete(
+                "model".into(),
+                true,
+                5,
+                2.5,
+                None,
+                None,
+                "src".into(),
+                None,
+                None,
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+        {
+            let costs = telemetry.cost_tracker.read().await;
+            assert_eq!(costs.hourly_costs.len(), 2);
+            assert!((costs.hourly_costs.front().unwrap().cost_usd - 9.0).abs() < 0.01);
+            assert!((costs.hourly_costs.back().unwrap().cost_usd - 2.5).abs() < 0.01);
+        }
+
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        for _ in 0..2 {
+            let tracker =
+                telemetry.start_request("same-hour".into(), "model".into(), "src".into(), 10);
+            tracker
+                .complete(
+                    "model".into(),
+                    true,
+                    5,
+                    1.5,
+                    None,
+                    None,
+                    "src".into(),
+                    None,
+                    None,
+                    HashMap::new(),
+                )
+                .await
+                .unwrap();
+        }
+        {
+            let costs = telemetry.cost_tracker.read().await;
+            assert_eq!(costs.hourly_costs.len(), 1);
+            let hour = costs.hourly_costs.back().unwrap();
+            assert!((hour.cost_usd - 3.0).abs() < 0.01);
+            assert_eq!(hour.requests, 2);
+            assert_eq!(hour.tokens, 30);
+        }
+
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        {
+            let mut costs = telemetry.cost_tracker.write().await;
+            for i in 0..167 {
+                costs.hourly_costs.push_back(HourlyCost {
+                    hour: epoch + time::Duration::hours(i),
+                    cost_usd: 1.0,
+                    requests: 1,
+                    tokens: 1,
+                });
+            }
+        }
+        let tracker = telemetry.start_request("week".into(), "model".into(), "src".into(), 1);
+        tracker
+            .complete(
+                "model".into(),
+                true,
+                1,
+                1.0,
+                None,
+                None,
+                "src".into(),
+                None,
+                None,
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+        {
+            let costs = telemetry.cost_tracker.read().await;
+            assert_eq!(costs.hourly_costs.len(), 168);
+            assert_eq!(costs.hourly_costs.front().unwrap().hour, epoch);
+        }
+
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        {
+            let mut costs = telemetry.cost_tracker.write().await;
+            for i in 0..168 {
+                costs.hourly_costs.push_back(HourlyCost {
+                    hour: epoch + time::Duration::hours(i),
+                    cost_usd: 1.0,
+                    requests: 1,
+                    tokens: 1,
+                });
+            }
+        }
+        let tracker = telemetry.start_request("drop".into(), "model".into(), "src".into(), 1);
+        tracker
+            .complete(
+                "model".into(),
+                true,
+                1,
+                1.0,
+                None,
+                None,
+                "src".into(),
+                None,
+                None,
+                HashMap::new(),
+            )
+            .await
+            .unwrap();
+        let costs = telemetry.cost_tracker.read().await;
+        assert_eq!(costs.hourly_costs.len(), 168);
+        assert_eq!(
+            costs.hourly_costs.front().unwrap().hour,
+            epoch + time::Duration::hours(1)
+        );
+    }
+
+    #[test]
+    fn projected_monthly_cost_scales_spend_by_the_day() {
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        let costs = CostTracker {
+            current_month_spend: 310.0,
+            ..CostTracker::default()
+        };
+        let day = time::OffsetDateTime::now_utc().day() as f32;
+        let projected = telemetry.calculate_projected_monthly_cost(&costs);
+        let expected = (310.0 / day) * 30.0;
+        assert!((projected - expected).abs() < 0.01);
+        assert!(projected > 1.0);
+    }
+
+    #[test]
+    fn trigger_alert_records_a_new_alert_and_updates_it() {
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        let mut manager = AlertManager::default();
+        telemetry.trigger_alert(
+            &mut manager,
+            AlertType::HighLatency,
+            AlertSeverity::Warning,
+            "slow".into(),
+            40.0,
+            20.0,
+        );
+        assert_eq!(manager.active_alerts.len(), 1);
+        assert_eq!(manager.alert_history.len(), 1);
+        let key = format!("{:?}", AlertType::HighLatency);
+        assert!((manager.active_alerts.get(&key).unwrap().value - 40.0).abs() < 0.01);
+        telemetry.trigger_alert(
+            &mut manager,
+            AlertType::HighLatency,
+            AlertSeverity::Warning,
+            "slower".into(),
+            55.0,
+            20.0,
+        );
+        assert_eq!(manager.active_alerts.len(), 1);
+        assert_eq!(manager.alert_history.len(), 1);
+        assert!((manager.active_alerts.get(&key).unwrap().value - 55.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn trigger_alert_keeps_a_thousand_history_entries() {
+        let telemetry = LlmTelemetry::new(TelemetryConfig::default());
+        let mut manager = AlertManager::default();
+        let epoch = time::OffsetDateTime::UNIX_EPOCH;
+        for i in 0..999i64 {
+            manager.alert_history.push_back(Alert {
+                id: format!("old-{i}"),
+                alert_type: AlertType::HighCost,
+                severity: AlertSeverity::Warning,
+                message: "old".into(),
+                value: 1.0,
+                threshold: 1.0,
+                first_triggered: epoch + time::Duration::seconds(i),
+                last_triggered: epoch,
+                acknowledged: false,
+                resolved: false,
+            });
+        }
+        telemetry.trigger_alert(
+            &mut manager,
+            AlertType::HighLatency,
+            AlertSeverity::Warning,
+            "new".into(),
+            40.0,
+            20.0,
+        );
+        assert_eq!(manager.alert_history.len(), 1000);
+        assert_eq!(manager.alert_history.front().unwrap().id, "old-0");
+        telemetry.trigger_alert(
+            &mut manager,
+            AlertType::HighErrorRate,
+            AlertSeverity::Critical,
+            "newer".into(),
+            80.0,
+            20.0,
+        );
+        assert_eq!(manager.alert_history.len(), 1000);
+        assert_eq!(manager.alert_history.front().unwrap().id, "old-1");
     }
 
     #[tokio::test]
