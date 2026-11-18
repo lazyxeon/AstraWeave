@@ -1466,7 +1466,7 @@ The NPC crate **does not import any canonical AI types** and is therefore not co
 
 ### 13.4 Subsystem Trace — Dialogue
 
-**Last verified against commit:** symbol cites in this section (`DialogueRunner` import, `DialogueConfig`, `DialogueContextConfig`, `BranchingConfig`, `LlmClient`, the clamps, and `disabled`)
+**Last verified against commit:** `7318eb3ea` (the last commit that changed `llm_dialogue.rs`). Symbol cites in this section (`DialogueRunner` import, `DialogueConfig`, `DialogueContextConfig`, `BranchingConfig`, `LlmClient`, the clamps, and `disabled`)
 **Last verified date:** 2026-11-11. The 2026-05-12 pass was `32afac52f`.
 **Status:** **Two-layer architecture, mixed status.** The **basic dialogue layer** (`lib.rs` types, `runner.rs` state machine, `toml_loader.rs` authoring) is Active and production-wired into `veilweaver_slice_runtime/src/game_loop.rs` and the editor's `dialogue_editor_panel.rs`. The **LLM-enhanced layer** (`llm_dialogue.rs`, 2,231 lines, about half of the 4,420 under `src/`) is Active (code-wise) / Dormant (runtime-wise) — workspace grep confirms zero external consumers outside the file itself. The two layers share no types: the LLM path defines its own `LlmDialogueSystem`, `DialogueConfig`, `ActiveConversation`, etc., distinct from the basic `DialogueGraph` / `DialogueRunner`.
 
@@ -1598,10 +1598,10 @@ The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls 
 | Designed touchpoint | Interface | Verified 2026-05-12 |
 |---|---|---|
 | LLM client | `use astraweave_llm::LlmClient` at `llm_dialogue.rs:20`. The field is `llm_client: Arc<dyn LlmClient>` at `llm_dialogue.rs:30`. | No external code constructs `LlmDialogueSystem` |
-| RAG retrieval | `Arc<RwLock<astraweave_rag::RagPipeline>>` (`llm_dialogue.rs:26, 36`) | Same |
-| Prompt templates | `astraweave_prompts::{template::PromptTemplate, engine::TemplateEngine, context::PromptContext}` (`llm_dialogue.rs:23-25`) | Same |
-| Conversation history | `astraweave_context::{ConversationHistory, ContextConfig, Role, Message}` (`llm_dialogue.rs:22`) | Same |
-| Persona overlay | `astraweave_persona::{LlmPersonaManager, LlmPersona}` (`llm_dialogue.rs:27`) | Same |
+| RAG retrieval | `use astraweave_rag::{MemoryQuery, RagPipeline, RetrievedMemory}` at `llm_dialogue.rs:25`. The field is `rag_pipeline: Arc<RwLock<RagPipeline>>` at `llm_dialogue.rs:33`. | Same |
+| Prompt templates | `astraweave_prompts::{template::PromptTemplate, engine::TemplateEngine, context::PromptContext}` (`llm_dialogue.rs:22-24`) | Same |
+| Conversation history | `astraweave_context::{ContextConfig, ConversationHistory, Role}` (`llm_dialogue.rs:19`). There is no `Message` import. | Same |
+| Persona overlay | `use astraweave_persona::LlmPersona` at `llm_dialogue.rs:21`. There is no `LlmPersonaManager` import. | Same |
 | Embedding store | There is no `astraweave_embeddings::{Memory, MemoryCategory}` import. The only `astraweave_embeddings` uses are inside `#[cfg(test)]` (`llm_dialogue.rs:2081`), at `llm_dialogue.rs:2163-2165`. | Same |
 | Fallback chain (parent §2.3) | Not used. The LLM layer holds `Arc<dyn LlmClient>` directly, bypassing `FallbackOrchestrator`. | Same pattern as Director's `LlmDirector` — see §13.2.7 |
 
