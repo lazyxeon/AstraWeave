@@ -73,7 +73,8 @@ pub struct ExperienceBuffer {
     /// Description of the experience
     pub description: String,
     /// When the experience occurred
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     /// Participants in the experience
     pub participants: Vec<String>,
     /// Location of the experience
@@ -119,7 +120,8 @@ pub struct WorkingMemoryTask {
     /// Task description
     pub description: String,
     /// When the task was added to working memory
-    pub added_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub added_at: time::OffsetDateTime,
     /// Priority level (0.0 to 1.0)
     pub priority: f32,
     /// Associated data
@@ -163,9 +165,11 @@ pub struct SocialRelationship {
     /// Trust level (0.0 to 1.0)
     pub trust: f32,
     /// When this relationship was first established
-    pub established_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub established_at: time::OffsetDateTime,
     /// Last interaction time
-    pub last_interaction: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_interaction: time::OffsetDateTime,
     /// Number of interactions
     pub interaction_count: u32,
 }
@@ -203,7 +207,8 @@ pub struct SocialInteraction {
     /// Type of interaction
     pub interaction_type: InteractionType,
     /// When it occurred
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     /// Brief description
     pub description: String,
     /// Emotional valence of the interaction
@@ -263,16 +268,19 @@ pub struct LearningDomain {
     /// Practice sessions in this domain
     pub practice_sessions: Vec<PracticeSession>,
     /// When this domain was first encountered
-    pub first_encountered: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub first_encountered: time::OffsetDateTime,
     /// Last practice time
-    pub last_practice: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_practice: time::OffsetDateTime,
 }
 
 /// Record of a practice session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PracticeSession {
     /// When the session occurred
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     /// Duration in seconds
     pub duration: f32,
     /// Performance score in this session
@@ -289,7 +297,8 @@ pub struct PerformanceRecord {
     /// Performance score
     pub score: f32,
     /// When this performance was recorded
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     /// Context or conditions
     pub context: String,
 }
@@ -324,7 +333,8 @@ pub struct MemoryOperation {
     /// Memory ID involved
     pub memory_id: String,
     /// When the operation occurred
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     /// Success status
     pub success: bool,
     /// Additional details
@@ -424,7 +434,7 @@ impl WorkingMemoryComponent {
         let task = WorkingMemoryTask {
             id: task_id.clone(),
             description,
-            added_at: chrono::Utc::now(),
+            added_at: time::OffsetDateTime::now_utc(),
             priority: priority.clamp(0.0, 1.0),
             data,
             active: true,
@@ -451,8 +461,8 @@ impl WorkingMemoryComponent {
 
     /// Clean up old tasks based on retention duration
     pub fn cleanup_old_tasks(&mut self) {
-        let now = chrono::Utc::now();
-        let cutoff = now - chrono::Duration::seconds(self.retention_duration as i64);
+        let now = time::OffsetDateTime::now_utc();
+        let cutoff = now - time::Duration::seconds(self.retention_duration as i64);
 
         self.active_tasks.retain(|task| task.added_at > cutoff);
     }
@@ -475,12 +485,12 @@ impl SocialMemoryComponent {
                     relationship_type,
                     strength: 0.5,
                     trust: 0.5,
-                    established_at: chrono::Utc::now(),
-                    last_interaction: chrono::Utc::now(),
+                    established_at: time::OffsetDateTime::now_utc(),
+                    last_interaction: time::OffsetDateTime::now_utc(),
                     interaction_count: 0,
                 });
 
-        relationship.last_interaction = chrono::Utc::now();
+        relationship.last_interaction = time::OffsetDateTime::now_utc();
         relationship.interaction_count += 1;
     }
 
@@ -517,7 +527,7 @@ impl LearningMemoryComponent {
         difficulty: f32,
     ) {
         let session = PracticeSession {
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             duration,
             performance_score,
             difficulty,
@@ -530,8 +540,8 @@ impl LearningMemoryComponent {
                 name: domain_name.clone(),
                 proficiency: 0.0,
                 practice_sessions: Vec::new(),
-                first_encountered: chrono::Utc::now(),
-                last_practice: chrono::Utc::now(),
+                first_encountered: time::OffsetDateTime::now_utc(),
+                last_practice: time::OffsetDateTime::now_utc(),
             });
         }
 
@@ -542,7 +552,7 @@ impl LearningMemoryComponent {
             .expect("domain was just created above");
 
         domain.practice_sessions.push(session);
-        domain.last_practice = chrono::Utc::now();
+        domain.last_practice = time::OffsetDateTime::now_utc();
 
         // Update proficiency based on performance
         let learning_adjustment = performance_score * self.learning_rate;

@@ -56,6 +56,7 @@ mod gizmo;
 mod interaction; // Phase 8.1 Week 5 Day 3 - Gizmo interaction helpers (auto-tracking)
 #[allow(dead_code)]
 mod level_doc; // Level document types
+mod local_clock;
 #[allow(dead_code)]
 mod material_inspector;
 #[allow(dead_code)]
@@ -1206,7 +1207,7 @@ impl EditorApp {
                 }
 
                 // Generate timestamped filename
-                let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+                let timestamp = local_clock::compact(local_clock::now());
                 let base_name = self
                     .current_scene_path
                     .as_ref()
@@ -1354,7 +1355,7 @@ impl EditorApp {
             let session_info = format!(
                 "pid={}\nstarted={}\nscene={}\n",
                 std::process::id(),
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                local_clock::readable(local_clock::now()),
                 self.current_scene_path
                     .as_ref()
                     .and_then(|p| p.to_str())

@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -138,7 +137,8 @@ pub struct EntitySpawn {
 /// Current state of the world for event generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldState {
-    pub current_time: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub current_time: time::OffsetDateTime,
     pub active_locations: Vec<String>,
     pub player_data: PlayerData,
     pub npc_states: HashMap<String, NpcState>,
@@ -208,7 +208,8 @@ pub struct EventGenerationContext {
     pub world_state_snapshot: String, // Serialized state
     pub generation_reasoning: String,
     pub coherence_score: f32,
-    pub generated_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub generated_at: time::OffsetDateTime,
 }
 
 /// Outcome of an executed event
@@ -220,7 +221,8 @@ pub struct EventOutcome {
     pub spawned_entities: Vec<String>, // Entity IDs
     pub narrative_consequences: Vec<String>,
     pub follow_up_events_triggered: Vec<String>,
-    pub completed_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub completed_at: time::OffsetDateTime,
 }
 
 /// Ongoing storyline connecting multiple events
@@ -234,8 +236,10 @@ pub struct Storyline {
     pub current_phase: u32,
     pub total_phases: u32,
     pub participants: Vec<String>,
-    pub start_time: DateTime<Utc>,
-    pub estimated_end_time: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub start_time: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub estimated_end_time: Option<time::OffsetDateTime>,
     pub status: StorylineStatus,
     pub branching_points: Vec<BranchingPoint>,
 }
@@ -417,7 +421,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
         ));
 
         let world_state = WorldState {
-            current_time: Utc::now(),
+            current_time: time::OffsetDateTime::now_utc(),
             active_locations: vec!["town_square".to_string(), "forest_path".to_string()],
             player_data: PlayerData {
                 level: 1,
@@ -504,7 +508,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             world_state_snapshot: serde_json::to_string(&world_context)?,
             generation_reasoning: format!("Generated via {:?} trigger", trigger_type),
             coherence_score,
-            generated_at: Utc::now(),
+            generated_at: time::OffsetDateTime::now_utc(),
         };
 
         let generated_event = GeneratedEvent {
@@ -598,9 +602,10 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             current_phase: 1,
             total_phases: storyline_data.total_phases,
             participants: Vec::new(),
-            start_time: Utc::now(),
+            start_time: time::OffsetDateTime::now_utc(),
             estimated_end_time: Some(
-                Utc::now() + Duration::hours(storyline_data.total_phases as i64),
+                time::OffsetDateTime::now_utc()
+                    + time::Duration::hours(storyline_data.total_phases as i64),
             ),
             status: StorylineStatus::Planning,
             branching_points: Vec::new(), // Would be parsed from storyline_data
@@ -646,7 +651,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             }
         }
 
-        world_state.current_time = Utc::now();
+        world_state.current_time = time::OffsetDateTime::now_utc();
         debug!("Updated world state");
         Ok(())
     }
@@ -695,8 +700,11 @@ Focus on narrative consistency, logical causation, and player engagement opportu
 
         // Check time since last event
         if let Some(last_event) = event_history.last() {
-            let time_since_last = Utc::now() - last_event.generation_context.generated_at;
-            if time_since_last.num_milliseconds() < self.config.generation_interval_ms as i64 {
+            let time_since_last =
+                time::OffsetDateTime::now_utc() - last_event.generation_context.generated_at;
+            if time_since_last.whole_milliseconds()
+                < i128::from(self.config.generation_interval_ms as i64)
+            {
                 return false;
             }
         }
@@ -733,7 +741,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
 
         context.insert(
             "current_time".to_string(),
-            serde_json::to_value(&world_state.current_time)?,
+            serde_json::Value::String(crate::utc_stamp::format_utc(world_state.current_time, true)),
         );
         context.insert(
             "player_level".to_string(),
@@ -843,7 +851,7 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             location: event_data.location,
             participants: event_data.participants,
             event_data: event_data.event_data,
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity,
         };
 

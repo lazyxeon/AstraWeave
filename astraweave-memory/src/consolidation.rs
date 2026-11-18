@@ -5,7 +5,6 @@
 
 use crate::memory_types::*;
 use anyhow::Result;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for memory consolidation
@@ -70,7 +69,7 @@ impl ConsolidationEngine {
     /// Form temporal associations between memories
     fn form_temporal_associations(&self, memories: &mut [Memory]) -> Result<usize> {
         let mut associations_formed = 0;
-        let window_duration = chrono::Duration::hours(self.config.temporal_window_hours as i64);
+        let window_duration = time::Duration::hours(self.config.temporal_window_hours as i64);
 
         for i in 0..memories.len() {
             for j in (i + 1)..memories.len() {
@@ -90,8 +89,8 @@ impl ConsolidationEngine {
                             memories[j].id.clone(),
                             AssociationType::Temporal,
                             0.5 + (1.0
-                                - (time_diff.num_seconds().abs() as f32
-                                    / (window_duration.num_seconds() as f32))),
+                                - (time_diff.whole_seconds().abs() as f32
+                                    / (window_duration.whole_seconds() as f32))),
                         );
                         associations_formed += 1;
                     }
@@ -212,7 +211,7 @@ impl ConsolidationEngine {
 
         // Update access count (consolidation acts as access)
         memory.metadata.access_count += 1;
-        memory.metadata.last_accessed = Utc::now();
+        memory.metadata.last_accessed = time::OffsetDateTime::now_utc();
 
         Ok(())
     }

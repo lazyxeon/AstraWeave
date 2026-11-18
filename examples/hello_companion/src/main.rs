@@ -120,8 +120,6 @@ impl std::fmt::Display for AIMode {
 // ============================================================================
 
 #[cfg(feature = "metrics")]
-use chrono::Utc;
-#[cfg(feature = "metrics")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "metrics")]
@@ -157,7 +155,7 @@ impl AIMetrics {
             mode: mode.to_string(),
             plan_steps,
             latency_ms,
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: format_utc_rfc3339(time::OffsetDateTime::now_utc()),
             success,
             error,
             tools_used: None,
@@ -201,8 +199,10 @@ fn main() -> Result<()> {
     // Parse command-line arguments
     let args: Vec<String> = std::env::args().collect();
     let demo_all = args.contains(&"--demo-all".to_string());
-    let _show_metrics = args.contains(&"--metrics".to_string());
-    let _export_metrics = args.contains(&"--export-metrics".to_string());
+    #[cfg(feature = "metrics")]
+    let show_metrics = args.contains(&"--metrics".to_string());
+    #[cfg(feature = "metrics")]
+    let export_metrics = args.contains(&"--export-metrics".to_string());
 
     #[cfg(feature = "metrics")]
     let mut all_metrics: Vec<AIMetrics> = Vec::new();
@@ -1423,4 +1423,68 @@ fn export_metrics_to_files(metrics: &[AIMetrics]) -> Result<()> {
     println!("✅ Exported CSV:  hello_companion_metrics.csv");
 
     Ok(())
+}
+
+#[cfg(feature = "metrics")]
+fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
+    let utc = dt.to_offset(time::UtcOffset::UTC);
+    let mut out = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        utc.year(),
+        u8::from(utc.month()),
+        utc.day(),
+        utc.hour(),
+        utc.minute(),
+        utc.second()
+    );
+    let nano = utc.nanosecond();
+    if nano != 0 {
+        if nano % 1_000_000 == 0 {
+            out.push_str(&format!(".{:03}", nano / 1_000_000));
+        } else if nano % 1_000 == 0 {
+            out.push_str(&format!(".{:06}", nano / 1_000));
+        } else {
+            out.push_str(&format!(".{nano:09}"));
+        }
+    }
+    out.push_str("+00:00");
+    out
+}
+
+#[cfg(all(test, feature = "metrics"))]
+mod utc_rfc3339_pins {
+    use super::format_utc_rfc3339;
+
+    fn at(nanos: i128) -> time::OffsetDateTime {
+        time::OffsetDateTime::from_unix_timestamp_nanos(1_577_934_245_000_000_000 + nanos).unwrap()
+    }
+
+    #[test]
+    fn rfc3339_matches_pinned_strings() {
+        assert_eq!(format_utc_rfc3339(at(0)), "2020-01-02T03:04:05+00:00");
+        assert_eq!(
+            format_utc_rfc3339(at(100_000_000)),
+            "2020-01-02T03:04:05.100+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(100_000)),
+            "2020-01-02T03:04:05.000100+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(1_000_000)),
+            "2020-01-02T03:04:05.001+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(1)),
+            "2020-01-02T03:04:05.000000001+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(123_456_789)),
+            "2020-01-02T03:04:05.123456789+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(123_400_000)),
+            "2020-01-02T03:04:05.123400+00:00"
+        );
+    }
 }

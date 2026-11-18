@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Datelike, Timelike, Utc};
 use dashmap::DashMap;
 use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
@@ -100,8 +99,10 @@ pub struct LlmTrace {
     pub response: Option<String>, // Optional for privacy
     pub prompt_hash: Option<u64>, // Hash for deduplication
     pub model: String,
-    pub start_time: DateTime<Utc>,
-    pub end_time: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub start_time: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub end_time: time::OffsetDateTime,
     pub latency_ms: u64,
     pub tokens_prompt: usize,
     pub tokens_response: usize,
@@ -115,7 +116,7 @@ pub struct LlmTrace {
 }
 
 /// Real-time LLM metrics
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmMetrics {
     pub total_requests: u64,
     pub successful_requests: u64,
@@ -133,9 +134,36 @@ pub struct LlmMetrics {
     pub active_requests: usize,
     pub queue_depth: usize,
     pub cache_hit_rate: f32,
-    pub last_updated: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
     pub model_usage: HashMap<String, ModelMetrics>,
     pub source_metrics: HashMap<String, SourceMetrics>,
+}
+
+impl Default for LlmMetrics {
+    fn default() -> Self {
+        Self {
+            total_requests: 0,
+            successful_requests: 0,
+            failed_requests: 0,
+            total_tokens: 0,
+            total_cost_usd: 0.0,
+            average_latency_ms: 0.0,
+            p50_latency_ms: 0,
+            p95_latency_ms: 0,
+            p99_latency_ms: 0,
+            error_rate: 0.0,
+            requests_per_second: 0.0,
+            tokens_per_second: 0.0,
+            cost_per_hour_usd: 0.0,
+            active_requests: 0,
+            queue_depth: 0,
+            cache_hit_rate: 0.0,
+            last_updated: time::OffsetDateTime::UNIX_EPOCH,
+            model_usage: HashMap::new(),
+            source_metrics: HashMap::new(),
+        }
+    }
 }
 
 /// Metrics per model
@@ -192,7 +220,8 @@ pub struct CostTracker {
 /// Hourly cost tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HourlyCost {
-    pub hour: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub hour: time::OffsetDateTime,
     pub cost_usd: f32,
     pub requests: u64,
     pub tokens: u64,
@@ -204,7 +233,8 @@ pub struct BudgetAlert {
     pub alert_type: BudgetAlertType,
     pub threshold: f32,
     pub actual: f32,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -232,8 +262,10 @@ pub struct Alert {
     pub message: String,
     pub value: f32,
     pub threshold: f32,
-    pub first_triggered: DateTime<Utc>,
-    pub last_triggered: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub first_triggered: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_triggered: time::OffsetDateTime,
     pub acknowledged: bool,
     pub resolved: bool,
 }
@@ -287,14 +319,17 @@ pub struct ErrorTracker {
 pub struct ErrorPattern {
     pub error_type: String,
     pub frequency: u64,
-    pub first_seen: DateTime<Utc>,
-    pub last_seen: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub first_seen: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_seen: time::OffsetDateTime,
     pub sample_messages: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorEvent {
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub error_type: String,
     pub error_message: String,
     pub request_id: String,
@@ -334,7 +369,8 @@ pub struct ModelBreakdown {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HourlyStats {
-    pub hour: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub hour: time::OffsetDateTime,
     pub requests: u64,
     pub cost: f32,
     pub avg_latency: f32,
@@ -655,7 +691,7 @@ impl LlmTelemetry {
         }
 
         metrics.active_requests = self.active_requests.len();
-        metrics.last_updated = Utc::now();
+        metrics.last_updated = time::OffsetDateTime::now_utc();
 
         Ok(())
     }
@@ -684,11 +720,11 @@ impl LlmTelemetry {
         // with_minute(0)/with_second(0)/with_nanosecond(0) are infallible
         let current_hour = trace
             .start_time
-            .with_minute(0)
+            .replace_minute(0)
             .expect("valid time truncation")
-            .with_second(0)
+            .replace_second(0)
             .expect("valid time truncation")
-            .with_nanosecond(0)
+            .replace_nanosecond(0)
             .expect("valid time truncation");
 
         if let Some(hourly) = cost_tracker.hourly_costs.back_mut() {
@@ -821,7 +857,7 @@ impl LlmTelemetry {
         threshold: f32,
     ) {
         let alert_key = format!("{:?}", alert_type);
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
 
         if let Some(existing_alert) = alert_manager.active_alerts.get_mut(&alert_key) {
             existing_alert.last_triggered = now;
@@ -906,7 +942,7 @@ impl LlmTelemetry {
     /// Calculate projected monthly cost
     fn calculate_projected_monthly_cost(&self, cost_tracker: &CostTracker) -> f32 {
         let days_in_month = 30.0;
-        let current_day = Utc::now().day() as f32;
+        let current_day = time::OffsetDateTime::now_utc().day() as f32;
 
         if current_day > 0.0 {
             (cost_tracker.current_month_spend / current_day) * days_in_month
@@ -925,7 +961,7 @@ impl LlmTelemetry {
                 "{},{},{},{},{},{},{},{},{},{}\n",
                 trace.request_id,
                 trace.model,
-                trace.start_time.format("%Y-%m-%d %H:%M:%S UTC"),
+                crate::utc_stamp::format_utc_clock(trace.start_time),
                 trace.latency_ms,
                 trace.tokens_prompt,
                 trace.tokens_response,
@@ -1014,7 +1050,7 @@ impl RequestTracker {
         response: Option<String>,
         tags: HashMap<String, String>,
     ) -> Result<()> {
-        let end_time = Utc::now();
+        let end_time = time::OffsetDateTime::now_utc();
         let latency = self.start_time.elapsed();
 
         // Extract prompt_tokens and drop the DashMap guard BEFORE any .await
@@ -1036,7 +1072,7 @@ impl RequestTracker {
             response,
             prompt_hash: None,
             model,
-            start_time: end_time - chrono::Duration::from_std(latency).unwrap_or_default(),
+            start_time: end_time - time::Duration::try_from(latency).unwrap_or_default(),
             end_time,
             latency_ms: latency.as_millis() as u64,
             tokens_prompt: prompt_tokens,
@@ -1068,8 +1104,8 @@ pub enum ExportFormat {
 pub struct TraceFilter {
     pub model: Option<String>,
     pub success: Option<bool>,
-    pub start_time: Option<DateTime<Utc>>,
-    pub end_time: Option<DateTime<Utc>>,
+    pub start_time: Option<time::OffsetDateTime>,
+    pub end_time: Option<time::OffsetDateTime>,
     pub min_latency_ms: Option<u64>,
     pub max_latency_ms: Option<u64>,
 }
@@ -1163,8 +1199,8 @@ mod tests {
             response: Some("Hi there!".to_string()),
             prompt_hash: Some(12345),
             model: "gpt-4".to_string(),
-            start_time: Utc::now(),
-            end_time: Utc::now(),
+            start_time: time::OffsetDateTime::now_utc(),
+            end_time: time::OffsetDateTime::now_utc(),
             latency_ms: 500,
             tokens_prompt: 10,
             tokens_response: 20,
@@ -1215,7 +1251,7 @@ mod tests {
     #[test]
     fn test_hourly_cost_creation() {
         let cost = HourlyCost {
-            hour: Utc::now(),
+            hour: time::OffsetDateTime::now_utc(),
             cost_usd: 1.50,
             requests: 100,
             tokens: 5000,
@@ -1276,8 +1312,8 @@ mod tests {
             message: "High latency detected".to_string(),
             value: 6000.0,
             threshold: 5000.0,
-            first_triggered: Utc::now(),
-            last_triggered: Utc::now(),
+            first_triggered: time::OffsetDateTime::now_utc(),
+            last_triggered: time::OffsetDateTime::now_utc(),
             acknowledged: false,
             resolved: false,
         };
@@ -1291,8 +1327,8 @@ mod tests {
         let pattern = ErrorPattern {
             error_type: "RateLimitExceeded".to_string(),
             frequency: 5,
-            first_seen: Utc::now(),
-            last_seen: Utc::now(),
+            first_seen: time::OffsetDateTime::now_utc(),
+            last_seen: time::OffsetDateTime::now_utc(),
             sample_messages: vec!["Rate limit exceeded".to_string()],
         };
         assert_eq!(pattern.frequency, 5);
@@ -1302,7 +1338,7 @@ mod tests {
     #[test]
     fn test_error_event_creation() {
         let event = ErrorEvent {
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             error_type: "ConnectionTimeout".to_string(),
             error_message: "Connection timed out".to_string(),
             request_id: "req-456".to_string(),
@@ -1362,7 +1398,7 @@ mod tests {
         let filter = TraceFilter {
             model: Some("gpt-4".to_string()),
             success: Some(true),
-            start_time: Some(Utc::now()),
+            start_time: Some(time::OffsetDateTime::now_utc()),
             end_time: None,
             min_latency_ms: Some(100),
             max_latency_ms: Some(5000),
@@ -1624,7 +1660,7 @@ mod tests {
             alert_type: BudgetAlertType::DailyBudget,
             threshold: 100.0,
             actual: 120.0,
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
         };
         assert!((alert.threshold - 100.0).abs() < 0.01);
         assert!((alert.actual - 120.0).abs() < 0.01);
@@ -1640,8 +1676,8 @@ mod tests {
             response: None,
             prompt_hash: None,
             model: "test-model".to_string(),
-            start_time: Utc::now(),
-            end_time: Utc::now(),
+            start_time: time::OffsetDateTime::now_utc(),
+            end_time: time::OffsetDateTime::now_utc(),
             latency_ms: 100,
             tokens_prompt: 10,
             tokens_response: 20,
@@ -1866,7 +1902,7 @@ mod tests {
     #[test]
     fn test_hourly_stats_creation() {
         let stats = HourlyStats {
-            hour: Utc::now(),
+            hour: time::OffsetDateTime::now_utc(),
             requests: 500,
             cost: 2.5,
             avg_latency: 150.0,

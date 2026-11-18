@@ -4,7 +4,6 @@ use astraweave_embeddings::{Memory, MemoryCategory};
 use astraweave_rag::consolidation::{
     ConsolidationConfig, ConsolidationEngine, ConsolidationStrategy,
 };
-use chrono::Utc;
 use std::collections::HashMap;
 
 fn create_memory(id: &str, text: &str, category: MemoryCategory) -> Memory {
@@ -12,7 +11,7 @@ fn create_memory(id: &str, text: &str, category: MemoryCategory) -> Memory {
         id: id.to_string(),
         text: text.to_string(),
         category,
-        timestamp: Utc::now().timestamp() as u64,
+        timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
         importance: 0.5,
         valence: 0.0,
         entities: vec![],

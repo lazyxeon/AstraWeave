@@ -20,7 +20,7 @@ tokio = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
-chrono = { version = "0.4", features = ["serde"], optional = true }
+time = { version = "0.3", optional = true }
 
 # Visual demo dependencies (enable with --features visual)
 astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "assets", "textures"], optional = true }
@@ -49,7 +49,7 @@ default = ["fast-alloc"]
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 llm = ["astraweave-llm", "astraweave-llm/llm_cache", "tokio"]
 ollama = ["llm", "astraweave-llm/ollama", "reqwest", "serde_json"]
-metrics = ["serde", "serde_json", "chrono"]
+metrics = ["serde", "serde_json", "time"]
 llm_orchestrator = ["astraweave-ai/llm_orchestrator", "ollama"]
 decision-trace = ["astraweave-ai/decision-trace"]
 # Visual demo with full rendering + LLM support

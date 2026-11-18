@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -124,8 +123,10 @@ pub struct ResourceAllocation {
     pub llm_calls_used: u32,
     pub memory_allocated: u32,
     pub memory_used: u32,
-    pub allocated_at: DateTime<Utc>,
-    pub expires_at: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub allocated_at: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub expires_at: Option<time::OffsetDateTime>,
 }
 
 /// System-wide resource limits
@@ -368,8 +369,8 @@ impl AgentCoordinator {
             participants: participant_ids.clone(),
             shared_state: HashMap::new(),
             coordination_goals: goals,
-            start_time: Utc::now(),
-            last_update: Utc::now(),
+            start_time: time::OffsetDateTime::now_utc(),
+            last_update: time::OffsetDateTime::now_utc(),
             status: CoordinationStatus::Planning,
         }));
 
@@ -418,7 +419,7 @@ impl AgentCoordinator {
             {
                 let mut ctx = context.write().await;
                 ctx.status = CoordinationStatus::Completed;
-                ctx.last_update = Utc::now();
+                ctx.last_update = time::OffsetDateTime::now_utc();
             }
 
             // Remove agents from session
@@ -560,7 +561,7 @@ impl AgentCoordinator {
             let mut ctx = context.write().await;
             if ctx.participants.contains(&agent_id.to_string()) {
                 ctx.participants.retain(|id| id != agent_id);
-                ctx.last_update = Utc::now();
+                ctx.last_update = time::OffsetDateTime::now_utc();
                 debug!("Removed agent {} from session {}", agent_id, session_id);
             }
         }
@@ -590,14 +591,14 @@ impl AgentCoordinator {
 
     /// Clean up expired coordination sessions
     async fn cleanup_expired_sessions(&self) {
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         let mut sessions = self.coordination_sessions.write().await;
 
         sessions.retain(|session_id, context| {
             let ctx = context.try_read();
             if let Ok(ctx) = ctx {
                 let duration = now - ctx.start_time;
-                let keep = duration.to_std().unwrap_or(Duration::ZERO)
+                let keep = crate::utc_stamp::saturating_std(duration, Duration::ZERO)
                     < self.config.max_coordination_duration;
                 if !keep {
                     debug!("Cleaning up expired coordination session {}", session_id);
@@ -753,7 +754,7 @@ impl ResourceManager {
             llm_calls_used: 0,
             memory_allocated: self.limits.total_memory_mb / 10,
             memory_used: 0,
-            allocated_at: Utc::now(),
+            allocated_at: time::OffsetDateTime::now_utc(),
             expires_at: None,
         };
 
@@ -802,11 +803,11 @@ impl ResourceManager {
 
     async fn update_allocations(&self) {
         // Reset usage counters periodically
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         let mut allocations = self.allocations.write().await;
 
         for allocation in allocations.values_mut() {
-            if (now - allocation.allocated_at).num_minutes() >= 1 {
+            if (now - allocation.allocated_at).whole_minutes() >= 1 {
                 allocation.llm_calls_used = 0;
                 allocation.allocated_at = now;
             }
@@ -997,7 +998,7 @@ mod tests {
             to: "b".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1024,7 +1025,7 @@ mod tests {
             to: "target".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1041,7 +1042,7 @@ mod tests {
             to: "target".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({"hello": true}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1060,7 +1061,7 @@ mod tests {
             to: "nonexistent".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1085,7 +1086,7 @@ mod tests {
             to: "player".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1095,7 +1096,7 @@ mod tests {
             to: "npc-guard".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1114,7 +1115,7 @@ mod tests {
                 to: "t".into(),
                 message_type: crate::agent::MessageType::Notification,
                 content: serde_json::json!({}),
-                timestamp: Utc::now(),
+                timestamp: time::OffsetDateTime::now_utc(),
                 priority: crate::agent::MessagePriority::Low,
                 reply_to: None,
             };
@@ -1227,7 +1228,7 @@ mod tests {
             location: None,
             participants: vec![],
             event_data: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity: crate::agent::EventSeverity::Minor,
         };
         let interested = ed.get_interested_agents(&event).await;
@@ -1248,7 +1249,7 @@ mod tests {
             location: None,
             participants: vec![],
             event_data: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity: crate::agent::EventSeverity::Trivial,
         };
         let interested = ed.get_interested_agents(&event).await;
@@ -1268,7 +1269,7 @@ mod tests {
             location: None,
             participants: vec![],
             event_data: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity: crate::agent::EventSeverity::Major,
         };
         let interested = ed.get_interested_agents(&event).await;
@@ -1285,7 +1286,7 @@ mod tests {
             location: Some("town".into()),
             participants: vec!["hero".into()],
             event_data: serde_json::json!({"x": 1}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity: crate::agent::EventSeverity::Moderate,
         };
         ed.store_event(event).await;
@@ -1407,7 +1408,7 @@ mod tests {
             location: None,
             participants: vec![],
             event_data: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity: crate::agent::EventSeverity::Major,
         };
         coordinator.dispatch_event(event).await.unwrap();
@@ -1469,7 +1470,7 @@ mod tests {
             to: agent_id,
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1506,7 +1507,7 @@ mod tests {
             to: "target".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1532,7 +1533,7 @@ mod tests {
             to: "nonexistent".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1769,7 +1770,7 @@ mod tests {
                 .expect("expired session")
                 .write()
                 .await;
-            ctx.start_time = Utc::now() - chrono::Duration::seconds(60);
+            ctx.start_time = time::OffsetDateTime::now_utc() - time::Duration::seconds(60);
         }
 
         // A session started now stays inside the 30s window. A 1ms window
@@ -1879,7 +1880,7 @@ mod tests {
             location: None,
             participants: vec![],
             event_data: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             severity: crate::agent::EventSeverity::Major,
         };
 
@@ -1952,7 +1953,7 @@ mod tests {
             to: "npc-guard".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1962,7 +1963,7 @@ mod tests {
             to: "merchant".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -1992,7 +1993,7 @@ mod tests {
             to: "b".into(),
             message_type: crate::agent::MessageType::Request,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -2002,7 +2003,7 @@ mod tests {
             to: "b".into(),
             message_type: crate::agent::MessageType::Response,
             content: serde_json::json!({}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: crate::agent::MessagePriority::Normal,
             reply_to: None,
         };
@@ -2074,7 +2075,7 @@ mod tests {
                 location: None,
                 participants: vec![],
                 event_data: serde_json::json!({}),
-                timestamp: Utc::now(),
+                timestamp: time::OffsetDateTime::now_utc(),
                 severity: crate::agent::EventSeverity::Trivial,
             };
             ed.store_event(event).await;

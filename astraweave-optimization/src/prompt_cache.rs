@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
@@ -67,10 +66,13 @@ pub struct CachedResponse {
     pub response: String,
     pub original_prompt: String,
     pub prompt_hash: u64,
-    pub created_at: DateTime<Utc>,
-    pub last_accessed: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_accessed: time::OffsetDateTime,
     pub access_count: u32,
-    pub ttl_expires_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub ttl_expires_at: time::OffsetDateTime,
     pub response_quality: f32,
     pub compression_ratio: Option<f32>,
     pub tags: Vec<String>,
@@ -108,7 +110,8 @@ pub struct CacheStats {
     pub average_response_time_ms: f32,
     pub memory_usage_mb: f32,
     pub compression_savings_mb: f32,
-    pub last_updated: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
 }
 
 impl Default for CacheStats {
@@ -123,7 +126,7 @@ impl Default for CacheStats {
             average_response_time_ms: 0.0,
             memory_usage_mb: 0.0,
             compression_savings_mb: 0.0,
-            last_updated: Utc::now(),
+            last_updated: time::OffsetDateTime::now_utc(),
         }
     }
 }
@@ -237,7 +240,7 @@ impl PromptCache {
         }
 
         let prompt_hash = self.calculate_hash(prompt);
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
 
         let cached_response = CachedResponse {
             id: Uuid::new_v4().to_string(),
@@ -248,7 +251,7 @@ impl PromptCache {
             last_accessed: now,
             access_count: 1,
             ttl_expires_at: now
-                + chrono::Duration::from_std(self.config.entry_ttl).unwrap_or_default(),
+                + time::Duration::try_from(self.config.entry_ttl).unwrap_or_default(),
             response_quality: quality,
             compression_ratio: None, // Would be calculated if compression is enabled
             tags: Vec::new(),
@@ -320,7 +323,7 @@ impl PromptCache {
                 (stats.cache_hits + stats.semantic_hits) as f32 / stats.total_requests as f32;
         }
 
-        stats.last_updated = Utc::now();
+        stats.last_updated = time::OffsetDateTime::now_utc();
         stats.clone()
     }
 
@@ -388,7 +391,7 @@ impl PromptCache {
 
     /// Check if a cached response is expired
     fn is_expired(&self, cached: &CachedResponse) -> bool {
-        Utc::now() > cached.ttl_expires_at
+        time::OffsetDateTime::now_utc() > cached.ttl_expires_at
     }
 
     /// Record a cache hit
@@ -397,7 +400,7 @@ impl PromptCache {
         for mut cached_entry in self.hash_cache.iter_mut() {
             let cached = cached_entry.value_mut();
             if cached.id == response_id {
-                cached.last_accessed = Utc::now();
+                cached.last_accessed = time::OffsetDateTime::now_utc();
                 cached.access_count += 1;
                 break;
             }
@@ -535,7 +538,7 @@ impl PromptCache {
 
     /// Invalidate expired entries
     async fn invalidate_expired(&self) -> Result<usize> {
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         let mut invalidated = 0;
 
         // Clean hash cache

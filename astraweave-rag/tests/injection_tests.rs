@@ -3,11 +3,10 @@
 use astraweave_embeddings::{Memory, MemoryCategory};
 use astraweave_rag::injection::{InjectionConfig, InjectionContext, InjectionEngine};
 use astraweave_rag::InjectionStrategy;
-use chrono::Utc;
 use std::collections::HashMap;
 
 fn create_memory(id: &str, text: &str, category: MemoryCategory, age_hours: i64) -> Memory {
-    let timestamp = Utc::now().timestamp() - (age_hours * 3600);
+    let timestamp = time::OffsetDateTime::now_utc().unix_timestamp() - (age_hours * 3600);
     Memory {
         id: id.to_string(),
         text: text.to_string(),

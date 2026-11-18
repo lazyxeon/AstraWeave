@@ -86,7 +86,8 @@ impl CompressionEngine {
         }
 
         // Check age
-        let age_days = (chrono::Utc::now() - memory.metadata.created_at).num_days() as f32;
+        let age_days =
+            (time::OffsetDateTime::now_utc() - memory.metadata.created_at).whole_days() as f32;
         if age_days < self.config.min_age_days {
             return Ok(false);
         }
@@ -260,7 +261,6 @@ pub struct CompressionStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
 
     // ========================================================================
     // CONFIG TESTS
@@ -344,7 +344,7 @@ mod tests {
     fn test_should_not_compress_important_memory() {
         let engine = CompressionEngine::new(CompressionConfig::default());
         let mut memory = Memory::episodic("Important event".to_string(), vec![], None);
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(35);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(35);
         memory.metadata.importance = 0.8; // High importance
 
         let should_compress = engine.should_compress(&memory).unwrap();
@@ -355,7 +355,7 @@ mod tests {
     fn test_should_not_compress_already_compressed() {
         let engine = CompressionEngine::new(CompressionConfig::default());
         let mut memory = Memory::sensory("Already compressed".to_string(), None);
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(35);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(35);
         memory.metadata.importance = 0.1;
         memory.metadata.tags.push("compressed".to_string());
 
@@ -374,7 +374,7 @@ mod tests {
         let engine = CompressionEngine::new(config);
 
         let mut memory = Memory::sensory("Old unimportant memory".to_string(), None);
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(10);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
         memory.metadata.importance = 0.2;
 
         let should_compress = engine.should_compress(&memory).unwrap();
@@ -394,7 +394,7 @@ mod tests {
         );
 
         // Make memory old enough for compression
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(35);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(35);
         memory.metadata.importance = 0.2; // Low importance
 
         let original_length = memory.content.text.len();
@@ -471,7 +471,7 @@ mod tests {
         };
 
         let mut memory = Memory::sensory("Main content".to_string(), Some(sensory));
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(35);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(35);
         memory.metadata.importance = 0.1;
 
         engine.compress_memory(&mut memory).unwrap();
@@ -504,7 +504,7 @@ mod tests {
             "E4".into(),
             "E5".into(),
         ];
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(35);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(35);
         memory.metadata.importance = 0.1;
 
         engine.compress_memory(&mut memory).unwrap();
@@ -533,13 +533,13 @@ mod tests {
                     "Long text that should be compressed into shorter form".to_string(),
                     None,
                 );
-                m.metadata.created_at = Utc::now() - chrono::Duration::days(5);
+                m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
                 m.metadata.importance = 0.2;
                 m
             },
             {
                 let mut m = Memory::working("Short".to_string());
-                m.metadata.created_at = Utc::now() - chrono::Duration::days(5);
+                m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
                 m.metadata.importance = 0.2;
                 m
             },

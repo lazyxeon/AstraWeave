@@ -67,7 +67,7 @@ rayon = "1.11"
 rfd = "0.17"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-chrono = "0.4"
+time = { version = "0.3", features = ["local-offset"] }
 pollster = "0.4"
 astract = { path = "../../crates/astract" }
 astraweave-core = { path = "../../astraweave-core" }

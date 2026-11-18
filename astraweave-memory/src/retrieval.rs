@@ -73,7 +73,8 @@ pub enum RetrievalPath {
     Associative { source_memory_id: String },
     /// Found through temporal proximity
     Temporal {
-        reference_time: chrono::DateTime<chrono::Utc>,
+        #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+        reference_time: time::OffsetDateTime,
     },
     /// Found through clustering
     Cluster { cluster_id: String },
@@ -207,10 +208,10 @@ impl RetrievalEngine {
 
             // Calculate distance from time window
             let distance_start = (memory.metadata.created_at - time_window.start)
-                .num_days()
+                .whole_days()
                 .abs();
             let distance_end = (memory.metadata.created_at - time_window.end)
-                .num_days()
+                .whole_days()
                 .abs();
             let min_distance = distance_start.min(distance_end) as f32;
 
@@ -240,9 +241,9 @@ impl RetrievalEngine {
 
     /// Calculate recency score
     fn calculate_recency_score(&self, memory: &Memory) -> f32 {
-        let now = chrono::Utc::now();
-        let age_days = (now - memory.metadata.created_at).num_days() as f32;
-        let last_access_days = (now - memory.metadata.last_accessed).num_days() as f32;
+        let now = time::OffsetDateTime::now_utc();
+        let age_days = (now - memory.metadata.created_at).whole_days() as f32;
+        let last_access_days = (now - memory.metadata.last_accessed).whole_days() as f32;
 
         // Combine creation recency and access recency
         let creation_recency = (-age_days / 30.0).exp(); // Decay over 30 days
@@ -568,7 +569,7 @@ mod tests {
 
     #[test]
     fn test_retrieval_path_temporal() {
-        let time = chrono::Utc::now();
+        let time = time::OffsetDateTime::now_utc();
         let path = RetrievalPath::Temporal {
             reference_time: time,
         };
@@ -675,7 +676,7 @@ mod tests {
         let engine = RetrievalEngine::new(RetrievalConfig::default());
         let memory = Memory::sensory("Test".to_string(), None);
 
-        let now = chrono::Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         let context = RetrievalContext {
             query: "test".to_string(),
             emotional_state: None,
@@ -683,8 +684,8 @@ mod tests {
             recent_memory_ids: vec![],
             preferred_types: vec![],
             time_window: Some(TimeWindow {
-                start: now - chrono::Duration::days(1),
-                end: now + chrono::Duration::days(1),
+                start: now - time::Duration::days(1),
+                end: now + time::Duration::days(1),
             }),
             limit: 10,
         };

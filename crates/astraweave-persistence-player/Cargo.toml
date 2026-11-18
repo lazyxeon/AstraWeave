@@ -10,7 +10,7 @@ license = "MIT"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 anyhow = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["parsing"] }
 postcard = { version = "1.0", default-features = false, features = ["alloc"] }
 serde_bytes = "0.11"
 

@@ -22,6 +22,7 @@ pub mod file_helpers;
 pub mod file_watcher;
 pub mod game_project;
 pub mod level_doc;
+pub mod local_clock;
 pub mod movement_scripts;
 pub mod panel_type;
 pub mod panels;

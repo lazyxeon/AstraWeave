@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -79,8 +78,10 @@ pub struct PlotPoint {
     pub related_characters: Vec<String>,
     pub prerequisites: Vec<String>,
     pub consequences: Vec<String>,
-    pub introduced_at: DateTime<Utc>,
-    pub deadline: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub introduced_at: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub deadline: Option<time::OffsetDateTime>,
 }
 
 /// Types of plot points
@@ -137,7 +138,8 @@ pub struct EmotionalChange {
     pub from_emotion: String,
     pub to_emotion: String,
     pub cause: String,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
 }
 
 /// Relationship between characters
@@ -175,7 +177,8 @@ pub struct NarrativeEvent {
     pub participants: Vec<String>,
     pub consequences: Vec<String>,
     pub narrative_impact: f32,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub location: Option<String>,
     pub related_plot_points: Vec<String>,
 }
@@ -183,8 +186,10 @@ pub struct NarrativeEvent {
 /// Game timeline for temporal consistency
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Timeline {
-    pub current_time: DateTime<Utc>,
-    pub game_start_time: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub current_time: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub game_start_time: time::OffsetDateTime,
     pub significant_dates: Vec<TimelineEvent>,
     pub temporal_anchors: Vec<TemporalAnchor>,
 }
@@ -192,7 +197,8 @@ pub struct Timeline {
 /// Significant event in the timeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineEvent {
-    pub date: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub date: time::OffsetDateTime,
     pub title: String,
     pub description: String,
     pub importance: f32,
@@ -204,7 +210,8 @@ pub struct TimelineEvent {
 pub struct TemporalAnchor {
     pub id: String,
     pub description: String,
-    pub fixed_date: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub fixed_date: time::OffsetDateTime,
     pub cannot_change: bool,
     pub related_events: Vec<String>,
 }
@@ -270,7 +277,8 @@ pub struct RuleViolation {
     pub violation_id: String,
     pub description: String,
     pub severity: ViolationSeverity,
-    pub detected_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub detected_at: time::OffsetDateTime,
     pub resolved: bool,
     pub resolution_notes: Option<String>,
 }
@@ -295,7 +303,8 @@ pub struct StoryThread {
     pub characters_involved: Vec<String>,
     pub current_status: ThreadStatus,
     pub importance: f32,
-    pub estimated_resolution_time: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub estimated_resolution_time: Option<time::OffsetDateTime>,
     pub branching_possibilities: Vec<String>,
 }
 
@@ -329,7 +338,8 @@ pub struct CharacterArc {
 pub struct ArcMilestone {
     pub description: String,
     pub achieved: bool,
-    pub achievement_date: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub achievement_date: Option<time::OffsetDateTime>,
     pub impact_on_character: String,
 }
 
@@ -349,7 +359,8 @@ pub struct EstablishedFact {
     pub id: String,
     pub description: String,
     pub category: String,
-    pub established_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub established_at: time::OffsetDateTime,
     pub immutable: bool,
     pub supporting_evidence: Vec<String>,
     pub contradictions: Vec<String>,
@@ -372,7 +383,8 @@ pub struct LocationChange {
     pub change_type: String,
     pub description: String,
     pub cause: String,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub reversible: bool,
 }
 
@@ -573,8 +585,8 @@ Ensure character development feels natural and earned.
             character_states: HashMap::new(),
             world_events: Vec::new(),
             timeline: Timeline {
-                current_time: Utc::now(),
-                game_start_time: Utc::now(),
+                current_time: time::OffsetDateTime::now_utc(),
+                game_start_time: time::OffsetDateTime::now_utc(),
                 significant_dates: Vec::new(),
                 temporal_anchors: Vec::new(),
             },
@@ -1080,7 +1092,7 @@ Ensure character development feels natural and earned.
                         .contains(&milestone.description)
                 {
                     milestone.achieved = true;
-                    milestone.achievement_date = Some(Utc::now());
+                    milestone.achievement_date = Some(time::OffsetDateTime::now_utc());
                 }
             }
         }
@@ -1289,7 +1301,7 @@ mod tests {
             related_characters: vec!["character1".to_string()],
             prerequisites: Vec::new(),
             consequences: Vec::new(),
-            introduced_at: Utc::now(),
+            introduced_at: time::OffsetDateTime::now_utc(),
             deadline: None,
         };
 

@@ -66,7 +66,7 @@ impl Default for MemoryStrength {
         Self {
             current_strength: 1.0,
             initial_strength: 1.0,
-            last_access: chrono::Utc::now().timestamp(),
+            last_access: time::OffsetDateTime::now_utc().unix_timestamp(),
             access_count: 0,
             protected: false,
         }
@@ -115,7 +115,7 @@ impl ForgettingEngine {
         let mut forgotten_count = 0;
         let mut updated_count = 0;
 
-        let current_time = chrono::Utc::now().timestamp();
+        let current_time = time::OffsetDateTime::now_utc().unix_timestamp();
 
         for memory in memories {
             // Get or create strength tracking for this memory
@@ -206,7 +206,7 @@ impl ForgettingEngine {
     pub fn strengthen_memory(&mut self, memory_id: &str, boost_factor: f32) -> Result<()> {
         if let Some(strength) = self.memory_strengths.get_mut(memory_id) {
             strength.current_strength = (strength.current_strength + boost_factor).min(1.0);
-            strength.last_access = chrono::Utc::now().timestamp();
+            strength.last_access = time::OffsetDateTime::now_utc().unix_timestamp();
             strength.access_count += 1;
         }
         Ok(())
@@ -295,7 +295,7 @@ mod tests {
                 id: "1".to_string(),
                 text: "Recent memory".to_string(),
                 category: MemoryCategory::Social,
-                timestamp: chrono::Utc::now().timestamp() as u64,
+                timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
                 importance: 0.5,
                 valence: 0.0,
                 entities: vec![],
@@ -305,7 +305,7 @@ mod tests {
                 id: "2".to_string(),
                 text: "Old memory".to_string(),
                 category: MemoryCategory::Social,
-                timestamp: (chrono::Utc::now().timestamp() - 3600) as u64, // 1 hour old
+                timestamp: (time::OffsetDateTime::now_utc().unix_timestamp() - 3600) as u64, // 1 hour old
                 importance: 0.5,
                 valence: 0.0,
                 entities: vec![],
@@ -336,7 +336,7 @@ mod tests {
             id: "test1".to_string(),
             text: "Test memory".to_string(),
             category: MemoryCategory::Gameplay,
-            timestamp: chrono::Utc::now().timestamp() as u64,
+            timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
             importance: 0.5,
             valence: 0.0,
             entities: vec![],
@@ -364,7 +364,7 @@ mod tests {
             id: "protect_test".to_string(),
             text: "Important memory".to_string(),
             category: MemoryCategory::Gameplay,
-            timestamp: chrono::Utc::now().timestamp() as u64,
+            timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
             importance: 0.1, // Very low importance
             valence: 0.0,
             entities: vec![],
@@ -400,7 +400,7 @@ mod tests {
                 id: "1".to_string(),
                 text: "Memory 1".to_string(),
                 category: MemoryCategory::Gameplay,
-                timestamp: chrono::Utc::now().timestamp() as u64,
+                timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
                 importance: 0.5,
                 valence: 0.0,
                 entities: vec![],
@@ -410,7 +410,7 @@ mod tests {
                 id: "2".to_string(),
                 text: "Memory 2".to_string(),
                 category: MemoryCategory::Quest,
-                timestamp: chrono::Utc::now().timestamp() as u64,
+                timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
                 importance: 0.8,
                 valence: 0.0,
                 entities: vec![],
@@ -438,7 +438,7 @@ mod tests {
             id: "decay_test".to_string(),
             text: "Test decay".to_string(),
             category: MemoryCategory::Gameplay,
-            timestamp: (chrono::Utc::now().timestamp() - 3600) as u64, // 1 hour old
+            timestamp: (time::OffsetDateTime::now_utc().unix_timestamp() - 3600) as u64, // 1 hour old
             importance: 0.5,
             valence: 0.0,
             entities: vec![],
@@ -470,8 +470,8 @@ mod tests {
             id: "quest1".to_string(),
             text: "Important quest".to_string(),
             category: MemoryCategory::Quest, // Protected category
-            timestamp: (chrono::Utc::now().timestamp() - 10000) as u64, // Very old
-            importance: 0.1,                 // Very low importance
+            timestamp: (time::OffsetDateTime::now_utc().unix_timestamp() - 10000) as u64, // Very old
+            importance: 0.1, // Very low importance
             valence: 0.0,
             entities: vec![],
             context: HashMap::new(),
@@ -496,8 +496,8 @@ mod tests {
             id: "old1".to_string(),
             text: "Very old memory".to_string(),
             category: MemoryCategory::Gameplay,
-            timestamp: (chrono::Utc::now().timestamp() - 200) as u64, // 200 seconds old
-            importance: 0.9,                                          // High importance
+            timestamp: (time::OffsetDateTime::now_utc().unix_timestamp() - 200) as u64, // 200 seconds old
+            importance: 0.9, // High importance
             valence: 0.0,
             entities: vec![],
             context: HashMap::new(),
@@ -523,7 +523,7 @@ mod tests {
             id: "high_imp".to_string(),
             text: "High importance memory".to_string(),
             category: MemoryCategory::Gameplay,
-            timestamp: (chrono::Utc::now().timestamp() - 7200) as u64, // 2 hours old
+            timestamp: (time::OffsetDateTime::now_utc().unix_timestamp() - 7200) as u64, // 2 hours old
             importance: 0.9,
             valence: 0.0,
             entities: vec![],
@@ -534,7 +534,7 @@ mod tests {
             id: "low_imp".to_string(),
             text: "Low importance memory".to_string(),
             category: MemoryCategory::Gameplay,
-            timestamp: (chrono::Utc::now().timestamp() - 7200) as u64, // 2 hours old
+            timestamp: (time::OffsetDateTime::now_utc().unix_timestamp() - 7200) as u64, // 2 hours old
             importance: 0.1,
             valence: 0.0,
             entities: vec![],

@@ -45,6 +45,8 @@ fn main() -> anyhow::Result<()> {
 ```
 */
 
+mod utc_stamp;
+
 pub mod context;
 pub mod engine;
 pub mod helpers;

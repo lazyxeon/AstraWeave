@@ -98,7 +98,7 @@ The greybox checkpoint (`aravath_runtime/src/save.rs`) stores voxel edits, playe
 `docs/architecture/quests.md` records two quest implementations.
 
 - `astraweave-weaving::quest::QuestManager` is the gameplay one: `ObjectiveType` (kill, repair, fetch, explore, escort, defend, time trial, boss, collect), prerequisites, one active quest. Storage is a `HashMap` keyed by id, so a bot addresses quests by id and does not walk the map. Starter quests are `quest_stabilize_anchors`, `quest_clear_corruption` (requires the first), and `quest_restore_beacon` (requires the second), in `astraweave-weaving/src/starter_quests.rs`. They are not registered on the slice or the greybox.
-- `astraweave-quests` is the LLM and terrain layer. The trace marks it in-design aside from the basic `Quest` / `QuestStep` pair the editor uses. `CActiveQuest`, journal entries, and generators call `chrono::Utc::now()`. `systems.rs` also times work with `Instant::now()`. Those clocks cannot enter a hashed sim.
+- `astraweave-quests` is the LLM and terrain layer. The trace marks it in-design aside from the basic `Quest` / `QuestStep` pair the editor uses. `astraweave-quests` does not depend on a wall-clock crate. A wall clock still cannot enter a hashed sim.
 
 A third quest type would violate the one-implementation rule. Scenario quests use `QuestManager`.
 

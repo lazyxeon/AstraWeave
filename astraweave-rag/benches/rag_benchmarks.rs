@@ -17,7 +17,7 @@ fn create_test_memory(id: &str, text: &str, category: MemoryCategory, importance
         id: id.to_string(),
         text: text.to_string(),
         category,
-        timestamp: chrono::Utc::now().timestamp() as u64,
+        timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
         importance,
         valence: 0.0,
         entities: vec![],

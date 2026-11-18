@@ -25,7 +25,6 @@ use astraweave_memory::{
     ForgettingConfig, ForgettingCurve, ForgettingEngine, Memory, MemoryContent, MemoryMetadata,
     MemorySource, MemoryType, SpatialTemporalContext,
 };
-use chrono::{Duration, Utc};
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -49,8 +48,8 @@ fn create_test_memory(memory_type: MemoryType, importance: f32, strength: f32) -
             },
         },
         metadata: MemoryMetadata {
-            created_at: Utc::now(),
-            last_accessed: Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
+            last_accessed: time::OffsetDateTime::now_utc(),
             access_count: 0,
             importance,
             confidence: 1.0,
@@ -73,8 +72,9 @@ fn create_aged_memory(
     access_count: u32,
 ) -> Memory {
     let mut memory = create_test_memory(memory_type, importance, strength);
-    memory.metadata.created_at = Utc::now() - Duration::days(age_days);
-    memory.metadata.last_accessed = Utc::now() - Duration::days(age_days / 2);
+    memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(age_days);
+    memory.metadata.last_accessed =
+        time::OffsetDateTime::now_utc() - time::Duration::days(age_days / 2);
     memory.metadata.access_count = access_count;
     memory
 }
