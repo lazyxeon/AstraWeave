@@ -1034,3 +1034,103 @@ fn routing_rule_serde_roundtrip() {
     assert_eq!(back.to_pattern, None);
     assert_eq!(back.priority, 10);
 }
+
+fn assert_optional_stamp<T>(value: &T, key: &str, is_none: impl Fn(&T) -> bool)
+where
+    T: serde::Serialize + for<'de> serde::Deserialize<'de>,
+{
+    let mut omitted = serde_json::to_value(value).unwrap();
+    assert!(
+        omitted.as_object_mut().unwrap().remove(key).is_some(),
+        "{key}"
+    );
+    let back: T = serde_json::from_value(omitted).unwrap();
+    assert!(is_none(&back), "{key} omitted");
+
+    let mut explicit_null = serde_json::to_value(value).unwrap();
+    explicit_null[key] = serde_json::Value::Null;
+    let back: T = serde_json::from_value(explicit_null).unwrap();
+    assert!(is_none(&back), "{key} null");
+
+    let mut present = serde_json::to_value(value).unwrap();
+    present[key] = serde_json::json!("2020-01-02T03:04:05Z");
+    let back: T = serde_json::from_value(present).unwrap();
+    assert!(!is_none(&back), "{key} present");
+}
+
+#[test]
+fn omitted_optional_timestamps_load_as_none() {
+    let goal = AgentGoal::new("goal".into(), GoalType::Achieve, 1.0);
+    assert_optional_stamp(&goal, "deadline", |goal| goal.deadline.is_none());
+
+    let task = Task::new("act".into(), "do".into());
+    assert_optional_stamp(&task, "deadline", |task| task.deadline.is_none());
+
+    let allocation = ResourceAllocation {
+        agent_id: "a".into(),
+        llm_calls_allocated: 0,
+        llm_calls_used: 0,
+        memory_allocated: 0,
+        memory_used: 0,
+        allocated_at: time::OffsetDateTime::UNIX_EPOCH,
+        expires_at: None,
+    };
+    assert_optional_stamp(&allocation, "expires_at", |row| row.expires_at.is_none());
+
+    let plot = PlotPoint {
+        id: "p".into(),
+        description: "d".into(),
+        plot_type: PlotType::MainQuest,
+        importance: 1.0,
+        status: PlotStatus::Active,
+        related_characters: vec![],
+        prerequisites: vec![],
+        consequences: vec![],
+        introduced_at: time::OffsetDateTime::UNIX_EPOCH,
+        deadline: None,
+    };
+    assert_optional_stamp(&plot, "deadline", |row| row.deadline.is_none());
+
+    let thread = StoryThread {
+        id: "t".into(),
+        title: "title".into(),
+        theme: "theme".into(),
+        related_plot_points: vec![],
+        characters_involved: vec![],
+        current_status: ThreadStatus::Introduced,
+        importance: 1.0,
+        estimated_resolution_time: None,
+        branching_possibilities: vec![],
+    };
+    assert_optional_stamp(&thread, "estimated_resolution_time", |row| {
+        row.estimated_resolution_time.is_none()
+    });
+
+    let milestone = ArcMilestone {
+        description: "m".into(),
+        achieved: false,
+        achievement_date: None,
+        impact_on_character: "i".into(),
+    };
+    assert_optional_stamp(&milestone, "achievement_date", |row| {
+        row.achievement_date.is_none()
+    });
+
+    let storyline = Storyline {
+        id: "s".into(),
+        title: "title".into(),
+        description: "d".into(),
+        category: "c".into(),
+        events: vec![],
+        current_phase: 0,
+        total_phases: 1,
+        participants: vec![],
+        start_time: time::OffsetDateTime::UNIX_EPOCH,
+        estimated_end_time: None,
+        status: StorylineStatus::Planning,
+        branching_points: vec![],
+    };
+    assert_optional_stamp(&storyline, "estimated_end_time", |row| {
+        row.estimated_end_time.is_none()
+    });
+}

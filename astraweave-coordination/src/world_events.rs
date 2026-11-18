@@ -238,7 +238,7 @@ pub struct Storyline {
     pub participants: Vec<String>,
     #[serde(with = "crate::utc_stamp::serde_rfc3339")]
     pub start_time: time::OffsetDateTime,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub estimated_end_time: Option<time::OffsetDateTime>,
     pub status: StorylineStatus,
     pub branching_points: Vec<BranchingPoint>,

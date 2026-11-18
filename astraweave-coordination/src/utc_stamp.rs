@@ -2,14 +2,25 @@
 //!
 //! A whole second has no fraction. Milliseconds use three digits, microseconds
 //! six, and anything finer nine. `zulu` selects the `Z` suffix; otherwise the
-//! suffix is `+00:00`.
+//! suffix is `+00:00`. Years in `0..=9999` use four digits. Every other year
+//! keeps a sign and at least four digits of magnitude.
 use time::{OffsetDateTime, UtcOffset};
+
+/// Four digits for years `0..=9999`. Any other year keeps a sign and at least
+/// four digits of magnitude.
+fn year_text(year: i32) -> String {
+    if !(0..=9999).contains(&year) {
+        format!("{year:+05}")
+    } else {
+        format!("{year:04}")
+    }
+}
 
 pub(crate) fn format_utc(dt: OffsetDateTime, zulu: bool) -> String {
     let utc = dt.to_offset(UtcOffset::UTC);
     let mut out = format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        utc.year(),
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        year_text(utc.year()),
         u8::from(utc.month()),
         utc.day(),
         utc.hour(),
@@ -38,9 +49,45 @@ fn push_fraction(out: &mut String, nano: u32) {
     }
 }
 
+fn invalid_year() -> time::error::Parse {
+    time::error::Parse::ParseFromDescription(time::error::ParseFromDescription::InvalidComponent(
+        "year",
+    ))
+}
+
 pub(crate) fn parse_utc_rfc3339(text: &str) -> Result<OffsetDateTime, time::error::Parse> {
-    OffsetDateTime::parse(text, &time::format_description::well_known::Rfc3339)
-        .map(|dt| dt.to_offset(UtcOffset::UTC))
+    let rfc3339 = &time::format_description::well_known::Rfc3339;
+    if text.starts_with('+') || text.starts_with('-') {
+        parse_signed_year(text, rfc3339)
+    } else {
+        OffsetDateTime::parse(text, rfc3339).map(|dt| dt.to_offset(UtcOffset::UTC))
+    }
+}
+
+/// A leading sign is outside `time`'s RFC 3339 year. The magnitude is at least
+/// four digits. The remainder keeps its offset, then the result is stored as UTC.
+fn parse_signed_year(
+    text: &str,
+    rfc3339: &time::format_description::well_known::Rfc3339,
+) -> Result<OffsetDateTime, time::error::Parse> {
+    let negative = text.starts_with('-');
+    let rest = &text[1..];
+    let digits = rest.bytes().take_while(u8::is_ascii_digit).count();
+    if digits < 4 {
+        return Err(invalid_year());
+    }
+    let magnitude: i32 = rest[..digits].parse().map_err(|_| invalid_year())?;
+    let year = if negative {
+        magnitude.checked_neg().ok_or_else(invalid_year)?
+    } else {
+        magnitude
+    };
+    let parsed = OffsetDateTime::parse(&format!("1970{}", &rest[digits..]), rfc3339)?;
+    let date = time::Date::from_calendar_date(year, parsed.month(), parsed.day())
+        .map_err(|_| invalid_year())?;
+    OffsetDateTime::new_in_offset(date, parsed.time(), parsed.offset())
+        .checked_to_offset(UtcOffset::UTC)
+        .ok_or_else(invalid_year)
 }
 
 pub(crate) mod serde_rfc3339 {
@@ -231,6 +278,85 @@ mod tests {
             })
             .unwrap(),
             "{\"timestamp\":\"2020-01-02T03:04:05Z\"}"
+        );
+    }
+
+    fn civil(year: i32) -> OffsetDateTime {
+        let date = time::Date::from_calendar_date(year, time::Month::January, 2).unwrap();
+        let clock = time::Time::from_hms(3, 4, 5).unwrap();
+        time::PrimitiveDateTime::new(date, clock).assume_utc()
+    }
+
+    #[test]
+    fn year_width_keeps_a_sign_and_four_digit_magnitude() {
+        assert_eq!(format_utc(civil(-1), true), "-0001-01-02T03:04:05Z");
+        assert_eq!(format_utc(civil(-1), false), "-0001-01-02T03:04:05+00:00");
+        assert_eq!(format_utc(civil(0), true), "0000-01-02T03:04:05Z");
+        assert_eq!(format_utc(civil(9999), true), "9999-01-02T03:04:05Z");
+        assert_eq!(format_utc(civil(-9999), true), "-9999-01-02T03:04:05Z");
+        assert_eq!(year_text(10_000), "+10000");
+        assert_eq!(year_text(-10_000), "-10000");
+        assert_eq!(year_text(-1), "-0001");
+        assert_eq!(year_text(2020), "2020");
+    }
+
+    #[test]
+    fn signed_years_parse_back_to_utc() {
+        assert_eq!(
+            format_utc(parse_utc_rfc3339("-0001-01-02T03:04:05Z").unwrap(), true),
+            "-0001-01-02T03:04:05Z"
+        );
+        assert_eq!(
+            format_utc(
+                parse_utc_rfc3339("-0001-01-01T01:00:00+05:00").unwrap(),
+                true
+            ),
+            "-0002-12-31T20:00:00Z"
+        );
+        assert_eq!(
+            format_utc(parse_utc_rfc3339("+2020-01-02T03:04:05Z").unwrap(), true),
+            "2020-01-02T03:04:05Z"
+        );
+        assert_eq!(
+            format_utc(parse_utc_rfc3339("+0000-01-02T03:04:05Z").unwrap(), true),
+            "0000-01-02T03:04:05Z"
+        );
+        assert!(parse_utc_rfc3339("-001-01-02T03:04:05Z").is_err());
+        assert!(parse_utc_rfc3339("+10000-01-02T03:04:05Z").is_err());
+        assert!(parse_utc_rfc3339("-10000-01-02T03:04:05Z").is_err());
+    }
+
+    #[test]
+    fn option_timestamp_reads_a_present_string_null_and_omission() {
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Opt {
+            #[serde(default, with = "super::serde_rfc3339::option")]
+            timestamp: Option<OffsetDateTime>,
+        }
+        let present: Opt =
+            serde_json::from_str("{\"timestamp\":\"2020-01-02T03:04:05Z\"}").unwrap();
+        assert_eq!(present.timestamp, Some(at(0)));
+        let null: Opt = serde_json::from_str("{\"timestamp\":null}").unwrap();
+        assert!(null.timestamp.is_none());
+        let omitted: Opt = serde_json::from_str("{}").unwrap();
+        assert!(omitted.timestamp.is_none());
+    }
+
+    #[test]
+    fn saturating_std_keeps_a_nonzero_duration() {
+        assert_eq!(
+            saturating_std(
+                time::Duration::seconds(2),
+                std::time::Duration::from_secs(9)
+            ),
+            std::time::Duration::from_secs(2)
+        );
+        assert_eq!(
+            saturating_std(
+                time::Duration::seconds(-1),
+                std::time::Duration::from_secs(9)
+            ),
+            std::time::Duration::from_secs(9)
         );
     }
 }

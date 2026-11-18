@@ -709,11 +709,21 @@ mod gltf_jail_tests {
     }
 }
 
+/// Four digits for years `0..=9999`. Any other year keeps a sign and at least
+/// four digits of magnitude.
+fn year_text(year: i32) -> String {
+    if !(0..=9999).contains(&year) {
+        format!("{year:+05}")
+    } else {
+        format!("{year:04}")
+    }
+}
+
 fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
     let utc = dt.to_offset(time::UtcOffset::UTC);
     let mut out = format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        utc.year(),
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        year_text(utc.year()),
         u8::from(utc.month()),
         utc.day(),
         utc.hour(),
@@ -736,7 +746,7 @@ fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
 
 #[cfg(test)]
 mod utc_rfc3339_pins {
-    use super::format_utc_rfc3339;
+    use super::{format_utc_rfc3339, year_text};
 
     fn at(nanos: i128) -> time::OffsetDateTime {
         time::OffsetDateTime::from_unix_timestamp_nanos(1_577_934_245_000_000_000 + nanos).unwrap()
@@ -769,5 +779,24 @@ mod utc_rfc3339_pins {
             format_utc_rfc3339(at(123_400_000)),
             "2020-01-02T03:04:05.123400+00:00"
         );
+    }
+
+    fn civil(year: i32) -> time::OffsetDateTime {
+        let date = time::Date::from_calendar_date(year, time::Month::January, 2).unwrap();
+        let clock = time::Time::from_hms(3, 4, 5).unwrap();
+        time::PrimitiveDateTime::new(date, clock).assume_utc()
+    }
+
+    #[test]
+    fn year_width_keeps_a_sign_and_four_digit_magnitude() {
+        assert_eq!(format_utc_rfc3339(civil(-1)), "-0001-01-02T03:04:05+00:00");
+        assert_eq!(format_utc_rfc3339(civil(0)), "0000-01-02T03:04:05+00:00");
+        assert_eq!(format_utc_rfc3339(civil(9999)), "9999-01-02T03:04:05+00:00");
+        assert_eq!(
+            format_utc_rfc3339(civil(-9999)),
+            "-9999-01-02T03:04:05+00:00"
+        );
+        assert_eq!(year_text(10_000), "+10000");
+        assert_eq!(year_text(-10_000), "-10000");
     }
 }

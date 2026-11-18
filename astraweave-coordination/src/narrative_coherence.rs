@@ -80,7 +80,7 @@ pub struct PlotPoint {
     pub consequences: Vec<String>,
     #[serde(with = "crate::utc_stamp::serde_rfc3339")]
     pub introduced_at: time::OffsetDateTime,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub deadline: Option<time::OffsetDateTime>,
 }
 
@@ -303,7 +303,7 @@ pub struct StoryThread {
     pub characters_involved: Vec<String>,
     pub current_status: ThreadStatus,
     pub importance: f32,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub estimated_resolution_time: Option<time::OffsetDateTime>,
     pub branching_possibilities: Vec<String>,
 }
@@ -338,7 +338,7 @@ pub struct CharacterArc {
 pub struct ArcMilestone {
     pub description: String,
     pub achieved: bool,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub achievement_date: Option<time::OffsetDateTime>,
     pub impact_on_character: String,
 }

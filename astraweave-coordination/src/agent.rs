@@ -114,7 +114,7 @@ pub struct AgentGoal {
     pub priority: f32,
     pub target_value: Option<f32>,
     pub current_value: f32,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub deadline: Option<time::OffsetDateTime>,
     pub dependencies: Vec<String>, // Goal IDs this depends on
     pub status: GoalStatus,
@@ -151,7 +151,7 @@ pub struct Task {
     pub parameters: HashMap<String, serde_json::Value>,
     pub priority: f32,
     pub estimated_duration: Option<u64>, // milliseconds
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub deadline: Option<time::OffsetDateTime>,
     pub required_capabilities: Vec<String>,
     pub resource_requirements: ResourceRequirements,

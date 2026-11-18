@@ -53,9 +53,9 @@ pub struct Experiment {
     pub status: ExperimentStatus,
     #[serde(with = "crate::utc_stamp::serde_rfc3339")]
     pub created_at: time::OffsetDateTime,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub started_at: Option<time::OffsetDateTime>,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub ended_at: Option<time::OffsetDateTime>,
     pub duration_hours: u64,
     pub traffic_percentage: f32, // 0.0 to 1.0
@@ -1533,5 +1533,32 @@ mod tests {
 
         let results = framework.get_results(&experiment_id).await.unwrap();
         assert_eq!(results.variant_results["control"].sample_size, 5);
+    }
+
+    fn assert_optional_stamp(key: &str, is_none: impl Fn(&Experiment) -> bool) {
+        let experiment = create_test_experiment();
+        let mut omitted = serde_json::to_value(&experiment).unwrap();
+        assert!(
+            omitted.as_object_mut().unwrap().remove(key).is_some(),
+            "{key}"
+        );
+        let back: Experiment = serde_json::from_value(omitted).unwrap();
+        assert!(is_none(&back), "{key} omitted");
+
+        let mut explicit_null = serde_json::to_value(&experiment).unwrap();
+        explicit_null[key] = serde_json::Value::Null;
+        let back: Experiment = serde_json::from_value(explicit_null).unwrap();
+        assert!(is_none(&back), "{key} null");
+
+        let mut present = serde_json::to_value(&experiment).unwrap();
+        present[key] = serde_json::json!("2020-01-02T03:04:05Z");
+        let back: Experiment = serde_json::from_value(present).unwrap();
+        assert!(!is_none(&back), "{key} present");
+    }
+
+    #[test]
+    fn omitted_optional_timestamps_load_as_none() {
+        assert_optional_stamp("started_at", |experiment| experiment.started_at.is_none());
+        assert_optional_stamp("ended_at", |experiment| experiment.ended_at.is_none());
     }
 }

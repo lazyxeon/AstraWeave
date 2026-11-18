@@ -125,7 +125,7 @@ pub struct ResourceAllocation {
     pub memory_used: u32,
     #[serde(with = "crate::utc_stamp::serde_rfc3339")]
     pub allocated_at: time::OffsetDateTime,
-    #[serde(with = "crate::utc_stamp::serde_rfc3339::option")]
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
     pub expires_at: Option<time::OffsetDateTime>,
 }
 
