@@ -3053,6 +3053,8 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             ("temperature clamp", "self.temperature = temp.clamp"),
             ("top_p clamp", "self.top_p = top_p.clamp"),
             ("disabled", "pub fn disabled() -> Self {"),
+            ("minimal", "pub fn minimal() -> Self {"),
+            ("extended", "pub fn extended() -> Self {"),
             ("cfg test", "#[cfg(test)]"),
             (
                 "embedding client",
@@ -3359,6 +3361,29 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
                 "{label} at {line} missing from {row}"
             );
         }
+        let particle_row = doc
+            .lines()
+            .find(|item| item.contains("**`Particle`**"))
+            .expect("Particle row");
+        assert!(particle_row.contains("`lib.rs:430`"), "{particle_row}");
+        assert!(!particle_row.contains("lib.rs:208-219"), "{particle_row}");
+        let params_row = doc
+            .lines()
+            .find(|item| item.contains("**`SimParams`**"))
+            .expect("SimParams row");
+        assert!(params_row.contains("`lib.rs:458`"), "{params_row}");
+        assert!(
+            params_row.contains("`_pad0` through `_pad3`"),
+            "{params_row}"
+        );
+        assert!(!params_row.contains("pressure_multiplier"), "{params_row}");
+        assert!(!params_row.contains("lib.rs:221-248"), "{params_row}");
+        let secondary_row = doc
+            .lines()
+            .find(|item| item.contains("**`SecondaryParticle`**"))
+            .expect("SecondaryParticle row");
+        assert!(secondary_row.contains("`lib.rs:1613`"), "{secondary_row}");
+        assert!(!secondary_row.contains("lib.rs:391"), "{secondary_row}");
         let wgsl_total: usize = std::fs::read_dir(root.join("astraweave-fluids/shaders"))
             .unwrap()
             .flatten()

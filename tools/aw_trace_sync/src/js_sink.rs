@@ -7,24 +7,35 @@
 //! is allowlisted only for a static allowlisted name. Optional computed access
 //! is a computed access. A member followed by a template is a call. Script
 //! sources must match the pinned URL and integrity pair. A markup element is a
-//! sink unless its name is allowlisted. A URL-bearing attribute (`src`,
-//! `srcset`, `data`, `poster`, `background`, `action`, `ping`, and `href` on
-//! `use` or `image`) is a sink unless that attribute is a pinned script
-//! source. `url(` and `@import` are sinks after CSS escapes are decoded, in a
-//! style element and in a `style` attribute. `meta http-equiv` is a sink for
-//! every value. A `style` property assignment is a sink when its value
-//! contains `url(` or `@import`. Character references
-//! in markup are decoded, then tab, line feed, and carriage return are removed,
-//! before a scheme check. The same whitespace strip applies to a decoded script
-//! string. Unterminated input, an unclosed tag, a depth overrun, and a scan
-//! that cannot finish are sinks. `setAttribute` names and string timers are
-//! checked after escapes and `'a'+'b'` folding. A location `replace` or
-//! `assign`, and a head `append`, still count when the receiver is that
-//! object through a computed key, optional access, or grouping parentheses.
+//! sink unless its name is allowlisted. A URL-bearing attribute is a sink
+//! unless that attribute is a pinned script source. The denied set is per
+//! element: the shared URL names, `formaction` on a submitter, `longdesc` on
+//! `img`, `href` and `xlink:href` on `use` and `image`, `imagesrcset` on
+//! `link`, and `href` or `xlink:href` on a `script` inside `svg`. `url(` in any attribute value is a
+//! sink. `url(`, `@import`, and a string inside a CSS function that is not on
+//! the string allowlist are sinks after CSS escapes are decoded, in a style
+//! element and in a `style` attribute. Character references in a style
+//! attribute are decoded before that check. `meta http-equiv` is a sink for
+//! every value. A `style` property assignment is a sink when its literal value
+//! loads a resource, when it has a template hole, or when it is an identifier
+//! whose binding is not a safe literal or a `safeColor` call. Character
+//! references in markup are decoded, then tab, line feed, and carriage return
+//! are removed, before a scheme check. The same whitespace strip applies to a
+//! decoded script string. A unicode escape in an identifier is decoded before
+//! the name is classified, and an undecodable escape fails closed. A private
+//! name is one token and does not start a regular expression. Unterminated
+//! input, an unclosed tag, a depth overrun, and a scan that cannot finish are
+//! sinks. `setAttribute` names and string timers are checked after escapes and
+//! `'a'+'b'` folding. A location `replace` or `assign`, and a head `append`,
+//! still count when the receiver is that object, a binding of that object, or
+//! a receiver that is not proven to be something else. A grouped expression, a
+//! computed key, and optional access are classified. An immediate property
+//! name that is not the object is proven other.
 //! An `el` URL counts when its value folds to a script scheme or contains a
 //! template hole. An `import` or `export` loads a module. An animation
 //! `attributeName` that names an event handler is that handler.
 
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 
 /// Sorted. Member names the page calls (`.name(` / `['name'](`).
@@ -499,6 +510,7 @@ enum Tok {
     Plus,
     Assign,
     Arrow,
+    Semi,
     Other,
     Error,
 }
@@ -517,6 +529,7 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
         out.insert("scan failed closed".to_string());
     }
     let mate = match_brackets(&tokens);
+    let _binds = install_binds(&tokens);
     let stringish = stringish_names(&tokens);
     let mut i = 0;
     let mut spins = 0usize;
@@ -621,7 +634,7 @@ fn receiver_status(
         return Some(false);
     };
     match tok {
-        Tok::Ident(got) => Some(got == name),
+        Tok::Ident(got) => ident_receiver(tokens, mate, end, got, name, spins),
         Tok::Str(_) | Tok::Tpl(_) | Tok::Num => Some(false),
         Tok::Opt => {
             if end == 0 {
@@ -689,7 +702,7 @@ fn alt_status(
         let split = depth == 0
             && matches!(
                 tokens[i],
-                Tok::Other | Tok::Plus | Tok::Assign | Tok::Comma | Tok::Arrow
+                Tok::Other | Tok::Plus | Tok::Assign | Tok::Comma | Tok::Arrow | Tok::Semi
             );
         match &tokens[i] {
             Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
@@ -712,7 +725,7 @@ fn alt_status(
         }
         i = i.saturating_add(1);
     }
-    if seg <= end && seg < tokens.len() {
+    if seg <= end {
         fold_status(
             receiver_status(tokens, mate, end.min(tokens.len() - 1), name, spins),
             &mut saw,
@@ -726,6 +739,190 @@ fn alt_status(
         None
     } else {
         Some(false)
+    }
+}
+
+struct Bind {
+    name: String,
+    at: usize,
+    start: usize,
+    end: usize,
+}
+
+thread_local! {
+    static BIND_DEPTH: Cell<u8> = const { Cell::new(0) };
+    static CSS_DEPTH: Cell<u8> = const { Cell::new(0) };
+    static BIND_LIST: RefCell<Vec<Bind>> = const { RefCell::new(Vec::new()) };
+}
+
+struct BindGuard;
+
+impl Drop for BindGuard {
+    fn drop(&mut self) {
+        BIND_LIST.with(|slot| slot.borrow_mut().clear());
+    }
+}
+
+fn install_binds(tokens: &[Tok]) -> BindGuard {
+    BIND_LIST.with(|slot| *slot.borrow_mut() = collect_binds(tokens));
+    BindGuard
+}
+
+fn ident_receiver(
+    tokens: &[Tok],
+    mate: &[Option<usize>],
+    index: usize,
+    got: &str,
+    name: &str,
+    spins: &mut usize,
+) -> Option<bool> {
+    if got == name {
+        return Some(true);
+    }
+    if index > 0 && matches!(tokens.get(index - 1), Some(Tok::Dot | Tok::Opt)) {
+        return Some(false);
+    }
+    BIND_DEPTH.with(|slot| {
+        let depth = slot.get();
+        if depth >= 8 {
+            return None;
+        }
+        slot.set(depth.saturating_add(1));
+        let status = bound_receiver(tokens, mate, got, name, index, spins);
+        slot.set(depth);
+        status
+    })
+}
+
+fn bound_receiver(
+    tokens: &[Tok],
+    mate: &[Option<usize>],
+    var_name: &str,
+    name: &str,
+    use_at: usize,
+    spins: &mut usize,
+) -> Option<bool> {
+    let (start, end) = binding_before(var_name, use_at)?;
+    if start >= end {
+        return None;
+    }
+    alt_status(tokens, mate, start, end - 1, name, spins)
+}
+
+fn binding_before(var_name: &str, before: usize) -> Option<(usize, usize)> {
+    BIND_LIST.with(|slot| {
+        slot.borrow()
+            .iter()
+            .rev()
+            .find(|bind| bind.name == var_name && bind.at < before)
+            .map(|bind| (bind.start, bind.end))
+    })
+}
+
+fn collect_binds(tokens: &[Tok]) -> Vec<Bind> {
+    let mut found = Vec::new();
+    let mut i = 0;
+    while i < tokens.len() {
+        let decl = matches!(tokens.get(i), Some(Tok::Ident(kw)) if matches!(kw.as_str(), "const" | "let" | "var"));
+        if decl
+            && matches!(tokens.get(i + 1), Some(Tok::Ident(_)))
+            && matches!(tokens.get(i + 2), Some(Tok::Assign))
+        {
+            let rhs = i + 3;
+            if let (Some(Tok::Ident(name)), Some(end)) = (tokens.get(i + 1), expr_end(tokens, rhs))
+            {
+                found.push(Bind {
+                    name: name.clone(),
+                    at: i + 1,
+                    start: rhs,
+                    end,
+                });
+            }
+            let tick = i;
+            match step_index(tick) {
+                Some(next) if next > tick => i = next,
+                _ => return Vec::new(),
+            }
+            continue;
+        }
+        let assign = matches!(tokens.get(i), Some(Tok::Ident(_)))
+            && matches!(tokens.get(i + 1), Some(Tok::Assign))
+            && !prev_is_decl(tokens, i)
+            && (i == 0 || !matches!(tokens.get(i - 1), Some(Tok::Dot | Tok::Opt)));
+        if assign {
+            let rhs = i + 2;
+            if let (Some(Tok::Ident(name)), Some(end)) = (tokens.get(i), expr_end(tokens, rhs)) {
+                found.push(Bind {
+                    name: name.clone(),
+                    at: i,
+                    start: rhs,
+                    end,
+                });
+            }
+        }
+        let tick = i;
+        match step_index(tick) {
+            Some(next) if next > tick => i = next,
+            _ => return Vec::new(),
+        }
+    }
+    found
+}
+
+fn prev_is_decl(tokens: &[Tok], index: usize) -> bool {
+    index > 0
+        && matches!(tokens.get(index - 1), Some(Tok::Ident(kw)) if matches!(kw.as_str(), "const" | "let" | "var"))
+}
+
+fn expr_end(tokens: &[Tok], start: usize) -> Option<usize> {
+    if start >= tokens.len() {
+        return None;
+    }
+    let mut depth = 0i32;
+    let mut i = start;
+    let mut saw = false;
+    while i < tokens.len() {
+        match &tokens[i] {
+            Tok::Semi if depth == 0 => break,
+            Tok::Comma if depth == 0 => break,
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                if depth == 0 {
+                    break;
+                }
+                depth -= 1;
+            }
+            Tok::Ident(kw)
+                if depth == 0
+                    && i != start
+                    && matches!(
+                        kw.as_str(),
+                        "const"
+                            | "let"
+                            | "var"
+                            | "function"
+                            | "return"
+                            | "if"
+                            | "for"
+                            | "while"
+                            | "class"
+                    ) =>
+            {
+                break;
+            }
+            _ => {}
+        }
+        saw = true;
+        let tick = i;
+        i = i.saturating_add(1);
+        if i <= tick {
+            return None;
+        }
+    }
+    if saw {
+        Some(i)
+    } else {
+        None
     }
 }
 
@@ -750,22 +947,26 @@ fn note_dot(
     let Some(Tok::Ident(name)) = tokens.get(dot + 1) else {
         return;
     };
-    let receiver_is =
-        |recv: &str| dot > 0 && receiver_status(tokens, mate, dot - 1, recv, &mut 0) == Some(true);
+    let receiver_is = |recv: &str| {
+        dot.checked_sub(1)
+            .is_some_and(|prev| receiver_status(tokens, mate, prev, recv, &mut 0) == Some(true))
+    };
     if receiver_is("Reflect") {
         out.insert("member call Reflect".to_string());
         return;
     }
-    if dot > 0
-        && matches!(name.as_str(), "replace" | "assign")
-        && receiver_status(tokens, mate, dot - 1, "location", &mut 0) != Some(false)
+    if matches!(name.as_str(), "replace" | "assign")
+        && dot.checked_sub(1).is_some_and(|prev| {
+            receiver_status(tokens, mate, prev, "location", &mut 0) != Some(false)
+        })
     {
         out.insert(format!("member call {name}"));
         return;
     }
-    if dot > 0
-        && name == "append"
-        && receiver_status(tokens, mate, dot - 1, "head", &mut 0) != Some(false)
+    if name == "append"
+        && dot
+            .checked_sub(1)
+            .is_some_and(|prev| receiver_status(tokens, mate, prev, "head", &mut 0) != Some(false))
     {
         out.insert("member call append".to_string());
         return;
@@ -797,8 +998,9 @@ fn note_dot(
         }
         note_member_call(name, tokens, paren, stringish, out, steps, limit);
     } else if assign_follows(tokens, after) {
-        if dot > 0
-            && receiver_status(tokens, mate, dot - 1, "style", &mut 0) == Some(true)
+        if dot
+            .checked_sub(1)
+            .is_some_and(|prev| receiver_status(tokens, mate, prev, "style", &mut 0) == Some(true))
             && style_assign_loads(tokens, after)
         {
             out.insert("style resource".to_string());
@@ -872,16 +1074,18 @@ fn note_computed(
     if call {
         match key {
             Key::Static(name) => {
-                if open > 0
-                    && matches!(name.as_str(), "replace" | "assign")
-                    && receiver_status(tokens, mate, open - 1, "location", &mut 0) != Some(false)
+                if matches!(name.as_str(), "replace" | "assign")
+                    && open.checked_sub(1).is_some_and(|prev| {
+                        receiver_status(tokens, mate, prev, "location", &mut 0) != Some(false)
+                    })
                 {
                     out.insert(format!("member call {name}"));
                     return;
                 }
-                if open > 0
-                    && name == "append"
-                    && receiver_status(tokens, mate, open - 1, "head", &mut 0) != Some(false)
+                if name == "append"
+                    && open.checked_sub(1).is_some_and(|prev| {
+                        receiver_status(tokens, mate, prev, "head", &mut 0) != Some(false)
+                    })
                 {
                     out.insert("member call append".to_string());
                     return;
@@ -895,8 +1099,9 @@ fn note_computed(
         return;
     }
     if assign
-        && open > 0
-        && receiver_status(tokens, mate, open - 1, "style", &mut 0) == Some(true)
+        && open
+            .checked_sub(1)
+            .is_some_and(|prev| receiver_status(tokens, mate, prev, "style", &mut 0) == Some(true))
         && style_assign_loads(tokens, after)
     {
         out.insert("style resource".to_string());
@@ -1127,8 +1332,8 @@ fn safe_url_names(tokens: &[Tok]) -> BTreeSet<String> {
             break;
         }
         if matches!(&tokens[i], Tok::Ident(kw) if matches!(kw.as_str(), "const" | "let" | "var")) {
-            if let (Tok::Ident(name), Some(Tok::Assign), Some(Tok::Str(value) | Tok::Tpl(value))) =
-                (&tokens[i + 1], tokens.get(i + 2), tokens.get(i + 3))
+            if let (Tok::Ident(name), Tok::Assign, Tok::Str(value) | Tok::Tpl(value)) =
+                (&tokens[i + 1], &tokens[i + 2], &tokens[i + 3])
             {
                 if safe_url_literal(value) {
                     names.insert(name.clone());
@@ -1196,12 +1401,9 @@ fn brace_is_function(
     }
     let mut i = brace - 1;
     let mut depth = 0i32;
-    let mut spins = 0usize;
-    let cap = tokens.len().saturating_mul(4).saturating_add(8);
     loop {
-        spins = spins.saturating_add(1);
         *steps = steps.saturating_add(1);
-        if past_cap(spins, cap) || past_limit(*steps, limit) {
+        if past_limit(*steps, limit) {
             return false;
         }
         match &tokens[i] {
@@ -1302,13 +1504,34 @@ fn is_url_prop(key: &str, executable: bool) -> bool {
 }
 
 fn style_assign_loads(tokens: &[Tok], eq: usize) -> bool {
-    let mut depth = 0i32;
+    let end = expr_end(tokens, eq + 1).unwrap_or(tokens.len());
+    css_range_fails(tokens, eq + 1, end)
+}
+
+fn css_range_fails(tokens: &[Tok], start: usize, end: usize) -> bool {
     let mut text = String::new();
-    let mut hole = false;
-    let mut i = eq + 1;
-    while i < tokens.len() {
+    let mut i = start;
+    let mut depth = 0i32;
+    while i < end && i < tokens.len() {
         match &tokens[i] {
-            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::Semi if depth == 0 => break,
+            Tok::LParen | Tok::LBrace | Tok::LBrack => {
+                let group = depth == 0 && !prev_starts_call(tokens, i);
+                if group {
+                    let close = match_brackets(tokens)
+                        .get(i)
+                        .copied()
+                        .flatten()
+                        .filter(|close| *close < end)
+                        .unwrap_or(end.saturating_sub(1));
+                    if css_range_fails(tokens, i + 1, close) {
+                        return true;
+                    }
+                    i = close.saturating_add(1);
+                    continue;
+                }
+                depth += 1;
+            }
             Tok::RParen | Tok::RBrace | Tok::RBrack => {
                 if depth == 0 {
                     break;
@@ -1316,13 +1539,88 @@ fn style_assign_loads(tokens: &[Tok], eq: usize) -> bool {
                 depth -= 1;
             }
             Tok::Comma if depth == 0 => break,
-            Tok::Str(value) | Tok::Tpl(value) => text.push_str(value),
-            Tok::Interp | Tok::Error => hole = true,
+            Tok::Str(value) | Tok::Tpl(value) if depth == 0 => text.push_str(value),
+            Tok::Interp | Tok::Error => return true,
+            Tok::Ident(name) if depth == 0 && !ident_is_callee(tokens, i) => {
+                if !css_ident_safe(tokens, name, i) {
+                    return true;
+                }
+            }
             _ => {}
         }
         i = i.saturating_add(1);
     }
-    hole || css_loads_remote(&text)
+    css_loads_remote(&text)
+}
+
+fn prev_starts_call(tokens: &[Tok], index: usize) -> bool {
+    index > 0
+        && matches!(
+            tokens.get(index - 1),
+            Some(Tok::Ident(_) | Tok::RParen | Tok::RBrack | Tok::Opt)
+        )
+}
+
+fn ident_is_callee(tokens: &[Tok], index: usize) -> bool {
+    matches!(
+        tokens.get(index + 1),
+        Some(Tok::LParen | Tok::Dot | Tok::Opt)
+    )
+}
+
+fn css_ident_safe(tokens: &[Tok], name: &str, use_at: usize) -> bool {
+    CSS_DEPTH.with(|slot| {
+        let depth = slot.get();
+        if depth >= 8 {
+            return false;
+        }
+        slot.set(depth.saturating_add(1));
+        let ok = match binding_before(name, use_at) {
+            Some((start, end)) => css_binding_safe(tokens, start, end),
+            None => false,
+        };
+        slot.set(depth);
+        ok
+    })
+}
+
+fn css_binding_safe(tokens: &[Tok], start: usize, end: usize) -> bool {
+    let mut i = start;
+    let mut depth = 0i32;
+    let mut text = String::new();
+    while i < end && i < tokens.len() {
+        match &tokens[i] {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => {
+                if depth == 0 && prev_starts_call(tokens, i) && !call_is_css_safe(tokens, i) {
+                    return false;
+                }
+                depth += 1;
+            }
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                if depth == 0 {
+                    return false;
+                }
+                depth -= 1;
+            }
+            Tok::Str(value) | Tok::Tpl(value) => text.push_str(value),
+            Tok::Interp | Tok::Error => return false,
+            Tok::Ident(name) if depth == 0 && !ident_is_callee(tokens, i) => {
+                if !css_ident_safe(tokens, name, i) {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+        i = i.saturating_add(1);
+    }
+    !css_loads_remote(&text)
+}
+
+fn call_is_css_safe(tokens: &[Tok], paren: usize) -> bool {
+    let Some(prev) = paren.checked_sub(1) else {
+        return false;
+    };
+    matches!(tokens.get(prev), Some(Tok::Ident(name)) if name == "safeColor")
 }
 
 fn value_end(parts: &[Tok], start: usize) -> usize {
@@ -1549,6 +1847,8 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
         "quot" => '"',
         "apos" => '\'',
         "colon" | "Colon" => ':',
+        "lpar" => '(',
+        "rpar" => ')',
         "Tab" | "NewLine" => {
             if name == "Tab" {
                 '\t'
@@ -1780,8 +2080,7 @@ fn stringish_names(tokens: &[Tok]) -> BTreeSet<String> {
         if let Tok::Ident(kw) = &tokens[i] {
             if matches!(kw.as_str(), "const" | "let" | "var") {
                 if let Tok::Ident(name) = &tokens[i + 1] {
-                    if matches!(tokens.get(i + 2), Some(Tok::Assign))
-                        && init_is_stringish(&tokens[i + 3..])
+                    if matches!(&tokens[i + 2], Tok::Assign) && init_is_stringish(&tokens[i + 3..])
                     {
                         names.insert(name.clone());
                     }
@@ -1870,7 +2169,9 @@ impl<'a> Lx<'a> {
             if c == b'/' && b.get(self.i + 1) == Some(&b'/') {
                 self.i = self.i.saturating_add(2);
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    if !self.advance() {
+                    let tick = self.i;
+                    if !self.advance() || self.i <= tick {
+                        self.failed = true;
                         return out;
                     }
                 }
@@ -1881,7 +2182,9 @@ impl<'a> Lx<'a> {
             if c == b'/' && b.get(self.i + 1) == Some(&b'*') {
                 self.i = self.i.saturating_add(2);
                 while self.i + 1 < b.len() && !(b[self.i] == b'*' && b[self.i + 1] == b'/') {
-                    if !self.advance() {
+                    let tick = self.i;
+                    if !self.advance() || self.i <= tick {
+                        self.failed = true;
                         return out;
                     }
                 }
@@ -1895,10 +2198,17 @@ impl<'a> Lx<'a> {
                 continue;
             }
             if self.src[self.i..].starts_with("<!--") {
+                let tick = self.i;
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    if !self.advance() {
+                    let step = self.i;
+                    if !self.advance() || self.i <= step {
+                        self.failed = true;
                         return out;
                     }
+                }
+                if self.i <= tick {
+                    self.failed = true;
+                    return out;
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -1947,11 +2257,34 @@ impl<'a> Lx<'a> {
                 regex_ready = false;
                 continue;
             }
+            if c == b'#' {
+                let next_at = self.i.saturating_add(1);
+                if next_at < b.len() && is_ident_start(self.src, next_at) {
+                    let (name, next) = read_ident(self.src, next_at);
+                    if next <= next_at || name.is_empty() {
+                        self.failed = true;
+                        out.push(Tok::Error);
+                        self.i = b.len();
+                        return out;
+                    }
+                    out.push(Tok::Ident(format!("#{name}")));
+                    self.i = next;
+                    regex_ready = false;
+                    self.charge(start);
+                    continue;
+                }
+            }
             if c == b'.'
                 && b.get(self.i + 1).is_some_and(u8::is_ascii_digit)
                 && !prev_is_value(&out, out.len())
             {
-                self.i = skip_number(self.src, self.i);
+                let next = skip_number(self.src, self.i);
+                if next <= self.i {
+                    self.failed = true;
+                    out.push(Tok::Error);
+                    return out;
+                }
+                self.i = next;
                 out.push(Tok::Num);
                 regex_ready = false;
                 self.charge(start);
@@ -1979,7 +2312,13 @@ impl<'a> Lx<'a> {
                 continue;
             }
             if c.is_ascii_digit() {
-                self.i = skip_number(self.src, self.i);
+                let next = skip_number(self.src, self.i);
+                if next <= self.i {
+                    self.failed = true;
+                    out.push(Tok::Error);
+                    return out;
+                }
+                self.i = next;
                 out.push(Tok::Num);
                 regex_ready = false;
                 self.charge(start);
@@ -2030,12 +2369,13 @@ impl<'a> Lx<'a> {
     }
 
     fn advance(&mut self) -> bool {
+        let tick = self.i;
         match forward(self.src, self.i) {
-            Some(next) => {
+            Some(next) if next > tick => {
                 self.i = next;
                 true
             }
-            None => {
+            _ => {
                 self.failed = true;
                 self.i = self.src.len();
                 false
@@ -2056,9 +2396,10 @@ impl<'a> Lx<'a> {
         if depth >= MAX_TEMPLATE_DEPTH {
             self.failed = true;
             let next = skip_template_linear(self.src, self.i);
-            self.i = next.min(self.src.len());
-            if next > self.src.len() {
-                self.failed = true;
+            if next <= self.i {
+                self.i = self.src.len();
+            } else {
+                self.i = next.min(self.src.len());
             }
             self.charge(start_tick);
             return (Tok::Error, Vec::new());
@@ -2142,7 +2483,6 @@ fn regex_here(prev: Option<&Tok>, ready: bool, member: bool) -> bool {
         return true;
     }
     match prev {
-        None => true,
         Some(Tok::Ident(name)) if keyword(name) => !member,
         Some(
             Tok::Ident(_)
@@ -2174,12 +2514,10 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
         match b[i] {
             b'\\' => {
                 i = i.saturating_add(1);
-                if i < src.len() {
-                    i = match forward(src, i) {
-                        Some(next) => next,
-                        None => return false,
-                    };
-                }
+                i = match forward(src, i) {
+                    Some(next) if next > tick => next,
+                    _ => return false,
+                };
             }
             b'[' => {
                 class = true;
@@ -2223,12 +2561,10 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
         match b[i] {
             b'\\' => {
                 i = i.saturating_add(1);
-                if i < src.len() {
-                    i = match forward(src, i) {
-                        Some(next) => next,
-                        None => return fail,
-                    };
-                }
+                i = match forward(src, i) {
+                    Some(next) if next > tick => next,
+                    _ => return fail,
+                };
             }
             b'[' => {
                 class = true;
@@ -2373,22 +2709,24 @@ fn read_ident(src: &str, start: usize) -> (String, usize) {
     while i < b.len() {
         let tick = i;
         if !src.is_char_boundary(i) {
-            break;
+            return (String::new(), start);
         }
         if b[i] == b'\\' && b.get(i + 1) == Some(&b'u') {
-            let (ch, next) = decode_escape(src, i);
-            if ch == '\\' || ch == 'u' || next <= i {
-                break;
+            let Some((ch, next)) = ident_unicode(src, i) else {
+                return (String::new(), start);
+            };
+            if next <= i || !ident_char(ch, name.is_empty()) {
+                return (String::new(), start);
             }
             name.push(ch);
             i = next;
         } else {
             let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
-            if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' || ch.is_alphabetic() {
+            if ident_char(ch, name.is_empty()) {
                 name.push(ch);
                 let next = i.saturating_add(ch.len_utf8());
                 if next <= i {
-                    break;
+                    return (String::new(), start);
                 }
                 i = next;
             } else {
@@ -2396,14 +2734,57 @@ fn read_ident(src: &str, start: usize) -> (String, usize) {
             }
         }
         if i <= tick {
-            break;
+            return (String::new(), start);
         }
     }
     if name.is_empty() {
-        let ch = src[start..].chars().next().unwrap_or('\u{FFFD}');
-        return (ch.to_string(), start + ch.len_utf8());
+        return (String::new(), start);
     }
     (name, i)
+}
+
+fn ident_char(ch: char, first: bool) -> bool {
+    if ch == '_' || ch == '$' || ch.is_alphabetic() {
+        return true;
+    }
+    !first && ch.is_ascii_digit()
+}
+
+fn ident_unicode(src: &str, slash: usize) -> Option<(char, usize)> {
+    let b = src.as_bytes();
+    let u_at = slash.checked_add(1)?;
+    if b.get(u_at) != Some(&b'u') {
+        return None;
+    }
+    if b.get(u_at.checked_add(1)?) == Some(&b'{') {
+        let start = u_at + 2;
+        if start >= b.len() {
+            return None;
+        }
+        let mut j = start;
+        while j < b.len() && b[j].is_ascii_hexdigit() && j - start < 6 {
+            let tick = j;
+            match step_index(tick) {
+                Some(next) if next > tick => j = next,
+                _ => return None,
+            }
+        }
+        if j >= b.len() || b[j] != b'}' {
+            return None;
+        }
+        let code = u32::from_str_radix(&src[start..j], 16).ok()?;
+        Some((char::from_u32(code)?, j + 1))
+    } else {
+        let start = u_at + 1;
+        if start.checked_add(4)? > b.len() {
+            return None;
+        }
+        if !b[start..start + 4].iter().all(u8::is_ascii_hexdigit) {
+            return None;
+        }
+        let code = u32::from_str_radix(&src[start..start + 4], 16).ok()?;
+        Some((char::from_u32(code)?, start + 4))
+    }
 }
 
 fn skip_number(src: &str, start: usize) -> usize {
@@ -2480,6 +2861,7 @@ fn punct(b: &[u8], i: usize) -> (Tok, usize) {
         b',' => Tok::Comma,
         b'+' => Tok::Plus,
         b'=' => Tok::Assign,
+        b';' => Tok::Semi,
         _ => Tok::Other,
     };
     (tok, 1)
@@ -2491,6 +2873,15 @@ fn bump(src: &str, i: usize) -> usize {
     }
     let ch = src[i..].chars().next().unwrap_or('\u{FFFD}');
     i + ch.len_utf8()
+}
+
+fn step_index(i: usize) -> Option<usize> {
+    let next = i.saturating_add(1);
+    if next > i {
+        Some(next)
+    } else {
+        None
+    }
 }
 
 fn forward(src: &str, i: usize) -> Option<usize> {
@@ -2728,14 +3119,92 @@ fn css_unescaped(input: &str) -> String {
     out
 }
 
+/// Sorted. CSS functions whose string arguments are not resource loads.
+const CSS_STRING_FN: &[&str] = &[
+    "attr", "calc", "clamp", "counter", "counters", "env", "format", "hsl", "hsla", "hwb", "local",
+    "max", "min", "rgb", "rgba", "var",
+];
+
 fn css_loads_remote(input: &str) -> bool {
     let plain = css_unescaped(input).to_ascii_lowercase();
-    plain.contains("url(") || plain.contains("@import")
+    plain.contains("url(") || plain.contains("@import") || css_unlisted_string(&plain)
+}
+
+fn css_unlisted_string(plain: &str) -> bool {
+    let bytes = plain.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_alphabetic() || bytes[i] == b'-' || bytes[i] == b'_' {
+            let start = i;
+            let tick = i;
+            while i < bytes.len()
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_')
+            {
+                let tick_i = i;
+                match step_index(tick_i) {
+                    Some(next) if next > tick_i => i = next,
+                    _ => return true,
+                }
+            }
+            if i <= tick {
+                return true;
+            }
+            if i < bytes.len() && bytes[i] == b'(' {
+                let name = &plain[start..i];
+                if !allowed(CSS_STRING_FN, name) && function_args_have_string(plain, i) {
+                    return true;
+                }
+            }
+            continue;
+        }
+        let tick = i;
+        match step_index(tick) {
+            Some(next) if next > tick => i = next,
+            _ => return true,
+        }
+    }
+    false
+}
+
+fn function_args_have_string(plain: &str, paren: usize) -> bool {
+    let bytes = plain.as_bytes();
+    let mut depth = 0i32;
+    let mut i = paren;
+    let mut quote = 0u8;
+    while i < bytes.len() {
+        let ch = bytes[i];
+        if quote != 0 {
+            if ch == quote {
+                return true;
+            }
+        } else {
+            match ch {
+                b'\'' | b'"' => quote = ch,
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let tick = i;
+        match step_index(tick) {
+            Some(next) if next > tick => i = next,
+            _ => return true,
+        }
+    }
+    quote != 0
 }
 
 fn css_remote_kinds(input: &str) -> (bool, bool) {
     let plain = css_unescaped(input).to_ascii_lowercase();
-    (plain.contains("url("), plain.contains("@import"))
+    (
+        plain.contains("url(") || css_unlisted_string(&plain),
+        plain.contains("@import"),
+    )
 }
 
 fn tag_is_prose(src: &str, start: usize, end: usize) -> bool {
@@ -2779,7 +3248,10 @@ fn note_url_attribute(tag: &Parsed, out: &mut BTreeSet<String>) {
             attr_name.as_str(),
             "src" | "srcset" | "data" | "poster" | "background" | "action" | "ping"
         ) || (attr_name == "href" && matches!(name.as_str(), "use" | "image"))
-            || (attr_name == "code" && name == "applet");
+            || (attr_name == "xlink:href" && matches!(name.as_str(), "use" | "image"))
+            || (attr_name == "code" && name == "applet")
+            || (attr_name == "formaction" && matches!(name.as_str(), "button" | "input"))
+            || (attr_name == "longdesc" && name == "img");
         if url {
             out.insert(format!("url attribute {attr_name}"));
         }
@@ -2790,8 +3262,20 @@ fn note_style_attribute(tag: &Parsed, out: &mut BTreeSet<String>) {
     let Some(value) = attr_value(&tag.attrs, "style") else {
         return;
     };
-    if css_loads_remote(value) {
+    if css_loads_remote(&decode_html_chars(value)) {
         out.insert("style resource".to_string());
+    }
+}
+
+fn note_attr_url_fn(tag: &Parsed, out: &mut BTreeSet<String>) {
+    for (attr, value) in &tag.attrs {
+        if attr.eq_ignore_ascii_case("style") {
+            continue;
+        }
+        let plain = css_unescaped(&decode_html_chars(value)).to_ascii_lowercase();
+        if plain.contains("url(") {
+            out.insert(format!("url attribute {}", attr.to_ascii_lowercase()));
+        }
     }
 }
 
@@ -2941,6 +3425,7 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
     let b = src.as_bytes();
     let mut chunks = Vec::new();
     let mut i = 0;
+    let mut svg_depth: i32 = 0;
     while i < b.len() {
         if past_limit(*steps, limit) {
             out.insert("scan failed closed".to_string());
@@ -2981,6 +3466,9 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
             TagTry::Tag(tag) => {
                 *steps = steps.saturating_add((tag.end - i) as u64);
                 if tag.closing {
+                    if tag.name.eq_ignore_ascii_case("svg") {
+                        svg_depth = svg_depth.saturating_sub(1);
+                    }
                     i = tag.end;
                     continue;
                 }
@@ -2992,7 +3480,8 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                 }
                 note_url_attribute(&tag, out);
                 note_style_attribute(&tag, out);
-                note_script_src(&tag, out);
+                note_attr_url_fn(&tag, out);
+                note_script_src(&tag, svg_depth > 0, out);
                 note_meta_refresh(&tag, out);
                 note_meta_referrer(&tag, out);
                 note_link_href(&tag, out);
@@ -3033,6 +3522,9 @@ fn html_scripts(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u
                         break;
                     }
                 } else {
+                    if tag.name.eq_ignore_ascii_case("svg") {
+                        svg_depth = svg_depth.saturating_add(1);
+                    }
                     i = tag.end;
                 }
             }
@@ -3079,19 +3571,26 @@ fn script_type_skips(attrs: &[(String, String)]) -> bool {
         || value.eq_ignore_ascii_case("application/ld+json")
 }
 
-fn note_script_src(tag: &Parsed, out: &mut BTreeSet<String>) {
+fn note_script_src(tag: &Parsed, in_svg: bool, out: &mut BTreeSet<String>) {
     if !tag.name.eq_ignore_ascii_case("script") {
         return;
     }
-    let Some(src) = attr_value(&tag.attrs, "src") else {
-        return;
-    };
-    let integrity = attr_value(&tag.attrs, "integrity").unwrap_or("");
-    let pinned = SCRIPT_SRC
-        .iter()
-        .any(|(url, hash)| src == *url && integrity == *hash);
-    if !pinned {
-        out.insert("script src".to_string());
+    if let Some(src) = attr_value(&tag.attrs, "src") {
+        let integrity = attr_value(&tag.attrs, "integrity").unwrap_or("");
+        let pinned = SCRIPT_SRC
+            .iter()
+            .any(|(url, hash)| src == *url && integrity == *hash);
+        if !pinned {
+            out.insert("script src".to_string());
+        }
+    }
+    if in_svg {
+        for (attr, _) in &tag.attrs {
+            let name = attr.to_ascii_lowercase();
+            if name == "href" || name == "xlink:href" {
+                out.insert(format!("url attribute {name}"));
+            }
+        }
     }
 }
 
@@ -3117,6 +3616,13 @@ fn note_link_href(tag: &Parsed, out: &mut BTreeSet<String>) {
         .unwrap_or("")
         .to_ascii_lowercase();
     let href = attr_value(&tag.attrs, "href").unwrap_or("");
+    if tag
+        .attrs
+        .iter()
+        .any(|(attr, _)| attr.eq_ignore_ascii_case("imagesrcset"))
+    {
+        out.insert("url attribute imagesrcset".to_string());
+    }
     if rel
         .split_whitespace()
         .any(|part| part == "stylesheet" || part == "import")
@@ -3755,8 +4261,8 @@ mod class_tests {
     #[test]
     fn a_string_replace_stays_allowlisted() {
         clean("(window.location.hash || '').replace(/^#/, '')");
-        clean("s.replace(x)");
-        clean("chip.append(x)");
+        clean("const s = 'a'; s.replace(x)");
+        clean("const chip = document.createElement('span'); chip.append(x)");
         clean("history.replaceState(null, '', x)");
     }
 
@@ -4261,6 +4767,228 @@ mod class_tests {
         assert!(!script_scheme("javascript&colon;x"));
         assert_eq!(normalize_scheme("java\tscript:"), "javascript:");
     }
+
+    #[test]
+    fn an_escaped_member_name_is_a_sink() {
+        sink("n.o\\u0075terHTML = x");
+        sink("n.o\\u{75}terHTML = x");
+    }
+
+    #[test]
+    fn an_undecodable_identifier_escape_fails_closed() {
+        let problems = html_parsing_problems("n.\\u12 = 1");
+        assert!(problems.contains("scan failed closed"), "{problems:?}");
+    }
+
+    #[test]
+    fn a_private_name_does_not_hide_a_call() {
+        let src = "class C { static #return = 4; static { this.#return / document.write(1) / 1 } }";
+        sink(src);
+        sink(&format!("<script>{src}</script>"));
+    }
+
+    #[test]
+    fn an_svg_script_reference_is_a_sink() {
+        let href = html_parsing_problems(
+            "<svg><script href=\"https://example.invalid/x\"></script></svg>",
+        );
+        assert!(href.iter().any(|item| item.contains("href")), "{href:?}");
+        let xlink = html_parsing_problems(
+            "<svg><script xlink:href=\"https://example.invalid/x\"></script></svg>",
+        );
+        assert!(
+            xlink.iter().any(|item| item.contains("xlink:href")),
+            "{xlink:?}"
+        );
+        clean("<script href=\"https://example.invalid/x\"></script>");
+    }
+
+    #[test]
+    fn an_image_function_string_is_a_sink() {
+        sink("<div style=\"background-image:image-set('https://example.invalid/x' 1x)\"></div>");
+        sink(
+            "<div style=\"background-image:-webkit-image-set('https://example.invalid/x' 1x)\"></div>",
+        );
+        sink("<style>body{background:image-set(\"https://example.invalid/x\" 1x)}</style>");
+        sink("node.style.background = \"image-set('https://example.invalid/x' 1x)\"");
+    }
+
+    #[test]
+    fn a_style_attribute_character_reference_is_a_sink() {
+        for sample in [
+            "<div style=\"background:url&#40;https://example.invalid/x)\"></div>",
+            "<div style=\"background:url&#x28;https://example.invalid/x)\"></div>",
+            "<div style=\"background:url&lpar;https://example.invalid/x)\"></div>",
+            "<div style=\"background:&#117;rl(https://example.invalid/x)\"></div>",
+        ] {
+            let problems = html_parsing_problems(sample);
+            assert!(
+                problems.contains("style resource"),
+                "{sample} -> {problems:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_presentation_attribute_url_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<svg filter=\"url(https://example.invalid/x#f)\" mask=\"url(https://example.invalid/x#m)\"></svg>",
+        );
+        assert!(
+            problems.iter().any(|item| item.contains("filter")),
+            "{problems:?}"
+        );
+        assert!(
+            problems.iter().any(|item| item.contains("mask")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_style_binding_and_a_location_alias_are_sinks() {
+        sink("var v='url(https://example.invalid/x)'; node.style.background = v");
+        sink("node.style.background = v");
+        sink("const loc = location; loc.replace('https://example.invalid')");
+        sink("const loc = window.location; loc.replace('https://example.invalid')");
+        clean("const s = 'a'; s.replace(x)");
+        clean("const picked = safeColor(color) || ''; node.style.background = picked");
+        clean("node.style.background = 'red'");
+        clean("node.style.color = String(style.color)");
+    }
+
+    #[test]
+    fn a_submitter_action_is_a_sink() {
+        let abs =
+            html_parsing_problems("<button formaction=\"https://example.invalid/a\"></button>");
+        assert!(
+            abs.iter().any(|item| item.contains("formaction")),
+            "{abs:?}"
+        );
+        let proto =
+            html_parsing_problems("<input type=\"submit\" formaction=\"//example.invalid/a\">");
+        assert!(
+            proto.iter().any(|item| item.contains("formaction")),
+            "{proto:?}"
+        );
+    }
+
+    #[test]
+    fn a_shorthand_helper_url_is_a_sink() {
+        sink("el('a',{href})");
+    }
+
+    #[test]
+    fn an_escaped_backslash_does_not_open_a_url() {
+        clean("<div style=\"background:url\\\\(https://example.invalid/a.png)\"></div>");
+    }
+
+    #[test]
+    fn a_template_hole_in_a_style_value_is_a_sink() {
+        sink("node.style.background = `${x}`");
+    }
+
+    #[test]
+    fn a_link_source_set_is_a_sink() {
+        let problems = html_parsing_problems(
+            "<link rel=\"preload\" as=\"image\" imagesrcset=\"https://example.invalid/a.png\">",
+        );
+        assert!(
+            problems.iter().any(|item| item.contains("imagesrcset")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_helper_source_and_a_reference_attribute_are_sinks() {
+        sink("el('img', {src: 'https://example.invalid/a.png'})");
+        sink("el('script', {text: 'x'})");
+        let script_href =
+            html_parsing_problems("el('script', {href: 'https://example.invalid/a.js'})");
+        assert!(
+            !script_href.iter().any(|item| item.contains("href")),
+            "{script_href:?}"
+        );
+        let div_text = html_parsing_problems("el('div', {text: 'x'})");
+        assert!(
+            !div_text.iter().any(|item| item.contains("text")),
+            "{div_text:?}"
+        );
+        let use_ref = html_parsing_problems(
+            "<svg><use xlink:href=\"https://example.invalid/a.svg#i\"></use></svg>",
+        );
+        assert!(
+            use_ref.iter().any(|item| item.contains("xlink:href")),
+            "{use_ref:?}"
+        );
+        let long = html_parsing_problems("<img longdesc=\"https://example.invalid/a\">");
+        assert!(
+            long.iter().any(|item| item.contains("longdesc")),
+            "{long:?}"
+        );
+        let other = html_parsing_problems("<div longdesc=\"https://example.invalid/a\"></div>");
+        assert!(
+            !other.iter().any(|item| item.contains("longdesc")),
+            "{other:?}"
+        );
+        let foreign = html_parsing_problems(
+            "<div xlink:href=\"https://example.invalid/a\" formaction=\"https://example.invalid/b\"></div>",
+        );
+        assert!(
+            !foreign
+                .iter()
+                .any(|item| item.contains("xlink:href") || item.contains("formaction")),
+            "{foreign:?}"
+        );
+    }
+
+    #[test]
+    fn style_literals_and_bindings_keep_their_class() {
+        assert!(css_loads_remote("\\75 rl("));
+        assert!(css_unescaped("\\0000287").contains('('));
+        assert!(!css_loads_remote("color: red"));
+        assert!(css_loads_remote(
+            "image-set('https://example.invalid/a.png')"
+        ));
+        assert!(css_loads_remote(
+            "-webkit-image-set('https://example.invalid/a.png')"
+        ));
+        assert!(css_loads_remote("_custom('https://example.invalid/a.png')"));
+        assert!(!css_loads_remote("image-set(red)"));
+        assert!(!css_loads_remote("color: var(--a)"));
+        assert!(css_loads_remote(&decode_html_chars("url(&rpar;")));
+        sink("const c = other('red'); node.style.background = c");
+        clean("const c = 'red'\nreturn\nnode.style.background = c");
+        clean("const s = 'a', t = location; s.replace(1)");
+        clean("s = 'a'; s.replace(1)");
+        let grouped_call = html_parsing_problems("const s = foo(location, 'a'); s.replace(1)");
+        assert!(
+            !grouped_call.iter().any(|item| item.contains("replace")),
+            "{grouped_call:?}"
+        );
+        let called = html_parsing_problems("const s = foo(location); s.replace(1)");
+        assert!(
+            !called.iter().any(|item| item.contains("replace")),
+            "{called:?}"
+        );
+        clean("const s = ('a'); s.replace(1)");
+        sink("const loc = 'a' || location || 'b'; loc.replace(1)");
+        let after_call = html_parsing_problems("const s = foo(a) || location || 'b'; s.replace(1)");
+        assert!(
+            after_call.iter().any(|item| item.contains("replace")),
+            "{after_call:?}"
+        );
+        sink("location?.replace(1)");
+        sink("node.style.background = safeColor() + 'url(https://example.invalid/a)'");
+        clean("const c = safeColor() + 'red'; node.style.background = c");
+        sink("const c = safeColor() + 'url(https://example.invalid/a)'; node.style.background = c");
+        sink("const c = ('url(https://example.invalid/a)'); node.style.background = c");
+    }
+
+    #[test]
+    fn a_private_hash_before_a_digit_stays_a_scan() {
+        clean("#1");
+        clean("/*a*/b");
+    }
 }
 
 #[cfg(test)]
@@ -4298,6 +5026,7 @@ mod mutant_tests {
             Tok::Plus => "+".into(),
             Tok::Assign => "=".into(),
             Tok::Arrow => "=>".into(),
+            Tok::Semi => "op".into(),
             Tok::Other => "op".into(),
             Tok::Error => "err".into(),
         }
@@ -4981,7 +5710,7 @@ mod mutant_tests {
             lines.push(format!("TAG {src:?} {}", tag_s(src)));
         }
         let text = lines.join("\n");
-        assert_eq!(text, include_str!("oracle_js.txt"));
+        assert_eq!(text, include_str!("oracle_js.txt").replace('\r', ""));
     }
 
     fn lex_s_from(toks: &[Tok]) -> String {
@@ -5003,10 +5732,10 @@ mod mutant_tests {
         assert!(styled.contains("style resource"), "{styled:?}");
         clean_js("node['background'] = 'url(https://example.invalid/a.png)'");
         clean_js("location['push'](1)");
-        clean_js("node['replace'](1)");
-        clean_js("node['append'](1)");
+        clean_js("const node = document.createElement('div'); node['replace'](1)");
+        clean_js("const node = document.createElement('div'); node['append'](1)");
         clean_js("head['push'](1)");
-        clean_js("node?.replace(1)");
+        clean_js("const node = document.createElement('div'); node?.replace(1)");
         clean_js("obj['node'].replace(1)");
         let loc = html_parsing_problems("obj['location'].replace(1)");
         assert!(loc.contains("member call replace"), "{loc:?}");
@@ -5032,5 +5761,94 @@ mod mutant_tests {
         assert!(!plain.contains("interp"), "{plain}");
         let open = lex_s("`a${b`");
         assert!(open.contains("err") || open.contains("f=true"), "{open}");
+    }
+
+    #[test]
+    fn branch_edges_are_exact() {
+        assert_eq!(step_index(0), Some(1));
+        assert_eq!(step_index(usize::MAX), None);
+        assert!(function_args_have_string("('a')", 0));
+        assert!(!function_args_have_string("(a)", 0));
+        assert!(!function_args_have_string("(a)'b'", 0));
+        assert!(function_args_have_string("('a", 0));
+        assert!(!function_args_have_string("(a", 0));
+        assert!(!function_args_have_string("((a))", 0));
+        assert_eq!(decode_html_chars("a&rpar;b"), "a)b");
+        assert_eq!(decode_html_chars("a&lpar;b"), "a(b");
+
+        assert!(is_url_prop("src", false));
+        assert!(is_url_prop("href", false));
+        assert!(!is_url_prop("class", false));
+        assert!(is_url_prop("text", true));
+        assert!(!is_url_prop("text", false));
+
+        assert_eq!(ident_unicode("\\u{41}", 0), Some(('A', 6)));
+        assert!(ident_unicode("\\u{0000041}", 0).is_none());
+        assert!(ident_unicode("\\u{G}", 0).is_none());
+        assert!(ident_unicode("\\u{}", 0).is_none());
+
+        assert!(!call_is_css_safe(&[Tok::LParen], 0));
+        assert!(call_is_css_safe(
+            &[Tok::Ident("safeColor".into()), Tok::LParen],
+            1
+        ));
+        assert!(!call_is_css_safe(
+            &[Tok::Ident("other".into()), Tok::LParen],
+            1
+        ));
+
+        let java = Tok::Str("java".into());
+        let plus = Tok::Plus;
+        let script = Tok::Str("script:".into());
+        assert!(scriptish(&[&java, &plus, &script]));
+        assert!(!scriptish(&[&java, &plus, &plus, &script]));
+
+        let semi = vec![Tok::Str("red".into()), Tok::Semi, Tok::Ident("url".into())];
+        assert!(!css_range_fails(&semi, 0, semi.len()));
+
+        let call = vec![
+            Tok::Ident("a".into()),
+            Tok::LParen,
+            Tok::Ident("b".into()),
+            Tok::RParen,
+            Tok::Comma,
+        ];
+        assert_eq!(value_end(&call, 0), 4);
+
+        assert!(tag_is_prose("a,b", 0, 3));
+        assert!(!tag_is_prose("ab,c", 0, 2));
+        assert!(!tag_is_prose("\"a,b\"", 0, 5));
+        assert!(tag_is_prose("\"a\",b", 0, 5));
+
+        assert!(prev_is_decl(
+            &[Tok::Ident("const".into()), Tok::Ident("s".into())],
+            1
+        ));
+        assert!(!prev_is_decl(&[Tok::Ident("s".into())], 0));
+
+        let grouped = lex_of("const s = 'a' return", u64::MAX / 8).0;
+        let end = expr_end(&grouped, 3).unwrap();
+        assert!(
+            matches!(&grouped[end], Tok::Ident(name) if name == "return"),
+            "{grouped:?} end={end}"
+        );
+
+        {
+            let tokens = lex_of("const s = location", u64::MAX / 8).0;
+            let guard = install_binds(&tokens);
+            assert!(binding_before("s", tokens.len()).is_some());
+            let at = tokens
+                .iter()
+                .position(|tok| matches!(tok, Tok::Ident(name) if name == "s"))
+                .unwrap();
+            assert!(binding_before("s", at).is_none());
+            assert!(binding_before("s", at + 1).is_some());
+            drop(guard);
+            assert!(binding_before("s", tokens.len()).is_none());
+        }
+
+        let hash = lex_s("#1");
+        assert!(!hash.contains("f=true"), "{hash}");
+        assert!(!hash.contains("#1"), "{hash}");
     }
 }

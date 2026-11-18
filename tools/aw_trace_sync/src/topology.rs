@@ -910,7 +910,13 @@ fn html_links_anchor(html: &str, anchor: &str) -> bool {
         let after = from + rel + needle.len();
         match bytes.get(after).copied() {
             Some(b'"' | b'\'' | b'`') => return true,
-            _ => from += rel + 1,
+            _ => {
+                let next = from.saturating_add(rel).saturating_add(1);
+                if next <= from {
+                    return false;
+                }
+                from = next;
+            }
         }
     }
     false
@@ -1023,7 +1029,13 @@ impl AnchorScan {
         buf.push_str(input);
         let bytes = buf.as_bytes();
         let mut i = 0;
+        let mut guard = None;
         while i < bytes.len() {
+            if guard.is_some_and(|prev: usize| i <= prev) {
+                self.pending.clear();
+                return;
+            }
+            guard = Some(i);
             if !buf.is_char_boundary(i) {
                 i += 1;
                 continue;
@@ -1121,7 +1133,12 @@ enum SelectEnd {
 fn select_end(s: &str) -> SelectEnd {
     let b = s.as_bytes();
     let mut i = 0;
+    let mut guard = None;
     while i + 1 < b.len() {
+        if guard.is_some_and(|prev: usize| i <= prev) {
+            return SelectEnd::Open(i);
+        }
+        guard = Some(i);
         if b[i] == b'<' && b[i + 1] == b'/' {
             let name_at = i + 2;
             if s[name_at..].len() >= "select".len()
@@ -1132,7 +1149,12 @@ fn select_end(s: &str) -> SelectEnd {
                 let boundary =
                     j >= b.len() || b[j].is_ascii_whitespace() || b[j] == b'>' || b[j] == b'/';
                 if boundary {
+                    let mut jguard = None;
                     loop {
+                        if jguard.is_some_and(|prev: usize| j <= prev) {
+                            return SelectEnd::Open(i);
+                        }
+                        jguard = Some(j);
                         if j >= b.len() {
                             return SelectEnd::Open(i);
                         }
@@ -1140,7 +1162,11 @@ fn select_end(s: &str) -> SelectEnd {
                             let quote = b[j];
                             j += 1;
                             while j < b.len() && b[j] != quote {
+                                let tick = j;
                                 j += 1;
+                                if j <= tick {
+                                    return SelectEnd::Open(i);
+                                }
                             }
                             if j >= b.len() {
                                 return SelectEnd::Open(i);
@@ -1251,7 +1277,12 @@ fn declaration_at(rest: &str) -> bool {
 fn end_tag(rest: &str) -> Lt {
     let b = rest.as_bytes();
     let mut i = 1;
+    let mut guard = None;
     loop {
+        if guard.is_some_and(|prev: usize| i <= prev) {
+            return Lt::NeedMore;
+        }
+        guard = Some(i);
         if i >= b.len() {
             return Lt::NeedMore;
         }
@@ -1259,7 +1290,11 @@ fn end_tag(rest: &str) -> Lt {
             let quote = b[i];
             i += 1;
             while i < b.len() && b[i] != quote {
+                let tick = i;
                 i += 1;
+                if i <= tick {
+                    return Lt::NeedMore;
+                }
             }
             if i >= b.len() {
                 return Lt::NeedMore;
@@ -1313,7 +1348,11 @@ fn parse_start_tag(s: &str) -> StartTag {
     }
     let mut i = 1;
     while i < b.len() && is_name_char(b[i]) {
+        let tick = i;
         i += 1;
+        if i <= tick {
+            return StartTag::NotTag;
+        }
     }
     if i >= b.len() {
         return StartTag::NeedMore;
@@ -1323,7 +1362,12 @@ fn parse_start_tag(s: &str) -> StartTag {
     let mut ids = Vec::new();
     let mut saw_id = false;
     let mut saw_name = false;
+    let mut guard = None;
     loop {
+        if guard.is_some_and(|prev: usize| i <= prev) {
+            return StartTag::NotTag;
+        }
+        guard = Some(i);
         if i >= b.len() {
             return StartTag::NeedMore;
         }
@@ -1476,11 +1520,27 @@ fn followed_by_cased(chars: &[char], index: usize) -> bool {
 }
 
 fn cased(c: char) -> bool {
-    c.is_uppercase() || c.is_lowercase()
+    c.is_uppercase() || c.is_lowercase() || titlecase(c)
+}
+
+fn titlecase(c: char) -> bool {
+    matches!(
+        c,
+        '\u{01C5}'
+            | '\u{01C8}'
+            | '\u{01CB}'
+            | '\u{01F2}'
+            | '\u{1F88}'..='\u{1F8F}'
+            | '\u{1F98}'..='\u{1F9F}'
+            | '\u{1FA8}'..='\u{1FAF}'
+            | '\u{1FBC}'
+            | '\u{1FCC}'
+            | '\u{1FFC}'
+    )
 }
 
 fn case_ignorable(c: char) -> bool {
-    matches!(
+    if matches!(
         c,
         '\'' | '.'
             | ':'
@@ -1502,6 +1562,16 @@ fn case_ignorable(c: char) -> bool {
         || ('\u{1DC0}'..='\u{1DFF}').contains(&c)
         || ('\u{20D0}'..='\u{20FF}').contains(&c)
         || ('\u{FE20}'..='\u{FE2F}').contains(&c)
+    {
+        return true;
+    }
+    use std::sync::OnceLock;
+    static MARK: OnceLock<regex::Regex> = OnceLock::new();
+    let re = MARK.get_or_init(|| {
+        regex::Regex::new(r"^[\p{Mn}\p{Me}\p{Cf}\p{Lm}\p{Sk}]$").expect("case ignorable class")
+    });
+    let mut buf = [0u8; 4];
+    re.is_match(c.encode_utf8(&mut buf))
 }
 
 fn is_unicode_word(c: char) -> bool {
@@ -1773,6 +1843,16 @@ mod tests {
     }
 
     #[test]
+    fn a_select_quote_hides_an_anchor_after_an_interior_gt() {
+        assert_eq!(
+            anchor_ids_in_chunks(&[
+                "<select title=\"> <a id=\"hidden\"></a>\"></select><a id=\"8-invariants\"></a>"
+            ]),
+            vec!["8-invariants".to_string()]
+        );
+    }
+
+    #[test]
     fn select_hides_an_anchor_in_a_block_and_inline() {
         assert!(
             anchor_ids_in_chunks(&["<select>\n<a id=\"8-invariants\"></a>\n</select>\n"])
@@ -1821,6 +1901,14 @@ mod tests {
         assert_eq!(github_slug("a\u{1DC0}Σ"), "a\u{1DC0}ς");
         assert_eq!(github_slug("a\u{20D0}Σ"), "a\u{20D0}ς");
         assert_eq!(github_slug("a\u{FE20}Σ"), "a\u{FE20}ς");
+        assert_eq!(github_slug("a\u{200C}Σ"), "a\u{200c}ς");
+        assert_eq!(github_slug("a\u{200D}Σ"), "a\u{200d}ς");
+        assert_eq!(github_slug("a\u{00AD}Σ"), "aς");
+        assert_eq!(github_slug("a\u{0483}Σ"), "a\u{0483}ς");
+        assert_eq!(github_slug("a\u{064B}Σ"), "a\u{064b}ς");
+        assert_eq!(github_slug("a\u{01C5}Σ"), "a\u{01c6}ς");
+        assert_eq!(github_slug("AΣ\u{01C5}"), "aσ\u{01c6}");
+        assert_eq!(github_slug("Σ\u{01C5}"), "σ\u{01c6}");
     }
 
     #[test]

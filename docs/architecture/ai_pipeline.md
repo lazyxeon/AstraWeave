@@ -1626,7 +1626,7 @@ The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls 
 | D7 | `DialogueNode.is_linear()` is true only when `responses.len() == 1`; `is_choice()` requires `> 1` | Yes | `lib.rs:65-73` |
 | D8 | TOML `end: true` marker on a node sets `responses: vec![]` after translation (terminal) | Yes (inspection) | `toml_loader.rs:49-50` (`end: bool`) plus translation logic |
 | D9 | `DialogueConfig.temperature` clamped to `[0.0, 2.0]` and `top_p` to `[0.0, 1.0]` in builder methods | Yes | `with_temperature` clamps at `llm_dialogue.rs:103`. `with_top_p` clamps at `llm_dialogue.rs:110`. |
-| D10 | `DialogueContextConfig::minimal()` and `::extended()` provide named-preset alternatives to defaults | Yes (code) | `llm_dialogue.rs:263-281` |
+| D10 | `DialogueContextConfig::minimal()` and `::extended()` provide named-preset alternatives to defaults | Yes (code) | `minimal()` at `llm_dialogue.rs:271`; `extended()` at `llm_dialogue.rs:282` |
 | D11 | `EmotionAnalysisConfig::disabled()` zeros all enable flags AND the sentiment-influence/retention floats | Yes | `llm_dialogue.rs:183` |
 | D12 | `LlmDialogueSystem` is `Send + Sync` via auto-traits — all 6 fields are Send + Sync | Yes | Fields: `Arc<dyn LlmClient>`, `Arc<RwLock<RagPipeline>>`, `Arc<RwLock<TemplateEngine>>`, `Arc<RwLock<HashMap<String, Arc<Mutex<ActiveConversation>>>>>`, `DialogueConfig`, `Arc<RwLock<DialogueMetrics>>`. The per-conversation mutex is `tokio::sync::Mutex`. |
 | D13 | `recorded_line` seeds `SimRng` with `SIM_SYSTEM_LLM_DIALOGUE` and does not draw it | Yes | `llm_dialogue.rs:551` |
