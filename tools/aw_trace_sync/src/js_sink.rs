@@ -28,7 +28,9 @@
 //! sinks. `setAttribute` names and string timers are checked after escapes and
 //! `'a'+'b'` folding. A location `replace` or `assign`, and a head `append`,
 //! still count when the receiver is that object, a binding of that object, or
-//! a receiver that is not proven to be something else. A grouped expression, a
+//! a receiver that is not proven to be something else. A line break ends that
+//! binding unless the next token continues the expression. A name that is
+//! bound more than once is not proof. A grouped expression, a
 //! computed key, and optional access are classified. An immediate property
 //! name that is not the object is proven other.
 //! An `el` URL counts when its value folds to a script scheme or contains a
@@ -522,14 +524,15 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
         steps: *steps,
         limit,
         failed: false,
+        broke: false,
     };
-    let tokens = lx.lex(false, 0);
+    let (tokens, line_before) = lx.lex(false, 0);
     *steps = lx.steps;
     if lx.failed || tokens.iter().any(|tok| matches!(tok, Tok::Error)) {
         out.insert("scan failed closed".to_string());
     }
     let mate = match_brackets(&tokens);
-    let _binds = install_binds(&tokens);
+    let _binds = install_binds(&tokens, line_before);
     let stringish = stringish_names(&tokens);
     let mut i = 0;
     let mut spins = 0usize;
@@ -753,6 +756,7 @@ thread_local! {
     static BIND_DEPTH: Cell<u8> = const { Cell::new(0) };
     static CSS_DEPTH: Cell<u8> = const { Cell::new(0) };
     static BIND_LIST: RefCell<Vec<Bind>> = const { RefCell::new(Vec::new()) };
+    static LINE_BEFORE: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
 
 struct BindGuard;
@@ -760,10 +764,12 @@ struct BindGuard;
 impl Drop for BindGuard {
     fn drop(&mut self) {
         BIND_LIST.with(|slot| slot.borrow_mut().clear());
+        LINE_BEFORE.with(|slot| slot.borrow_mut().clear());
     }
 }
 
-fn install_binds(tokens: &[Tok]) -> BindGuard {
+fn install_binds(tokens: &[Tok], line_before: Vec<bool>) -> BindGuard {
+    LINE_BEFORE.with(|slot| *slot.borrow_mut() = line_before);
     BIND_LIST.with(|slot| *slot.borrow_mut() = collect_binds(tokens));
     BindGuard
 }
@@ -811,11 +817,23 @@ fn bound_receiver(
 
 fn binding_before(var_name: &str, before: usize) -> Option<(usize, usize)> {
     BIND_LIST.with(|slot| {
-        slot.borrow()
-            .iter()
-            .rev()
-            .find(|bind| bind.name == var_name && bind.at < before)
-            .map(|bind| (bind.start, bind.end))
+        let list = slot.borrow();
+        let mut only = None;
+        for bind in list.iter() {
+            if bind.name != var_name {
+                continue;
+            }
+            if only.is_some() {
+                return None;
+            }
+            only = Some((bind.at, bind.start, bind.end));
+        }
+        let (at, start, end) = only?;
+        if at < before {
+            Some((start, end))
+        } else {
+            None
+        }
     })
 }
 
@@ -882,6 +900,9 @@ fn expr_end(tokens: &[Tok], start: usize) -> Option<usize> {
     let mut i = start;
     let mut saw = false;
     while i < tokens.len() {
+        if i != start && depth == 0 && line_break_before(i) && !continues_past_break(&tokens[i]) {
+            break;
+        }
         match &tokens[i] {
             Tok::Semi if depth == 0 => break,
             Tok::Comma if depth == 0 => break,
@@ -924,6 +945,20 @@ fn expr_end(tokens: &[Tok], start: usize) -> Option<usize> {
     } else {
         None
     }
+}
+
+fn line_break_before(index: usize) -> bool {
+    LINE_BEFORE.with(|slot| slot.borrow().get(index).copied().unwrap_or(false))
+}
+
+/// A line break ends the initializer unless the next token is one JavaScript
+/// keeps on the same expression: a member, a call, an index, a comma, or an
+/// operator. Anything else ends it.
+fn continues_past_break(tok: &Tok) -> bool {
+    matches!(
+        tok,
+        Tok::Dot | Tok::Opt | Tok::Plus | Tok::Other | Tok::Comma | Tok::LParen | Tok::LBrack
+    )
 }
 
 fn fold_status(status: Option<bool>, saw: &mut bool, saw_true: &mut bool, saw_unknown: &mut bool) {
@@ -1690,7 +1725,9 @@ fn value_has_script_scheme(tokens: &[Tok], paren: usize) -> bool {
         match tok {
             Tok::LParen => {
                 depth += 1;
-                if depth > 1 && arg == 1 {
+                // `depth >= 2` is the nested-paren case. The opening paren is the
+                // only time depth is 1 here, and `arg` is still 0 then.
+                if depth >= 2 && arg == 1 {
                     parts.push(tok);
                 }
             }
@@ -1792,30 +1829,46 @@ fn html_char_ref(input: &str, at: usize) -> Option<(char, usize)> {
         let hex = bytes.get(1).copied() == Some(b'x') || bytes.get(1).copied() == Some(b'X');
         let digits = if hex { &rest[2..] } else { &rest[1..] };
         let mut len: usize = 0;
+        let mut code: u32 = 0;
+        let mut overflow = false;
+        let radix: u32 = if hex { 16 } else { 10 };
         for b in digits.bytes() {
-            let ok = if hex {
-                b.is_ascii_hexdigit()
+            let dig = if hex {
+                match b {
+                    b'0'..=b'9' => b - b'0',
+                    b'a'..=b'f' => b - b'a' + 10,
+                    b'A'..=b'F' => b - b'A' + 10,
+                    _ => break,
+                }
+            } else if b.is_ascii_digit() {
+                b - b'0'
             } else {
-                b.is_ascii_digit()
-            };
-            if !ok {
                 break;
-            }
+            };
             let next = len.saturating_add(1);
             if next <= len {
                 return None;
             }
             len = next;
-            if len == 7 {
-                break;
+            if !overflow {
+                match code
+                    .checked_mul(radix)
+                    .and_then(|value| value.checked_add(u32::from(dig)))
+                {
+                    Some(value) => code = value,
+                    None => overflow = true,
+                }
             }
         }
         if len == 0 {
             return None;
         }
-        let raw = &digits[..len];
-        let code = u32::from_str_radix(raw, if hex { 16 } else { 10 }).ok()?;
-        let ch = char::from_u32(code).unwrap_or('\u{FFFD}');
+        // A multiply overflows only after `code` is already above U+10FFFF:
+        // the smallest decimal code that cannot take another digit is
+        // 429_496_730, and the smallest hex one is 0x1000_0000. `from_u32`
+        // therefore rejects both overflow and an explicit out-of-range code.
+        // Surrogates and U+0000 stay on this path (U+0000 is a scalar).
+        let ch = char::from_u32(if overflow { 0x11_0000 } else { code }).unwrap_or('\u{FFFD}');
         let mut next = at + 1 + if hex { 2 } else { 1 } + len;
         if input.as_bytes().get(next) == Some(&b';') {
             next = next.saturating_add(1);
@@ -2139,20 +2192,23 @@ struct Lx<'a> {
     steps: u64,
     limit: u64,
     failed: bool,
+    /// The next token is preceded by a line terminator.
+    broke: bool,
 }
 
 impl<'a> Lx<'a> {
-    fn lex(&mut self, stop_brace: bool, depth: u32) -> Vec<Tok> {
+    fn lex(&mut self, stop_brace: bool, depth: u32) -> (Vec<Tok>, Vec<bool>) {
         let b = self.src.as_bytes();
         let mut out = Vec::new();
+        let mut flags: Vec<bool> = Vec::new();
         let mut ctrl: Vec<bool> = Vec::new();
         let mut regex_ready = false;
         let mut brace = 0i32;
         while self.i < b.len() {
             if past_limit(self.steps, self.limit) {
                 self.failed = true;
-                out.push(Tok::Error);
-                return out;
+                self.emit(&mut out, &mut flags, Tok::Error);
+                return (out, flags);
             }
             if !self.src.is_char_boundary(self.i) {
                 self.i = self.i.saturating_add(1);
@@ -2162,7 +2218,18 @@ impl<'a> Lx<'a> {
             let start = self.i;
             let c = b[self.i];
             if c.is_ascii_whitespace() {
+                if c == b'\n' || c == b'\r' {
+                    self.broke = true;
+                }
                 self.i = self.i.saturating_add(1);
+                self.charge(start);
+                continue;
+            }
+            if self.src[self.i..].starts_with('\u{2028}')
+                || self.src[self.i..].starts_with('\u{2029}')
+            {
+                self.broke = true;
+                self.i = self.i.saturating_add(3);
                 self.charge(start);
                 continue;
             }
@@ -2172,7 +2239,7 @@ impl<'a> Lx<'a> {
                     let tick = self.i;
                     if !self.advance() || self.i <= tick {
                         self.failed = true;
-                        return out;
+                        return (out, flags);
                     }
                 }
                 regex_ready = false;
@@ -2185,13 +2252,21 @@ impl<'a> Lx<'a> {
                     let tick = self.i;
                     if !self.advance() || self.i <= tick {
                         self.failed = true;
-                        return out;
+                        return (out, flags);
                     }
                 }
-                self.i = (self.i + 2).min(b.len());
+                let next = self.i.saturating_add(2);
+                if next <= self.i {
+                    self.failed = true;
+                    return (out, flags);
+                }
+                self.i = next.min(b.len());
+                if self.src[start..self.i].contains(['\n', '\r', '\u{2028}', '\u{2029}']) {
+                    self.broke = true;
+                }
                 if self.i >= b.len() && !self.src[start..].contains("*/") {
                     self.failed = true;
-                    out.push(Tok::Error);
+                    self.emit(&mut out, &mut flags, Tok::Error);
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -2203,12 +2278,12 @@ impl<'a> Lx<'a> {
                     let step = self.i;
                     if !self.advance() || self.i <= step {
                         self.failed = true;
-                        return out;
+                        return (out, flags);
                     }
                 }
                 if self.i <= tick {
                     self.failed = true;
-                    return out;
+                    return (out, flags);
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -2222,12 +2297,12 @@ impl<'a> Lx<'a> {
                     || (next >= b.len() && !closed_regex(self.src, self.i + 1))
                 {
                     self.failed = true;
-                    out.push(Tok::Error);
+                    self.emit(&mut out, &mut flags, Tok::Error);
                     self.i = b.len();
-                    return out;
+                    return (out, flags);
                 }
                 self.i = next;
-                out.push(Tok::Other);
+                self.emit(&mut out, &mut flags, Tok::Other);
                 regex_ready = false;
                 self.charge(start);
                 continue;
@@ -2236,23 +2311,27 @@ impl<'a> Lx<'a> {
                 let (value, next, closed) = read_string(self.src, self.i);
                 if next <= self.i {
                     self.failed = true;
-                    out.push(Tok::Error);
+                    self.emit(&mut out, &mut flags, Tok::Error);
                     self.i = b.len();
-                    return out;
+                    return (out, flags);
                 }
                 if !closed {
                     self.failed = true;
-                    out.push(Tok::Error);
+                    self.emit(&mut out, &mut flags, Tok::Error);
                 }
-                out.push(Tok::Str(value));
+                self.emit(&mut out, &mut flags, Tok::Str(value));
                 self.i = next;
                 regex_ready = false;
                 self.charge(start);
                 continue;
             }
             if c == b'`' {
-                let (tok, body) = self.read_template(depth);
+                let broke = self.broke;
+                self.broke = false;
+                let (tok, body, body_flags) = self.read_template(depth);
+                flags.push(broke);
                 out.push(tok);
+                flags.extend(body_flags);
                 out.extend(body);
                 regex_ready = false;
                 continue;
@@ -2263,11 +2342,11 @@ impl<'a> Lx<'a> {
                     let (name, next) = read_ident(self.src, next_at);
                     if next <= next_at || name.is_empty() {
                         self.failed = true;
-                        out.push(Tok::Error);
+                        self.emit(&mut out, &mut flags, Tok::Error);
                         self.i = b.len();
-                        return out;
+                        return (out, flags);
                     }
-                    out.push(Tok::Ident(format!("#{name}")));
+                    self.emit(&mut out, &mut flags, Tok::Ident(format!("#{name}")));
                     self.i = next;
                     regex_ready = false;
                     self.charge(start);
@@ -2281,17 +2360,17 @@ impl<'a> Lx<'a> {
                 let next = skip_number(self.src, self.i);
                 if next <= self.i {
                     self.failed = true;
-                    out.push(Tok::Error);
-                    return out;
+                    self.emit(&mut out, &mut flags, Tok::Error);
+                    return (out, flags);
                 }
                 self.i = next;
-                out.push(Tok::Num);
+                self.emit(&mut out, &mut flags, Tok::Num);
                 regex_ready = false;
                 self.charge(start);
                 continue;
             }
             if c == b'?' && b.get(self.i + 1) == Some(&b'.') {
-                out.push(Tok::Opt);
+                self.emit(&mut out, &mut flags, Tok::Opt);
                 self.i = self.i.saturating_add(2);
                 regex_ready = false;
                 self.charge(start);
@@ -2301,11 +2380,11 @@ impl<'a> Lx<'a> {
                 let (name, next) = read_ident(self.src, self.i);
                 if next <= self.i {
                     self.failed = true;
-                    out.push(Tok::Error);
+                    self.emit(&mut out, &mut flags, Tok::Error);
                     self.i = b.len();
-                    return out;
+                    return (out, flags);
                 }
-                out.push(Tok::Ident(name));
+                self.emit(&mut out, &mut flags, Tok::Ident(name));
                 self.i = next;
                 regex_ready = false;
                 self.charge(start);
@@ -2315,27 +2394,27 @@ impl<'a> Lx<'a> {
                 let next = skip_number(self.src, self.i);
                 if next <= self.i {
                     self.failed = true;
-                    out.push(Tok::Error);
-                    return out;
+                    self.emit(&mut out, &mut flags, Tok::Error);
+                    return (out, flags);
                 }
                 self.i = next;
-                out.push(Tok::Num);
+                self.emit(&mut out, &mut flags, Tok::Num);
                 regex_ready = false;
                 self.charge(start);
                 continue;
             }
             if stop_brace && c == b'}' && brace == 0 {
                 self.charge(start);
-                return out;
+                return (out, flags);
             }
             let (tok, n) = punct(b, self.i);
             if n == 0 || self.i + n > b.len() {
                 self.failed = true;
-                out.push(Tok::Error);
+                self.emit(&mut out, &mut flags, Tok::Error);
                 if !self.advance() {
-                    return out;
+                    return (out, flags);
                 }
-                return out;
+                return (out, flags);
             }
             match &tok {
                 Tok::LParen => {
@@ -2357,15 +2436,21 @@ impl<'a> Lx<'a> {
                 }
                 _ => regex_ready = false,
             }
-            out.push(tok);
+            self.emit(&mut out, &mut flags, tok);
             self.i = self.i.saturating_add(n);
             self.charge(start);
         }
         if stop_brace {
             self.failed = true;
-            out.push(Tok::Error);
+            self.emit(&mut out, &mut flags, Tok::Error);
         }
-        out
+        (out, flags)
+    }
+
+    fn emit(&mut self, out: &mut Vec<Tok>, flags: &mut Vec<bool>, tok: Tok) {
+        flags.push(self.broke);
+        self.broke = false;
+        out.push(tok);
     }
 
     fn advance(&mut self) -> bool {
@@ -2391,7 +2476,7 @@ impl<'a> Lx<'a> {
         }
     }
 
-    fn read_template(&mut self, depth: u32) -> (Tok, Vec<Tok>) {
+    fn read_template(&mut self, depth: u32) -> (Tok, Vec<Tok>, Vec<bool>) {
         let start_tick = self.i;
         if depth >= MAX_TEMPLATE_DEPTH {
             self.failed = true;
@@ -2402,7 +2487,8 @@ impl<'a> Lx<'a> {
                 self.i = next.min(self.src.len());
             }
             self.charge(start_tick);
-            return (Tok::Error, Vec::new());
+            self.broke = false;
+            return (Tok::Error, Vec::new(), Vec::new());
         }
         let b = self.src.as_bytes();
         self.i = self.i.saturating_add(1);
@@ -2410,10 +2496,12 @@ impl<'a> Lx<'a> {
         let mut value = String::new();
         let mut interp = false;
         let mut body = Vec::new();
+        let mut body_flags = Vec::new();
         while self.i < b.len() {
             if past_limit(self.steps, self.limit) {
                 self.failed = true;
-                return (Tok::Error, body);
+                self.broke = false;
+                return (Tok::Error, body, Vec::new());
             }
             if !self.src.is_char_boundary(self.i) {
                 self.i = self.i.saturating_add(1);
@@ -2425,7 +2513,8 @@ impl<'a> Lx<'a> {
                 let (ch, next) = decode_escape(self.src, self.i);
                 if next <= self.i {
                     self.failed = true;
-                    return (Tok::Error, body);
+                    self.broke = false;
+                    return (Tok::Error, body, Vec::new());
                 }
                 value.push(ch);
                 self.i = next;
@@ -2435,18 +2524,20 @@ impl<'a> Lx<'a> {
             if b[self.i] == b'`' {
                 self.i = self.i.saturating_add(1);
                 self.charge(tick);
+                self.broke = false;
                 return if interp {
-                    (Tok::Interp, body)
+                    (Tok::Interp, body, body_flags)
                 } else {
-                    (Tok::Tpl(value), body)
+                    (Tok::Tpl(value), body, body_flags)
                 };
             }
             if b[self.i] == b'$' && b.get(self.i + 1) == Some(&b'{') {
                 interp = true;
                 self.i = self.i.saturating_add(2);
                 self.charge(tick);
-                let nested = self.lex(true, depth + 1);
+                let (nested, nested_flags) = self.lex(true, depth + 1);
                 body.extend(nested);
+                body_flags.extend(nested_flags);
                 if self.i < b.len() && b[self.i] == b'}' {
                     self.i = self.i.saturating_add(1);
                     self.steps = self.steps.saturating_add(1);
@@ -2459,7 +2550,8 @@ impl<'a> Lx<'a> {
             self.charge(tick);
         }
         self.failed = true;
-        (Tok::Error, body)
+        self.broke = false;
+        (Tok::Error, body, body_flags)
     }
 }
 
@@ -4989,6 +5081,104 @@ mod class_tests {
         clean("#1");
         clean("/*a*/b");
     }
+
+    fn must_have(sample: &str, label: &str) {
+        let problems = html_parsing_problems(sample);
+        assert!(
+            problems.contains(label),
+            "{sample} -> {problems:?} missing {label}"
+        );
+    }
+
+    #[test]
+    fn a_line_break_does_not_hide_a_receiver() {
+        must_have("const l=location\nl.replace('x')", "member call replace");
+        must_have("let l=location\nl.replace('x')", "member call replace");
+        must_have(
+            "const l=window.location\nl.replace('x')",
+            "member call replace",
+        );
+        must_have("const h=document.head\nh.append(x)", "member call append");
+        must_have("const h=document\n.head\nh.append(x)", "member call append");
+        must_have("let l; l=location\nl.replace('x')", "member call replace");
+        clean("const s='red'\nnode.style.background=s");
+        clean("const picked=safeColor(color)||''\nnode.style.background=picked");
+    }
+
+    #[test]
+    fn a_shadowed_name_is_not_proof() {
+        must_have(
+            "const l=location; { const l='a'; } l.replace('x')",
+            "member call replace",
+        );
+        must_have(
+            "const v='url(https://example.invalid/x)'; { const v='red'; } node.style.background = v",
+            "style resource",
+        );
+        must_have(
+            "const l=location; if (x) { const l='a'; } else { const l='b'; } l.replace('x')",
+            "member call replace",
+        );
+        must_have(
+            "const l=location; function f(){ const l='a'; } l.replace('x')",
+            "member call replace",
+        );
+        must_have(
+            "const loc=location; { const loc='a'; } loc['replace']('x')",
+            "member call replace",
+        );
+    }
+
+    #[test]
+    fn a_long_numeric_character_reference_is_a_sink() {
+        must_have(
+            "<div style=\"background:url&#00000040;https://example.invalid/x)\"></div>",
+            "style resource",
+        );
+        must_have(
+            "<div style=\"background:url&#x00000028;https://example.invalid/x)\"></div>",
+            "style resource",
+        );
+        assert_eq!(
+            html_char_ref("&#00000040;", 0),
+            Some(('(', "&#00000040;".len()))
+        );
+        assert_eq!(
+            html_char_ref("&#x00000028;", 0),
+            Some(('(', "&#x00000028;".len()))
+        );
+        assert_eq!(
+            html_char_ref("&#9999999999;", 0).map(|item| item.0),
+            Some('\u{FFFD}')
+        );
+        assert_eq!(
+            html_char_ref("&#x100000000;", 0).map(|item| item.0),
+            Some('\u{FFFD}')
+        );
+        assert_eq!(html_char_ref("&#0;", 0), Some(('\0', 4)));
+        assert_eq!(html_char_ref("&#xa;", 0), Some(('\n', 5)));
+        assert_eq!(html_char_ref("&#xA;", 0), Some(('\n', 5)));
+        assert_eq!(
+            html_char_ref("&#x10FFFF;", 0).map(|item| item.0),
+            char::from_u32(0x10_FFFF)
+        );
+        assert_eq!(
+            html_char_ref("&#x110000;", 0).map(|item| item.0),
+            Some('\u{FFFD}')
+        );
+    }
+
+    #[test]
+    fn a_template_literal_hole_is_a_style_sink() {
+        for sample in [
+            "node.style.background = `${'red'}`",
+            "node.style.background = `${1}`",
+            "const v=`${'red'}`; node.style.background = v",
+            "const n=`${1}`; node.style.background = n",
+        ] {
+            must_have(sample, "style resource");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -5002,8 +5192,9 @@ mod mutant_tests {
             steps: 0,
             limit,
             failed: false,
+            broke: false,
         };
-        let toks = lx.lex(false, 0);
+        let (toks, _) = lx.lex(false, 0);
         (toks, lx.failed, lx.steps)
     }
 
@@ -5030,6 +5221,34 @@ mod mutant_tests {
             Tok::Other => "op".into(),
             Tok::Error => "err".into(),
         }
+    }
+
+    #[test]
+    fn template_skips_and_commas_are_exact() {
+        assert_eq!(skip_template_linear("`a`MORE", 0), 3);
+        assert_eq!(skip_template_linear("`a\\`b`MORE", 0), 6);
+        assert_eq!(skip_template_linear("`a${b}c`MORE", 0), 8);
+        assert_eq!(skip_template_linear("`unterminated", 0), 13);
+        assert_eq!(skip_template_linear("nope", 0), 4);
+        let root = |src: &str| {
+            let toks = lex_of(src, u64::MAX / 8).0;
+            let open = toks
+                .iter()
+                .position(|tok| matches!(tok, Tok::LParen))
+                .unwrap();
+            comma_at_root(&toks, open, toks.len())
+        };
+        assert!(root("f(a,b)"));
+        assert!(root("f((a),b)"));
+        assert!(!root("f(ab)"));
+        assert!(!root("f((a,b))"));
+        assert!(!root("f({a,b})"));
+        assert!(!root("f([a,b])"));
+        assert!(!root("f('a,b')"));
+        assert!(!root("f(`a,b`)"));
+        assert!(!comma_at_root(&lex_of("f(a,b)", u64::MAX / 8).0, 0, 1));
+        let (toks, failed, _) = lex_of("/* a */", u64::MAX / 8);
+        assert!(!failed, "{toks:?}");
     }
 
     fn lex_s(src: &str) -> String {
@@ -5835,7 +6054,7 @@ mod mutant_tests {
 
         {
             let tokens = lex_of("const s = location", u64::MAX / 8).0;
-            let guard = install_binds(&tokens);
+            let guard = install_binds(&tokens, vec![false; tokens.len()]);
             assert!(binding_before("s", tokens.len()).is_some());
             let at = tokens
                 .iter()

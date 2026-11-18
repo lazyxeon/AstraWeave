@@ -901,6 +901,10 @@ fn build_targets(
     Ok((targets, map_render))
 }
 
+fn added_lengths(missing: usize, extra: usize) -> usize {
+    missing + extra
+}
+
 fn first_line_diff(a: &str, b: &str) -> Option<(usize, String, String)> {
     let (la, lb): (Vec<&str>, Vec<&str>) = (a.lines().collect(), b.lines().collect());
     for i in 0..la.len().max(lb.len()) {
@@ -1066,8 +1070,8 @@ fn main() -> Result<()> {
             bail!("trace registry/map is out of sync with front-matter (run `--write`)");
         }
         if !drift {
-            let nodes = map_render.missing_nodes.len() + map_render.extra_nodes.len();
-            let edges = map_render.missing_edges.len() + map_render.extra_edges.len();
+            let nodes = added_lengths(map_render.missing_nodes.len(), map_render.extra_nodes.len());
+            let edges = added_lengths(map_render.missing_edges.len(), map_render.extra_edges.len());
             eprintln!(
                 "In sync: CLAUDE.md trace table, map nodes/edges, footer, and trace anchors match cargo metadata and front-matter ({nodes} node diffs, {edges} edge diffs)."
             );
@@ -2763,6 +2767,164 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
     }
 
     #[test]
+    fn runtime_snapshot_keeps_only_flagged_edges() {
+        let data = serde_json::json!({
+            "edges": [
+                {"source": "a", "target": "b", "runtime": true, "runtimeNote": ""},
+                {"source": "c", "target": "d", "runtime": false, "runtimeNote": "note"},
+                {"source": "e", "target": "f", "runtime": false, "runtimeNote": ""},
+                {"source": "", "target": "g", "runtime": true}
+            ]
+        });
+        let snap = runtime_snapshot(&data);
+        assert_eq!(snap.len(), 3);
+        assert_eq!(
+            snap.get(&("a".into(), "b".into())),
+            Some(&(true, String::new()))
+        );
+        assert_eq!(
+            snap.get(&("c".into(), "d".into())),
+            Some(&(false, "note".into()))
+        );
+        assert!(!snap.contains_key(&("e".into(), "f".into())));
+        assert!(runtime_snapshot(&serde_json::json!({})).is_empty());
+        assert!(runtime_snapshot(&serde_json::json!({"edges": "no"})).is_empty());
+    }
+
+    #[test]
+    fn chrome_regions_report_each_changed_span() {
+        let before = format!(
+            "p {COUNTER_START}1{COUNTER_END} q {TRACE_COUNT_START}2{TRACE_COUNT_END} r {MEMBERS_START}3{MEMBERS_END} s {FOOTER_START}4{FOOTER_END}"
+        );
+        let after = format!(
+            "p {COUNTER_START}9{COUNTER_END} q {TRACE_COUNT_START}2{TRACE_COUNT_END} r {MEMBERS_START}8{MEMBERS_END} s {FOOTER_START}4{FOOTER_END}"
+        );
+        assert_eq!(
+            chrome_region_changes(&before, &after),
+            vec![
+                "counter: 1 -> 9".to_string(),
+                "members sentence: 3 -> 8".to_string(),
+            ]
+        );
+        assert_eq!(footer_drift("4", "4"), "footer trace list changed");
+        assert_eq!(
+            footer_drift("href=\"./a.md\"", "href=\"./b.md\""),
+            "footer trace list: removed a; added b"
+        );
+        assert!(chrome_region_changes("no markers", "still none").is_empty());
+        assert_eq!(
+            footer_drift("href=\"./a.md\"", ""),
+            "footer trace list: removed a"
+        );
+        assert_eq!(
+            footer_drift("", "href=\"./b.md\""),
+            "footer trace list: added b"
+        );
+    }
+
+    fn trace_doc(extra: &str) -> TraceDoc {
+        let yaml = format!(
+            r#"
+schema_version: 1
+trace_id: demo
+title: t
+description: d
+primary_crate: demo-crate
+domain: core
+lifecycle_status: active
+integration_status: wired
+doc_version: "1"
+last_verified_commit: abc
+owns: [demo-crate]
+{extra}
+"#
+        );
+        TraceDoc {
+            stem: "demo".into(),
+            fm: Some(yaml_serde::from_str(&yaml).unwrap()),
+            fm_error: None,
+            body: String::new(),
+        }
+    }
+
+    #[test]
+    fn validation_and_escape_helpers_are_exact() {
+        assert_eq!(added_lengths(2, 3), 5);
+        assert_eq!(domain_id(Domain::Core), "core");
+        assert_eq!(domain_id(Domain::Ai), "ai");
+        assert_eq!(domain_id(Domain::Rendering), "rendering");
+        assert_eq!(domain_id(Domain::PhysicsWorld), "physics-world");
+        assert_eq!(domain_id(Domain::Gameplay), "gameplay");
+        assert_eq!(domain_id(Domain::Networking), "networking");
+        assert_eq!(domain_id(Domain::Tools), "tools");
+        assert_eq!(escape_nonascii("A<"), "A\\u003c");
+        assert_eq!(escape_nonascii("\u{7F}"), "\u{7F}");
+        assert_eq!(escape_nonascii("\u{80}"), "\\u0080");
+        assert_eq!(escape_nonascii("\u{1F600}"), "\\ud83d\\ude00");
+        assert!(is_plain_trace_name("fluids_2"));
+        assert!(!is_plain_trace_name(""));
+        assert!(!is_plain_trace_name("Fluids"));
+        assert!(!is_plain_trace_name("a-b"));
+
+        let crates = vec!["demo-crate".into(), "other".into()];
+        let self_edge = validate(
+            &[trace_doc(
+                "runtime_edges:\n  - {from: demo-crate, to: demo-crate}",
+            )],
+            &crates,
+        );
+        assert!(
+            self_edge.iter().any(|p| p.contains("self-edge")),
+            "{self_edge:?}"
+        );
+        let other = validate(
+            &[trace_doc(
+                "runtime_edges:\n  - {from: demo-crate, to: other}",
+            )],
+            &crates,
+        );
+        assert!(!other.iter().any(|p| p.contains("self-edge")), "{other:?}");
+        assert!(
+            !other.iter().any(|p| p.contains("not a workspace crate")),
+            "{other:?}"
+        );
+        let unknown = validate(
+            &[trace_doc(
+                "runtime_edges:\n  - {from: missing, to: demo-crate}",
+            )],
+            &crates,
+        );
+        assert!(
+            unknown.iter().any(|p| p.contains("from 'missing'")),
+            "{unknown:?}"
+        );
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let traces = load_traces(&root.join("docs/architecture")).unwrap();
+        assert!(traces.iter().any(|t| t.stem == "fluids"));
+        assert!(traces.len() > 10);
+
+        let mut before = std::collections::BTreeMap::new();
+        before.insert(("a".into(), "b".into()), (true, "n".into()));
+        let same = before.clone();
+        assert!(runtime_change_lines(&before, &same).is_empty());
+        let mut changed = before.clone();
+        changed.insert(("a".into(), "b".into()), (false, "n".into()));
+        assert_eq!(
+            runtime_change_lines(&before, &changed),
+            vec!["runtime a -> b changed (true, n) -> (false, n)".to_string()]
+        );
+        assert_eq!(
+            runtime_change_lines(&before, &std::collections::BTreeMap::new()),
+            vec!["runtime a -> b cleared".to_string()]
+        );
+        assert_eq!(
+            runtime_change_lines(&std::collections::BTreeMap::new(), &before),
+            vec!["runtime a -> b set (true, n)".to_string()]
+        );
+    }
+
+    #[test]
     fn the_dialogue_file_row_matches_llm_dialogue_rs() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let doc = std::fs::read_to_string(root.join("docs/architecture/ai_pipeline.md")).unwrap();
@@ -3055,6 +3217,20 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             ("disabled", "pub fn disabled() -> Self {"),
             ("minimal", "pub fn minimal() -> Self {"),
             ("extended", "pub fn extended() -> Self {"),
+            (
+                "RAG import",
+                "use astraweave_rag::{MemoryQuery, RagPipeline, RetrievedMemory};",
+            ),
+            ("RAG field", "rag_pipeline: Arc<RwLock<RagPipeline>>,"),
+            (
+                "context import",
+                "use astraweave_context::{ContextConfig, ConversationHistory, Role};",
+            ),
+            ("persona import", "use astraweave_persona::LlmPersona;"),
+            (
+                "prompt import",
+                "use astraweave_prompts::context::PromptContext as TemplateContext;",
+            ),
             ("cfg test", "#[cfg(test)]"),
             (
                 "embedding client",
@@ -3071,8 +3247,14 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             });
             assert!(cited, "{label} at {line} missing from §13.4");
         }
+        assert!(section.contains("7318eb3ea"), "{section}");
+        assert!(section.contains("llm_dialogue.rs:22-24"), "{section}");
         assert!(
-            section.contains("symbol cites in this section"),
+            section.contains("There is no `Message` import."),
+            "{section}"
+        );
+        assert!(
+            section.contains("There is no `LlmPersonaManager` import."),
             "{section}"
         );
         assert!(doc.contains("not a consumer of `astraweave-memory`"));
@@ -3290,6 +3472,7 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
                 .count();
         assert_eq!(adversarial, 1676);
         assert_eq!(baselines, 175);
+        assert!(notes.contains("8 `[[bench]]` targets"), "{notes}");
         assert!(notes.contains("`fluids_adversarial` 1,676"), "{notes}");
         assert!(notes.contains("`fluid_baselines` 175"), "{notes}");
         assert!(!notes.contains("1,678"), "{notes}");
@@ -3355,7 +3538,11 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
                 .lines()
                 .find(|item| item.contains(&format!("**`{label}`**")))
                 .unwrap_or_else(|| panic!("missing {label}"));
-            assert!(row.contains("Superseded by W.1"), "{row}");
+            if label == "SimParams" {
+                assert!(!row.contains("Superseded by W.1"), "{row}");
+            } else {
+                assert!(row.contains("Superseded by W.1"), "{row}");
+            }
             assert!(
                 row.contains(&format!("`lib.rs:{line}`")),
                 "{label} at {line} missing from {row}"
@@ -3371,7 +3558,8 @@ assert.ok(texts.some(text => text.includes('<constructor>')), texts.join('|'));
             .lines()
             .find(|item| item.contains("**`SimParams`**"))
             .expect("SimParams row");
-        assert!(params_row.contains("`lib.rs:458`"), "{params_row}");
+        assert!(params_row.contains("`lib.rs:191`"), "{params_row}");
+        assert!(!params_row.contains("`lib.rs:458`"), "{params_row}");
         assert!(
             params_row.contains("`_pad0` through `_pad3`"),
             "{params_row}"

@@ -1061,7 +1061,10 @@ impl AnchorScan {
                 }
                 Skip::Select => match select_end(&buf[i..]) {
                     SelectEnd::Closed(consumed) => {
-                        i += consumed;
+                        if !advance_bytes(&mut i, consumed, bytes.len()) {
+                            self.pending.clear();
+                            return;
+                        }
                         self.skip = Skip::None;
                         continue;
                     }
@@ -1077,7 +1080,12 @@ impl AnchorScan {
                 continue;
             }
             match classify_lt(&buf[i..]) {
-                Lt::Skip { consumed } => i += consumed,
+                Lt::Skip { consumed } => {
+                    if !advance_bytes(&mut i, consumed, bytes.len()) {
+                        self.pending.clear();
+                        return;
+                    }
+                }
                 Lt::Enter(kind, consumed) => {
                     self.skip = kind;
                     i += consumed;
@@ -1098,6 +1106,19 @@ impl AnchorScan {
             }
         }
     }
+}
+
+/// Move `i` forward by `consumed` bytes. A step that does not advance, or that
+/// lands past `len`, stops the scan.
+fn advance_bytes(i: &mut usize, consumed: usize, len: usize) -> bool {
+    let Some(next) = i.checked_add(consumed) else {
+        return false;
+    };
+    if consumed == 0 || next <= *i || next > len {
+        return false;
+    }
+    *i = next;
+    true
 }
 
 /// Earliest of `-->` and `--!>`.
@@ -1303,9 +1324,12 @@ fn end_tag(rest: &str) -> Lt {
             continue;
         }
         if b[i] == b'>' {
-            return Lt::Skip {
-                consumed: 1 + i + 1,
+            // `i` is the `>` inside the bytes after `<`, so the caller, which
+            // starts at `<`, consumes `i + 2` bytes.
+            let Some(consumed) = i.checked_add(2).filter(|next| *next > i) else {
+                return Lt::NeedMore;
             };
+            return Lt::Skip { consumed };
         }
         i += 1;
     }
@@ -1393,14 +1417,22 @@ fn parse_start_tag(s: &str) -> StartTag {
         let attr_at = i;
         i += 1;
         while i < b.len() && is_attr_char(b[i]) {
-            i += 1;
+            let tick = i;
+            i = i.saturating_add(1);
+            if i == tick {
+                return StartTag::NotTag;
+            }
         }
         if i >= b.len() {
             return StartTag::NeedMore;
         }
         let attr = &s[attr_at..i];
         while i < b.len() && b[i].is_ascii_whitespace() {
-            i += 1;
+            let tick = i;
+            i = i.saturating_add(1);
+            if i <= tick {
+                return StartTag::NotTag;
+            }
         }
         if i >= b.len() {
             return StartTag::NeedMore;
@@ -1413,30 +1445,54 @@ fn parse_start_tag(s: &str) -> StartTag {
             }
             continue;
         }
-        i += 1;
+        let tick = i;
+        i = i.saturating_add(1);
+        if i <= tick {
+            return StartTag::NotTag;
+        }
         while i < b.len() && b[i].is_ascii_whitespace() {
-            i += 1;
+            let tick = i;
+            i = i.saturating_add(1);
+            if i <= tick {
+                return StartTag::NotTag;
+            }
         }
         if i >= b.len() {
             return StartTag::NeedMore;
         }
         let value = if b[i] == b'"' || b[i] == b'\'' {
             let quote = b[i];
-            i += 1;
+            let tick = i;
+            i = i.saturating_add(1);
+            if i <= tick {
+                return StartTag::NotTag;
+            }
             let start = i;
             while i < b.len() && b[i] != quote {
-                i += 1;
+                let tick = i;
+                i = i.saturating_add(1);
+                if i == tick {
+                    return StartTag::NotTag;
+                }
             }
             if i >= b.len() {
                 return StartTag::NeedMore;
             }
             let value = s[start..i].to_string();
-            i += 1;
+            let tick = i;
+            i = i.saturating_add(1);
+            if i <= tick {
+                return StartTag::NotTag;
+            }
             value
         } else {
             let start = i;
             while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'>' {
-                i += 1;
+                let tick = i;
+                i = i.saturating_add(1);
+                if i == tick {
+                    return StartTag::NotTag;
+                }
             }
             s[start..i].to_string()
         };
@@ -1455,8 +1511,12 @@ fn parse_start_tag(s: &str) -> StartTag {
 /// controls), turn spaces into hyphens, and drop everything else — including
 /// line breaks, so a break does not become a hyphen. Hyphens are not collapsed
 /// and the string is not trimmed, so `Map / Residue` becomes `map--residue`
-/// and a leading space becomes a leading hyphen. Capital sigma follows
-/// Unicode Final_Sigma, so a word-final `Σ` becomes `ς`.
+/// and a leading space becomes a leading hyphen. A capital sigma becomes `ς`
+/// when a cased character precedes it and no cased character follows it,
+/// skipping the punctuation in `case_ignorable` and Unicode categories Mn, Me,
+/// Cf, Lm, and Sk. Unassigned scalars are not skipped. This is the rule this
+/// crate implements. It is not Unicode Final_Sigma, and it is not JavaScript
+/// `toLowerCase` (Node 20 / ICU 76 and Node 22 disagree on some scalars).
 pub fn github_slug(heading: &str) -> String {
     let chars: Vec<char> = heading.chars().collect();
     let mut out = String::with_capacity(heading.len());
@@ -1557,14 +1617,13 @@ fn case_ignorable(c: char) -> bool {
             | '\u{FF07}'
             | '\u{FF0E}'
             | '\u{FF1A}'
-    ) || ('\u{0300}'..='\u{036F}').contains(&c)
-        || ('\u{1AB0}'..='\u{1AFF}').contains(&c)
-        || ('\u{1DC0}'..='\u{1DFF}').contains(&c)
-        || ('\u{20D0}'..='\u{20FF}').contains(&c)
-        || ('\u{FE20}'..='\u{FE2F}').contains(&c)
-    {
+    ) {
         return true;
     }
+    // Assigned scalars in U+0300–U+036F, U+1AB0–U+1AFF, U+1DC0–U+1DFF,
+    // U+20D0–U+20FF, and U+FE20–U+FE2F are Mn, Me, Cf, Lm, or Sk, so the
+    // category test below already ignores them. Those block ranges also
+    // ignored unassigned scalars. Unassigned scalars are not case-ignorable.
     use std::sync::OnceLock;
     static MARK: OnceLock<regex::Regex> = OnceLock::new();
     let re = MARK.get_or_init(|| {
@@ -1783,9 +1842,6 @@ mod tests {
             "noframes",
             "plaintext",
             "SCRIPT",
-            "noscript",
-            "pre",
-            "div",
         ] {
             let one = format!("<{tag}><a id=\"8-invariants\"></a></{tag}>");
             assert_eq!(
@@ -2242,5 +2298,219 @@ mod tests {
             |target, link| std::os::windows::fs::symlink_dir(target, link),
             |target, link| std::os::windows::fs::symlink_file(target, link),
         );
+    }
+
+    #[test]
+    fn domain_kind_and_steps_are_exact() {
+        assert_eq!(
+            default_domain("tools/aw_trace_sync/Cargo.toml", "aw_trace_sync"),
+            "tools"
+        );
+        assert_eq!(default_domain("a/tools/x/Cargo.toml", "x"), "tools");
+        assert_eq!(
+            default_domain("net/aw-net/Cargo.toml", "aw-net"),
+            "networking"
+        );
+        assert_eq!(default_domain("a/net/x/Cargo.toml", "x"), "networking");
+        assert_eq!(
+            default_domain("persistence/aw-save/Cargo.toml", "aw-save"),
+            "networking"
+        );
+        assert_eq!(
+            default_domain("a/persistence/x/Cargo.toml", "x"),
+            "networking"
+        );
+        assert_eq!(
+            default_domain("crates/x/Cargo.toml", "astraweave-localsim"),
+            "physics-world"
+        );
+        assert_eq!(
+            default_domain("crates/x/Cargo.toml", "astraweave-core"),
+            "core"
+        );
+        assert_eq!(kind_for("crates/x/Cargo.toml"), "crate-subdir");
+        assert_eq!(kind_for("a/crates/x/Cargo.toml"), "crate-subdir");
+        assert_eq!(kind_for("net/x/Cargo.toml"), "net-subcrate");
+        assert_eq!(kind_for("a/net/x/Cargo.toml"), "net-subcrate");
+        assert_eq!(kind_for("persistence/x/Cargo.toml"), "persistence-subdir");
+        assert_eq!(kind_for("a/persistence/x/Cargo.toml"), "persistence-subdir");
+        assert_eq!(kind_for("tools/x/Cargo.toml"), "tool");
+        assert_eq!(kind_for("a/tools/x/Cargo.toml"), "tool");
+        assert_eq!(kind_for("astraweave-core/Cargo.toml"), "production");
+        assert_eq!(loc_band(100_000), "extra-large");
+        assert_eq!(loc_band(99_999), "large");
+        assert_eq!(loc_band(30_000), "large");
+        assert_eq!(loc_band(29_999), "medium");
+        assert_eq!(loc_band(5_000), "medium");
+        assert_eq!(loc_band(4_999), "small");
+
+        let mut i = 0usize;
+        assert!(!advance_bytes(&mut i, 0, 4));
+        assert_eq!(i, 0);
+        assert!(advance_bytes(&mut i, 4, 4));
+        assert_eq!(i, 4);
+        assert!(!advance_bytes(&mut i, 1, 4));
+        assert_eq!(i, 4);
+
+        let mut diff = TopologyDiff::default();
+        record_example_list(
+            &serde_json::json!({"exampleList": ["b", "a"]}),
+            &["a".into(), "b".into()],
+            &mut diff,
+        );
+        assert_eq!(
+            diff.example_list,
+            vec!["exampleList order changed".to_string()]
+        );
+        let mut diff = TopologyDiff::default();
+        record_example_list(
+            &serde_json::json!({"exampleList": ["a"]}),
+            &["a".into(), "b".into()],
+            &mut diff,
+        );
+        assert_eq!(diff.example_list, vec!["exampleList added b".to_string()]);
+        let mut diff = TopologyDiff::default();
+        record_example_list(
+            &serde_json::json!({"exampleList": ["a", "b"]}),
+            &["a".into()],
+            &mut diff,
+        );
+        assert_eq!(diff.example_list, vec!["exampleList removed b".to_string()]);
+        let mut diff = TopologyDiff::default();
+        record_example_list(
+            &serde_json::json!({"exampleList": ["a"]}),
+            &["a".into()],
+            &mut diff,
+        );
+        assert!(diff.example_list.is_empty());
+
+        assert_eq!(
+            new_node_evidence("tool", "tools/tool/Cargo.toml", None),
+            "Untraced workspace tool `tool`."
+        );
+        assert_eq!(
+            new_node_evidence("tool", "a/tools/tool/Cargo.toml", None),
+            "Untraced workspace tool `tool`."
+        );
+        assert_eq!(
+            new_node_evidence("core", "astraweave-core/Cargo.toml", None),
+            "Untraced workspace crate `core`."
+        );
+    }
+
+    #[test]
+    fn path_helpers_classify_examples() {
+        assert_eq!(
+            strip_root("/repo", "/repo/examples/x/Cargo.toml"),
+            "examples/x/Cargo.toml"
+        );
+        assert_eq!(strip_root("/repo", "other/Cargo.toml"), "other/Cargo.toml");
+        assert!(is_example_manifest("examples/x/Cargo.toml"));
+        assert!(is_example_manifest("a/examples/x/Cargo.toml"));
+        assert!(!is_example_manifest("astraweave-core/Cargo.toml"));
+    }
+
+    #[test]
+    fn ordinary_tags_keep_the_inner_anchor() {
+        for tag in ["noscript", "pre", "div"] {
+            let one = format!("<{tag}><a id=\"8-invariants\"></a></{tag}>");
+            assert_eq!(
+                anchor_ids_in_chunks(&[&one]),
+                vec!["8-invariants".to_string()],
+                "{tag} is not a tagfilter tag"
+            );
+        }
+    }
+
+    #[test]
+    fn capital_sigma_uses_the_implemented_ignorables() {
+        assert_eq!(github_slug("AΣ"), "aς");
+        assert_eq!(github_slug("ΣA"), "σa");
+        assert_eq!(github_slug("A\u{00B7}Σ"), "aς");
+        assert_eq!(github_slug("A\u{0301}Σ"), "a\u{0301}ς");
+        // U+0387 is punctuation this rule does not skip.
+        assert_eq!(github_slug("A\u{0387}Σ"), "aσ");
+        // Unassigned scalars in the old combining blocks are not skipped.
+        assert_eq!(github_slug("A\u{1ADE}Σ"), "aσ");
+        assert_eq!(github_slug("A\u{20F1}Σ"), "aσ");
+        assert!(!case_ignorable('\u{1ADE}'));
+        assert!(!case_ignorable('\u{20F1}'));
+        assert!(case_ignorable('\u{0301}'));
+        assert!(case_ignorable('\u{1AB0}'));
+        assert!(case_ignorable('\u{20D0}'));
+        assert!(case_ignorable('\u{FE20}'));
+    }
+
+    fn select_s(s: &str) -> String {
+        match select_end(s) {
+            SelectEnd::Closed(n) => format!("closed:{n}"),
+            SelectEnd::Open(n) => format!("open:{n}"),
+        }
+    }
+
+    fn start_s(s: &str) -> String {
+        match parse_start_tag(s) {
+            StartTag::NeedMore => "more".into(),
+            StartTag::NotTag => "not".into(),
+            StartTag::Done(tag) => format!("{}@{}:{:?}", tag.name, tag.consumed, tag.ids),
+        }
+    }
+
+    fn lt_s(s: &str) -> String {
+        match classify_lt(s) {
+            Lt::Skip { consumed } => format!("skip:{consumed}"),
+            Lt::Enter(_, consumed) => format!("enter:{consumed}"),
+            Lt::NeedMore => "more".into(),
+            Lt::Start(tag) => format!("start:{}@{}:{:?}", tag.name, tag.consumed, tag.ids),
+            Lt::NotTag => "not".into(),
+        }
+    }
+
+    #[test]
+    fn anchor_tag_edges_are_exact() {
+        assert_eq!(select_s(""), "open:0");
+        assert_eq!(select_s("<"), "open:0");
+        assert_eq!(select_s("ab"), "open:2");
+        assert_eq!(select_s("ab<"), "open:2");
+        assert_eq!(select_s("</select>"), "closed:9");
+        assert_eq!(select_s("</SELECT>"), "closed:9");
+        assert_eq!(select_s("x</select>"), "closed:10");
+        assert_eq!(select_s("</sel"), "open:0");
+        assert_eq!(select_s("</div>"), "open:6");
+        assert_eq!(select_s("</select "), "open:0");
+        assert_eq!(select_s("</select id='>'>"), "closed:16");
+        assert_eq!(select_s("</select id=\"ab\">"), "closed:17");
+        assert_eq!(select_s("</select id=\"ab"), "open:0");
+        assert_eq!(start_s(""), "more");
+        assert_eq!(start_s("!"), "not");
+        assert_eq!(start_s("a"), "more");
+        assert_eq!(start_s("a>"), "a@2:[]");
+        assert_eq!(start_s("a id=xy>"), "a@8:[\"xy\"]");
+        assert_eq!(start_s("a id=\"xy\">"), "a@10:[\"xy\"]");
+        assert_eq!(start_s("a id='z'>"), "a@9:[\"z\"]");
+        assert_eq!(start_s("a id id=z>"), "a@10:[]");
+        assert_eq!(start_s("a name=n>"), "a@9:[\"n\"]");
+        assert_eq!(start_s("br/>"), "br@4:[]");
+        assert_eq!(start_s("div class=a>"), "div@12:[]");
+        assert_eq!(lt_s("</div>"), "skip:6");
+        assert_eq!(lt_s("</>"), "skip:3");
+        assert_eq!(lt_s("<a id=\"z\">"), "start:a@9:[\"z\"]");
+        assert_eq!(
+            anchor_ids_in_chunks(&["<select><a id=\"8-invariants\"></a></select>"]),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&[
+                "<select id=\"no\"><a id=\"8-invariants\"></a>",
+                "</select><a id=\"8-invariants\"></a>"
+            ]),
+            vec!["8-invariants".to_string()]
+        );
+        let html = "<a href=\"#5-active-file-map\">";
+        assert_eq!(
+            required_anchors(html),
+            vec!["5-active-file-map".to_string()]
+        );
+        assert!(required_anchors("<a href=\"#5-active-file-map-extra\">").is_empty());
     }
 }
