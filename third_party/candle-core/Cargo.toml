@@ -202,7 +202,7 @@ features = ["derive"]
 # default-features stays off, matching the crates.io 0.8.4 crate, so this
 # copy does not enable new codecs.
 [dependencies.zip]
-version = "9.7.0"
+version = "=9.7.0"
 default-features = false
 
 [dev-dependencies.anyhow]

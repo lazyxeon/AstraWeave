@@ -1575,9 +1575,9 @@ All listed in parent §5 enrichment above. Summary:
 
 **Dependencies (per `astraweave-dialogue/Cargo.toml`):**
 - Used by basic layer: `serde`, `serde_json`, `anyhow`, `toml` (stdlib + serde stack only)
-- Used by LLM layer only: `astraweave-llm`, `astraweave-embeddings`, `astraweave-context`, `astraweave-prompts`, `astraweave-rag`, `astraweave-persona`, `tokio (full)`, `async-trait`, `uuid`, `time`, `rand`, `regex`
+- Used by LLM layer only: `astraweave-llm`, `astraweave-embeddings`, `astraweave-context`, `astraweave-prompts`, `astraweave-rag`, `astraweave-persona`, `tokio (full)`, `async-trait`, `regex`
 
-The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls in six AstraWeave crates plus heavyweight async + regex + non-deterministic RNG. The dependency split mirrors the active/dormant split.
+The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls in six AstraWeave crates plus tokio and regex. The dependency split mirrors the active/dormant split.
 
 #### 13.4.5 Cross-subsystem touchpoints
 
@@ -1739,7 +1739,7 @@ The Coordination subsystem is the **multi-agent orchestration layer** designed f
 |---|---|---|
 | **`Agent`** trait | Async trait with 15 required methods: `agent_id`, `agent_type`, `get_state`, `set_state`, `handle_message`, `get_goals`, `set_goals`, `get_capabilities`, `can_handle_task`, `execute_task`, `get_resource_usage`, `get_event_subscriptions`, `handle_world_event`, `add_task`, `is_available`. `Send + Sync`. **Distinct from** `astraweave-ai::orchestrator::Orchestrator` (parent §3) — Coordination's `Agent` is broader, message-oriented, and async-by-default. | `agent.rs:11-58` |
 | **`AgentState`** | `#[non_exhaustive]` 6-variant enum: `Idle`, `Processing`, `WaitingForInput`, `Collaborating`, `Disabled`, `Error(String)`. Parallel to NPC's `NpcMode` (§13.3.3) and Director's `CoordinationStatus` but distinct. | `agent.rs:62-70` |
-| **`AgentMessage`** | `{ id: String, from: String, to: String, message_type: MessageType, content: serde_json::Value, timestamp: DateTime<Utc>, ... }`. The inter-agent message envelope. | `agent.rs:73-…` |
+| **`AgentMessage`** | `{ id: String, from: String, to: String, message_type: MessageType, content: serde_json::Value, timestamp: time::OffsetDateTime, ... }`. The inter-agent message envelope. | `agent.rs:73-…` |
 | **`AgentGoal`**, **`Task`**, **`TaskResult`** | Goal/task lifecycle types used by `Agent::execute_task`. | `agent.rs` |
 | **`WorldEvent`**, **`EventSeverity`** | World-event broadcast types used by `Agent::handle_world_event`. `EventSeverity` distribution defaults in `SeverityDistribution`: 40% trivial / 30% minor / 20% moderate / 8% major / 2% critical. | `agent.rs`, `world_events.rs:46-52` |
 | **`ResourceUsage`** | Per-agent resource accounting (CPU/memory/LLM-token tracking) returned by `Agent::get_resource_usage`. | `agent.rs` |

@@ -327,7 +327,7 @@ These block a claim that "gameplay replay" is already cross-OS. They are not fix
 | `.awsv` names and bundles include `Uuid::new_v4()` and `OffsetDateTime::now_utc()`. Greybox `WorldState.tick` is 0 and `state_hash` is the edit count | `persistence/aw-save`, greybox `save.rs` on #205 | QA hashes restored gameplay state, never file bytes. A later save API takes the id, the timestamp, and the tick from the sim |
 | Greybox checkpoint omits enemies, motor mode, attack phase, lock, tick, and `cover_broken` | PR #275 / #205 | `greybox_combat_save` is expected to fail until the checkpoint stores those fields. Implement the fields with the scenario, or accept the deferred issue and skip the check |
 | `auto_save_system` is empty and `replay_system` does not apply events | `astraweave-persistence-ecs` | QA does not call `PersistencePlugin` |
-| `astraweave-quests` stamps `Utc::now()` and `Instant::now()` | quests trace, crate `astraweave-quests` | Quest scenarios use `astraweave-weaving::QuestManager` and tick counts. The LLM quest layer stays out of the hashed sim until its clocks are tick fields |
+| `astraweave-quests` has no wall-clock crate. `generated_at` is a `u64` (`llm_quests.rs:434` sets `0`) | quests trace, crate `astraweave-quests` | Quest scenarios use `astraweave-weaving::QuestManager` and tick counts. The LLM quest layer stays out of the hashed sim |
 | The audio rapid-volume test shared `tests/assets` with cleanup | this branch, same fix as #289 | The beep is written in a private temp directory |
 | Two dialogue graphs (crate runner and editor panel) and two quest crates | quests trace | Bots bind the crate types named above. No third graph and no third quest type |
 

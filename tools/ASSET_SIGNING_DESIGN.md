@@ -425,8 +425,8 @@ async fn sign_with_kms(data: &[u8], key_id: &str) -> Result<Vec<u8>> {
 struct RootKeyRotation {
     old_root_pubkey: [u8; 32],
     new_root_pubkey: [u8; 32],
-    rotation_date: DateTime<Utc>,
-    grace_period_end: DateTime<Utc>,
+    rotation_date: time::OffsetDateTime,
+    grace_period_end: time::OffsetDateTime,
     signature_over_new: Vec<u8>, // Signed by old root key
 }
 ```
@@ -477,7 +477,7 @@ jobs:
 struct RevocationCertificate {
     revoked_pubkey: [u8; 32],
     reason: RevocationReason,
-    revocation_date: DateTime<Utc>,
+    revocation_date: time::OffsetDateTime,
     signature: Vec<u8>, // Signed by root key
 }
 
@@ -1003,8 +1003,8 @@ struct KeyCertificate {
     subject_pubkey: [u8; 32],
     subject_role: String, // "dev", "ci", "production"
     issuer_pubkey: [u8; 32], // Root key
-    valid_from: DateTime<Utc>,
-    valid_until: DateTime<Utc>,
+    valid_from: time::OffsetDateTime,
+    valid_until: time::OffsetDateTime,
     signature: Vec<u8>, // Signed by issuer
 }
 ```
@@ -1351,7 +1351,7 @@ cryptoki = "0.6"              # PKCS11 (for YubiKey/HSM)
 ed25519-dalek = "2.0"         # Already present
 sha2 = "0.10"                 # Already present
 serde = { version = "1", features = ["derive"] }
-chrono = "0.4"                # Timestamps, expiry
+time = { version = "0.3", features = ["formatting"] }  # Timestamps, expiry
 ```
 
 ### 11.4 Testing Strategy
@@ -1632,7 +1632,9 @@ pub fn sign_asset_file(
         asset_hash: hash_hex,
         signature: sig_b64,
         signer_role: key_role.to_string(),
-        signed_at: chrono::Utc::now().to_rfc3339(),
+        signed_at: time::OffsetDateTime::now_utc()
+            .format(&time::format_description::well_known::Rfc3339)
+            .expect("utc stamp"),
         tool_version: env!("CARGO_PKG_VERSION").to_string(),
     })
 }
