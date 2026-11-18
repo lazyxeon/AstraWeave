@@ -27,7 +27,7 @@ import threading
 import unittest
 
 import yaml
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr
 from pathlib import Path
 
 
@@ -787,10 +787,11 @@ exit 0
 """
 
 
-def _valid_sccache_archive(directory: Path) -> bytes:
+def _valid_sccache_archive(directory: Path, payload: bytes | None = None) -> bytes:
     filename, _arch = _host_sccache_filename()
     member = filename[: -len(".tar.gz")] + "/sccache"
-    payload = b"#!/bin/sh\necho sccache 0.19.0\n"
+    if payload is None:
+        payload = b"#!/bin/sh\necho sccache 0.19.0\n"
     source = directory / "sccache-payload"
     source.write_bytes(payload)
     archive_path = directory / filename
@@ -3640,10 +3641,17 @@ class WorkflowPolicyTest(unittest.TestCase):
         errors = mutation_ai_outcomes.verify_shard_outcomes(root / "outcomes.json")
         self.assertTrue(any(VERIFY_END_TIME_ERROR in err for err in errors))
         self.assertTrue(any(VERIFY_INCOMPLETE_ERROR in err for err in errors))
-        exit_code = mutation_ai_outcomes.main(
-            ["--verify-shard", str(root / "outcomes.json")]
-        )
+        captured = io.StringIO()
+        with redirect_stderr(captured):
+            exit_code = mutation_ai_outcomes.main(
+                ["--verify-shard", str(root / "outcomes.json")]
+            )
         self.assertEqual(exit_code, 1)
+        # The CLI reports with workflow commands. Capturing them keeps a
+        # rejected shard a failure without annotating the parent Gate step.
+        reported = captured.getvalue()
+        self.assertIn(VERIFY_END_TIME_ERROR, reported)
+        self.assertIn(VERIFY_INCOMPLETE_ERROR, reported)
 
     def test_mutation_ai_verify_errors_are_required(self) -> None:
         source = (ROOT / "scripts" / "ci" / "mutation_ai_outcomes.py").read_text(encoding="utf-8")
@@ -8415,7 +8423,9 @@ exit 1
     def test_sccache_shell_requires_shasum_256(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
-            blob = _valid_sccache_archive(work)
+            # Larger than a pipe buffer, so a stand-in that exits without
+            # reading makes tee fail the pipeline on every run.
+            blob = _valid_sccache_archive(work, os.urandom(80 * 1024))
             script = _script_pinned_to(work, hashlib.sha256(blob).hexdigest(), blob)
             _bind_fetch_node(script, Path(_fixture_node()))
             wrapper = work / "shasum-wrap"
@@ -8431,7 +8441,11 @@ exit 1
                 "  if [ \"$arg\" != -a ] && [ \"$arg\" != 256 ] && [ \"$arg\" != -- ]; then file=$arg; fi\n"
                 "  prev=$arg\n"
                 "done\n"
-                "if [ \"$flag\" -ne 1 ]; then printf '%s\\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0; fi\n"
+                "if [ \"$flag\" -ne 1 ]; then\n"
+                "  if [ -z \"$file\" ]; then /bin/cat >/dev/null || /usr/bin/cat >/dev/null; fi\n"
+                "  printf '%s\\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'\n"
+                "  exit 0\n"
+                "fi\n"
                 "if [ -n \"$file\" ]; then exec /usr/bin/sha256sum -- \"$file\"; fi\n"
                 "exec /usr/bin/sha256sum\n",
             )
