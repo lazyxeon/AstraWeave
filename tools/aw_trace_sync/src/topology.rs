@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 use crate::{domain_id, FrontMatter, TraceDoc};
 
@@ -56,6 +56,13 @@ pub struct TopologyDiff {
 }
 
 pub fn workspace_graph(root: &Path) -> Result<Graph> {
+    // `canonicalize` on Windows is a verbatim `\\?\` path. Cargo keeps that
+    // prefix on the workspace root, then round-trips a path dependency through
+    // a `file://` URL, which drops it. `C:\repo\member` does not start with
+    // `\\?\C:\repo`, and the manifest found by walking up is not the verbatim
+    // root, so Cargo skips the dependency. `astraweave-core` is a member only
+    // as that kind of path dependency. Explicit `members` entries still load.
+    let root = cargo_plain_path(root);
     let meta = cargo_metadata::MetadataCommand::new()
         .manifest_path(root.join("Cargo.toml"))
         .no_deps()
@@ -127,6 +134,25 @@ fn strip_root(root: &str, abs: &str) -> String {
         .unwrap_or(abs)
         .trim_start_matches('/')
         .to_string()
+}
+
+fn cargo_plain_path(path: &Path) -> PathBuf {
+    match path.to_str() {
+        Some(text) => std::path::PathBuf::from(strip_verbatim_prefix(text)),
+        None => path.to_path_buf(),
+    }
+}
+
+/// Drop a Windows verbatim prefix. `\\?\C:\repo` becomes `C:\repo`.
+/// `\\?\UNC\server\share\repo` becomes `\\server\share\repo`.
+fn strip_verbatim_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    path.to_string()
 }
 
 fn is_example_manifest(manifest: &str) -> bool {
@@ -2427,6 +2453,13 @@ mod tests {
             "examples/x/Cargo.toml"
         );
         assert_eq!(strip_root("/repo", "other/Cargo.toml"), "other/Cargo.toml");
+        assert_eq!(strip_verbatim_prefix(r"\\?\C:\repo"), r"C:\repo");
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\UNC\server\share\repo"),
+            r"\\server\share\repo"
+        );
+        assert_eq!(strip_verbatim_prefix(r"C:\repo"), r"C:\repo");
+        assert_eq!(strip_verbatim_prefix("/repo"), "/repo");
         assert!(is_example_manifest("examples/x/Cargo.toml"));
         assert!(is_example_manifest("a/examples/x/Cargo.toml"));
         assert!(!is_example_manifest("astraweave-core/Cargo.toml"));
