@@ -1574,8 +1574,8 @@ All listed in parent §5 enrichment above. Summary:
 | **Totals** | **6930** | **297** | |
 
 **Dependencies (per `astraweave-dialogue/Cargo.toml`):**
-- Used by basic layer: `astraweave-core`, `serde`, `serde_json`, `anyhow`, `toml`
-- Used by LLM layer only: `astraweave-llm`, `astraweave-embeddings`, `astraweave-context`, `astraweave-prompts`, `astraweave-rag`, `astraweave-persona`, `tokio (full)`, `async-trait`, `regex`
+- Used by basic layer: `serde`, `serde_json`, `anyhow`, `toml`
+- Used by LLM layer only: `astraweave-core`, `astraweave-llm`, `astraweave-embeddings`, `astraweave-context`, `astraweave-prompts`, `astraweave-rag`, `astraweave-persona`, `tokio (full)`, `async-trait`, `regex`
 
 The basic layer uses none of the LLM-stack deps. The crate depends on seven AstraWeave crates (`astraweave-core` plus the six LLM crates) along with tokio, async-trait, and regex. The dependency split mirrors the active/dormant split.
 

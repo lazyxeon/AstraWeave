@@ -69,7 +69,7 @@ impl ConsolidationEngine {
     /// Form temporal associations between memories
     fn form_temporal_associations(&self, memories: &mut [Memory]) -> Result<usize> {
         let mut associations_formed = 0;
-        let window_duration = time::Duration::hours(self.config.temporal_window_hours as i64);
+        let window_duration = temporal_window(self.config.temporal_window_hours);
 
         for i in 0..memories.len() {
             for j in (i + 1)..memories.len() {
@@ -232,6 +232,20 @@ pub struct ConsolidationResult {
     pub processing_time_ms: u64,
 }
 
+/// A configured hour count becomes a duration the clock can represent.
+///
+/// An unusable window matches no pair. A finite count that does not fit
+/// the duration range uses the largest duration.
+fn temporal_window(hours: f32) -> time::Duration {
+    if !hours.is_finite() || hours < 0.0 {
+        return time::Duration::new(-1, 0);
+    }
+    match (hours as i64).checked_mul(3_600) {
+        Some(seconds) => time::Duration::seconds(seconds),
+        None => time::Duration::MAX,
+    }
+}
+
 impl ConsolidationResult {
     /// Get total associations formed
     pub fn total_associations(&self) -> usize {
@@ -264,6 +278,8 @@ mod tests {
         let result = engine.consolidate(&mut memories).unwrap();
         assert!(result.total_associations() > 0);
         assert!(result.memories_processed == 2);
+        assert_eq!(memories[0].metadata.access_count, 1);
+        assert_eq!(memories[1].metadata.access_count, 1);
     }
 
     #[test]
@@ -275,5 +291,107 @@ mod tests {
 
         let similarity = engine.calculate_conceptual_similarity(&memory1, &memory2);
         assert!(similarity > 0.5); // Should be similar due to shared words and type
+    }
+
+    fn temporal_count(hours: f32) -> usize {
+        let engine = ConsolidationEngine::new(ConsolidationConfig {
+            temporal_window_hours: hours,
+            ..ConsolidationConfig::default()
+        });
+        let mut memories = vec![
+            Memory::episodic(
+                "Met John at the park".to_string(),
+                vec!["John".to_string()],
+                Some("park".to_string()),
+            ),
+            Memory::episodic(
+                "Played with John in the park".to_string(),
+                vec!["John".to_string()],
+                Some("park".to_string()),
+            ),
+        ];
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(30);
+        memories[0].metadata.created_at = now;
+        memories[1].metadata.created_at = now - time::Duration::days(10);
+        engine
+            .consolidate(&mut memories)
+            .expect("consolidate")
+            .temporal_associations
+    }
+
+    #[test]
+    fn a_wide_temporal_window_still_links_memories() {
+        assert_eq!(temporal_count(3e15_f32), 1);
+    }
+
+    #[test]
+    fn an_unusable_temporal_window_links_nothing() {
+        assert_eq!(temporal_count(f32::NAN), 0);
+        assert_eq!(temporal_count(f32::INFINITY), 0);
+        assert_eq!(temporal_count(f32::NEG_INFINITY), 0);
+        assert_eq!(temporal_count(-0.5), 0);
+    }
+
+    #[test]
+    fn a_zero_hour_window_links_memories_from_the_same_instant() {
+        assert_eq!(same_instant_count(0.0), 1);
+        assert_eq!(same_instant_count(-0.5), 0);
+    }
+
+    fn same_instant_count(hours: f32) -> usize {
+        let engine = ConsolidationEngine::new(ConsolidationConfig {
+            temporal_window_hours: hours,
+            ..ConsolidationConfig::default()
+        });
+        let mut memories = vec![
+            Memory::episodic(
+                "Met John at the park".to_string(),
+                vec!["John".to_string()],
+                Some("park".to_string()),
+            ),
+            Memory::episodic(
+                "Played with John in the park".to_string(),
+                vec!["John".to_string()],
+                Some("park".to_string()),
+            ),
+        ];
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(30);
+        memories[0].metadata.created_at = now;
+        memories[1].metadata.created_at = now;
+        engine
+            .consolidate(&mut memories)
+            .expect("consolidate")
+            .temporal_associations
+    }
+
+    #[test]
+    fn temporal_strength_uses_the_fraction_of_the_window() {
+        let engine = ConsolidationEngine::new(ConsolidationConfig {
+            temporal_window_hours: 24.0,
+            ..ConsolidationConfig::default()
+        });
+        let mut memories = vec![
+            Memory::episodic(
+                "north ridge".to_string(),
+                vec!["scout".to_string()],
+                Some("ridge".to_string()),
+            ),
+            Memory::episodic(
+                "south ford".to_string(),
+                vec!["courier".to_string()],
+                Some("ford".to_string()),
+            ),
+        ];
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::days(30);
+        memories[0].metadata.created_at = now;
+        memories[1].metadata.created_at = now - time::Duration::hours(18);
+        engine.consolidate(&mut memories).expect("consolidate");
+        let strength = memories[0]
+            .associations
+            .iter()
+            .find(|assoc| assoc.association_type == AssociationType::Temporal)
+            .expect("temporal association")
+            .strength;
+        assert!((strength - 0.75).abs() < 1e-5);
     }
 }

@@ -185,7 +185,9 @@ impl AIMetrics {
 // MAIN ENTRY POINT
 // ============================================================================
 
+/// Opens a window and needs a GPU, so mutation testing leaves this entry alone.
 #[cfg(feature = "visual")]
+#[mutants::skip]
 fn main() -> Result<()> {
     visual_demo::run_visual_demo()
 }
@@ -1520,5 +1522,18 @@ mod utc_rfc3339_pins {
         );
         assert_eq!(year_text(10_000), "+10000");
         assert_eq!(year_text(-10_000), "-10000");
+    }
+}
+
+#[cfg(all(test, feature = "metrics"))]
+mod metrics_tests {
+    use super::*;
+
+    #[test]
+    fn single_demo_records_classical_metrics() {
+        let metrics = run_single_demo(AIMode::Classical).expect("classical demo");
+        assert_eq!(metrics.mode, "Classical (RuleOrchestrator)");
+        assert!(metrics.success);
+        assert!(!metrics.timestamp.is_empty());
     }
 }

@@ -1,3 +1,5 @@
+#![cfg(not(feature = "visual"))]
+
 use std::path::PathBuf;
 use std::process::Command;
 

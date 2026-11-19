@@ -593,6 +593,12 @@ Focus on narrative consistency, logical causation, and player engagement opportu
         let storyline_data: StorylineData = astraweave_llm::parse_bounded_model_json(&response)
             .map_err(|e| anyhow!("Failed to parse storyline: {}", e))?;
 
+        let start_time = time::OffsetDateTime::now_utc();
+        let estimated_end_time = Some(Self::estimated_storyline_end(
+            start_time,
+            storyline_data.total_phases,
+        )?);
+
         let storyline = Storyline {
             id: Uuid::new_v4().to_string(),
             title: storyline_data.title,
@@ -602,11 +608,8 @@ Focus on narrative consistency, logical causation, and player engagement opportu
             current_phase: 1,
             total_phases: storyline_data.total_phases,
             participants: Vec::new(),
-            start_time: time::OffsetDateTime::now_utc(),
-            estimated_end_time: Some(Self::estimated_storyline_end(
-                time::OffsetDateTime::now_utc(),
-                storyline_data.total_phases,
-            )),
+            start_time,
+            estimated_end_time,
             status: StorylineStatus::Planning,
             branching_points: Vec::new(), // Would be parsed from storyline_data
         };
@@ -717,8 +720,13 @@ Focus on narrative consistency, logical causation, and player engagement opportu
         !world_state.player_data.recent_actions.is_empty()
     }
 
-    fn estimated_storyline_end(start: time::OffsetDateTime, phases: u32) -> time::OffsetDateTime {
-        start + time::Duration::hours(i64::from(phases))
+    fn estimated_storyline_end(
+        start: time::OffsetDateTime,
+        phases: u32,
+    ) -> Result<time::OffsetDateTime> {
+        start
+            .checked_add(time::Duration::hours(i64::from(phases)))
+            .ok_or_else(|| anyhow!("storyline span is out of range"))
     }
 
     /// Determine the type of trigger for the next event
@@ -1148,12 +1156,18 @@ mod survivor_tests {
     #[test]
     fn storyline_end_is_start_plus_phase_hours() {
         let start = time::OffsetDateTime::UNIX_EPOCH;
-        let end = WorldEventGenerator::estimated_storyline_end(start, 4);
+        let end = WorldEventGenerator::estimated_storyline_end(start, 4).expect("four phases");
         assert_eq!(end, start + time::Duration::hours(4));
         assert_eq!(
-            WorldEventGenerator::estimated_storyline_end(start, 0),
+            WorldEventGenerator::estimated_storyline_end(start, 0).expect("zero phases"),
             start
         );
+    }
+
+    #[test]
+    fn a_storyline_span_past_the_clock_range_is_rejected() {
+        let start = time::OffsetDateTime::UNIX_EPOCH;
+        assert!(WorldEventGenerator::estimated_storyline_end(start, 80_000_000).is_err());
     }
 
     #[tokio::test]

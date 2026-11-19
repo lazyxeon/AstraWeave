@@ -21,6 +21,8 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 time = { version = "0.3", optional = true }
+# Marks the windowed entry so mutation testing leaves it alone. No runtime effect.
+mutants = { version = "0.0.4", optional = true }
 
 # Visual demo dependencies (enable with --features visual)
 astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "assets", "textures"], optional = true }
@@ -72,7 +74,8 @@ visual = [
     "egui-wgpu",
     "rand",
     "ollama",
-    "tokio"
+    "tokio",
+    "dep:mutants",
 ]
 
 

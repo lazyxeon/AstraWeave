@@ -465,9 +465,22 @@ impl WorkingMemoryComponent {
     }
 
     fn cleanup_old_tasks_at(&mut self, now: time::OffsetDateTime) {
-        let cutoff = now - time::Duration::seconds(self.retention_duration as i64);
+        let Some(cutoff) = retention_cutoff(now, self.retention_duration) else {
+            return;
+        };
         self.active_tasks.retain(|task| task.added_at > cutoff);
     }
+}
+
+/// Saved retention that is not a usable span leaves the task list unchanged.
+fn retention_cutoff(
+    now: time::OffsetDateTime,
+    retention_duration: f32,
+) -> Option<time::OffsetDateTime> {
+    if !retention_duration.is_finite() || retention_duration < 0.0 {
+        return None;
+    }
+    now.checked_sub(time::Duration::seconds(retention_duration as i64))
 }
 
 impl SocialMemoryComponent {
@@ -613,6 +626,38 @@ mod survivor_tests {
             .collect();
         assert!(!ids.contains(&exact.as_str()));
         assert!(ids.contains(&newer.as_str()));
+    }
+
+    #[test]
+    fn an_unusable_retention_keeps_every_task() {
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_000);
+        for retention in [
+            4e11_f32,
+            -4e11_f32,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            -1.0,
+        ] {
+            let mut memory = WorkingMemoryComponent {
+                retention_duration: retention,
+                ..WorkingMemoryComponent::default()
+            };
+            let id = memory.add_task("keep".into(), 0.5, serde_json::json!(null));
+            memory.active_tasks[0].added_at = now;
+            memory.cleanup_old_tasks_at(now);
+            assert_eq!(memory.active_tasks.len(), 1, "{retention}");
+            assert_eq!(memory.active_tasks[0].id, id);
+        }
+
+        let mut zero = WorkingMemoryComponent {
+            retention_duration: 0.0,
+            ..WorkingMemoryComponent::default()
+        };
+        zero.add_task("now".into(), 0.5, serde_json::json!(null));
+        zero.active_tasks[0].added_at = now;
+        zero.cleanup_old_tasks_at(now);
+        assert!(zero.active_tasks.is_empty());
     }
 
     #[test]

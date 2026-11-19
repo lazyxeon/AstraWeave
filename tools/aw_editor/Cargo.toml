@@ -142,7 +142,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "aw_editor"
 path = "src/main.rs"
-test = false
 bench = false
 
 [[bin]]

@@ -10336,3 +10336,74 @@ fn main() -> Result<()> {
     .map_err(|e| anyhow::anyhow!("Failed to run eframe: {}", e))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = PathBuf::from("target")
+            .join("aw-editor-recovery")
+            .join(name);
+        fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn app_in(dir: &std::path::Path) -> EditorApp {
+        let mut app = EditorApp::default();
+        app.lock_file_path = dir.join("session.lock");
+        app.recent_files.set_storage_path(dir.join("recent.json"));
+        app.splash = None;
+        app
+    }
+
+    #[test]
+    fn recover_from_autosave_loads_the_scene_and_clears_the_dialog() {
+        let dir = scratch("recover");
+        let scene = dir.join("recovered.scene.ron");
+        scene_serialization::save_scene(&World::new(), &scene).expect("save");
+        let mut app = app_in(&dir);
+        app.recovery_autosave_path = Some(scene.clone());
+        app.show_recovery_dialog = true;
+
+        app.recover_from_autosave();
+
+        assert!(!app.show_recovery_dialog);
+        assert!(app.recovery_autosave_path.is_none());
+        assert_eq!(app.current_scene_path.as_deref(), Some(scene.as_path()));
+        assert!(app.status.starts_with("Loaded:"));
+        assert!(app.lock_file_path.is_file());
+    }
+
+    #[test]
+    fn decline_recovery_drops_the_offer_and_logs_it() {
+        let dir = scratch("decline");
+        let mut app = app_in(&dir);
+        app.recovery_autosave_path = Some(dir.join("stale.scene.ron"));
+        app.show_recovery_dialog = true;
+
+        app.decline_recovery();
+
+        assert!(app.recovery_autosave_path.is_none());
+        assert!(!app.show_recovery_dialog);
+        assert!(app
+            .console_logs
+            .iter()
+            .any(|line| line.contains("Recovery declined")));
+        assert!(app.lock_file_path.is_file());
+    }
+
+    #[test]
+    fn one_update_records_a_frame() {
+        let dir = scratch("update");
+        let mut app = app_in(&dir);
+        let ctx = egui::Context::default();
+        let mut frame = eframe::Frame::_new_kittest();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            eframe::App::update(&mut app, ctx, &mut frame);
+        });
+        assert!(app.style_applied);
+        assert_eq!(app.startup_assert_frames, 29);
+        assert!(app.last_update_end.is_some());
+    }
+}
