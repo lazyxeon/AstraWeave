@@ -924,11 +924,17 @@ fn html_links_anchor(html: &str, anchor: &str) -> bool {
 
 /// Tables, strikethrough, task lists, and the GFM blockquote tags. Fences
 /// and code spans are CommonMark and stay on without these flags.
+///
+/// pulldown-cmark 0.13.6 stores these as bits 1, 3, 4, and 11. The bits do not
+/// overlap, so OR and XOR of the four constants are the same set. `insert`
+/// sets each bit and leaves the others, which is that set.
 fn gfm_options() -> Options {
-    Options::ENABLE_TABLES
-        | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TASKLISTS
-        | Options::ENABLE_GFM
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_GFM);
+    options
 }
 
 fn heading_slugs(md: &str) -> BTreeSet<String> {
@@ -1100,7 +1106,10 @@ impl AnchorScan {
                     } else {
                         ids.extend(tag.ids);
                     }
-                    i += 1 + tag.consumed;
+                    // `consumed` counts the bytes after `<`. Both adds stay
+                    // below `usize::MAX` because `i` and `consumed` are indexes
+                    // into this buffer.
+                    i = i.saturating_add(1).saturating_add(tag.consumed);
                 }
                 Lt::NotTag => i += 1,
             }
@@ -1110,11 +1119,14 @@ impl AnchorScan {
 
 /// Move `i` forward by `consumed` bytes. A step that does not advance, or that
 /// lands past `len`, stops the scan.
+///
+/// After `checked_add` succeeds, `next == *i` exactly when `consumed == 0`,
+/// and `next > *i` otherwise. `next <= *i` is the same test as `consumed == 0`.
 fn advance_bytes(i: &mut usize, consumed: usize, len: usize) -> bool {
     let Some(next) = i.checked_add(consumed) else {
         return false;
     };
-    if consumed == 0 || next <= *i || next > len {
+    if consumed == 0 || next > len {
         return false;
     }
     *i = next;
@@ -1126,6 +1138,9 @@ fn comment_end(s: &str) -> Option<(usize, usize)> {
     let dash = s.find("-->").map(|i| (i, 3));
     let bang = s.find("--!>").map(|i| (i, 4));
     match (dash, bang) {
+        // `-->` wins when it starts at or before `--!>`. The two needles
+        // cannot start at the same byte, so `<` would drop a `-->` that
+        // starts strictly earlier.
         (Some(dash), Some(bang)) if dash.0 <= bang.0 => Some(dash),
         (Some(_), Some(bang)) => Some(bang),
         (Some(dash), None) => Some(dash),
@@ -1137,10 +1152,12 @@ fn comment_end(s: &str) -> Option<(usize, usize)> {
 fn carry_comment(s: &str) -> String {
     let dash = carry_tail(s, "-->");
     let bang = carry_tail(s, "--!>");
-    if bang.len() > dash.len() {
-        bang
-    } else {
-        dash
+    // One suffix per length, so equal lengths are the same string. Greater
+    // is the only arm that must return `bang`; equal and shorter both return
+    // `dash`, and that string is `bang` when the lengths match.
+    match bang.len().cmp(&dash.len()) {
+        std::cmp::Ordering::Greater => bang,
+        std::cmp::Ordering::Equal | std::cmp::Ordering::Less => dash,
     }
 }
 
@@ -1201,9 +1218,10 @@ fn select_end(s: &str) -> SelectEnd {
                         j += 1;
                     }
                 }
-            } else if s.len() - name_at < "select".len()
-                && "select".starts_with(&s[name_at..].to_ascii_lowercase())
-            {
+            // A longer tail is not a prefix of "select", and the exact word
+            // was handled above (`name_at` is on a char boundary for this ASCII
+            // name). `starts_with` is that incomplete-prefix test by itself.
+            } else if "select".starts_with(&s[name_at..].to_ascii_lowercase()) {
                 return SelectEnd::Open(i);
             }
         }
@@ -1249,7 +1267,8 @@ fn classify_lt(s: &str) -> Lt {
         return comment_at(rest);
     }
     if rest.starts_with("![CDATA[") {
-        return Lt::Enter(Skip::Cdata, 1 + "![CDATA[".len());
+        // `s` still includes the `<`. 1 + len("![CDATA[") is len("<![CDATA[").
+        return Lt::Enter(Skip::Cdata, "<![CDATA[".len());
     }
     if "![CDATA[".starts_with(rest) {
         return Lt::NeedMore;
@@ -1273,10 +1292,11 @@ fn classify_lt(s: &str) -> Lt {
 
 /// `rest` is the bytes after `<` and is either a prefix of `!--` or starts with it.
 fn comment_at(rest: &str) -> Lt {
-    if rest.len() < 3 {
+    // `get` is None exactly when fewer than 3 bytes are left. A 3-byte `!--`
+    // has an empty tail and is NeedMore below, same as a shorter prefix.
+    let Some(after) = rest.get(3..) else {
         return Lt::NeedMore;
-    }
-    let after = &rest[3..];
+    };
     if after.is_empty() || after == "-" {
         return Lt::NeedMore;
     }
@@ -1326,7 +1346,8 @@ fn end_tag(rest: &str) -> Lt {
         if b[i] == b'>' {
             // `i` is the `>` inside the bytes after `<`, so the caller, which
             // starts at `<`, consumes `i + 2` bytes.
-            let Some(consumed) = i.checked_add(2).filter(|next| *next > i) else {
+            // `checked_add(2)` is `i + 2` when it succeeds, which is greater than `i`.
+            let Some(consumed) = i.checked_add(2) else {
                 return Lt::NeedMore;
             };
             return Lt::Skip { consumed };
@@ -1414,8 +1435,9 @@ fn parse_start_tag(s: &str) -> StartTag {
             i += 1;
             continue;
         }
+        // The first byte already passed `is_name_start`, which is an attr
+        // byte, so the loop consumes it. Skipping it first ends at the same index.
         let attr_at = i;
-        i += 1;
         while i < b.len() && is_attr_char(b[i]) {
             let tick = i;
             i = i.saturating_add(1);
@@ -2476,6 +2498,9 @@ mod tests {
         assert_eq!(select_s("</SELECT>"), "closed:9");
         assert_eq!(select_s("x</select>"), "closed:10");
         assert_eq!(select_s("</sel"), "open:0");
+        assert_eq!(select_s("<s"), "open:2");
+        assert_eq!(select_s("</division>"), "open:11");
+        assert_eq!(select_s("</divisi>"), "open:9");
         assert_eq!(select_s("</div>"), "open:6");
         assert_eq!(select_s("</select "), "open:0");
         assert_eq!(select_s("</select id='>'>"), "closed:16");
@@ -2490,9 +2515,28 @@ mod tests {
         assert_eq!(start_s("a id='z'>"), "a@9:[\"z\"]");
         assert_eq!(start_s("a id id=z>"), "a@10:[]");
         assert_eq!(start_s("a name=n>"), "a@9:[\"n\"]");
+        assert_eq!(start_s("a id"), "more");
+        assert_eq!(start_s("a id=xy"), "more");
+        assert_eq!(start_s("a id "), "more");
+        assert_eq!(start_s("a id= "), "more");
+        assert_eq!(start_s("a_b>"), "a_b@4:[]");
+        assert_eq!(start_s("a:b>"), "a:b@4:[]");
+        assert_eq!(start_s("div name=z>"), "div@11:[]");
+        assert_eq!(start_s("a class name=\"z\">"), "a@17:[\"z\"]");
+        assert_eq!(
+            html_escape("a&b<c>d\"e'f"),
+            "a&amp;b&lt;c&gt;d&quot;e&#39;f"
+        );
+        assert_eq!(start_s("a id = \"z\">"), "a@11:[\"z\"]");
+        assert_eq!(start_s("a id= \"z\">"), "a@10:[\"z\"]");
+        assert_eq!(start_s("a id='z' >"), "a@10:[\"z\"]");
         assert_eq!(start_s("br/>"), "br@4:[]");
         assert_eq!(start_s("div class=a>"), "div@12:[]");
         assert_eq!(lt_s("</div>"), "skip:6");
+        assert_eq!(lt_s("<!"), "more");
+        assert_eq!(lt_s("<!--"), "more");
+        assert_eq!(lt_s("<!-->"), "skip:5");
+        assert_eq!(lt_s("<![CDATA[x>"), "enter:9");
         assert_eq!(lt_s("</>"), "skip:3");
         assert_eq!(lt_s("<a id=\"z\">"), "start:a@9:[\"z\"]");
         assert_eq!(
@@ -2512,5 +2556,261 @@ mod tests {
             vec!["5-active-file-map".to_string()]
         );
         assert!(required_anchors("<a href=\"#5-active-file-map-extra\">").is_empty());
+    }
+
+    fn pkg(name: &str, manifest: &str) -> Pkg {
+        Pkg {
+            name: name.to_string(),
+            is_example: manifest.starts_with("examples/") || manifest.contains("/examples/"),
+            manifest: manifest.to_string(),
+        }
+    }
+
+    fn trace_owning(domain: &str, name: &str) -> TraceDoc {
+        let y = format!(
+            "schema_version: 1\ntrace_id: t\ntitle: T\ndescription: D\n\
+             primary_crate: {name}\ndomain: {domain}\nlifecycle_status: active\n\
+             integration_status: wired\nowns:\n  - {name}\n\
+             doc_version: \"1.0\"\nlast_verified_commit: abc\n"
+        );
+        TraceDoc {
+            stem: "t".into(),
+            fm: Some(yaml_serde::from_str(&y).expect("front-matter")),
+            fm_error: None,
+            body: String::new(),
+        }
+    }
+
+    #[test]
+    fn reconciliation_counts_non_examples_and_fills_a_single_note() {
+        let graph = Graph {
+            packages: vec![
+                pkg("a", "a/Cargo.toml"),
+                pkg("b", "b/Cargo.toml"),
+                pkg("ex", "examples/ex/Cargo.toml"),
+            ],
+            deps: BTreeMap::new(),
+        };
+        let mut data = serde_json::json!({ "reconciliationNotes": ["old"] });
+        sync_reconciliation(&mut data, &graph);
+        let notes = data["reconciliationNotes"].as_array().unwrap();
+        assert_eq!(notes.len(), 2, "{notes:?}");
+        let first = notes[0].as_str().unwrap();
+        assert!(
+            first.contains("3 workspace members: 2 non-example crates and 1 examples"),
+            "{first}"
+        );
+        assert!(notes[1].as_str().unwrap().starts_with("Examples count: 1 "));
+    }
+
+    #[test]
+    fn new_node_takes_the_domain_only_from_the_matching_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let labels = BTreeMap::new();
+        let owned = new_node(
+            "alpha",
+            &pkg("alpha", "alpha/Cargo.toml"),
+            &[trace_owning("ai", "alpha")],
+            &labels,
+            dir.path(),
+        );
+        assert_eq!(owned["domain"], "ai");
+        let other = new_node(
+            "alpha",
+            &pkg("alpha", "alpha/Cargo.toml"),
+            &[trace_owning("ai", "beta")],
+            &labels,
+            dir.path(),
+        );
+        assert_eq!(other["domain"], "core");
+    }
+
+    #[test]
+    fn untraced_tool_evidence_accepts_either_tools_path_spelling() {
+        assert_eq!(
+            new_node_evidence("t", "tools/t/Cargo.toml", None),
+            "Untraced workspace tool `t`."
+        );
+        assert_eq!(
+            new_node_evidence("t", "x/tools/t/Cargo.toml", None),
+            "Untraced workspace tool `t`."
+        );
+        assert_eq!(
+            new_node_evidence("c", "crates/c/Cargo.toml", None),
+            "Untraced workspace crate `c`."
+        );
+    }
+
+    #[test]
+    fn refresh_loc_records_a_count_change_and_a_band_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("demo").join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(src.join("lib.rs"), "fn a() {}\nfn b() {}\n").unwrap();
+        let demo = pkg("demo", "demo/Cargo.toml");
+
+        let mut count_only = serde_json::json!({"locApprox": 0, "locBand": "small"});
+        let mut diff = TopologyDiff::default();
+        refresh_loc(&mut count_only, dir.path(), &demo, &mut diff);
+        assert_eq!(
+            diff.loc_changes,
+            vec!["demo loc 0/small -> 2/small".to_string()]
+        );
+
+        let mut band_only = serde_json::json!({"locApprox": 2, "locBand": "medium"});
+        let mut diff = TopologyDiff::default();
+        refresh_loc(&mut band_only, dir.path(), &demo, &mut diff);
+        assert_eq!(
+            diff.loc_changes,
+            vec!["demo loc 2/medium -> 2/small".to_string()]
+        );
+
+        let mut same = serde_json::json!({"locApprox": 2, "locBand": "small"});
+        let mut diff = TopologyDiff::default();
+        refresh_loc(&mut same, dir.path(), &demo, &mut diff);
+        assert!(diff.loc_changes.is_empty());
+    }
+
+    #[test]
+    fn a_later_whole_anchor_still_counts_after_a_longer_token() {
+        assert!(html_links_anchor("xx#name\"", "name"));
+        assert!(html_links_anchor("#name-extra \"#name'", "name"));
+        assert!(html_links_anchor("pre#name`", "name"));
+        assert!(!html_links_anchor("#name-extra", "name"));
+        assert!(!html_links_anchor("nope", "name"));
+    }
+
+    #[test]
+    fn gfm_options_enable_each_listed_flag() {
+        use pulldown_cmark::Options;
+        assert_eq!(
+            gfm_options(),
+            Options::ENABLE_TABLES
+                | Options::ENABLE_STRIKETHROUGH
+                | Options::ENABLE_TASKLISTS
+                | Options::ENABLE_GFM
+        );
+    }
+
+    #[test]
+    fn comment_end_picks_the_closer_that_starts_first() {
+        assert_eq!(comment_end("--> and --!>"), Some((0, 3)));
+        assert_eq!(comment_end("--!> then -->"), Some((0, 4)));
+        assert_eq!(comment_end("-->"), Some((0, 3)));
+        assert_eq!(comment_end("--!>"), Some((0, 4)));
+        assert_eq!(comment_end("nope"), None);
+    }
+
+    #[test]
+    fn carry_comment_keeps_the_longer_unclosed_prefix() {
+        assert_eq!(carry_comment("--!"), "--!");
+        assert_eq!(carry_comment("-->"), "-->");
+        assert_eq!(carry_comment("-"), "-");
+        assert_eq!(carry_comment("x"), "");
+        assert_eq!(carry_tail("é", "-->"), "");
+        assert_eq!(carry_tail("é>", ">"), ">");
+    }
+
+    #[test]
+    fn a_multibyte_char_does_not_swallow_the_following_anchor() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["é<a id=\"z\"></a>"]),
+            vec!["z".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_closer_at_the_front_of_the_skip_still_reveals_the_anchor() {
+        assert_eq!(
+            anchor_ids_in_chunks(&["<?><a id=\"z\"></a>"]),
+            vec!["z".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<!----><a id=\"z\"></a>"]),
+            vec!["z".to_string()]
+        );
+        assert_eq!(
+            anchor_ids_in_chunks(&["<![CDATA[><a id=\"z\"></a>"]),
+            vec!["z".to_string()]
+        );
+    }
+
+    #[test]
+    fn advance_bytes_rejects_a_stall_and_a_step_past_the_end() {
+        let mut i = 2usize;
+        assert!(!advance_bytes(&mut i, 0, 10));
+        assert_eq!(i, 2);
+        assert!(!advance_bytes(&mut i, 9, 10));
+        assert_eq!(i, 2);
+        assert!(advance_bytes(&mut i, 3, 10));
+        assert_eq!(i, 5);
+    }
+
+    #[test]
+    fn sync_topology_keeps_only_edges_between_real_nodes() {
+        let dir = tempfile::tempdir().unwrap();
+        let graph = Graph {
+            packages: vec![
+                pkg("alpha", "alpha/Cargo.toml"),
+                pkg("beta", "beta/Cargo.toml"),
+                pkg("gamma", "gamma/Cargo.toml"),
+                pkg("ex", "examples/ex/Cargo.toml"),
+                pkg("shared", "shared/Cargo.toml"),
+                pkg("shared", "examples/shared/Cargo.toml"),
+            ],
+            deps: BTreeMap::from([
+                (("alpha".into(), "beta".into()), false),
+                (("alpha".into(), "gamma".into()), false),
+                (("alpha".into(), "ghost".into()), false),
+                (("ex".into(), "beta".into()), false),
+                (("alpha".into(), "ex".into()), true),
+                (("shared".into(), "beta".into()), false),
+            ]),
+        };
+        let mut data = serde_json::json!({ "nodes": [], "edges": [] });
+        let diff = sync_topology(&mut data, &graph, dir.path(), &[]).unwrap();
+        let missing: BTreeSet<_> = diff.missing_edges.iter().cloned().collect();
+        assert!(missing.contains("alpha -> beta"), "{missing:?}");
+        assert!(missing.contains("alpha -> gamma"), "{missing:?}");
+        assert!(
+            missing.contains("examples_collapsed -> beta"),
+            "{missing:?}"
+        );
+        assert!(!missing.iter().any(|e| e.contains("ghost")), "{missing:?}");
+        assert!(!missing.contains("alpha -> ex"), "{missing:?}");
+        assert!(!missing.contains("ex -> beta"), "{missing:?}");
+        assert!(!missing.contains("shared -> beta"), "{missing:?}");
+        assert!(
+            !missing.contains("examples_collapsed -> gamma"),
+            "{missing:?}"
+        );
+
+        let mut seeded = serde_json::json!({
+            "nodes": [],
+            "edges": [{
+                "source": "alpha",
+                "target": "beta",
+                "kind": "declared-unused",
+                "optional": false
+            }]
+        });
+        let diff = sync_topology(&mut seeded, &graph, dir.path(), &[]).unwrap();
+        assert!(
+            !diff.missing_edges.iter().any(|e| e == "alpha -> beta"),
+            "{:?}",
+            diff.missing_edges
+        );
+        assert!(
+            diff.optional_changes.is_empty(),
+            "{:?}",
+            diff.optional_changes
+        );
+        let edge = seeded["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["source"] == "alpha" && e["target"] == "beta")
+            .unwrap();
+        assert_eq!(edge["kind"], "declared-unused");
     }
 }

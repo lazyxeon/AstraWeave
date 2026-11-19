@@ -554,7 +554,8 @@ fn scan_js(src: &str, out: &mut BTreeSet<String>, steps: &mut u64, limit: u64) {
             Tok::LBrack if prev_is_value(&tokens, i) => {
                 if let Some(end) = mate[i] {
                     note_computed(&tokens, &mate, i, end, &stringish, out, steps, limit);
-                    i = end + 1;
+                    // `end` is an index of `]`, so `end + 1` cannot overflow.
+                    i = end.saturating_add(1);
                     continue;
                 }
                 out.insert("scan failed closed".to_string());
@@ -697,7 +698,9 @@ fn alt_status(
     let mut saw_unknown = false;
     let mut saw = false;
     let mut i = start;
-    while i <= end && i < tokens.len() {
+    // Both callers pass `end <= tokens.len() - 1` (`end - 1` of an in-range
+    // index, or `expr_end(...) - 1` with `expr_end` at most `tokens.len()`).
+    while i <= end {
         *spins = spins.saturating_add(1);
         if past_cap(*spins, tokens.len().saturating_mul(4).saturating_add(8)) {
             return None;
@@ -730,7 +733,7 @@ fn alt_status(
     }
     if seg <= end {
         fold_status(
-            receiver_status(tokens, mate, end.min(tokens.len() - 1), name, spins),
+            receiver_status(tokens, mate, end, name, spins),
             &mut saw,
             &mut saw_true,
             &mut saw_unknown,
@@ -840,7 +843,9 @@ fn binding_before(var_name: &str, before: usize) -> Option<(usize, usize)> {
 fn collect_binds(tokens: &[Tok]) -> Vec<Bind> {
     let mut found = Vec::new();
     let mut i = 0;
-    while i < tokens.len() {
+    // `get` is None at `tokens.len()`, which is the same stop as `i < len`.
+    // The body only uses `get`, so that extra index would not record a bind.
+    while tokens.get(i).is_some() {
         let decl = matches!(tokens.get(i), Some(Tok::Ident(kw)) if matches!(kw.as_str(), "const" | "let" | "var"));
         if decl
             && matches!(tokens.get(i + 1), Some(Tok::Ident(_)))
@@ -857,10 +862,17 @@ fn collect_binds(tokens: &[Tok]) -> Vec<Bind> {
                 });
             }
             let tick = i;
-            match step_index(tick) {
-                Some(next) if next > tick => i = next,
-                _ => return Vec::new(),
+            // `step_index` yields `tick + 1` or `None`. A match guard would
+            // survive as `true`, because that is the only `Some`. Compare
+            // after the match so `!=` rejects every real step.
+            let next = match step_index(tick) {
+                Some(next) => next,
+                None => return Vec::new(),
+            };
+            if next != tick.saturating_add(1) {
+                return Vec::new();
             }
+            i = next;
             continue;
         }
         let assign = matches!(tokens.get(i), Some(Tok::Ident(_)))
@@ -879,10 +891,15 @@ fn collect_binds(tokens: &[Tok]) -> Vec<Bind> {
             }
         }
         let tick = i;
-        match step_index(tick) {
-            Some(next) if next > tick => i = next,
-            _ => return Vec::new(),
+        // Same post-match check as the declaration arm.
+        let next = match step_index(tick) {
+            Some(next) => next,
+            None => return Vec::new(),
+        };
+        if next != tick.saturating_add(1) {
+            return Vec::new();
         }
+        i = next;
     }
     found
 }
@@ -1027,10 +1044,9 @@ fn note_dot(
             out.insert(format!("member call {name}"));
             return;
         }
-        if receiver_is("location") && name == "href" {
-            out.insert("member call href".to_string());
-            return;
-        }
+        // `href` is not `setAttribute`, `createElement`, or a MEMBER_CALL name,
+        // so `note_member_call` inserts `member call href` and returns. A
+        // location test would insert that same string and return.
         note_member_call(name, tokens, paren, stringish, out, steps, limit);
     } else if assign_follows(tokens, after) {
         if dot
@@ -1040,9 +1056,10 @@ fn note_dot(
         {
             out.insert("style resource".to_string());
         }
-        if receiver_is("location") && name == "href" {
-            out.insert("member assign href".to_string());
-        } else if name == "textContent" {
+        // `href` is not `textContent` and it is not in MEMBER_ASSIGN, so the
+        // last branch inserts `member assign href`. Any other name skips a
+        // location-and-href test, and the receiver is not read again here.
+        if name == "textContent" {
             if !inside_function(tokens, dot, "setText", steps, limit) {
                 out.insert("member assign textContent".to_string());
             }
@@ -1178,11 +1195,9 @@ fn note_member_call(
     }
     if !allowed(MEMBER_CALL, name) {
         out.insert(format!("member call {name}"));
-        return;
     }
-    if name == "setTimeout" || name == "setInterval" {
-        note_timer(tokens, paren, stringish, out);
-    }
+    // `setTimeout` and `setInterval` are not MEMBER_CALL names, so the insert
+    // above already handled them. A timer check here would not run.
 }
 
 fn note_bare_call(
@@ -1192,10 +1207,8 @@ fn note_bare_call(
     stringish: &BTreeSet<String>,
     out: &mut BTreeSet<String>,
 ) {
-    if name == "eval" || name == "Function" {
-        out.insert(format!("bare {name}"));
-        return;
-    }
+    // `eval` and `Function` are not BARE_CALL names, so the branch below
+    // inserts `bare {name}` and returns. An earlier comparison is the same insert.
     if name == "el" {
         note_el(tokens, paren, out);
         return;
@@ -1214,7 +1227,9 @@ fn note_tagged(name: &str, out: &mut BTreeSet<String>) {
         out.insert("string timer".to_string());
         return;
     }
-    if !allowed(BARE_CALL, name) || name == "eval" || name == "Function" {
+    // `eval` and `Function` are not BARE_CALL names, so `!allowed` already
+    // covers them. Neither comparison can be the only true term.
+    if !allowed(BARE_CALL, name) {
         out.insert(format!("bare {name}"));
     }
 }
@@ -1480,7 +1495,9 @@ fn note_el(tokens: &[Tok], paren: usize, out: &mut BTreeSet<String>) {
     let mut i = 0;
     let mut spins = 0usize;
     let cap = parts.len().saturating_mul(4).saturating_add(8);
-    while i < parts.len() {
+    // `parts.get(parts.len())` is `None`, and `url_prop` returns `None` for
+    // that, so one past the end cannot record a property.
+    while parts.get(i).is_some() {
         spins = spins.saturating_add(1);
         if past_cap(spins, cap) {
             out.insert("scan failed closed".to_string());
@@ -1539,15 +1556,21 @@ fn is_url_prop(key: &str, executable: bool) -> bool {
 }
 
 fn style_assign_loads(tokens: &[Tok], eq: usize) -> bool {
-    let end = expr_end(tokens, eq + 1).unwrap_or(tokens.len());
-    css_range_fails(tokens, eq + 1, end)
+    // One index feeds both calls. `tokens[eq]` is the `=` (`Tok::Assign`),
+    // which `css_range_fails` ignores, so the value starts at `eq + 1`.
+    let rhs = eq + 1;
+    let end = expr_end(tokens, rhs).unwrap_or(tokens.len());
+    css_range_fails(tokens, rhs, end)
 }
 
 fn css_range_fails(tokens: &[Tok], start: usize, end: usize) -> bool {
     let mut text = String::new();
     let mut i = start;
     let mut depth = 0i32;
-    while i < end && i < tokens.len() {
+    // Callers pass `end <= tokens.len()` (`expr_end` walks with `i < len`
+    // and breaks, or the caller substitutes `tokens.len()`). `i < end`
+    // already keeps the index in range.
+    while i < end {
         match &tokens[i] {
             Tok::Semi if depth == 0 => break,
             Tok::LParen | Tok::LBrace | Tok::LBrack => {
@@ -1623,7 +1646,8 @@ fn css_binding_safe(tokens: &[Tok], start: usize, end: usize) -> bool {
     let mut i = start;
     let mut depth = 0i32;
     let mut text = String::new();
-    while i < end && i < tokens.len() {
+    // `end` is a bind range from `expr_end`, so it is at most `tokens.len()`.
+    while i < end {
         match &tokens[i] {
             Tok::LParen | Tok::LBrace | Tok::LBrack => {
                 if depth == 0 && prev_starts_call(tokens, i) && !call_is_css_safe(tokens, i) {
@@ -1725,11 +1749,10 @@ fn value_has_script_scheme(tokens: &[Tok], paren: usize) -> bool {
         match tok {
             Tok::LParen => {
                 depth += 1;
-                // `depth >= 2` is the nested-paren case. The opening paren is the
-                // only time depth is 1 here, and `arg` is still 0 then.
-                if depth >= 2 && arg == 1 {
-                    parts.push(tok);
-                }
+                // A nested `(` is not a string. Its matching `)` is pushed below
+                // while `arg == 1`, and that `)` already makes the fold impure.
+                // Strings inside the nested call stay at depth >= 2 and are not
+                // part of this value, so pushing the `(` does not change the bool.
             }
             Tok::RParen => {
                 depth -= 1;
@@ -1741,10 +1764,9 @@ fn value_has_script_scheme(tokens: &[Tok], paren: usize) -> bool {
                 }
             }
             Tok::Comma if depth == 1 => {
+                // Only `arg == 1` tokens are pushed. Scanning past the value
+                // adds none of them.
                 arg += 1;
-                if arg > 1 {
-                    break;
-                }
             }
             _ if depth == 1 && arg == 1 => parts.push(tok),
             _ => {}
@@ -1989,7 +2011,8 @@ fn classify_key(parts: &[Tok]) -> Key {
             Tok::Str(s) | Tok::Tpl(s) => Key::Static(s.clone()),
             Tok::Num => Key::Num,
             Tok::Ident(_) => Key::Bare,
-            Tok::Interp => Key::Other,
+            // `Interp` is not a static, numeric, or bare key. The `_` arm
+            // returns `Key::Other` for it.
             _ => Key::Other,
         };
     }
@@ -2235,9 +2258,14 @@ impl<'a> Lx<'a> {
             }
             if c == b'/' && b.get(self.i + 1) == Some(&b'/') {
                 self.i = self.i.saturating_add(2);
+                // `i` is on a char boundary and still inside the string, so
+                // `advance` moves. A valid `&str` has no truncated byte here.
                 while self.i < b.len() && b[self.i] != b'\n' {
+                    // On a char boundary `advance` moves, so a stuck index is
+                    // the fail-closed stop. `advance`'s bool is that same stop.
                     let tick = self.i;
-                    if !self.advance() || self.i <= tick {
+                    let _ = self.advance();
+                    if self.i <= tick {
                         self.failed = true;
                         return (out, flags);
                     }
@@ -2250,7 +2278,8 @@ impl<'a> Lx<'a> {
                 self.i = self.i.saturating_add(2);
                 while self.i + 1 < b.len() && !(b[self.i] == b'*' && b[self.i + 1] == b'/') {
                     let tick = self.i;
-                    if !self.advance() || self.i <= tick {
+                    let _ = self.advance();
+                    if self.i <= tick {
                         self.failed = true;
                         return (out, flags);
                     }
@@ -2275,8 +2304,9 @@ impl<'a> Lx<'a> {
             if self.src[self.i..].starts_with("<!--") {
                 let tick = self.i;
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    let step = self.i;
-                    if !self.advance() || self.i <= step {
+                    let tick = self.i;
+                    let _ = self.advance();
+                    if self.i <= tick {
                         self.failed = true;
                         return (out, flags);
                     }
@@ -2291,8 +2321,10 @@ impl<'a> Lx<'a> {
             }
             if c == b'/' && regex_here(out.last(), regex_ready, keyword_member(&out)) {
                 let next = skip_regex(self.src, self.i + 1);
+                // `skip_regex` returns `len + 1` only when it fail-closes, and
+                // `closed_regex` is false on that same input. `next > len` is
+                // already covered by `next >= len && !closed_regex`.
                 if next <= self.i
-                    || next > b.len()
                     || next == self.i + 1
                     || (next >= b.len() && !closed_regex(self.src, self.i + 1))
                 {
@@ -2340,7 +2372,9 @@ impl<'a> Lx<'a> {
                 let next_at = self.i.saturating_add(1);
                 if next_at < b.len() && is_ident_start(self.src, next_at) {
                     let (name, next) = read_ident(self.src, next_at);
-                    if next <= next_at || name.is_empty() {
+                    // `read_ident` returns `("", next_at)` on failure and a
+                    // later index with a non-empty name otherwise.
+                    if name.is_empty() {
                         self.failed = true;
                         self.emit(&mut out, &mut flags, Tok::Error);
                         self.i = b.len();
@@ -2408,12 +2442,13 @@ impl<'a> Lx<'a> {
                 return (out, flags);
             }
             let (tok, n) = punct(b, self.i);
-            if n == 0 || self.i + n > b.len() {
+            // `punct` returns a width of at least 1 that fits in `b[i..]`.
+            // A zero width would spin, so that case still fail-closes. Both
+            // arms used to return the same pair after `advance`.
+            if n == 0 {
                 self.failed = true;
                 self.emit(&mut out, &mut flags, Tok::Error);
-                if !self.advance() {
-                    return (out, flags);
-                }
+                let _ = self.advance();
                 return (out, flags);
             }
             match &tok {
@@ -2454,9 +2489,9 @@ impl<'a> Lx<'a> {
     }
 
     fn advance(&mut self) -> bool {
-        let tick = self.i;
+        // `forward` returns Some only when the index moved forward.
         match forward(self.src, self.i) {
-            Some(next) if next > tick => {
+            Some(next) => {
                 self.i = next;
                 true
             }
@@ -2538,10 +2573,9 @@ impl<'a> Lx<'a> {
                 let (nested, nested_flags) = self.lex(true, depth + 1);
                 body.extend(nested);
                 body_flags.extend(nested_flags);
-                if self.i < b.len() && b[self.i] == b'}' {
-                    self.i = self.i.saturating_add(1);
-                    self.steps = self.steps.saturating_add(1);
-                }
+                // `lex` stopped on this `}`. Copying it into `value` and
+                // stepping is the same index, and an interpolation discards
+                // `value`, so the returned tokens do not depend on this byte.
                 continue;
             }
             let ch = self.src[self.i..].chars().next().unwrap_or('\u{FFFD}');
@@ -2607,7 +2641,7 @@ fn closed_regex(src: &str, mut i: usize) -> bool {
             b'\\' => {
                 i = i.saturating_add(1);
                 i = match forward(src, i) {
-                    Some(next) if next > tick => next,
+                    Some(next) => next,
                     _ => return false,
                 };
             }
@@ -2654,7 +2688,7 @@ fn skip_regex(src: &str, mut i: usize) -> usize {
             b'\\' => {
                 i = i.saturating_add(1);
                 i = match forward(src, i) {
-                    Some(next) if next > tick => next,
+                    Some(next) => next,
                     _ => return fail,
                 };
             }
@@ -2736,7 +2770,8 @@ fn decode_escape(src: &str, slash: usize) -> (char, usize) {
         b'f' => ('\u{000c}', i + 1),
         b'v' => ('\u{000b}', i + 1),
         b'0' => ('\0', i + 1),
-        b'\\' | b'\'' | b'"' | b'`' | b'$' => (b[i] as char, i + 1),
+        // `\\`, quotes, `` ` ``, and `$` are ASCII. The `_` arm returns that
+        // same byte and the next index.
         b'x' => hex_char(src, i + 1, 2).unwrap_or(('x', i + 1)),
         b'u' if b.get(i + 1) == Some(&b'{') => {
             let start = i + 2;
@@ -2855,11 +2890,9 @@ fn ident_unicode(src: &str, slash: usize) -> Option<(char, usize)> {
         }
         let mut j = start;
         while j < b.len() && b[j].is_ascii_hexdigit() && j - start < 6 {
-            let tick = j;
-            match step_index(tick) {
-                Some(next) if next > tick => j = next,
-                _ => return None,
-            }
+            // `step_index` is `checked_add(1)`, so `Some` is `j + 1`.
+            let prev = j;
+            j = step_index(j).filter(|next| *next == prev.saturating_add(1))?;
         }
         if j >= b.len() || b[j] != b'}' {
             return None;
@@ -2968,12 +3001,9 @@ fn bump(src: &str, i: usize) -> usize {
 }
 
 fn step_index(i: usize) -> Option<usize> {
-    let next = i.saturating_add(1);
-    if next > i {
-        Some(next)
-    } else {
-        None
-    }
+    // `checked_add` is None at `usize::MAX` and `Some(i + 1)` otherwise,
+    // which is the same split as `saturating_add` followed by `next > i`.
+    i.checked_add(1)
 }
 
 fn forward(src: &str, i: usize) -> Option<usize> {
@@ -3036,11 +3066,10 @@ fn skip_template_linear(src: &str, start: usize) -> usize {
             continue;
         }
         if b[i] == b'\'' || b[i] == b'"' {
-            let next = skip_quoted(src, i);
-            if next <= i || next > src.len() {
-                return fail;
-            }
-            i = next;
+            // `skip_quoted` returns an index past `i`, or `len + 1` when it
+            // fail-closes. `len + 1` is `fail`, and storing it ends this loop
+            // with that same return.
+            i = skip_quoted(src, i);
             continue;
         }
         if b[i] == b'`' {
@@ -3112,14 +3141,9 @@ fn skip_quoted(src: &str, start: usize) -> usize {
 }
 
 fn is_markup(src: &str) -> bool {
-    let b = src.as_bytes();
-    let mut i = 0;
-    while i < b.len() {
-        if b[i] == b'<' && script_open_at(src, i) {
-            return true;
-        }
-        i = i.saturating_add(1);
-    }
+    // A `<script` open is a tag or an unclosed tag: the byte after `<` is
+    // alphabetic, so `parse_tag` returns `Tag` or `Unclosed`. `attr_markup`
+    // already returns true for that, and for every other tag.
     attr_markup(src)
 }
 
@@ -3232,11 +3256,17 @@ fn css_unlisted_string(plain: &str) -> bool {
             while i < bytes.len()
                 && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'-' || bytes[i] == b'_')
             {
-                let tick_i = i;
-                match step_index(tick_i) {
-                    Some(next) if next > tick_i => i = next,
-                    _ => return true,
+                let tick = i;
+                let next = match step_index(i) {
+                    Some(next) => next,
+                    None => return true,
+                };
+                // Compared after the match: a guard of `true` would match
+                // the only `Some` that `step_index` returns.
+                if next != tick.saturating_add(1) {
+                    return true;
                 }
+                i = next;
             }
             if i <= tick {
                 return true;
@@ -3250,10 +3280,14 @@ fn css_unlisted_string(plain: &str) -> bool {
             continue;
         }
         let tick = i;
-        match step_index(tick) {
-            Some(next) if next > tick => i = next,
-            _ => return true,
+        let next = match step_index(i) {
+            Some(next) => next,
+            None => return true,
+        };
+        if next != tick.saturating_add(1) {
+            return true;
         }
+        i = next;
     }
     false
 }
@@ -3262,33 +3296,35 @@ fn function_args_have_string(plain: &str, paren: usize) -> bool {
     let bytes = plain.as_bytes();
     let mut depth = 0i32;
     let mut i = paren;
-    let mut quote = 0u8;
     while i < bytes.len() {
         let ch = bytes[i];
-        if quote != 0 {
-            if ch == quote {
-                return true;
-            }
-        } else {
-            match ch {
-                b'\'' | b'"' => quote = ch,
-                b'(' => depth += 1,
-                b')' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return false;
-                    }
+        // A quote byte makes this true at the closer or at the end, and the
+        // quote state never returns to the `)` check. Noticing the opener is
+        // the same bool.
+        if ch == b'\'' || ch == b'"' {
+            return true;
+        }
+        match ch {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return false;
                 }
-                _ => {}
             }
+            _ => {}
         }
         let tick = i;
-        match step_index(tick) {
-            Some(next) if next > tick => i = next,
-            _ => return true,
+        let next = match step_index(i) {
+            Some(next) => next,
+            None => return true,
+        };
+        if next != tick.saturating_add(1) {
+            return true;
         }
+        i = next;
     }
-    quote != 0
+    false
 }
 
 fn css_remote_kinds(input: &str) -> (bool, bool) {
@@ -3303,7 +3339,9 @@ fn tag_is_prose(src: &str, start: usize, end: usize) -> bool {
     let bytes = src.as_bytes();
     let mut i = start;
     let mut quote = 0u8;
-    while i < end && i < bytes.len() {
+    // `end` is a tag bound, so it is at most `bytes.len()`. `i < end`
+    // already keeps the read inside the slice.
+    while i < end {
         let ch = bytes[i];
         if quote != 0 {
             if ch == quote {
@@ -3455,7 +3493,9 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
         if b[i] == b'<' {
             return TagTry::Unclosed { at: i };
         }
-        if b[i] == b'/' || b[i].is_ascii_whitespace() {
+        // `/` is not alphabetic, so the next branch advances over it by one,
+        // the same step as a dedicated slash arm.
+        if b[i].is_ascii_whitespace() {
             i = i.saturating_add(1);
             continue;
         }
@@ -3504,9 +3544,8 @@ fn parse_tag(src: &str, start: usize) -> TagTry {
             while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'>' && b[i] != b'<' {
                 i = i.saturating_add(1);
             }
-            if i < b.len() && b[i] == b'<' {
-                return TagTry::Unclosed { at: i };
-            }
+            // The attribute loop returns `Unclosed` when it sees `<`, so a
+            // value that stops on `<` is the same result on the next pass.
             src[vs..i].to_string()
         };
         attrs.push((attr, value));
@@ -3734,7 +3773,14 @@ fn attr_value<'a>(attrs: &'a [(String, String)], name: &str) -> Option<&'a str> 
 fn find_end_tag(src: &str, from: usize, name: &str) -> Option<usize> {
     let b = src.as_bytes();
     let mut i = from;
-    while i + name.len() + 2 < b.len() {
+    // `</` plus the name is `name.len() + 2` bytes. The `>` is a further byte,
+    // so fewer bytes than that cannot hold an end tag. `<=` flipped to `>`
+    // would stop while a real end tag still fits.
+    let need = name.len().saturating_add(2);
+    loop {
+        if b.len().saturating_sub(i) <= need {
+            return None;
+        }
         if b[i] == b'<' && b.get(i + 1) == Some(&b'/') && starts_with_name(&src[i + 2..], name) {
             let mut j = i + 2 + name.len();
             while j < b.len() && b[j].is_ascii_whitespace() {
@@ -3746,7 +3792,6 @@ fn find_end_tag(src: &str, from: usize, name: &str) -> Option<usize> {
         }
         i = i.saturating_add(1);
     }
-    None
 }
 
 fn note_animation_handler(tag: &Parsed, out: &mut BTreeSet<String>, chunks: &mut Vec<String>) {
@@ -4025,6 +4070,61 @@ mod class_tests {
             "steps {steps}"
         );
         assert!(problems.is_empty(), "{sample} was a sink: {problems:?}");
+    }
+
+    fn exact(sample: &str, problems: &[&str]) {
+        let got = html_parsing_problems(sample);
+        let want: BTreeSet<String> = problems.iter().map(|item| (*item).to_string()).collect();
+        assert_eq!(got, want, "{sample}");
+    }
+
+    #[test]
+    fn member_edges_keep_their_problem_set() {
+        clean("location.hash=x");
+        clean("(location,a).hash=x");
+        clean("(\"x\",\"y\").replace(1)");
+        clean("(\"x\").replace(1)");
+        clean("node.push`x`");
+        clean("arr.push(1)");
+        clean("obj.hasOwnProperty.call(obj,k)");
+        exact("location.href=x", &["member assign href"]);
+        exact("node.href=x", &["member assign href"]);
+        exact("location.href()", &["member call href"]);
+        exact("zzz.call(1)", &["member call call"]);
+        exact("node.zzz`x`", &["member call zzz"]);
+        exact("node.Function`x`", &["member Function"]);
+        exact("node.eval`x`", &["member eval"]);
+        exact("other.replace(1)", &["member call replace"]);
+        exact("a?.replace(1)", &["member call replace"]);
+        exact("foo?.(1)", &["bare foo"]);
+        exact("el?.('script')", &["element script"]);
+        clean("el?.('li')");
+        exact("foo?.bar(1)", &["member call bar"]);
+        exact("(0,eval)(1)", &["bare eval", "indirect call"]);
+        exact(
+            "node['innerHTML']=1;eval(1)",
+            &["bare eval", "member assign innerHTML", "member innerHTML"],
+        );
+        exact("obj['a'];eval(1)", &["bare eval"]);
+        let computed = html_parsing_problems("obj[eval]");
+        assert!(
+            !computed.iter().any(|item| item == "bare eval"),
+            "{computed:?}"
+        );
+        exact("setTimeout?.('alert(1)')", &["string timer"]);
+        exact(
+            "node.setAttribute?.('href','javascript:x')",
+            &["attribute href"],
+        );
+        exact("({a:1},eval)(1)", &["bare eval", "indirect call"]);
+        exact("([1],eval)(1)", &["bare eval", "indirect call"]);
+        clean("a.setAttribute('href', '#foo:bar')");
+        exact("<link rel=\"stylesheet\">", &["element link"]);
+        exact("<link rel=\"import\">", &["element link"]);
+        clean("<link rel=\"author\">");
+        clean("a.setAttribute('href', '/foo:bar')");
+        clean("\"x\"?.replace(1)");
+        clean("\"x\"?.?.replace(1)");
     }
 
     #[test]
@@ -5198,6 +5298,205 @@ mod mutant_tests {
         (toks, lx.failed, lx.steps)
     }
 
+    #[test]
+    fn parser_bounds_stay_inside_the_slice() {
+        let truncated = lex_of("const a =", u64::MAX / 8).0;
+        assert!(safe_url_names(&truncated).is_empty());
+        let nested = "function outer(){ function el(){} n.textContent = v }";
+        let toks = lex_of(nested, u64::MAX / 8).0;
+        let at = toks
+            .iter()
+            .position(|t| matches!(t, Tok::Ident(s) if s == "textContent"))
+            .unwrap();
+        assert!(!inside_function(&toks, at, "el", &mut 0, u64::MAX));
+        assert!(inside_function(&toks, at, "outer", &mut 0, u64::MAX));
+        let scheme = lex_of("f(a, 'java' + ('') + 'script:x')", u64::MAX / 8).0;
+        let paren = scheme
+            .iter()
+            .position(|t| matches!(t, Tok::LParen))
+            .unwrap();
+        assert!(!value_has_script_scheme(&scheme, paren));
+        let open = lex_of("f(a, 'javascript:x')", u64::MAX / 8).0;
+        let open_paren = open.iter().position(|t| matches!(t, Tok::LParen)).unwrap();
+        assert!(value_has_script_scheme(&open, open_paren));
+        let later = lex_of(
+            "f(a, 'https://example.invalid/x', 'javascript:x')",
+            u64::MAX / 8,
+        )
+        .0;
+        let later_paren = later.iter().position(|t| matches!(t, Tok::LParen)).unwrap();
+        assert!(!value_has_script_scheme(&later, later_paren));
+        let parts = lex_of("foo + bar", u64::MAX / 8).0;
+        assert_eq!(value_end(&parts, 0), parts.len());
+        assert_eq!(
+            receiver_status(&[Tok::Opt], &[None], 0, "location", &mut 0),
+            None
+        );
+        assert!(stringish_names(&lex_of("const a", u64::MAX / 8).0).is_empty());
+        assert!(forward("a", 1).is_none());
+        assert_eq!(forward("é", 0), Some('é'.len_utf8()));
+        assert_eq!(key_s(classify_key(&inside("[a.b.c]"))), "member");
+        assert_eq!(key_s(classify_key(&inside("[a.b.]"))), "other");
+        assert_eq!(key_s(classify_key(&inside("['a'.foo]"))), "other");
+        assert_eq!(key_s(classify_key(&inside("[foo(a)]"))), "call");
+        assert_eq!(key_s(classify_key(&inside("[foo)]"))), "other");
+        let call = lex_of("f('a')", u64::MAX / 8).0;
+        let paren = call.iter().position(|t| matches!(t, Tok::LParen)).unwrap();
+        assert_eq!(arg_s(first_arg(&call, paren)), "static:a");
+        let nested = lex_of("f((a))", u64::MAX / 8).0;
+        let nested_paren = nested
+            .iter()
+            .position(|t| matches!(t, Tok::LParen))
+            .unwrap();
+        assert_eq!(arg_s(first_arg(&nested, nested_paren)), "other");
+        let chained = lex_of("f('a')('b')", u64::MAX / 8).0;
+        let chained_paren = chained
+            .iter()
+            .position(|t| matches!(t, Tok::LParen))
+            .unwrap();
+        assert_eq!(arg_s(first_arg(&chained, chained_paren)), "static:a");
+        assert_eq!(
+            find_end_tag("<script>x</script>", 0, "script"),
+            Some("<script>x</script".len())
+        );
+        assert_eq!(find_end_tag("<script>x</script", 0, "script"), None);
+        assert_eq!(find_end_tag("<script>x</script  ", 0, "script"), None);
+        let hex = lex_s("\\u{1");
+        assert!(hex.starts_with("err"), "{hex}");
+        let line = lex_s("// z");
+        assert!(!line.contains("err"), "{line}");
+        let block = lex_s("/**/a");
+        assert!(block.contains("id:a") && !block.contains("err"), "{block}");
+        let open_block = lex_s("/*");
+        assert!(open_block.contains("err"), "{open_block}");
+        let short_block = lex_s("/*x");
+        assert!(short_block.contains("err"), "{short_block}");
+        let slash_block = lex_s("/* /a */b");
+        assert!(
+            slash_block.contains("id:b") && !slash_block.contains("id:a"),
+            "{slash_block}"
+        );
+        let html_c = lex_s("<!-- z\na");
+        assert!(
+            html_c.contains("id:a") && !html_c.contains("err"),
+            "{html_c}"
+        );
+        let spaced = tag_s("<a href = \"z\">");
+        assert!(spaced.contains("href=z"), "{spaced}");
+        let tail = tag_s("<a href ");
+        assert!(tail.starts_with("unclosed"), "{tail}");
+        let slash = tag_s("<div/>");
+        assert!(slash.contains("div"), "{slash}");
+        let hash = lex_s("#ab");
+        assert!(hash.contains("id:#ab"), "{hash}");
+        let reg = lex_s("if(a)/b/g");
+        assert!(reg.contains(" op") && !reg.contains("err"), "{reg}");
+        let unclosed = lex_s("if(a)/b");
+        assert!(unclosed.contains("err"), "{unclosed}");
+        let ls = lex_s("\u{2028}a");
+        assert!(ls.contains("id:a") && !ls.contains("err"), "{ls}");
+        let ps = lex_s("\u{2029}a");
+        assert!(ps.contains("id:a") && !ps.contains("err"), "{ps}");
+        let dollar = lex_s("`$x`");
+        assert!(
+            dollar.contains("tpl:$x") && !dollar.contains("interp"),
+            "{dollar}"
+        );
+        let hole = lex_s("`a${b}c`");
+        assert!(hole.contains("interp") && hole.contains("id:b"), "{hole}");
+    }
+
+    #[test]
+    fn receiver_and_style_edges_change_the_result() {
+        let opt = vec![Tok::Ident("location".into()), Tok::Opt];
+        assert_eq!(
+            receiver_status(&opt, &[None, None], 1, "location", &mut 0),
+            Some(true)
+        );
+        let empty = vec![Tok::LParen, Tok::RParen];
+        let mate = vec![Some(1usize), Some(0)];
+        assert_eq!(
+            receiver_status(&empty, &mate, 1, "location", &mut 0),
+            Some(false)
+        );
+        let comma = vec![Tok::Comma];
+        assert_eq!(alt_status(&comma, &[None], 0, 0, "location", &mut 0), None);
+        let pair = vec![Tok::Str("x".into()), Tok::Comma, Tok::Str("y".into())];
+        assert_eq!(
+            alt_status(&pair, &[None, None, None], 0, 2, "location", &mut 0),
+            Some(false)
+        );
+        let lead = vec![Tok::Comma, Tok::Str("x".into())];
+        assert_eq!(
+            alt_status(&lead, &[None, None], 0, 1, "location", &mut 0),
+            Some(false)
+        );
+        let grouped = vec![Tok::LParen, Tok::Ident("location".into()), Tok::RParen];
+        assert_eq!(
+            receiver_status(&grouped, &[Some(2), None, Some(0)], 2, "location", &mut 0),
+            Some(true)
+        );
+        let trailing = vec![
+            Tok::LParen,
+            Tok::Ident("location".into()),
+            Tok::Comma,
+            Tok::RParen,
+        ];
+        assert_eq!(
+            receiver_status(
+                &trailing,
+                &[Some(3), None, None, Some(0)],
+                3,
+                "location",
+                &mut 0
+            ),
+            Some(true)
+        );
+        let doubled = vec![
+            Tok::LParen,
+            Tok::Ident("location".into()),
+            Tok::Comma,
+            Tok::Comma,
+            Tok::RParen,
+        ];
+        assert_eq!(
+            receiver_status(
+                &doubled,
+                &[Some(4), None, None, None, Some(0)],
+                4,
+                "location",
+                &mut 0
+            ),
+            Some(true)
+        );
+        let mut lx = Lx {
+            src: "\u{2029}",
+            i: 0,
+            steps: 0,
+            limit: u64::MAX / 8,
+            failed: false,
+            broke: false,
+        };
+        let _ = lx.lex(false, 0);
+        assert!(lx.broke, "line separator");
+        let styled = lex_of("node.style.color=\"red\"", u64::MAX / 8).0;
+        let eq = styled
+            .iter()
+            .position(|t| matches!(t, Tok::Assign))
+            .unwrap();
+        assert!(!style_assign_loads(&styled, eq));
+        let remote = lex_of(
+            "node.style.color=\"url(https://example.invalid/x)\"",
+            u64::MAX / 8,
+        )
+        .0;
+        let eq_r = remote
+            .iter()
+            .position(|t| matches!(t, Tok::Assign))
+            .unwrap();
+        assert!(style_assign_loads(&remote, eq_r));
+    }
+
     fn tok_s(tok: &Tok) -> String {
         match tok {
             Tok::Ident(s) => format!("id:{s}"),
@@ -5228,6 +5527,8 @@ mod mutant_tests {
         assert_eq!(skip_template_linear("`a`MORE", 0), 3);
         assert_eq!(skip_template_linear("`a\\`b`MORE", 0), 6);
         assert_eq!(skip_template_linear("`a${b}c`MORE", 0), 8);
+        assert_eq!(skip_template_linear("`$x`MORE", 0), 4);
+        assert_eq!(skip_template_linear("`a${`b`}c`MORE", 0), 10);
         assert_eq!(skip_template_linear("`unterminated", 0), 13);
         assert_eq!(skip_template_linear("nope", 0), 4);
         let root = |src: &str| {
@@ -5243,12 +5544,368 @@ mod mutant_tests {
         assert!(!root("f(ab)"));
         assert!(!root("f((a,b))"));
         assert!(!root("f({a,b})"));
+        assert!(root("f({a,b},c)"));
+        assert!(root("f([a,b],c)"));
         assert!(!root("f([a,b])"));
         assert!(!root("f('a,b')"));
         assert!(!root("f(`a,b`)"));
         assert!(!comma_at_root(&lex_of("f(a,b)", u64::MAX / 8).0, 0, 1));
         let (toks, failed, _) = lex_of("/* a */", u64::MAX / 8);
         assert!(!failed, "{toks:?}");
+    }
+
+    #[test]
+    fn operator_edges_change_the_result() {
+        let grouped = |tokens: Vec<Tok>| {
+            let end = tokens.len() - 1;
+            let mut mate = vec![None; tokens.len()];
+            mate[0] = Some(end);
+            mate[end] = Some(0);
+            receiver_status(&tokens, &mate, end, "location", &mut 0)
+        };
+        assert_eq!(
+            grouped(vec![
+                Tok::LParen,
+                Tok::Str("z".into()),
+                Tok::Comma,
+                Tok::RParen,
+            ]),
+            Some(false)
+        );
+        assert_eq!(
+            grouped(vec![
+                Tok::LParen,
+                Tok::Str("z".into()),
+                Tok::Comma,
+                Tok::Comma,
+                Tok::RParen,
+            ]),
+            Some(false)
+        );
+        let bound = vec![
+            Tok::Ident("const".into()),
+            Tok::Ident("x".into()),
+            Tok::Assign,
+            Tok::Ident("location".into()),
+            Tok::Ident("const".into()),
+            Tok::Ident("x".into()),
+        ];
+        let _guard = install_binds(&bound, vec![false; bound.len()]);
+        assert_eq!(
+            receiver_status(&bound, &vec![None; bound.len()], 5, "location", &mut 0),
+            Some(true)
+        );
+        drop(_guard);
+
+        assert_eq!(
+            expr_end(
+                &[
+                    Tok::LParen,
+                    Tok::Ident("a".into()),
+                    Tok::Semi,
+                    Tok::Ident("b".into()),
+                    Tok::RParen,
+                ],
+                0
+            ),
+            Some(5)
+        );
+
+        let mut out = BTreeSet::new();
+        let optional = vec![
+            Tok::Ident("el".into()),
+            Tok::Dot,
+            Tok::Ident("createElement".into()),
+            Tok::Opt,
+            Tok::LParen,
+            Tok::Str("script".into()),
+            Tok::RParen,
+        ];
+        note_dot(
+            &optional,
+            &vec![None; optional.len()],
+            1,
+            &BTreeSet::new(),
+            &mut out,
+            &mut 0,
+            u64::MAX,
+        );
+        assert!(out.contains("element script"), "{out:?}");
+
+        let mut called = BTreeSet::new();
+        let call = vec![
+            Tok::Ident("push".into()),
+            Tok::Dot,
+            Tok::Ident("call".into()),
+            Tok::LParen,
+            Tok::RParen,
+        ];
+        note_dot(
+            &call,
+            &vec![None; call.len()],
+            1,
+            &BTreeSet::new(),
+            &mut called,
+            &mut 0,
+            u64::MAX,
+        );
+        assert!(called.contains("member call call"), "{called:?}");
+
+        assert!(!is_arrow(&[Tok::LParen, Tok::Arrow, Tok::RParen]));
+        assert!(is_arrow(&[Tok::Ident("a".into()), Tok::Arrow, Tok::Num]));
+        let nested_arg = vec![
+            Tok::LParen,
+            Tok::LParen,
+            Tok::Ident("a".into()),
+            Tok::Comma,
+            Tok::Ident("b".into()),
+            Tok::RParen,
+            Tok::Comma,
+            Tok::Ident("c".into()),
+            Tok::RParen,
+        ];
+        assert_eq!(call_arg(&nested_arg, 0, 0).len(), 5);
+
+        let joined = vec![
+            Tok::LParen,
+            Tok::Str("href".into()),
+            Tok::Comma,
+            Tok::Str("https:".into()),
+            Tok::Plus,
+            Tok::Str("//example.invalid/".into()),
+            Tok::RParen,
+        ];
+        assert!(url_value_allowed(&joined, 0, &mut 0, u64::MAX));
+        let dangling = vec![
+            Tok::LParen,
+            Tok::Str("href".into()),
+            Tok::Comma,
+            Tok::Str("https:".into()),
+            Tok::Plus,
+            Tok::RParen,
+        ];
+        assert!(!url_value_allowed(&dangling, 0, &mut 0, u64::MAX));
+
+        let hidden = vec![
+            Tok::Ident("x".into()),
+            Tok::Ident("href".into()),
+            Tok::Other,
+            Tok::Str("javascript:x".into()),
+        ];
+        assert!(url_prop(&hidden, &vec![None; hidden.len()], 1, false).is_none());
+
+        assert!(style_assign_loads(
+            &[Tok::Assign, Tok::Ident("return".into())],
+            0
+        ));
+        assert!(!style_assign_loads(
+            &[Tok::Assign, Tok::Str("red".into())],
+            0
+        ));
+        assert!(style_assign_loads(
+            &[Tok::Assign, Tok::Str("url(https://x)".into())],
+            0
+        ));
+
+        let after_semi = vec![
+            Tok::Ident("foo".into()),
+            Tok::LParen,
+            Tok::Semi,
+            Tok::RParen,
+            Tok::Str("url(https://x)".into()),
+        ];
+        assert!(css_range_fails(&after_semi, 0, after_semi.len()));
+        let at_comma = vec![
+            Tok::Str("red".into()),
+            Tok::Comma,
+            Tok::Str("url(https://x)".into()),
+        ];
+        assert!(!css_range_fails(&at_comma, 0, at_comma.len()));
+        let in_call = vec![
+            Tok::Ident("foo".into()),
+            Tok::LParen,
+            Tok::Comma,
+            Tok::RParen,
+            Tok::Str("url(https://x)".into()),
+        ];
+        assert!(css_range_fails(&in_call, 0, in_call.len()));
+        let buried = vec![
+            Tok::Ident("foo".into()),
+            Tok::LParen,
+            Tok::Str("url(https://x)".into()),
+            Tok::RParen,
+        ];
+        assert!(!css_range_fails(&buried, 0, buried.len()));
+        let deep = vec![
+            Tok::Ident("foo".into()),
+            Tok::LParen,
+            Tok::LParen,
+            Tok::Str("url(https://x)".into()),
+            Tok::RParen,
+            Tok::RParen,
+        ];
+        assert!(!css_range_fails(&deep, 0, deep.len()));
+        let trailed = vec![
+            Tok::LParen,
+            Tok::Str("red".into()),
+            Tok::RParen,
+            Tok::Str("url(https://x)".into()),
+        ];
+        assert!(css_range_fails(&trailed, 0, trailed.len()));
+        let exact = vec![Tok::LParen, Tok::Str("url(https://x)".into()), Tok::RParen];
+        assert!(!css_range_fails(&exact, 0, 2));
+        assert!(css_range_fails(&exact, 0, exact.len()));
+
+        assert!(!prev_starts_call(&[Tok::LParen], 0));
+        assert!(!prev_starts_call(&[Tok::Str("a".into()), Tok::LParen], 1));
+        assert!(prev_starts_call(&[Tok::Ident("f".into()), Tok::LParen], 1));
+
+        let evil = vec![
+            Tok::LParen,
+            Tok::Str("red".into()),
+            Tok::RParen,
+            Tok::Ident("evil".into()),
+        ];
+        assert!(!css_binding_safe(&evil, 0, evil.len()));
+        let safe = vec![Tok::Ident("safeColor".into()), Tok::LParen, Tok::RParen];
+        assert!(css_binding_safe(&safe, 0, safe.len()));
+        let inner_call = vec![
+            Tok::Ident("safeColor".into()),
+            Tok::LParen,
+            Tok::Ident("other".into()),
+            Tok::LParen,
+            Tok::RParen,
+            Tok::RParen,
+        ];
+        assert!(css_binding_safe(&inner_call, 0, inner_call.len()));
+
+        let value = vec![
+            Tok::LParen,
+            Tok::Ident("a".into()),
+            Tok::Comma,
+            Tok::Ident("b".into()),
+            Tok::RParen,
+            Tok::Comma,
+        ];
+        assert_eq!(value_end(&value, 0), 5);
+
+        let nested_comma = vec![
+            Tok::LParen,
+            Tok::Str("href".into()),
+            Tok::Comma,
+            Tok::Ident("foo".into()),
+            Tok::LParen,
+            Tok::Ident("a".into()),
+            Tok::Comma,
+            Tok::Ident("b".into()),
+            Tok::RParen,
+            Tok::Plus,
+            Tok::Str("javascript:x".into()),
+            Tok::RParen,
+        ];
+        assert!(value_has_script_scheme(&nested_comma, 0));
+        let grouped_text = vec![
+            Tok::LParen,
+            Tok::Str("href".into()),
+            Tok::Comma,
+            Tok::Str("java".into()),
+            Tok::Plus,
+            Tok::LParen,
+            Tok::RParen,
+            Tok::Str("script:x".into()),
+            Tok::RParen,
+        ];
+        assert!(!value_has_script_scheme(&grouped_text, 0));
+        let java = Tok::Str("java".into());
+        let script = Tok::Str("script:x".into());
+        assert!(!scriptish(&[&java, &script]));
+
+        assert_eq!(key_s(classify_key(&[Tok::Interp])), "other");
+        assert!(!is_call_key(&[
+            Tok::Str("x".into()),
+            Tok::LParen,
+            Tok::RParen
+        ]));
+        assert!(!is_call_key(&[
+            Tok::Ident("foo".into()),
+            Tok::Ident("bar".into()),
+            Tok::LParen,
+            Tok::RParen,
+        ]));
+        assert_eq!(
+            arg_s(first_arg(
+                &[Tok::Comma, Tok::LParen, Tok::Str("a".into()), Tok::RParen,],
+                0
+            )),
+            "static:a"
+        );
+        assert_eq!(
+            arg_s(first_arg(
+                &[
+                    Tok::Ident("x".into()),
+                    Tok::LParen,
+                    Tok::Str("a".into()),
+                    Tok::RParen,
+                ],
+                0
+            )),
+            "static:a"
+        );
+
+        let slash = lex_s("/*/");
+        assert!(!slash.contains("err"), "{slash}");
+        let star = lex_s("/**");
+        assert!(star.contains("err"), "{star}");
+        let broken = lex_s("/\n");
+        assert!(broken.contains("err"), "{broken}");
+        let hash = lex_s("#");
+        assert!(!hash.contains("err"), "{hash}");
+        let braces = lex_s("`${{1}}`");
+        assert!(
+            braces.contains("num") && braces.contains('}') && !braces.contains("err"),
+            "{braces}"
+        );
+        // The `}` and the inner backtick sit inside quotes. Skipping the
+        // quote reaches the real closer; treating the `}` as the hole end
+        // stops on the inner backtick.
+        let quoted = "`${\"}`\"}`MORE";
+        assert_eq!(
+            skip_template_linear(quoted, 0),
+            quoted.len() - 4,
+            "{quoted}"
+        );
+        // Two hole braces, then a backtick that belongs to a nested template.
+        // Closing the hole on the first `}` makes that backtick the outer end.
+        let nested_braces = "`${{}`x`}y`MORE";
+        assert_eq!(
+            skip_template_linear(nested_braces, 0),
+            nested_braces.len() - 4,
+            "{nested_braces}"
+        );
+        assert_eq!(read_ident("\\u0031", 0).0, "");
+        assert_eq!(skip_number("1e2a", 0), 3);
+        assert_eq!(skip_quoted("'\\", 0), 2);
+        assert_eq!(skip_quoted("'ab'x", 0), 4);
+        assert_eq!(skip_template_linear("`\\", 0), 2);
+        assert!(function_args_have_string("foo(\"\")", 3));
+        assert!(css_unlisted_string("_(\"a\")"));
+        assert!(!starts_with_name("aé", "sc"));
+        assert!(is_markup("<script>"));
+        assert!(tag_s("<a href= ").starts_with("unclosed"));
+        assert!(tag_s("<a href=x<b>").starts_with("unclosed"));
+        let prose = probs("<blink>,");
+        assert!(prose.contains("element blink"), "{prose}");
+        let applet = probs("<applet href=x>");
+        assert!(!applet.contains("url attribute href"), "{applet}");
+        let open_script = probs("<script>el.innerHTML=1");
+        assert!(open_script.contains("innerHTML"), "{open_script}");
+        let mut noted = BTreeSet::new();
+        let mut steps = 0u64;
+        let _chunks = html_scripts("a<!--x-->b", &mut noted, &mut steps, 9);
+        assert!(
+            !noted.contains("scan failed closed"),
+            "{noted:?} steps={steps}"
+        );
     }
 
     fn lex_s(src: &str) -> String {
@@ -5592,12 +6249,15 @@ mod mutant_tests {
         let (bad, failed_bad, _) = lex_of(&wrap(8), u64::MAX / 8);
         assert!(failed_bad, "{}", lex_s(&wrap(8)));
         assert!(bad.iter().any(|tok| matches!(tok, Tok::Error)));
+        let trailed = format!("{}z", wrap(8));
+        let trailed_s = lex_s(&trailed);
+        assert!(trailed_s.contains("id:z"), "{trailed_s}");
         let escaped = lex_s("`\\``");
         assert!(escaped.starts_with("tpl:`"), "{escaped}");
         let plain = lex_s("`ab`");
         assert!(plain.starts_with("tpl:ab"), "{plain}");
         let hole = lex_s("`a${b}c`");
-        assert!(hole.contains("interp"), "{hole}");
+        assert!(hole.contains("interp") && !hole.contains('}'), "{hole}");
         let nested = lex_s("`${`a`}`");
         assert!(nested.contains("tpl:a"), "{nested}");
     }
