@@ -17,8 +17,6 @@ permissions:
 jobs:
   build-sdk-and-c:
     name: SDK and C harness (${{ matrix.os }})
-    # SDK/C harness tests may fail on some platforms - non-blocking
-    continue-on-error: true
     timeout-minutes: 30
     strategy:
       matrix:

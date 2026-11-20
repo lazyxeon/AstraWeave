@@ -9,6 +9,7 @@ assets/aravath/**/*.md text eol=lf
 # pine-forest glTF and the manifest check then fails.
 *.gltf text eol=lf
 *.glsl text eol=lf
+*.sh text eol=lf
 *.obj text eol=lf
 *.mtl text eol=lf
 *.usda text eol=lf

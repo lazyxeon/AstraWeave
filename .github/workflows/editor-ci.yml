@@ -28,8 +28,6 @@ jobs:
     name: editor-ci
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # Skip if editor has known compilation issues
-    continue-on-error: true
 
     steps:
       - name: Checkout repository
