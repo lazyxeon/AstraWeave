@@ -50,7 +50,7 @@ A new push cancels the previous pull-request run. Pushes to main, tags, and sche
 
 These path-filtered workflows are not in the required set because a filter would skip them and leave a check pending: trace sync, doc-truth lint, docs, and Miri job `miri-ecs-hotpath` (`miri.yml`; paths `astraweave-ecs/src/blob_vec.rs`, `sparse_set.rs`, and `archetype.rs`). That Miri job is not required. `net-tests.yml` still triggers on every pull request; its job is scope-conditional (`--scope net`), not path-filtered (see below). Pack guard and OpenSSF Scorecard run on every pull request. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 
-`PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub treats a skipped required check as missing, which blocks the merge. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
+`PR Rust checks` is the status to require for the Rust rows. The heavy jobs are skipped on a docs-only pull request (they do not compile). GitHub counts a job skipped by its `if:` as passing, so a required heavy job would pass on any skip, including after a failed archive build. A skipped matrix job reports only its unexpanded name, so the per-partition names would never report. The rollup runs on every pull request: it fails if the gate failed or if a crate change left a test job red, and it passes when the heavy jobs were correctly skipped.
 
 ### Main, nightly, workflow_dispatch
 
@@ -178,12 +178,59 @@ The 2026-10-15 measurement was 8 allocs and 4112 bytes on a settled `PhysicsWorl
 
 ## Required status checks
 
-Set these on `main`. Names are the job `name:` values. After this pull request's first check run, confirm them against `gh pr checks` and adjust if GitHub prefixes the workflow name.
+Ruleset 7941616 (Admin Authorization) on `main` requires three contexts that do not report on `pull_request`: `Code coverage` (integration 15368), `CodeQL` (integration 57789), and `Analyze (rust)` (integration 15368). `strict_required_status_checks_policy` is true. This file does not change that ruleset. There is no check run named `Code coverage`. `coverage.yml` runs on push to `main`, schedule, and `workflow_dispatch`; its job name is `Generate Code Coverage`. `CodeQL` was not a check run on pull-request heads, and it was not a check run on main `d01720a8` after `Analyze (rust)` succeeded. `Analyze (rust)` is the CodeQL Actions job (app id 15368). It reports on push to `main`. It does not report on `pull_request`.
+
+The rollup check-run name is `PR Rust checks`. The app id is 15368 (`github-actions`). The job `if` is `always() && github.event_name == 'pull_request'`, so the check is created on every pull request. A docs-only pull request does not skip it. Pull request #700 (head `f2949be1`, only `docs/sitrep_log.md`) run `42123942320` (`pull_request`) completed check run `127583654852` as success. Pull request #597 (head `58621da5`, `AGENTS.md` only) run `40965117538` completed check run `123771336889` as success. On a push to `main` the same job is skipped. Required checks read the pull-request head, so that push skip does not leave a pull request pending.
+
+`gh pr checks` prints the check-run `name`. It does not prefix the workflow name. The compare job's check-run name is `compare`, not `determinism-replay / compare`.
+
+`.github/CODEOWNERS` is advisory. It names @lazyxeon on `/.github/`, `/.cargo/`, `/scripts/ci/`, `/rust-toolchain.toml`, `/CLAUDE.md`, `/GROK.md`, `/.cursor/rules/`, `/deny.toml`, `/AGENTS.md`, `/.config/nextest.toml`, `/Cargo.toml`, `/tools/xtask/src/fetch_assets.rs`, `/tools/xtask/src/main.rs`, `/scripts/check-aravath-network.sh`, `/scripts/aravath-sha256.sh`, `/scripts/check_benchmark_thresholds.ps1`, `/scripts/export_benchmark_history.sh`, `/scripts/export_benchmark_jsonl.ps1`, `/scripts/generate_benchmark_graphs.py`, `/scripts/tsan_suppressions.txt`, and `/docs/scripts/generate-sitemap.sh`. Those paths cover the workflows, composite actions, CI scripts, pack-guard xtask sources, nextest `ci-pr*` profiles, workspace MSRV, benchmark and Aravath helper scripts, the audit ignore file, the Linux replay rustflags, the toolchain pin, and the constitution files. The file does not block a merge. On the `pull_request` rule, set `require_code_owner_review` to false and leave the other parameters on that rule as they are. The owner applies that with the status-check swap below. This file does not edit ruleset 7941616.
+
+Require these contexts, each with integration id 15368. On the #700 head every one of them completed success, and none of the three ruleset contexts above was present. The same nine were success on docs-only #597 and #616 and on `.github/dependabot.yml` pull request #645.
+
+```json
+{
+  "strict_required_status_checks_policy": true,
+  "do_not_enforce_on_create": false,
+  "required_status_checks": [
+    {"context": "PR Rust checks", "integration_id": 15368},
+    {"context": "compare", "integration_id": 15368},
+    {"context": "hash (ubuntu-latest)", "integration_id": 15368},
+    {"context": "hash (windows-latest)", "integration_id": 15368},
+    {"context": "hash (macos-latest)", "integration_id": 15368},
+    {"context": "Cargo Deny Check", "integration_id": 15368},
+    {"context": "Security Audit (cargo-audit)", "integration_id": 15368},
+    {"context": "pack-managed paths untracked + ignore surfaces current", "integration_id": 15368},
+    {"context": "OpenSSF Scorecard Analysis", "integration_id": 15368}
+  ]
+}
+```
+
+`OpenSSF Scorecard Analysis` requests `security-events: write` and uploads SARIF (`github/codeql-action/upload-sarif@v4` in `scorecard.yml`). A pull request from a fork does not receive that permission. The upload step has no `continue-on-error`, so the job fails and this required context fails with it. Same-repository pull requests are the flow this list is for.
+
+That object replaces `parameters` on the `required_status_checks` rule. The owner applies it. Drop the status-check contexts `Code coverage`, `CodeQL`, and `Analyze (rust)`. Keep the separate `code_scanning` rule on the same ruleset. That rule is the alert gate: CodeQL at `errors` / `high_or_higher`, and Scorecard at the same thresholds. It is not in the JSON above.
+
+On the `pull_request` rule, replace `parameters` with the live object and `require_code_owner_review` set to false:
+
+```json
+{
+  "allowed_merge_methods": ["merge", "squash", "rebase"],
+  "dismiss_stale_reviews_on_push": true,
+  "require_code_owner_review": false,
+  "require_extra_approval_for_unattributed_changes": true,
+  "require_last_push_approval": true,
+  "required_approving_review_count": 2,
+  "required_review_thread_resolution": true,
+  "required_reviewers": []
+}
+```
+
+The only change from the live `pull_request` parameters is `require_code_owner_review`. Do not change the `code_scanning` rule. This file does not edit ruleset 7941616.
 
 Require:
 
 - `PR Rust checks`
-- `determinism-replay / compare`
+- `compare`
 - `hash (ubuntu-latest)`
 - `hash (windows-latest)`
 - `hash (macos-latest)`
@@ -192,7 +239,7 @@ Require:
 - `pack-managed paths untracked + ignore surfaces current`
 - `OpenSSF Scorecard Analysis`
 
-Do not require the individual `Test (ubuntu, N/3)`, `Test (windows, N/3)`, or `Gate` names as branch-protection checks. On a docs-only pull request the archive and partition jobs are skipped, and a skipped required check blocks the merge. `Gate (fmt, clippy, check)` still runs (player-facing name check and workflow policy); only its `Rust CI setup` step is conditional (`.github/workflows/ci.yml:122`). `PR Rust checks` is the rollup.
+Do not require the individual `Test (ubuntu, N/3)`, `Test (windows, N/3)`, or `Gate` names as branch-protection checks. On a docs-only pull request the archive and partition jobs are skipped by their job `if:`. GitHub counts a skipped required check as passing, so requiring them would not catch a failed archive build: the partitions behind it are skipped too. A skipped matrix job also reports only its unexpanded name, such as `Test (ubuntu, ${{ matrix.partition }}/3)`, so `Test (ubuntu, 1/3)` would never report and would leave docs-only (matrix-skipped) pull requests pending. `Gate (fmt, clippy, check)` still runs (player-facing name check and workflow policy); only its `Rust CI setup` step is conditional (`.github/workflows/ci.yml:122`). `PR Rust checks` is the rollup.
 
 Do not require `Test (ubuntu, build archive)`, `Test (windows, build archive)`, or either platform's `Test (*, N/3)` jobs individually. The rollup fails if an archive build fails or any partition fails. Do not require scope- or path-gated jobs individually: `net-tests` (every pull request; job skipped when scope is cold), trace sync, doc-truth, docs, Miri `miri-ecs-hotpath`. PBR, Editor CI, and AW Editor tests do not run on pull requests.
 

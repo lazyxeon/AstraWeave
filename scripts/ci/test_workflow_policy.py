@@ -153,6 +153,70 @@ def _broken_action_ref_violation(old: str, new: str):
     return _exec_action_ref_violation_from_source(source)
 
 
+CODEOWNERS_FILE = ROOT / ".github" / "CODEOWNERS"
+CODEOWNERS_OWNER = "@lazyxeon"
+CODEOWNERS_ADVISORY = (
+    "Advisory. @lazyxeon is named on these paths. Review is not required to merge."
+)
+# File order. These patterns do not overlap; last-match would not change the owner.
+CODEOWNERS_PATHS = (
+    "/.github/",
+    "/.cargo/",
+    "/scripts/ci/",
+    "/rust-toolchain.toml",
+    "/CLAUDE.md",
+    "/GROK.md",
+    "/.cursor/rules/",
+    "/deny.toml",
+    "/AGENTS.md",
+    "/.config/nextest.toml",
+    "/Cargo.toml",
+    "/docs/scripts/generate-sitemap.sh",
+    "/scripts/aravath-sha256.sh",
+    "/scripts/check-aravath-network.sh",
+    "/scripts/check_benchmark_thresholds.ps1",
+    "/scripts/export_benchmark_history.sh",
+    "/scripts/export_benchmark_jsonl.ps1",
+    "/scripts/generate_benchmark_graphs.py",
+    "/scripts/tsan_suppressions.txt",
+    "/tools/xtask/src/fetch_assets.rs",
+    "/tools/xtask/src/main.rs",
+)
+
+
+def codeowners_rules(text: str) -> list[tuple[str, tuple[str, ...]]]:
+    rules: list[tuple[str, tuple[str, ...]]] = []
+    for line_no, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            raise AssertionError(f".github/CODEOWNERS:{line_no}: owner missing")
+        rules.append((parts[0], tuple(parts[1:])))
+    return rules
+
+
+def assert_codeowners(text: str) -> None:
+    rules = codeowners_rules(text)
+    expected = [(path, (CODEOWNERS_OWNER,)) for path in CODEOWNERS_PATHS]
+    if rules != expected:
+        raise AssertionError(f"CODEOWNERS rules {rules!r} != {expected!r}")
+
+
+def _exec_assert_codeowners(source: str):
+    namespace: dict[str, object] = {
+        "CODEOWNERS_OWNER": CODEOWNERS_OWNER,
+        "CODEOWNERS_PATHS": CODEOWNERS_PATHS,
+        "codeowners_rules": codeowners_rules,
+    }
+    exec(compile(source, "<assert_codeowners>", "exec"), namespace)
+    fn = namespace.get("assert_codeowners")
+    if not callable(fn):
+        raise RuntimeError("assert_codeowners missing after exec")
+    return fn
+
+
 def workflow_texts() -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(WORKFLOWS.glob("*.yml"))}
 
@@ -1148,6 +1212,27 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_codeowners_is_only_the_policy_paths(self) -> None:
+        text = CODEOWNERS_FILE.read_text(encoding="utf-8")
+        self.assertIn(CODEOWNERS_ADVISORY, text)
+        assert_codeowners(text)
+        missing = text.replace("/AGENTS.md @lazyxeon\n", "", 1)
+        self.assertNotEqual(missing, text)
+        with self.assertRaises(AssertionError):
+            assert_codeowners(missing)
+        extra = text + "/README.md @lazyxeon\n"
+        with self.assertRaises(AssertionError):
+            assert_codeowners(extra)
+        source = inspect.getsource(assert_codeowners)
+        guard = "\n    if rules != expected:\n"
+        self.assertIn(guard, source)
+        weakened = source.replace(guard, "\n    if False and rules != expected:\n", 1)
+        self.assertNotEqual(weakened, source)
+        self.assertNotIn(guard, weakened)
+        broken = _exec_assert_codeowners(weakened)
+        broken(missing)
+        broken(extra)
 
 
 if __name__ == "__main__":
