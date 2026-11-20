@@ -130,6 +130,22 @@ jobs:
           AW_CI_EXCLUDES: ${{ env.EXCLUDED_PACKAGES }}
         run: bash scripts/ci/run-gate.sh
 
+      # Issue 572. Default-feature clippy does not see ollama-only items
+      # or the cache-off build. This step is the guard. Do not soften it.
+      - name: Clippy astraweave-llm without default features
+        if: needs.changes.outputs.docs_only != 'true'
+        env:
+          AW_CI_FULL: ${{ needs.changes.outputs.full }}
+          AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
+        run: |
+          set -euo pipefail
+          pkgs=",${AW_CI_PACKAGES},"
+          if [ "$AW_CI_FULL" = "true" ] || [[ "$pkgs" == *",astraweave-llm,"* ]]; then
+            cargo clippy -p astraweave-llm --no-default-features -- -D warnings
+          else
+            echo "astraweave-llm is not in the affected set; skipping the no-default-features clippy"
+          fi
+
       - name: sccache stats
         if: always() && needs.changes.outputs.docs_only != 'true'
         run: sccache --show-stats || true
