@@ -140,6 +140,7 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
 }
 
 /// How long the next body read may block, and which deadline a timeout is.
+#[cfg(feature = "ollama")]
 struct ReadWait {
     wait: std::time::Duration,
     on_timeout: &'static str,
@@ -3018,6 +3019,26 @@ mod tests {
         assert!(!prod.contains(prompt_banner.as_str()));
         assert!(!prod.contains(response_banner.as_str()));
         assert!(!prod.contains("eprintln!"));
+    }
+
+    /// `next_read_wait` is ollama-only. `ReadWait` is its result, so the
+    /// struct has to carry the same gate. Without it, clippy of a default
+    /// build (`-D warnings`) rejects the struct as dead code.
+    #[test]
+    fn read_wait_stays_behind_the_ollama_gate() {
+        let src = include_str!("lib.rs");
+        let (prod, _) = src.split_once("mod tests").expect("test module");
+        let gate = "#[cfg(feature = \"ollama\")]";
+        let struct_at = prod.find("struct ReadWait {").expect("struct");
+        let fn_at = prod.find("fn next_read_wait(").expect("fn");
+        assert!(
+            prod[..struct_at].trim_end().ends_with(gate),
+            "ReadWait is constructed only by next_read_wait"
+        );
+        assert!(
+            prod[..fn_at].trim_end().ends_with(gate),
+            "next_read_wait is ollama-only"
+        );
     }
 
     #[cfg(feature = "ollama")]
