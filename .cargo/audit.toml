@@ -2,8 +2,8 @@
 # `ignore` is a list of advisory IDs. The schema has no reason field;
 # the reason and tracking issue live in the comment and in `deny.toml`.
 #
-# Vulnerability IDs below have no upgrade that keeps the current parents.
-# Unmaintained IDs have no patched release. Each one has a tracking issue.
+# The IDs below are unmaintained. There is no patched release.
+# Each one has a tracking issue.
 # zip 1.1.4 is gone. third_party/candle-core is crates.io candle-core 0.8.4
 # pinned to zip 9.7.0, the current patched 9.x line.
 # Drop that directory and the [patch.crates-io] entry once candle upstream

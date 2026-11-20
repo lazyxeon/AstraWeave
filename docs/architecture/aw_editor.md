@@ -41,7 +41,7 @@ A full-featured GUI editor for AstraWeave game content: levels (`LevelDoc` TOML)
 Per `tools/aw_editor/README.md:1-3`: "A non-programmer friendly GUI tool for creating and editing levels, encounters, and boss fights in AstraWeave." The scope has expanded substantially since that line was written — the README still describes only the level-editing surface, but the actual crate spans visual editing, asset authoring, blueprint design, build management, plugin hosting, performance profiling, and game runtime hosting. The aspirational scope is documented at `tools/aw_editor/EDITOR_ROADMAP_TO_WORLD_CLASS.md` and `tools/aw_editor/INTEGRATION_ROADMAP.md`.
 
 **Where it primarily lives:**
-- `tools/aw_editor/src/main.rs` — 9,681 lines, contains the `EditorApp` god struct (123 fields verified 2026-05-12 by `awk 'NR==216,/^\}$/' | awk '/^[[:space:]]+(pub )?[a-z_]+: /'`, lines 216-?) and `impl eframe::App for EditorApp` (line 9119). `fn main()` at line 9582.
+- `tools/aw_editor/src/main.rs` — 10,409 lines, contains the `EditorApp` god struct (123 fields verified 2026-05-12 by `awk 'NR==216,/^\}$/' | awk '/^[[:space:]]+(pub )?[a-z_]+: /'`, lines 216-?) and `impl eframe::App for EditorApp` (line 9617). `fn main()` at line 10211.
 - `tools/aw_editor/src/lib.rs` — 109 lines, re-export surface for tests/benches.
 - `tools/aw_editor/src/tab_viewer/mod.rs` — 8,185 lines, 157 functions. The `egui_dock::TabViewer` impl that translates `PanelType` enum variants to per-panel `.ui()` calls + per-panel state.
 - `tools/aw_editor/src/panel_type.rs` — 794 lines, the `PanelType` enum with **41 variants** (one per dockable panel) and `PanelCategory` enum with 6 categories (`Scene`, `Assets`, `Debug`, `Tools`, `System`, `Content`).
@@ -75,7 +75,7 @@ The editor is an `eframe`/`egui` application driven by a single per-frame update
     │
     │ eframe wraps the egui Context; calls update() once per redraw request
     ▼
-[EditorApp::update(ctx, frame)]                        (main.rs:9119-9120)
+[EditorApp::update(ctx, frame)]                        (main.rs:9617-9618)
     │
     │ 1. Splash screen check (until first frame after splash ends)
     │ 2. Tutorial overlay check
@@ -174,7 +174,7 @@ The editor is an `eframe`/`egui` application driven by a single per-frame update
 - The struct declaration spans `main.rs:216-?` and has 123 fields (verified 2026-05-12 via `awk` field-pattern count over the struct body). Some fields are gated by `#[cfg(target_os = "windows")]` (e.g. `hwnd_cache` at line 417). The `ARCHITECTURAL_AUDIT_REPORT.md:22` (2025-12-22) reported 55+ fields; the count has more than doubled since.
 
 #### Stage 2: Per-frame update entrypoint (`impl eframe::App for EditorApp::update`)
-**File:** `main.rs:9119-9120` (impl block at line 9119; `fn update` immediately follows).
+**File:** `main.rs:9617-9618` (impl block at line 9617; `fn update` immediately follows).
 **Role:** The eframe-mandated entry point. Single function but very long — receives `&egui::Context` and `&mut eframe::Frame`, performs the entire frame's logic.
 **Notes:**
 - Calls into the `subsystems/` modules (extracted in commit `0de315693`, 2026-04-08) for audio, animation, movement, hotkeys, scene stats.
@@ -369,7 +369,7 @@ The editor has 216 `.rs` files. This map captures the **load-bearing structural 
 
 | File / Directory | Role | Status | Notes |
 |---|---|---|---|
-| `src/main.rs` | Binary entrypoint + `EditorApp` god struct + 182 impl methods + `impl eframe::App` + `fn main` | Active | 9,681 lines. `EditorApp::default` at line 425; `EditorApp::new` at 2636; `impl eframe::App for EditorApp` at 9119; `fn main` at 9582. 123-field god struct (verified 2026-05-12; flagged at 55+ fields in `ARCHITECTURAL_AUDIT_REPORT.md:22` 2025-12-22). |
+| `src/main.rs` | Binary entrypoint + `EditorApp` god struct + 182 impl methods + `impl eframe::App` + `fn main` | Active | 10,409 lines. `EditorApp::default` at line 425; `EditorApp::new` at 2636; `impl eframe::App for EditorApp` at 9617; `fn main` at 10211. 123-field god struct (verified 2026-05-12; flagged at 55+ fields in `ARCHITECTURAL_AUDIT_REPORT.md:22` 2025-12-22). |
 | `src/lib.rs` | Library entry; module declarations + re-exports for tests/benches | Active | 109 lines. Allows `aw_editor_lib` to be consumed for testing without compiling the binary. |
 | `src/panels/` (49 files) | One file per dockable panel; each implements `Panel` trait + companion `*Action` enum | Active (per-panel: some are stubs, some are production-grade, see audits) | The audit at `EDITOR_BEHAVIORAL_CORRECTNESS_AUDIT.md` Phase 7 enumerates "18 stub PanelEvent handlers" — agents should read that doc for per-panel maturity. |
 | `src/panels/mod.rs` | Panel trait + re-exports of all 49 panel structs | Active | Defines the cross-panel contract. |
@@ -487,7 +487,7 @@ The editor accumulates substantial historical residue. The Behavioral Correctnes
   - **What's actually true:** Documented design. Edit-mode movement is via gizmos.
 
 - **Trap:** `auto_save_to_separate_dir` and `auto_save_keep_count` fields exist on `EditorApp` (Week 7 enhanced auto-save settings), but auto-save behavior was documented as a [NEEDS VERIFICATION] in the audit Phase 6 (silent failures).
-  - **What's actually true:** Auto-save fires when `auto_save_enabled` is true AND `now - last_auto_save >= auto_save_interval_secs` (`main.rs:9441-9445`). Both Week 7 enhancements are wired through: `auto_save_to_separate_dir = true` routes to `.autosave/` with timestamped filenames (`{base_name}_{YYYYMMDD_HHMMSS}.autosave.scene.ron`, `main.rs:1065-1088`); `auto_save_keep_count` rotation is enforced by `cleanup_old_autosaves` (`main.rs:1114-1170`) which sorts by mtime newest-first and removes everything past index `keep_count`.
+  - **What's actually true:** Auto-save fires when `auto_save_enabled` is true, the scene is dirty (`is_dirty`), and `last_auto_save.elapsed() > auto_save_interval_secs` (`main.rs:10010-10012`). `session_files::write_autosave` (`session_files.rs:49`) is called from `main.rs:10016`. `auto_save_to_separate_dir = true` routes to `.autosave/` with timestamped filenames (`{base_name}_{YYYYMMDD_HHMMSS}.autosave.scene.ron`, `session_files.rs:63-65`). `auto_save_keep_count` rotation is `cleanup_old_autosaves` (`session_files.rs:96`). `write_autosave` calls it only when `separate_dir` is set (`session_files.rs:81-89`). It sorts by mtime newest-first and removes everything past index `keep_count`.
 
 - **Trap:** The viewport widget creation is conditional on a successful GPU device init. If wgpu init fails, `viewport: Option<ViewportWidget>` stays `None` (`main.rs:276`), and the editor runs without a 3D viewport — but most panels assume `viewport` is populated.
   - **What's actually true:** The fallback path renders panel placeholders. Audit Phase 6 flagged this as a "silent failure" pattern.
@@ -633,18 +633,18 @@ The editor has accumulated dozens of small architectural decisions over 8 months
 | 4 | `editor_mode` is updated in lock-step with `runtime_state` transitions: roughly `Edit` ↔ `RuntimeState::Editing`; `Play` ↔ `RuntimeState::{Playing, SteppingOneFrame}`; `Paused` ↔ `RuntimeState::Paused`. Naming differs between the two enums but the two transition together. | Yes (by-call-site convention; no compile-time assertion) | `main.rs:2370, 2390` set `EditorMode::Play` alongside runtime play-start; `main.rs:2402, 2451` set `EditorMode::Paused`; `main.rs:2423` sets `EditorMode::Edit` on stop. No central `debug_assert!` enforces consistency at transition points, but every transition call site updates both. |
 | 5 | `UndoStack` push must happen in the same `EditorApp::update` frame as the mutation | Yes (by construction) | Commands are pushed inside event-handler arms in `tab_viewer/mod.rs` and `main.rs`. |
 | 5b | Play mode records the integer 60 Hz step count of every `tick` / `step_frame` call, including zero. Replay reads `recorded_fixed_steps()` instead of re-deriving steps from wall-clock `dt`. `Instant` in this file measures frame cost only | Yes | `runtime.rs` `run_fixed_steps`; test `play_session_records_fixed_step_counts` |
-| 6 | Auto-save runs only when `auto_save_enabled` and `now - last_auto_save > auto_save_interval_secs` | Yes | `main.rs:10010-10013` checks the interval; `session_files::write_autosave` at `session_files.rs:49` is called from `main.rs:10016`. |
+| 6 | Auto-save runs only when `auto_save_enabled`, `is_dirty`, and `last_auto_save.elapsed() > auto_save_interval_secs` | Yes | `main.rs:10010-10012` checks the flags and the interval; `session_files::write_autosave` at `session_files.rs:49` is called from `main.rs:10016`. |
 | 7 | `viewport: Option<ViewportWidget>` is `None` only if wgpu init failed at startup | Yes | `main.rs:276` field type. `EditorApp::new` populates it on success. |
 | 8 | `egui` version across the editor matches `egui-wgpu = 0.32.0` | Yes (compile-time) | Cargo version resolution. `egui_kittest` is not linked. |
 | 9 | `PanelType::all()` returns all 41 variants and `PanelType::in_category(c)` partitions cleanly | Yes (tests) | `panel_type.rs:505` `all`; `panel_type.rs:496` `in_category`. |
 | 10 | `EditorAudioBridge` panel-actions are drained per frame via `tick_audio_subsystem` | Yes | `subsystems/audio_animation.rs:10-34`. |
 | 11 | The 49 panels in `panels/` each implement the `Panel` trait declared in `panels/mod.rs` | Yes (compile-time) | Trait bound checked by rust compiler when each panel is constructed. |
-| 12 | `EditorApp` is `eframe::App` | Yes (compile-time) | `main.rs:9119` `impl eframe::App for EditorApp`. |
+| 12 | `EditorApp` is `eframe::App` | Yes (compile-time) | `main.rs:9617` `impl eframe::App for EditorApp`. |
 | 13 | The editor binary `aw_editor` lives at `src/main.rs`; the runtime binary at `src/bin/aw_game_runtime.rs` | Yes | `Cargo.toml:116-126`. |
 | 14 | `#![forbid(unsafe_code)]` is NOT declared at the crate root | Yes (compile-time) | Editor uses raw-window-handle, wgpu raw resources, and Windows-specific HWND access (`main.rs:417`); cannot forbid unsafe. |
 | 15 | The `library` target (`lib.rs`) compiles with zero `dead_code` warnings | Yes (compile-time) | Per `main.rs:1-7` cleanup-comment claim; the binary target uses targeted allows. |
 | 16 | Plugin events go through `PluginManager`, not direct trait calls | Yes | `plugin.rs::PluginManager`. |
-| 17 | Auto-save snapshot count is bounded by `auto_save_keep_count` field | Yes (runtime, when `auto_save_to_separate_dir = true`) | `cleanup_old_autosaves` (`main.rs:1114-1170`) sorts `.autosave/` entries matching `{base}_*.autosave.scene.ron` by mtime newest-first and `fs::remove_file`'s every entry past index `auto_save_keep_count`. Only invoked when separate-dir mode is on (`main.rs:1101-1103`); same-path-overwrite mode trivially keeps 1 file. |
+| 17 | Auto-save snapshot count is bounded by `auto_save_keep_count` field | Yes (runtime, when `auto_save_to_separate_dir = true`) | `cleanup_old_autosaves` (`session_files.rs:96`) sorts `.autosave/` entries matching `{base}_*.autosave.scene.ron` by mtime newest-first and `fs::remove_file`s every entry past index `auto_save_keep_count`. `write_autosave` (`session_files.rs:49`) calls it only when `separate_dir` is set (`session_files.rs:81-89`). Same-path-overwrite mode keeps 1 file. |
 | 18 | The lock file (`lock_file_path` field) prevents concurrent editor instances on the same project | Yes (runtime) | `main.rs` lock-file creation + check (Week 7 Day 5 crash recovery). |
 | 19 | Production-path `.unwrap()` count remains low. Audit baseline was 110+; closed by Wave-3 mutation remediation campaign (`tests/wave3_mutation_remediation.rs`). Verified 2026-05-12: **only ~12 `.unwrap()` calls remain before the first `#[cfg(test)]` boundary across `tools/aw_editor/src/`** — distributed as `mutation_tests.rs` (8, itself a test-harness module), `terrain_integration.rs` (3), `runtime.rs` (1). Zero unwraps in the 9,681-line `main.rs`. | Yes (per-commit measurable) | `grep -c '\.unwrap()' file` + `#[cfg(test)]` boundary heuristic; CI lint `unwrap_used = "allow"` per Cargo.toml:9-10 (test code uses unwrap extensively for clarity). |
 | 20 | The editor accent color rides `Visuals::hyperlink_color` for ALL themes — call sites read it via `ui::palette::accent(visuals)` and never hard-code teal (or any accent) inline. | Yes (greppable) | `ui/palette.rs` routing conventions header; consumers in dock_layout, toolbar, tab_viewer, main.rs. |
