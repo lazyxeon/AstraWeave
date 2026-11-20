@@ -1,0 +1,41 @@
+# cargo-mutants 27.1.0 parses `#[cfg(kani)]` modules and scores a passing
+# `cargo test` as a miss, because those files are not in the test binary.
+# The proofs stay on the Kani path.
+exclude_globs = ["**/*_kani.rs"]
+
+# `skip_calls` is not set. cargo-mutants 27.1.0 does not set `cfg(mutants_skip)`.
+# It reads `cfg_attr(..., mutants::skip)` from the source. The ecs `step_index`
+# helper still has that attribute: replacing it with 0, with 1, or `+` with `*`
+# does not terminate. Nav does not. A nav operator that does not terminate is
+# named in `exclude_re` below. A timeout is not a kill.
+
+exclude_re = [
+    # These eight hang. Each one still times out at 60s, at least 40 times
+    # the baseline test time. They are hangs, not slow kills. A timeout is
+    # not a kill.
+    # `+` to `-` makes a g-score fall, so the search does not terminate.
+    "replace \\+ with - in accumulate_cost",
+    # `true` and `<=` push the same node again.
+    "replace score_improves -> bool with true",
+    "replace < with <= in score_improves",
+    # A cursor replaced with 0, with 1, or `+` with `*` does not advance.
+    "replace step_index -> usize with 0",
+    "replace step_index -> usize with 1",
+    "replace \\+ with \\* in step_index",
+    # A heap length replaced with 1, or `-` with `/`, does not shrink.
+    "replace pred_u16 -> u16 with 1",
+    "replace - with / in pred_u16",
+    # `||` and `&&` both return false: an empty region list or an empty path
+    # never enters the loop, which returns false either way.
+    "replace \\|\\| with && in NavMesh::path_crosses_dirty_region",
+    # `(slot << 8) | local` and `^` match: local is a triangle index under 24, so it does not overlap the shifted slot.
+    "replace \\| with \\^ in NavTiles::collect_sites",
+    # The loop visits count 0..=23, and both MAX_TRIS+1 and MAX_TRIS/1 stay above 23, so min() is still count.
+    "replace - with \\+ in build_slot",
+    "replace - with / in build_slot",
+    # `capacity >= 0` is true for every usize. Returning true calls reserve(0), which does not change an empty BlobVec.
+    "replace > with >= in BlobVec::positive_capacity",
+    "replace BlobVec::positive_capacity -> bool with true",
+    # Generation occupies the high 32 bits, so `|` and `^` pack the same raw value.
+    "replace \\| with \\^ in Entity::pack_entity_raw",
+]

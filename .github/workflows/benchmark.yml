@@ -90,7 +90,6 @@ jobs:
 
       - name: Download benchmark shards
         uses: actions/download-artifact@v8
-        continue-on-error: true
         with:
           pattern: benchmark-results-${{ github.sha }}-shard-*
           path: benchmark-shards
@@ -345,8 +344,7 @@ jobs:
             -BenchmarkJsonPath "benchmark_results/benchmarks.json" `
             -ThresholdsJsonPath ".github/benchmark_thresholds.json" `
             -ShowDetails
-        continue-on-error: true
-      
+
       - name: Strict threshold validation (main branch only)
         if: steps.merge.outputs.healthy == 'true' && github.ref == 'refs/heads/main'
         shell: pwsh

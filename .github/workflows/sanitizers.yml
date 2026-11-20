@@ -1,6 +1,6 @@
 # AstraWeave Sanitizer CI Workflow
 # Runs LLVM Sanitizers (ASan, LSan, TSan) on critical crates
-# Schedule: Every push to main, nightly for full suite
+# Schedule: push to main and develop, pull requests to main, nightly 03:00 UTC, and workflow_dispatch.
 #
 # ⚠️ IMPORTANT: astraweave-render is EXCLUDED from all sanitizer testing
 # GPU driver allocations cause false positives. Use wgpu validation instead.
@@ -24,6 +24,8 @@ name: Sanitizers
 on:
   push:
     branches: [main, develop]
+  pull_request:
+    branches: [main]
   schedule:
     # Full sanitizer suite nightly. Not on pull requests.
     - cron: '0 3 * * *'
@@ -85,7 +87,7 @@ jobs:
           echo "✅ No cargo-mutants artifacts found"
 
   # ──────────────────────────────────────────────────────
-  # Fast ASan check on critical crates (every PR)
+  # Fast ASan check on critical crates. Not a pull-request job.
   # NOTE: Excludes render crate due to GPU driver false positives
   # ──────────────────────────────────────────────────────
   asan-critical:
@@ -93,11 +95,10 @@ jobs:
     needs: [source-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Run on all triggers except when force_full_suite is requested via workflow_dispatch
-    # (force_full_suite defers to asan-full which covers a superset of these crates).
-    # Previously excluded schedule runs; removed that exclusion so critical crates
-    # always receive a fast sanity check on every nightly run in addition to asan-full.
-    if: "!(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)"
+    # Skips pull requests. Skips workflow_dispatch when force_full_suite is
+    # set, because asan-full covers these crates then. Runs on push and on
+    # the nightly schedule. Pull requests run LeakSanitizer and ThreadSanitizer.
+    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
     env:
       # Disable leak detection here — the dedicated LSan job handles it.
       # abort_on_error=0 lets the test harness report per-test results.
@@ -361,18 +362,16 @@ jobs:
             -- --test-threads=1
 
   # ──────────────────────────────────────────────────────
-  # ThreadSanitizer (nightly only — ADVISORY, not must-pass)
-  # TSan with async Rust has many false positives. Use for bug discovery, not gating.
+  # ThreadSanitizer. Pull requests, the nightly schedule, or
+  # workflow_dispatch with force_full_suite.
+  # A step failure fails this job. The summary fails the workflow when this job fails.
   # ──────────────────────────────────────────────────────
   thread-sanitizer:
-    name: ThreadSanitizer (Advisory)
+    name: ThreadSanitizer
     needs: [source-integrity]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
-    env:
-      # Suppressions file is committed at scripts/tsan_suppressions.txt
-      TSAN_OPTIONS: suppressions=scripts/tsan_suppressions.txt:second_deadlock_stack=1
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.force_full_suite)
     steps:
       - uses: actions/checkout@v7
 
@@ -386,49 +385,58 @@ jobs:
         with:
           components: rust-src
 
-      - name: Verify TSan suppressions file
+      - name: Point TSan at the suppressions file
         run: |
-          if [ ! -f scripts/tsan_suppressions.txt ]; then
-            echo "::error::scripts/tsan_suppressions.txt is missing — commit it to the repo"
+          # -Zbuild-std places the test binary under target/<triple>/. TSan
+          # resolves a relative suppressions path from that binary, so job
+          # 130250756401 exited 66 opening scripts/tsan_suppressions.txt.
+          file="$GITHUB_WORKSPACE/scripts/tsan_suppressions.txt"
+          if [ ! -f "$file" ]; then
+            echo "::error::$file is missing — commit it to the repo"
             exit 1
           fi
-          echo "✅ TSan suppressions file found ($(wc -l < scripts/tsan_suppressions.txt) lines)"
+          echo "TSAN_OPTIONS=suppressions=${file}:second_deadlock_stack=1" >> "$GITHUB_ENV"
+          echo "TSan suppressions: $file ($(wc -l < "$file") lines)"
 
       - name: Run TSan on astraweave-ai
         run: |
-          echo "⚠️ TSan is ADVISORY — failures may be false positives"
-          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
+          # Target rustflags only. A global RUSTFLAGS value also sanitizes
+          # host crates such as cfg-if, and the host sysroot's core is not
+          # rebuilt, so rustc reports an ABI mismatch (exit 101).
+          cargo +$AW_NIGHTLY test \
             -p astraweave-ai \
+            -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
+            --config 'target.x86_64-unknown-linux-gnu.rustflags=["-Zsanitizer=thread"]' \
             --lib \
             -- --test-threads=1
-        continue-on-error: true  # TSan is advisory, not blocking
 
       - name: Run TSan on astraweave-coordination
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
+          cargo +$AW_NIGHTLY test \
             -p astraweave-coordination \
+            -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
+            --config 'target.x86_64-unknown-linux-gnu.rustflags=["-Zsanitizer=thread"]' \
             --lib \
             -- --test-threads=1
-        continue-on-error: true  # TSan is advisory, not blocking
 
       - name: Run TSan on astraweave-ecs
         run: |
-          RUSTFLAGS="-Zsanitizer=thread" cargo +$AW_NIGHTLY test \
+          cargo +$AW_NIGHTLY test \
             -p astraweave-ecs \
+            -Zbuild-std \
             --target x86_64-unknown-linux-gnu \
+            --config 'target.x86_64-unknown-linux-gnu.rustflags=["-Zsanitizer=thread"]' \
             --lib \
             -- --test-threads=1
-        continue-on-error: true  # TSan is advisory, not blocking
 
       - name: Write TSan summary
         if: always()
         run: |
-          echo "## ThreadSanitizer Results (Advisory)" >> $GITHUB_STEP_SUMMARY
+          echo "## ThreadSanitizer Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "TSan with async Rust produces many false positives." >> $GITHUB_STEP_SUMMARY
-          echo "These results are for **bug discovery only** and do not gate merges." >> $GITHUB_STEP_SUMMARY
+          echo "Std is rebuilt with \`-Zbuild-std\` so the sanitizer ABI matches \`core\`." >> $GITHUB_STEP_SUMMARY
 
   # ──────────────────────────────────────────────────────
   # Determinism Testing (nightly — critical for multiplayer/replay)
@@ -505,7 +513,6 @@ jobs:
           cargo test -p astraweave-physics \
             -- --test-threads=1 \
             determinism deterministic replay
-        continue-on-error: true  # Physics determinism is a stretch goal
 
       - name: Check for non-deterministic HashMap usage in hot paths
         run: |
@@ -591,12 +598,12 @@ jobs:
           echo "| ASan (Critical) | $(result_icon "${{ needs.asan-critical.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "| ASan (Full) | $(result_icon "${{ needs.asan-full.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "| LeakSanitizer | $(result_icon "${{ needs.leak-sanitizer.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
-          echo "| ThreadSanitizer | $(result_icon "${{ needs.thread-sanitizer.result }}") | No (advisory) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ThreadSanitizer | $(result_icon "${{ needs.thread-sanitizer.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "| Determinism | $(result_icon "${{ needs.determinism.result }}") | Yes |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "_Run triggered by: \`${{ github.event_name }}\` at $(date -u)_" >> $GITHUB_STEP_SUMMARY
 
-          # Fail if any critical (non-advisory) job failed
+          # Fail if a required job failed.
           # Skipped jobs are OK — they run on different triggers
           FAILED=0
 
@@ -625,9 +632,9 @@ jobs:
             FAILED=1
           fi
 
-          # TSan is advisory — log but don't fail
           if [ "${{ needs.thread-sanitizer.result }}" = "failure" ]; then
-            echo "⚠️ ThreadSanitizer had failures (advisory — not blocking)"
+            echo "ThreadSanitizer FAILED"
+            FAILED=1
           fi
 
           if [ "$FAILED" -eq 1 ]; then

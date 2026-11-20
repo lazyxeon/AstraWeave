@@ -25,7 +25,7 @@ last_verified_commit: d6b07fc8
 | **Last verified against commit** | `d6b07fc8` |
 | **Last verified date** | 2026-10-15 |
 | **Status** | Active (single-file library); consumers are mostly examples/tests — see §1 status note and §6 |
-| **Owner notes** | [Reasoning not recovered from available sources] — crate predates the architecture-trace campaign. Phase 10 "AI-Orchestrated Dynamic Terrain" added the region-invalidation block (lib.rs §520-629). |
+| **Owner notes** | [Reasoning not recovered from available sources] — crate predates the architecture-trace campaign. Phase 10 "AI-Orchestrated Dynamic Terrain" added the region-invalidation block (lib.rs §542-710). |
 
 ---
 
@@ -38,7 +38,7 @@ last_verified_commit: d6b07fc8
 It provides the navigability check + path query that the AI tool-validation layer (`MoveTo`) and the editor "Bake Navmesh" tool consult to answer "can an agent get from A to B, and along what route." Gameplay scripts do not query it.
 
 **Where it primarily lives:**
-- [`astraweave-nav/src/lib.rs`](../../astraweave-nav/src/lib.rs) — the entire production implementation (~810 LoC of code; the rest of the 2,661-line file is `#[cfg(test)]` modules).
+- [`astraweave-nav/src/lib.rs`](../../astraweave-nav/src/lib.rs) — mesh bake, `find_path`, and dirty-region relink (2,837 lines; production code through `smooth` at line 903, then `#[cfg(test)]` modules). [`astraweave-nav/src/tiles.rs`](../../astraweave-nav/src/tiles.rs) is the tiled commit and `NavTiles::query_path` path.
 - Test/bench-only siblings: `astraweave-nav/src/{mutation_tests,stress_tests,edge_case_tests}.rs`, `astraweave-nav/tests/*.rs`, `astraweave-nav/benches/navmesh_benchmarks.rs`.
 
 **Status note:**
@@ -54,7 +54,7 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
     │ NavMesh::bake(tris, max_step, max_slope_deg)
     ▼
 [Stage 1: Triangle filtering → NavTri set]
-    file: astraweave-nav/src/lib.rs  (bake, lines 430-468)
+    file: astraweave-nav/src/lib.rs  (bake, lines 442-480)
     role: drop degenerate (zero-normal) tris; drop downward-facing tris;
           drop tris whose angle-from-vertical exceeds max_slope_deg
     key data: Vec<NavTri> with idx, verts[3], normal, center, empty neighbors
@@ -62,21 +62,21 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
     │ O(n²) pairwise share_edge() test, eps = 1e-3
     ▼
 [Stage 2: Adjacency build]
-    file: astraweave-nav/src/lib.rs  (bake adjacency loop 470-479; share_edge 716-726)
+    file: astraweave-nav/src/lib.rs  (bake adjacency loop 487-494; share_edge 799-812)
     role: two NavTris are neighbors if they share >=2 vertices within eps
     key data: NavTri.neighbors: Vec<usize> populated symmetrically
     │
     │ (NavMesh now constructed; query phase below)
     ▼
 [Stage 3: Endpoint snap]
-    file: astraweave-nav/src/lib.rs  (find_path 490-497; closest_tri 728-737)
+    file: astraweave-nav/src/lib.rs  (find_path 505; closest_tri 815)
     role: map start/goal Vec3 to nearest NavTri by squared-distance to center
     key data: (start_tri_idx, goal_tri_idx) or empty path if mesh empty
     │
     │ astar_tri(&tris, s, g)
     ▼
 [Stage 4: A* over triangle graph]
-    file: astraweave-nav/src/lib.rs  (astar_tri 739-800)
+    file: astraweave-nav/src/lib.rs  (astar_tri 836)
     role: BinaryHeap-based A*; edge cost = center-to-center distance,
           heuristic = straight-line center distance to goal
     key data: Vec<usize> triangle-index path (empty if disconnected)
@@ -99,7 +99,7 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 **Role:** Convert raw `Triangle`s into walkable `NavTri`s.
 **Inputs:** `&[Triangle]`, `max_step: f32`, `max_slope_deg: f32`.
 **Outputs:** `Vec<NavTri>` (filtered).
-**Notes:** Normal is `(b-a)×(c-a)` normalized. Three filters apply: (a) `normalize_or_zero()` length² < 1e-6 → drop (degenerate), lines 438-440; (b) `n.dot(Vec3::Y) < 0.0` → drop (downward-facing), lines 444-448; (c) `angle_from_vertical > max_slope_deg` → drop, lines 450-458. `angle_from_vertical = acos(clamp(dot(n,Y),-1,1)).to_degrees()`. **`max_step` is stored on the struct but is not consulted by `bake` or `find_path`** — see §6 trap and §8 invariant 6.
+**Notes:** Normal is `(b-a)×(c-a)` normalized. Three filters apply: (a) `normalize_or_zero()` length² < 1e-6 → drop (degenerate), lines 449-452; (b) `n.dot(Vec3::Y) < 0.0` → drop (downward-facing), lines 457-460; (c) `angle_from_vertical > max_slope_deg` → drop, lines 466-469. `angle_from_vertical = acos(clamp(dot(n,Y),-1,1)).to_degrees()`. **`max_step` is the largest vertical gap `share_edge` still links** (lib.rs:807). A shared XZ edge taller than that is not a neighbor.
 
 #### Stage 2: Adjacency build
 **File(s):** `astraweave-nav/src/lib.rs` (`bake` 470-479; `share_edge` 716-726)
@@ -137,13 +137,13 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 |---|---|---|
 | `Triangle` | Pure geometry: three `Vec3` vertices `a,b,c`. No adjacency. Has area/normal/perimeter/degeneracy helpers. | `lib.rs:37-125`; callers pass `&[Triangle]` into `bake` |
 | `NavTri` | A *baked, walkable* triangle: `idx`, `verts[3]`, precomputed `normal`, `center`, and `neighbors: Vec<usize>`. | `lib.rs:146-233` |
-| `NavMesh` | The baked mesh: `tris: Vec<NavTri>`, `max_step`, `max_slope_deg`, plus dirty-region state. | `lib.rs:419-708` |
+| `NavMesh` | The baked mesh: `tris: Vec<NavTri>`, `max_step`, `max_slope_deg`, plus dirty-region state. | `lib.rs:431` |
 | `Aabb` | Axis-aligned bounding box used both as a generic geometry helper and as the dirty-region unit. | `lib.rs:251-406` |
 | bake | Construct a `NavMesh` from triangles (filter + adjacency). | `NavMesh::bake` |
 | dirty region | An `Aabb` marking terrain that changed and may invalidate the mesh; overlapping regions are merged. | `lib.rs:520-629` |
-| rebake | Re-run `bake` (full) when dirty regions exist. `partial_rebake` still calls the full `bake` internally. | `rebake_dirty_regions` 566-576; `partial_rebake` 582-606 |
+| rebake | `rebake_dirty_regions` calls `partial_rebake`, which relinks triangles that meet a dirty AABB and leaves other vertices in place. | `rebake_dirty_regions` 582-587; `partial_rebake` 595 |
 | max_slope_deg | Maximum allowed angle (degrees) of a triangle's face from vertical (Y) for it to be walkable. | `bake` filter, lines 450-458 |
-| max_step | Stored maximum step height. **Currently inert** — not read by any query. | field `lib.rs:421`; §6 trap |
+| max_step | Largest vertical gap that still links a shared XZ edge. | field `lib.rs:433`; read by `share_edge` at `lib.rs:807` |
 
 ### Terms to NOT confuse
 
@@ -184,9 +184,9 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 |---|---|---|---|
 | [`astraweave-nav/src/lib.rs`](../../astraweave-nav/src/lib.rs) | Entire production implementation: `Triangle`, `NavTri`, `Aabb`, `NavMesh`, `bake`, `find_path`, region invalidation, free fns `share_edge`/`closest_tri`/`astar_tri`/`smooth` | Active | 2,661 lines total; production code ~lines 1-813, remainder is `#[cfg(test)] mod tests` + inline `mod mutation_tests`/`stress_tests`/`edge_case_tests` declarations |
 | [`astraweave-nav/Cargo.toml`](../../astraweave-nav/Cargo.toml) | Crate manifest; deps = `anyhow`, `glam`; declares `navmesh_benchmarks` bench | Active | Workspace member at root `Cargo.toml:45`; path dep `Cargo.toml:209` |
-| `astraweave-nav/src/mutation_tests.rs` | Mutation-resistant unit tests (`mod mutation_tests` at lib.rs:34) | Active (test-only) | `#[cfg(test)]` |
-| `astraweave-nav/src/stress_tests.rs` | Stress/scale tests (declared at lib.rs:2656) | Active (test-only) | |
-| `astraweave-nav/src/edge_case_tests.rs` | Edge-case tests (declared at lib.rs:2661) | Active (test-only) | |
+| `astraweave-nav/src/mutation_tests.rs` | Mutation-resistant unit tests (`mod mutation_tests` at lib.rs:42) | Active (test-only) | `#[cfg(test)]` |
+| `astraweave-nav/src/stress_tests.rs` | Stress/scale tests (declared at lib.rs:2832) | Active (test-only) | |
+| `astraweave-nav/src/edge_case_tests.rs` | Edge-case tests (declared at lib.rs:2837) | Active (test-only) | |
 | `astraweave-nav/tests/*.rs` | Integration/behavioral/mutation-hardening tests (`behavioral_correctness_tests`, `mutation_hardening_tests`, `mutation_resistant_tests`, `mutation_resistant_comprehensive_tests`, `slope_debug`, `winding_detector`) | Active (test-only) | |
 | [`astraweave-nav/benches/navmesh_benchmarks.rs`](../../astraweave-nav/benches/navmesh_benchmarks.rs) | Criterion benchmarks with inline correctness assertions | Active (bench-only) | Canonical bench; baselines in §9 |
 | [`crates/astraweave-nav/benches/navmesh_benchmarks.rs`](../../crates/astraweave-nav/benches/navmesh_benchmarks.rs) | Older/stripped copy of the bench, **no `src/`, no `Cargo.toml`** | Legacy / Orphan | NOT a workspace member; see §6 |
@@ -206,33 +206,33 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 
 ### Naming collisions
 
-- **`NavMesh`**: only one definition in the workspace (`astraweave-nav/src/lib.rs:419`). A workspace-wide grep for `struct NavMesh` returns this single site — there is **no** duplicate/peer navmesh implementation (unlike the terrain/vertex-format duplications warned about in CLAUDE.md).
+- **`NavMesh`**: only one definition in the workspace (`astraweave-nav/src/lib.rs:431`). A workspace-wide grep for `struct NavMesh` returns this single site — there is **no** duplicate/peer navmesh implementation (unlike the terrain/vertex-format duplications warned about in CLAUDE.md).
 - **`Triangle` / `NavTri`**: `astraweave-gameplay::biome` imports `astraweave_nav::Triangle` (`biome.rs:1`) and `weave_portals` imports `astraweave_nav::NavMesh` (`weave_portals.rs:1`; `Triangle` only inside its `#[cfg(test)]` module at `weave_portals.rs:140`) rather than defining their own, so no collision.
 - **`Aabb`**: there are other AABB-like types elsewhere in the engine (verified: `astraweave-physics/src/spatial_hash.rs:67` `AABB`, `astraweave-render/src/impostor_bake.rs:63` `Aabb`, `astraweave-scene/src/world_partition.rs:116` `AABB`), but `astraweave_nav::Aabb` is a self-contained type used only within nav for geometry helpers and dirty regions; a workspace grep finds no consumer importing `astraweave_nav::Aabb`. No confirmed cross-crate collision via this crate's surface.
 
 ### Known cognitive traps
 
-- **Trap: `max_step` is inert.**
-  - Why it's confusing: `NavMesh` stores `max_step` (lib.rs:421), the constructor takes it, the README/doc-comment list it as a baking parameter, and every test/example threads a value through. It implies step-height filtering occurs.
-  - What's actually true: `bake` only filters on slope and upward-facing-ness; **no code reads `max_step`** to filter or constrain anything. It is preserved across rebakes (`rebake_dirty_regions` reuses `self.max_step`, line 572) but never consulted in a query. See §8 invariant 6.
+- **Trap: `max_step` used to be described as inert.**
+  - Why it's confusing: older notes said the field was stored and never read. `bake` still filters on slope and facing, which looks like the whole gate.
+  - What's actually true: `share_edge` (lib.rs:799) links a shared XZ edge only when the vertical gap is at most `max_step` (lib.rs:807). `partial_rebake` passes the same field (lib.rs:639). Coplanar edges have a zero gap, so they stay linked. The stair golden is `max_step_links_a_low_ledge_and_rejects_a_tall_one`.
 
 - **Trap: pathing uses triangle *centers*, not edges.**
   - Why it's confusing: many navmesh systems use a "funnel"/string-pulling algorithm over shared edges for taut paths.
-  - What's actually true: A* edge cost, the heuristic, and the emitted waypoints are all based on triangle **centers** (lib.rs:773, 778, 510). There is no funnel algorithm; `smooth` is a generic 3-point average, not edge-constrained. Paths therefore route center-to-center and are softened, not optimal taut paths.
+  - What's actually true: A* edge cost, the heuristic, and the emitted waypoints are all based on triangle **centers** (`astar_tri` at lib.rs:836, `smooth` at lib.rs:903). There is no funnel algorithm; `smooth` is a generic 3-point average, not edge-constrained. Paths therefore route center-to-center and are softened, not optimal taut paths.
 
 - **Trap: the AI nav check looks wired but its on-ramp is test-only.**
   - Why it's confusing: `tool_sandbox.rs:400-410` clearly calls `nav.find_path(...).is_empty()` to block `MoveTo`, suggesting the runtime AI loop enforces navigability.
   - What's actually true: that branch only runs when `context.nav_mesh.is_some()`. The only way to set it is `ValidationContext::with_nav`, whose **only call sites are inside `#[cfg(test)]`** (tool_sandbox.rs:556/861/877/2113/2155) and benches. No production `src/` file builds a `ValidationContext` with a nav mesh. The navigability gate is effectively dormant in shipped runtime paths. (Per CLAUDE.md Integration Completeness item 1 and Key Lesson 8: "wired beats tested.")
 
-- **Trap: `partial_rebake` is not partial.**
-  - Why it's confusing: the name and docstring promise incremental work.
-  - What's actually true: it counts affected triangles, then calls `rebake_dirty_regions`, which does a **full** `NavMesh::bake` of all triangles (lib.rs:599-603, 566-576). The doc-comment itself says "In a production system, you would only rebuild the affected portions."
+- **Trap: `partial_rebake` used to delegate to a full bake.**
+  - Why it's confusing: the name once sat on a function that rebuilt every triangle.
+  - What's actually true: `rebake_dirty_regions` (lib.rs:582) calls `partial_rebake` (lib.rs:595). That relinks triangles whose bounds meet a dirty AABB and leaves other vertices in place. Neighbor lists of a clean triangle change only where they touched a dirty one.
 
 ### Orphan/dormant inventory (CLAUDE.md taxonomy)
 
 - **Orphan source:** `crates/astraweave-nav/benches/navmesh_benchmarks.rs` (file on disk, not in any compiled crate).
 - **In-design-but-tested surface:** `ValidationContext::with_nav` + the `MoveTo` nav gate in `astraweave-ai` (tested, zero production callers).
-- **Dormant field:** `NavMesh::max_step` (settable, never read by a query).
+- **Load-bearing field:** `NavMesh::max_step` (lib.rs:433) is the vertical-gap limit in `share_edge`.
 
 ---
 
@@ -242,25 +242,25 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 - **Date:** [Unknown — predates trace campaign]
 - **Status:** Accepted (in code as of `7c29b8182`).
 - **Context:** Need a path query over a baked mesh with minimal dependencies (crate deps are only `anyhow` + `glam`).
-- **Decision:** Run A* over the triangle-adjacency graph using triangle-center Euclidean distance as both edge cost and heuristic (`astar_tri`, lib.rs:739-800).
+- **Decision:** Run A* over the triangle-adjacency graph using triangle-center Euclidean distance as both edge cost and heuristic (`astar_tri`, lib.rs:836).
 - **Alternatives considered:** [Reasoning not recovered from available sources] — no funnel/string-pulling or portal-edge algorithm is present; whether it was considered is not documented.
 - **Consequences:** Admissible heuristic (centers), so A* returns a shortest *center-path*, but emitted waypoints are not edge-tightened. `smooth` softens corners post hoc.
 
-### Decision: Slope + upward-facing filter at bake time; `max_step` stored but unused
-- **Date:** [Unknown]
+### Decision: Slope + upward-facing filter at bake time; `max_step` limits ledge links
+- **Date:** [Unknown]; ledge gate closed 2026-10-15.
 - **Status:** Accepted.
-- **Context:** Distinguish walkable ground from walls/ceilings.
-- **Decision:** Reject zero-normal, downward-facing, and over-`max_slope_deg` triangles (lib.rs:438-458). `max_step` is accepted as a parameter and stored.
+- **Context:** Distinguish walkable ground from walls/ceilings, and a step from a wall.
+- **Decision:** Reject zero-normal, downward-facing, and over-`max_slope_deg` triangles (lib.rs:449-469). `max_step` is the largest vertical gap `share_edge` still links (lib.rs:807).
 - **Alternatives considered:** [Reasoning not recovered from available sources].
-- **Consequences:** Step-height handling is not implemented; `max_step` is inert (§6 trap, §8 inv 6).
+- **Consequences:** A shared XZ edge taller than `max_step` is not a neighbor. Coplanar edges stay linked.
 
 ### Decision: Phase 10 region-invalidation via merged AABB dirty regions, full rebake
 - **Date:** Phase 10 ("AI-Orchestrated Dynamic Terrain"; see `docs/journey/phases/PHASE_10A_DAY_1_ASTRAWEAVE_NAV_PARTIAL.md` and the Phase 10 trackers under `docs/journey/phases/`).
-- **Status:** Accepted; in code (lib.rs:520-629).
+- **Status:** Accepted; in code (lib.rs:542-710). The rebake itself is partial (lib.rs:595).
 - **Context:** Runtime terrain changes (the doc-comment at lib.rs:521 attributes this to "AI-Orchestrated Dynamic Terrain") need to mark the mesh stale.
-- **Decision:** `invalidate_region` merges overlapping `Aabb`s; `needs_rebake`/`rebake_dirty_regions` drive a full re-bake; `path_crosses_dirty_region` lets callers detect invalidated paths.
-- **Alternatives considered:** Incremental partial rebake — scaffolded (`partial_rebake`) but it delegates to a full rebake (§6 trap).
-- **Consequences:** Correct but O(full-bake) on any dirty region; the 10K-tri full bake is 473 ms (§9), so frequent invalidation is expensive.
+- **Decision:** `invalidate_region` merges overlapping `Aabb`s; `rebake_dirty_regions` calls `partial_rebake`; `path_crosses_dirty_region` lets callers detect invalidated paths.
+- **Alternatives considered:** A full `NavMesh::bake` on every dirty region. `partial_rebake` replaced that path on 2026-10-15.
+- **Consequences:** Triangles outside the dirty AABBs keep their vertices. The 10K-tri full bake figure in §9 is the bake benchmark, not the cost of one partial relink.
 
 ### Decision: `#![forbid(unsafe_code)]` in the nav crate
 - **Date:** Commit `e060d7973` ("quality: doc-tests, unsafe audit, fmt, dep hygiene, forbid(unsafe_code)").
@@ -275,12 +275,12 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 
 | # | Invariant | Checkable? | Enforced by |
 |---|---|---|---|
-| 1 | Adjacency is symmetric: if `j ∈ tris[i].neighbors` then `i ∈ tris[j].neighbors`. | Yes | `bake` pushes both directions (lib.rs:475-476); `test_navmesh_bake_adjacency_two_triangles` |
+| 1 | Adjacency is symmetric: if `j ∈ tris[i].neighbors` then `i ∈ tris[j].neighbors`. | Yes | `bake` pushes both directions (lib.rs:490-491); `test_navmesh_bake_adjacency_two_triangles` |
 | 2 | `find_path` returns `[]` for an empty mesh or when start/goal triangles are disconnected. | Yes | `find_path` 491-501; `test_find_path_empty_navmesh`, `test_find_path_no_connection` |
 | 3 | A non-empty path begins exactly at `start` and ends exactly at `goal` (endpoints are appended, not snapped to centers). | Yes | `find_path` 504/512; `smooth` holds endpoints fixed; `path_exists_simple_strip` asserts endpoint coords |
 | 4 | Degenerate (zero-area) and downward-facing triangles are excluded from the baked mesh. | Yes | `bake` 438-448; `test_navmesh_bake_filters_steep_slopes`, mutation tests |
 | 5 | A triangle is walkable iff angle-from-`Y` ≤ `max_slope_deg`. | Yes | `bake` 450-458; `NavTri::slope_degrees`/`is_walkable` |
-| 6 | `max_step` does **not** influence baking or pathfinding (it is stored, never read by a query). | Yes (by absence) | Verified: `max_step` is read only at construction (`lib.rs:483`), rebake-reuse (`lib.rs:572`), and a Debug/status format string (`lib.rs:701/704`); no `bake`/`find_path`/`astar_tri`/filter path reads it. Remaining sites are `#[cfg(test)]` assertions. |
+| 6 | A shared XZ edge links only when the vertical gap is at most `max_step`. | Yes | `share_edge` (`lib.rs:807`); `bake` passes `max_step` at `lib.rs:489`; `partial_rebake` passes it at `lib.rs:639`. Golden: `max_step_links_a_low_ledge_and_rejects_a_tall_one`. |
 | 7 | `bake` is O(n²) in triangle count (pairwise adjacency). | No (perf, not assert) | `bake` nested loop 472-479; benchmark trend (§9) |
 | 8 | Overlapping dirty regions merge into one `Aabb`; non-overlapping ones accumulate. | Yes | `invalidate_region` 527-540; `test_navmesh_invalidate_region_merge` |
 | 9 | The crate contains no `unsafe` code. | Yes | `#![forbid(unsafe_code)]` lib.rs:1 (compile-time) |
@@ -296,7 +296,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 - **`NavMesh::bake`:** 100 tris ≈ 55.9 µs; **10K tris ≈ 473 ms** — flagged in the report as "Must be async". The O(n²) adjacency loop dominates at scale.
 
 ### Cold paths
-- **Region invalidation / rebake:** `invalidate_region` is cheap (small AABB merge); `rebake_dirty_regions`/`partial_rebake` pay a **full** `bake` (so the 473 ms figure applies to any rebake of a large mesh). Intended to run on terrain-change events, not per frame.
+- **Region invalidation / rebake:** `invalidate_region` is cheap (small AABB merge). `partial_rebake` relinks dirty triangles and leaves other vertices in place. Intended to run on terrain-change events, not per frame.
 
 ### Resource ownership
 - A `NavMesh` owns its `Vec<NavTri>` and `Vec<Aabb>` dirty regions. Gameplay `script_system` does not read it. `NavMeshProxy` remains a type in `astraweave-scripting` and is not placed in the script scope.
@@ -305,7 +305,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 
 ## 10. Testing & Validation
 
-- **Unit tests:** `astraweave-nav/src/lib.rs` `#[cfg(test)] mod tests` (lib.rs:815-2655) — baking, pathfinding, helper, smoothing, AABB, and region-invalidation tests.
+- **Unit tests:** `astraweave-nav/src/lib.rs` `#[cfg(test)] mod tests` (lib.rs:917-2831) — baking, pathfinding, helper, smoothing, AABB, and region-invalidation tests.
 - **Mutation tests:** `astraweave-nav/src/mutation_tests.rs` (inline `mod`) + `astraweave-nav/tests/{mutation_hardening_tests,mutation_resistant_tests,mutation_resistant_comprehensive_tests}.rs`. The crate was part of the workspace mutation-testing campaign (commit `de531fd09`; archived shard outputs at `archive/mutation_outputs/mutation_results/nav_shard*of3_*.txt`).
 - **Stress tests:** `astraweave-nav/src/stress_tests.rs` — disconnected islands, mazes, repeated queries.
 - **Edge-case tests:** `astraweave-nav/src/edge_case_tests.rs`, plus `tests/slope_debug.rs` and `tests/winding_detector.rs` (winding/normal-direction diagnostics).
@@ -322,7 +322,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 - **Does any shipping app insert a `NavMesh` ECS resource?** Closed for the script tick: `script_system` does not read `NavMesh` (#317). `examples/scripting_advanced_demo` still inserts one. No non-example shipping binary was found. Whether a runtime app should insert the resource for a non-script consumer remains open.
 - **Should `crates/astraweave-nav/` be reconciled?** It is an orphan (no manifest, stale bench copy). Its existence can mislead grep-based discovery into thinking there are two nav crates. (Surfaced factually per §6; disposition is the owner's call.)
 - **`max_step` (closed 2026-10-15):** a shared XZ edge links only when the vertical gap is at most `max_step`. Coplanar edges are unchanged. The stair golden is `max_step_links_a_low_ledge_and_rejects_a_tall_one`.
-- **`partial_rebake` (closed 2026-10-15):** relinks triangles that meet a dirty AABB and leaves other vertices in place. Tiled commits live in `src/tiles.rs` and stop at `TILE_COMMITS_PER_TICK` (4).
+- **`partial_rebake` (closed 2026-10-15):** relinks triangles that meet a dirty AABB and leaves other vertices in place. Tiled commits live in `src/tiles.rs` and stop at `TILE_COMMITS_PER_TICK` (4). `NavTiles::query_path` gives up and returns no path after 65536 heap pops. A push onto a full 384-entry heap also gives up: the entry is not stored, and the search returns no path. One node can occupy more than one entry, because a cheaper cost pushes again and there is no decrease-key.
 - **Scaling:** 10K-tri bake at 473 ms (O(n²) adjacency) is flagged "must be async" in the benchmark report. Is large-mesh baking expected to move off the main thread or precompute offline?
 
 ---
@@ -332,7 +332,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 **Update this doc when:**
 - `astraweave-nav/src/lib.rs` changes the bake filters, A*/heuristic, smoothing, or region-invalidation logic (§2, §8).
 - A production caller for `ValidationContext::with_nav` or a `NavMesh` ECS-resource insertion is added (would flip §6/§11 wired-status findings).
-- `max_step` becomes load-bearing (would close §6 trap and §8 invariant 6).
+- `max_step`'s ledge gate changes (it already limits `share_edge`; §6 and §8 invariant 6).
 - The `crates/astraweave-nav/` orphan is removed or promoted to a member (§6).
 - Benchmark baselines shift >10% (§9 — also update `MASTER_BENCHMARK_REPORT.md`).
 

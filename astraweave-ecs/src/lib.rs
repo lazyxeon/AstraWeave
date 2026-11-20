@@ -60,6 +60,9 @@ mod mutation_tests;
 #[cfg(test)]
 mod mutation_resistance_tests;
 
+#[cfg(test)]
+mod mutation_caught_tests;
+
 // Kani formal verification proofs
 #[cfg(kani)]
 mod blob_vec_kani;

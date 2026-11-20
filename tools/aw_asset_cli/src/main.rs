@@ -586,6 +586,9 @@ fn validate_assets_command(
         anyhow::bail!("Path {} is neither a file nor a directory", path.display());
     }
 
+    // WalkDir order is the directory order. The report is sorted by path.
+    results.sort_by(|left, right| left.asset_path.cmp(&right.asset_path));
+
     // Output results in requested format
     match format {
         "json" => {

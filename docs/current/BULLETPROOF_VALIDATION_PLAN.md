@@ -119,7 +119,7 @@ A high mutation score proves test suite effectiveness.
 - **Flags**: `--timeout-multiplier 3` for complex crates
 
 ### Success Criteria
-- [x] 80%+ mutation score on P0 crates *(CI will validate)*
+- [ ] 80%+ mutation score on P0 crates. Not met. ecs job `129623992106` on run `42753998469` tested 575 mutants: 329 caught, 163 missed, about 66.9% caught / (caught + missed). A miss fails that job. The target is not lowered.
 - [x] 70%+ mutation score on P1 crates *(CI will validate)*
 - [ ] Surviving mutants documented for review
 
@@ -181,8 +181,8 @@ A high mutation score proves test suite effectiveness.
 ### Current Coverage
 The existing `sanitizers.yml` covers:
 - ASan on: ecs, physics, memory
-- LSan on: aw-save
-- TSan on: scheduled/advisory
+- LSan on: astraweave-ecs, astraweave-core, astraweave-physics, aw-save
+- TSan on: pull requests, the nightly schedule, and `workflow_dispatch` with `force_full_suite`. A failure fails the Sanitizers workflow.
 
 ### Enhanced Coverage (IMPLEMENTED)
 
@@ -192,11 +192,12 @@ The existing `sanitizers.yml` covers:
 - P2 Support: `astraweave-behavior`, `astraweave-prompts`, `astraweave-embeddings`
 
 **LSan targets**:
-- `aw-save` (existing)
+- `astraweave-ecs`, `astraweave-core`, `astraweave-physics`, `aw-save`
 
-**TSan Focus Areas** (advisory):
+**TSan crates** (a failure fails the Sanitizers workflow):
 - `astraweave-ai`
 - `astraweave-coordination`
+- `astraweave-ecs`
 
 ### Success Criteria
 - [x] 12+ crates covered by at least one sanitizer *(achieved: 13)*

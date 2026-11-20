@@ -21,8 +21,8 @@ Interactive performance telemetry dashboard for the AstraWeave AI-native game en
 - **Responsive Design**: Works on desktop and mobile devices
 
 ### ⚠️ Regression Detection
-- **Automated Alerts**: Nightly CI creates GitHub issues for >10% regressions
-- **Threshold Validation**: Built-in checks against `benchmark_thresholds.json`
+- **Dashboard workflow**: `.github/workflows/benchmark-dashboard.yml` does not run the threshold script and does not open issues
+- **Regression gate**: the strict check in `benchmark.yml` and `benchmark_alert.yml`
 - **Historical Context**: 30-day data retention for trend analysis
 
 ### Static Graph Generation
@@ -61,7 +61,7 @@ python3 -m pip install pandas matplotlib seaborn
 cargo bench
 
 # Or run specific crates
-cargo bench -p astraweave-core --bench ecs_benchmarks
+cargo bench -p astraweave-ecs --bench ecs_benchmarks
 cargo bench -p astraweave-ai --bench ai_core_loop
 cargo bench -p astraweave-physics --bench character_controller
 ```
@@ -179,11 +179,11 @@ Each line in `history.jsonl` is a JSON object with the following fields:
 
 The `.github/workflows/benchmark-dashboard.yml` workflow runs nightly to:
 
-1. **Run Benchmarks**: Execute core benchmark suite (30 min timeout)
+1. **Run Benchmarks**: Execute the bench subset in the workflow (120 min job timeout)
 2. **Export JSONL**: Convert Criterion data to time-series format
-3. **Check Thresholds**: Validate against `benchmark_thresholds.json`
-4. **Deploy Dashboard**: Publish to GitHub Pages (gh-pages branch)
-5. **Create Issues**: Auto-open GitHub issues for >10% regressions
+3. **Deploy Dashboard**: Publish to GitHub Pages (gh-pages branch)
+
+The workflow does not run `check_benchmark_thresholds.ps1` and does not open a regression issue. Regression gating stays on the strict step in `benchmark.yml` and on `benchmark_alert.yml`.
 
 ### Manual Trigger
 
@@ -224,11 +224,9 @@ Top 8 benchmarks by current value, showing:
 
 ### Automated Detection
 
-When a benchmark exceeds its threshold (defined in `.github/benchmark_thresholds.json`):
+`.github/workflows/benchmark-dashboard.yml` does not run `check_benchmark_thresholds.ps1` and does not open an issue when a number moves. The strict regression check is the step in `benchmark.yml` and in `benchmark_alert.yml`.
 
-1. **Threshold Check**: `check_benchmark_thresholds.ps1` detects regression
-2. **GitHub Issue**: Auto-created with title "⚠️ Benchmark Regression Detected"
-3. **Investigation Template**: Issue includes checklist and dashboard link
+`scripts/check_benchmark_thresholds.ps1` is still the manual checker. It reads `benchmark_results/benchmarks.json` unless you pass another path. The dashboard job does not write that file.
 
 ### Manual Investigation
 

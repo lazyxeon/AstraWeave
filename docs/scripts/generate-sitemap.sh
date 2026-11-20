@@ -33,7 +33,7 @@ URL
 
 add_url "${BASE_URL}/" "$PRIORITY_HIGH" "daily"
 
-find "$BOOK_DIR" -name "*.html" -type f | while read -r file; do
+find "$BOOK_DIR" -name "*.html" -type f -print | LC_ALL=C sort | while IFS= read -r file; do
     rel_path="${file#$BOOK_DIR/}"
     
     [[ "$rel_path" == "print.html" ]] && continue

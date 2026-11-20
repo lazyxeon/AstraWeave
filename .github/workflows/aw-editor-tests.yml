@@ -62,22 +62,18 @@ jobs:
     # Run library unit tests (headless tests work everywhere)
     - name: Run Unit Tests
       run: cargo test -p aw_editor --lib --all-features -- --nocapture
-      continue-on-error: true  # Don't fail CI on test failures (89% pass rate acceptable)
-      
+
     # Run integration tests (require headless environment)
-    - name: Run Integration Tests  
+    - name: Run Integration Tests
       if: runner.os != 'macOS'  # Skip macOS (no headless X11)
       run: cargo test -p aw_editor --test ui_gizmo_smoke --test play_mode --test prefab_workflow
-      continue-on-error: true
-      
+
     # Code quality checks
     - name: Check Formatting
       run: cargo fmt -p aw_editor -- --check
-      continue-on-error: true  # Don't block on format issues
-      
+
     - name: Run Clippy
       run: cargo clippy -p aw_editor --all-features -- -D warnings
-      continue-on-error: true  # Don't block on lints (52 warnings exist)
       
     # Generate test report
     - name: Generate Test Summary
@@ -88,13 +84,7 @@ jobs:
         echo "**Platform**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
         echo "**Rust Version**: $(rustc --version)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
-        echo "- **Unit Tests**: 146/164 passing (89%)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Integration Tests**: 9 test files (ui_gizmo_smoke, play_mode, prefab_workflow, etc.)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Known Issues" >> $GITHUB_STEP_SUMMARY
-        echo "- 18 unit test failures (gizmo math, undo stack, scene serialization)" >> $GITHUB_STEP_SUMMARY
-        echo "- 52 warnings (dead code, unused fields - tracked in Known Issues)" >> $GITHUB_STEP_SUMMARY
+        echo "Unit tests, integration tests, fmt, and clippy above are the result for this run." >> $GITHUB_STEP_SUMMARY
         
   # Coverage job (optional - Linux only for speed)
   coverage:
@@ -117,13 +107,21 @@ jobs:
         sudo apt-get install -y pkg-config libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libegl1-mesa-dev libudev-dev libasound2-dev
         
     - name: Install cargo-llvm-cov
-      run: cargo install cargo-llvm-cov
-      
-    - name: Generate Coverage Report
       run: |
-        cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
-      continue-on-error: true
-      
+        set -euo pipefail
+        # v0.9.1 is the release the unpinned install resolved to on the last coverage run.
+        url="https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.1/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz"
+        sum="b3f68e625481fed9b16444174f3fa5ebcdbde4a1878803a35eabe2dcefcdc41a"
+        tmp="$(mktemp -d)"
+        curl -fsSL -o "$tmp/tool.tar.gz" "$url"
+        echo "$sum  $tmp/tool.tar.gz" | sha256sum -c -
+        tar -xzf "$tmp/tool.tar.gz" -C "$tmp"
+        sudo install -m 0755 "$tmp/cargo-llvm-cov" /usr/local/bin/cargo-llvm-cov
+        cargo llvm-cov --version
+
+    - name: Generate Coverage Report
+      run: cargo llvm-cov --package aw_editor --lib --lcov --output-path lcov.info
+
     - name: Upload Coverage to Codecov
       uses: codecov/codecov-action@v4
       if: success()
@@ -131,4 +129,11 @@ jobs:
         files: ./lcov.info
         flags: aw_editor
         name: aw-editor-coverage
-      continue-on-error: true  # Don't fail if codecov upload fails
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v7
+      with:
+        name: aw-editor-lcov
+        path: lcov.info
+        retention-days: 14
+        if-no-files-found: error

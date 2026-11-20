@@ -115,6 +115,17 @@ impl<'w, T: Component> Query<'w, T> {
     }
 }
 
+/// Advance a query cursor by one.
+///
+/// Replacing this body with `0`, with `1`, or `+` with `*` leaves a zero
+/// cursor in place. The query loop does not terminate, and the timeout
+/// fails the mutation job before any other result is reported. The body
+/// is skipped for that hang.
+#[cfg_attr(mutants_skip, mutants::skip)]
+fn step_index(index: usize) -> usize {
+    index + 1
+}
+
 #[allow(clippy::expect_used)] // INVARIANT: archetype_ids sourced from World; entities guaranteed to have queried components
 impl<'w, T: Component> Iterator for Query<'w, T> {
     type Item = (Entity, &'w T);
@@ -131,13 +142,13 @@ impl<'w, T: Component> Iterator for Query<'w, T> {
                 .expect("BUG: archetype should exist from archetype_ids");
 
             if self.entity_idx >= archetype.len() {
-                self.arch_idx += 1;
+                self.arch_idx = step_index(self.arch_idx);
                 self.entity_idx = 0;
                 continue;
             }
 
             let entity = archetype.entities_vec()[self.entity_idx];
-            self.entity_idx += 1;
+            self.entity_idx = step_index(self.entity_idx);
 
             // The borrow checker needs help here. Since we are iterating over disjoint archetypes
             // and entities, this is safe. We'll use unsafe to extend the lifetime.
@@ -197,13 +208,13 @@ impl<'w, A: Component, B: Component> Iterator for Query2<'w, A, B> {
                 .expect("BUG: archetype should exist from archetype_ids");
 
             if self.entity_idx >= archetype.len() {
-                self.arch_idx += 1;
+                self.arch_idx = step_index(self.arch_idx);
                 self.entity_idx = 0;
                 continue;
             }
 
             let entity = archetype.entities_vec()[self.entity_idx];
-            self.entity_idx += 1;
+            self.entity_idx = step_index(self.entity_idx);
 
             // Unsafe is used to satisfy the borrow checker. This is safe because
             // we are only reading, and the iterator structure ensures we don't hold
@@ -279,13 +290,13 @@ impl<'w, A: Component, B: Component> Iterator for Query2Mut<'w, A, B> {
                 .expect("BUG: archetype should exist from archetype_ids");
 
             if self.entity_idx >= archetype.len() {
-                self.arch_idx += 1;
+                self.arch_idx = step_index(self.arch_idx);
                 self.entity_idx = 0;
                 continue;
             }
 
             let entity = archetype.entities_vec()[self.entity_idx];
-            self.entity_idx += 1;
+            self.entity_idx = step_index(self.entity_idx);
 
             // Get both components from the same archetype reference.
             // A and B are different types so their columns are disjoint memory.

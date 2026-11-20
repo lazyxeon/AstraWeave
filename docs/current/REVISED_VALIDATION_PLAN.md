@@ -12,7 +12,7 @@ Before implementing this plan, understand these practical limitations:
 
 1. **ASan + GPU Drivers Don't Mix**: AddressSanitizer produces false positives from GPU driver allocations. The render crate **cannot get ASan coverage** — rely on wgpu validation instead. Run ASan tests with `--no-default-features` to disable GPU features.
 
-2. **ThreadSanitizer is Advisory, Not Must-Pass**: TSan with async Rust (Tokio) is noisy. Expect to accumulate suppressions over time. Budget 2-4 hours for tuning, and accept that TSan failures may be warnings rather than blockers.
+2. **ThreadSanitizer fails the Sanitizers workflow.** `.github/workflows/sanitizers.yml` no longer names that job advisory. The summary job fails when `thread-sanitizer` fails. The job runs on pull requests, on the nightly schedule, and on `workflow_dispatch` with `force_full_suite`. A race or a suppression miss is a failed workflow.
 
 3. **contracts Crate Has Rough Edges**: Version 0.6 struggles with complex generic types. Works well for math crate (quaternions, matrices), but may hit limitations with AI planning types. **Test on a single function before broad adoption.**
 
@@ -45,8 +45,8 @@ This document revises the original validation plan based on research into altern
 
 | Tool | What It Verifies | What It Can't Verify | Overhead | CI Feasibility | Setup Time | Maturity |
 |------|------------------|---------------------|----------|----------------|------------|----------|
-| **AddressSanitizer (ASan)** | Memory errors, heap/stack overflow, use-after-free, double-free | Data races (use TSan) | 2-3× runtime | ✅ PR checks (Linux/macOS) | 1h | Production |
-| **ThreadSanitizer (TSan)** | Data races, deadlocks | Memory errors, uninitialized reads | 5-15× runtime | ⚠️ Nightly only (slow) | 1h | Production |
+| **AddressSanitizer (ASan)** | Memory errors, heap/stack overflow, use-after-free, double-free | Data races (use TSan) | 2-3× runtime | Not a pull-request job. Critical ASan skips `pull_request`. Full ASan is the 03:00 UTC schedule or `workflow_dispatch` with `force_full_suite` | 1h | Production |
+| **ThreadSanitizer (TSan)** | Data races, deadlocks | Memory errors, uninitialized reads | 5-15× runtime | Pull requests, the 03:00 UTC schedule, and `workflow_dispatch` with `force_full_suite` | 1h | Production |
 | **MemorySanitizer (MSan)** | Uninitialized memory reads | FFI code unless also instrumented | 3× runtime | ❌ Too many false positives | 2h | Experimental |
 | **LeakSanitizer (LSan)** | Memory leaks | Intentional leaks (Rc cycles) | 1× runtime | ✅ PR checks | 30min | Production |
 | **Miri** | Pure Rust UB, aliasing violations | FFI, GPU calls, async runtime | 10-50× runtime | ⚠️ Nightly only | 1h | Production |
@@ -268,20 +268,14 @@ jobs:
 
 **Why**: AstraWeave's AI system uses async and multi-threading extensively.
 
-**Target crates**:
+**Target crates** (the ThreadSanitizer job in `.github/workflows/sanitizers.yml`):
 - `astraweave-ai` - Multi-agent planning
 - `astraweave-coordination` - Agent coordination
-- `astraweave-net` - Network protocol handling
+- `astraweave-ecs` - One thread per tick
 
-**⚠️ Critical Caveat: TSan is ADVISORY, not MUST-PASS**
+**The Sanitizers workflow fails when this job fails.** The job name is `ThreadSanitizer`. The old advisory label is gone. `sanitizer-summary` sets a failed workflow when `needs.thread-sanitizer.result` is `failure`. The job runs on pull requests, on the nightly schedule, and on `workflow_dispatch` with `force_full_suite`.
 
-TSan with async Rust is inherently noisy. Expect:
-- False positives from Tokio internals
-- False positives from crossbeam/parking_lot
-- Suppressions list that grows over time
-- 2-4 hours of tuning before it's useful
-
-**Recommendation**: Treat TSan as a bug-finding tool, not a gate. Run it, investigate real issues, but don't block releases on TSan failures until suppressions are mature.
+TSan with async Rust can still report races in Tokio, crossbeam, or parking_lot. Those belong in `scripts/tsan_suppressions.txt` when they are not engine bugs. A red job is not a warning.
 
 **Setup**:
 ```bash
@@ -659,4 +653,5 @@ export WGPU_GPU_BASED_VALIDATION=1
 **Author**: GitHub Copilot (AI-generated research synthesis)
 
 **Changelog**:
+- The ThreadSanitizer job is no longer described as advisory. `sanitizer-summary` fails the workflow when that job fails.
 - v2.1: Added caveats section, fixed ASan+GPU warning, TSan advisory status, contracts maturity warning, realistic proptest estimates, wgpu API compatibility note, added Phase 7 (Determinism Testing)

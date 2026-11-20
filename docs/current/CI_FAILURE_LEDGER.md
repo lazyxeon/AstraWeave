@@ -112,7 +112,7 @@ The branch is rebased onto main after #243, #290, and the design docs. This para
 
 ## Nightly Sanitizers (#304)
 
-On main `1d3e41be`, AddressSanitizer and LeakSanitizer failed while compiling `libudev-sys` for `astraweave-core`: `libudev.pc` was not installed. The determinism job already installs `libudev-dev`. The ASan, LSan, and TSan jobs now install `pkg-config` and `libudev-dev` before the nightly toolchain runs. This workflow does not run on pull requests, so the next proof is a push to `main` or the 03:00 UTC schedule.
+On main `1d3e41be`, AddressSanitizer and LeakSanitizer failed while compiling `libudev-sys` for `astraweave-core`: `libudev.pc` was not installed. The determinism job already installs `libudev-dev`. The ASan, LSan, and TSan jobs now install `pkg-config` and `libudev-dev` before the nightly toolchain runs. On a pull request, `sanitizers.yml` runs source integrity, LeakSanitizer, and ThreadSanitizer. LeakSanitizer has no `if`, so it also runs on push, on the 03:00 UTC schedule, and on `workflow_dispatch`. AddressSanitizer's critical job skips pull requests and skips `workflow_dispatch` when `force_full_suite` is set. The full ASan suite and determinism run only on that schedule or on `workflow_dispatch` with `force_full_suite`. ThreadSanitizer runs on pull requests, on that schedule, and on `workflow_dispatch` with `force_full_suite`, for `astraweave-ai`, `astraweave-coordination`, and `astraweave-ecs`.
 
 ## What was not done
 

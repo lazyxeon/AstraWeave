@@ -22,7 +22,7 @@ cargo bench -p astraweave-core --bench full_game_loop
 
 Each `name` is a `[[bench]]` entry in that crate's `Cargo.toml`. `harness = false` means the bench file drives Criterion itself.
 
-`ecs_benchmarks` is on **astraweave-ecs**, not astraweave-core. `.github/workflows/benchmark-dashboard.yml` still runs `cargo bench -p astraweave-core --bench ecs_benchmarks`. That package does not define that bench name. Use the `astraweave-ecs` command above. The workflow marks the bench step `continue-on-error: true`, so a miss there does not fail the job.
+`ecs_benchmarks` is on **astraweave-ecs**, not astraweave-core. `.github/workflows/benchmark-dashboard.yml` runs `cargo bench -p astraweave-ecs --bench ecs_benchmarks`. A miss fails that job.
 
 Criterion writes under `target/criterion/` for the package you benched (reports and sample data for that run). A number from that directory is your machine and your commit. Copy the commit (`git rev-parse HEAD`) next to it. Do not paste it back onto this page as the project's latest run.
 
@@ -32,9 +32,9 @@ Criterion writes under `target/criterion/` for the package you benched (reports 
 
 Workflow `.github/workflows/benchmark-dashboard.yml` (schedule `0 2 * * *`, `workflow_dispatch`, and pushes that touch that workflow) runs the subset listed in its "Run Benchmarks" step, then `pwsh -File scripts/export_benchmark_jsonl.ps1`, and publishes to `dashboard/benchmark_dashboard`.
 
-The page that job points at is:
+The docs build copies `docs/archive/benchmark_dashboard/` into this book. That archive is an older standalone page. It is not the page the nightly job publishes from `tools/benchmark-dashboard`.
 
-https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/
+[Benchmark dashboard](../dashboard/benchmark_dashboard/index.html)
 
 The historical write-up in git is [MASTER_BENCHMARK_REPORT.md](https://github.com/lazyxeon/AstraWeave/blob/main/docs/masters/MASTER_BENCHMARK_REPORT.md). Engine status says that report is not a fresh full-frame budget.
 

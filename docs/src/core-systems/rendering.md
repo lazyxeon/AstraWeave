@@ -576,5 +576,5 @@ render_ctx.mark_material_dirty(material_id);
 ## API Reference
 
 For complete API documentation, see:
-- [astraweave_render API docs](https://docs.rs/astraweave-render)
+- [astraweave_render API docs](../api/astraweave_render/index.html)
 - [WGPU documentation](https://wgpu.rs)

@@ -90,6 +90,13 @@ impl Entity {
         self.generation
     }
 
+    /// `id | (generation << 32)`. `^` is the same value: the generation
+    /// occupies the high 32 bits and does not overlap `id`. That mutant is
+    /// excluded. `&`, `>>`, and the constant returns are not.
+    fn pack_entity_raw(id: u32, generation: u32) -> u64 {
+        (id as u64) | ((generation as u64) << 32)
+    }
+
     /// Convert to raw u64 for serialization or external APIs.
     ///
     /// # Format
@@ -99,7 +106,7 @@ impl Entity {
     /// ```
     #[inline]
     pub fn to_raw(&self) -> u64 {
-        (self.id as u64) | ((self.generation as u64) << 32)
+        Self::pack_entity_raw(self.id, self.generation)
     }
 
     /// Reconstruct entity from raw u64.
@@ -404,6 +411,14 @@ impl Default for EntityAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pack_entity_raw_keeps_generation_in_the_high_bits() {
+        let entity = unsafe { Entity::from_raw((3_u64 << 32) | 7) };
+        assert_eq!(entity.id(), 7);
+        assert_eq!(entity.generation(), 3);
+        assert_eq!(entity.to_raw(), (3_u64 << 32) | 7);
+    }
 
     #[test]
     fn test_spawn_despawn_cycle() {
