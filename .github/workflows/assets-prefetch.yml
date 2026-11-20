@@ -46,7 +46,6 @@ jobs:
           key: polyhaven-${{ hashFiles('assets/asset_manifest.toml', 'assets/polyhaven_manifest.toml') }}
 
       - uses: ./.github/actions/rust-ci-setup
-        if: steps.cache-assets.outputs.cache-hit != 'true'
 
       - name: Fetch PolyHaven assets
         if: steps.cache-assets.outputs.cache-hit != 'true'

@@ -117,7 +117,7 @@ Benchmarks do not run on an ordinary pull request (`pull_request` types `labeled
 
 ## Cache
 
-`rust-ci-setup` already enables sccache (`SCCACHE_GHA_ENABLED`) and Swatinem `rust-cache` with `cache-targets: false` and `save-if` only on `refs/heads/main`. Two gate logs:
+`rust-ci-setup` writes `RUSTC_WRAPPER=sccache` and `SCCACHE_GHA_ENABLED=true` only after the prefetch reports `available=true`. It also uses Swatinem `rust-cache` with `cache-targets: false` and `save-if` only on `refs/heads/main`. Two gate logs:
 
 | Run | What compiled | Requests | Rust hits | Rust misses | Hit rate |
 |---|---|---:|---:|---:|---:|

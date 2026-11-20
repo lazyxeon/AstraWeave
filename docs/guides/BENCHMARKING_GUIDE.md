@@ -155,9 +155,11 @@ Local benchmark execution requires:
 ### Workflow Configuration
 
 Key environment variables:
-- `RUSTC_WRAPPER: sccache` - Enables compilation caching
 - `SCCACHE_CACHE_SIZE: "10G"` - Cache size limit
+- `SCCACHE_IDLE_TIMEOUT: 0` - Cache server idle timeout
 - `CARGO_NET_RETRY: 10` - Network retry attempts
+
+`rust-ci-setup` writes `RUSTC_WRAPPER` on the gated step after the sccache install succeeds.
 
 ### Caching Strategy
 
