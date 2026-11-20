@@ -250,8 +250,7 @@ impl PromptCache {
             created_at: now,
             last_accessed: now,
             access_count: 1,
-            ttl_expires_at: now
-                + time::Duration::try_from(self.config.entry_ttl).unwrap_or_default(),
+            ttl_expires_at: crate::utc_stamp::instant_after(now, self.config.entry_ttl),
             response_quality: quality,
             compression_ratio: None, // Would be calculated if compression is enabled
             tags: Vec::new(),
@@ -849,5 +848,21 @@ mod tests {
         let semantic = cache.semantic_cache.read().await;
         assert!(semantic.contains_key("keep"));
         assert!(!semantic.contains_key("old"));
+    }
+
+    #[tokio::test]
+    async fn a_ten_thousand_year_ttl_does_not_abort() {
+        let config = PromptCacheConfig {
+            entry_ttl: Duration::from_secs(10_000 * 365 * 24 * 3600),
+            enable_semantic_cache: false,
+            ..PromptCacheConfig::default()
+        };
+        let cache = PromptCache::new(config);
+        cache.store("prompt", "response", 1.0).await.unwrap();
+        let stored = cache.hash_cache.iter().next().expect("stored entry");
+        assert_eq!(
+            stored.ttl_expires_at,
+            time::OffsetDateTime::new_utc(time::Date::MAX, time::Time::MAX)
+        );
     }
 }

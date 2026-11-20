@@ -244,8 +244,10 @@ impl BatchInferenceEngine {
             parameters,
             priority,
             created_at: time::OffsetDateTime::now_utc(),
-            timeout_at: time::OffsetDateTime::now_utc()
-                + time::Duration::try_from(self.config.request_timeout).unwrap_or_default(),
+            timeout_at: crate::utc_stamp::instant_after(
+                time::OffsetDateTime::now_utc(),
+                self.config.request_timeout,
+            ),
             response_sender: Some(response_tx),
         };
 
@@ -833,6 +835,28 @@ mod tests {
         assert_eq!(
             BatchInferenceEngine::calculate_dynamic_batch_size(&full, &config),
             config.optimal_batch_size
+        );
+    }
+
+    #[tokio::test]
+    async fn a_ten_thousand_year_request_timeout_does_not_abort() {
+        let config = BatchInferenceConfig {
+            request_timeout: Duration::from_secs(10_000 * 365 * 24 * 3600),
+            ..BatchInferenceConfig::default()
+        };
+        let engine = BatchInferenceEngine::new(vec![Arc::new(MockLlm)], config);
+        engine
+            .submit_request(
+                "p".into(),
+                InferenceParameters::default(),
+                RequestPriority::Normal,
+            )
+            .await
+            .unwrap();
+        let queued = engine.request_queue.read().await;
+        assert_eq!(
+            queued[0].timeout_at,
+            time::OffsetDateTime::new_utc(time::Date::MAX, time::Time::MAX)
         );
     }
 }

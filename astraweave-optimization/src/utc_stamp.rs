@@ -150,6 +150,18 @@ pub(crate) fn saturating_std(
     std::time::Duration::try_from(duration).unwrap_or(fallback)
 }
 
+/// `now` plus a configured span.
+///
+/// A span that does not fit the clock uses the latest instant the clock can store.
+pub(crate) fn instant_after(now: OffsetDateTime, span: std::time::Duration) -> OffsetDateTime {
+    let duration = time::Duration::try_from(span).unwrap_or(time::Duration::MAX);
+    now.checked_add(duration).unwrap_or_else(latest_instant)
+}
+
+fn latest_instant() -> OffsetDateTime {
+    OffsetDateTime::new_utc(time::Date::MAX, time::Time::MAX)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -348,6 +360,25 @@ mod tests {
         assert!(null.timestamp.is_none());
         let omitted: Opt = serde_json::from_str("{}").unwrap();
         assert!(omitted.timestamp.is_none());
+    }
+
+    #[test]
+    fn instant_after_keeps_a_span_that_fits() {
+        let now = OffsetDateTime::UNIX_EPOCH;
+        assert_eq!(
+            instant_after(now, std::time::Duration::from_secs(30)),
+            now.checked_add(time::Duration::seconds(30))
+                .expect("30s fits")
+        );
+    }
+
+    #[test]
+    fn instant_after_uses_the_latest_instant_when_the_span_does_not_fit() {
+        let now = OffsetDateTime::UNIX_EPOCH;
+        let latest = latest_instant();
+        let ten_thousand_years = std::time::Duration::from_secs(10_000 * 365 * 24 * 3600);
+        assert_eq!(instant_after(now, ten_thousand_years), latest);
+        assert_eq!(instant_after(now, std::time::Duration::MAX), latest);
     }
 
     #[test]
