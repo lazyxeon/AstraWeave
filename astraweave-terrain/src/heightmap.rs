@@ -39,7 +39,7 @@ pub struct Heightmap {
 impl Heightmap {
     /// Create a new heightmap with the given configuration
     pub fn new(config: HeightmapConfig) -> anyhow::Result<Self> {
-        let size = (config.resolution * config.resolution) as usize;
+        let size = heightmap_cell_count(config.resolution)?;
         Ok(Self {
             data: vec![0.0; size],
             resolution: config.resolution,
@@ -50,7 +50,7 @@ impl Heightmap {
 
     /// Create a heightmap from existing data
     pub fn from_data(data: Vec<f32>, resolution: u32) -> anyhow::Result<Self> {
-        if data.len() != (resolution * resolution) as usize {
+        if data.len() != heightmap_cell_count(resolution)? {
             return Err(anyhow::anyhow!(
                 "Data size {} doesn't match resolution {}x{}",
                 data.len(),
@@ -347,6 +347,22 @@ impl Heightmap {
     }
 }
 
+/// Highest resolution whose bilinear neighbour index stays inside the grid.
+///
+/// `(resolution as f32) - 1.001` rounds to `resolution - 1` at 32770, so
+/// `x0 + 1` would pass the edge. Resolutions 2 through 32769 keep
+/// `x0 + 1 <= resolution - 1`.
+const MAX_HEIGHTMAP_RESOLUTION: u32 = 32769;
+
+fn heightmap_cell_count(resolution: u32) -> anyhow::Result<usize> {
+    if resolution > MAX_HEIGHTMAP_RESOLUTION {
+        return Err(anyhow::anyhow!(
+            "heightmap resolution {resolution} exceeds {MAX_HEIGHTMAP_RESOLUTION}"
+        ));
+    }
+    Ok(resolution as usize * resolution as usize)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,6 +374,28 @@ mod tests {
 
         assert_eq!(heightmap.resolution(), 128);
         assert_eq!(heightmap.data().len(), 128 * 128);
+    }
+
+    #[test]
+    fn heightmap_resolution_above_32769_is_rejected() {
+        let over = Heightmap::from_data(Vec::new(), 32_770)
+            .unwrap_err()
+            .to_string();
+        assert!(over.contains("exceeds"), "{over}");
+        assert!(over.contains("32770"), "{over}");
+
+        let edge = Heightmap::from_data(Vec::new(), 32_769)
+            .unwrap_err()
+            .to_string();
+        assert!(edge.contains("doesn't match resolution"), "{edge}");
+        assert!(!edge.contains("exceeds"), "{edge}");
+
+        let config = HeightmapConfig {
+            resolution: 32_770,
+            ..HeightmapConfig::default()
+        };
+        let created = Heightmap::new(config).unwrap_err().to_string();
+        assert!(created.contains("exceeds"), "{created}");
     }
 
     #[test]

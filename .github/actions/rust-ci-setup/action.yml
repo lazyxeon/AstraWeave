@@ -24,7 +24,7 @@ runs:
   using: composite
   steps:
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
       with:
         toolchain: ${{ inputs.toolchain }}
         components: ${{ inputs.components }}
@@ -51,7 +51,7 @@ runs:
         fi
 
     - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.11
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
     - name: Enable sccache
       shell: bash
@@ -76,7 +76,7 @@ runs:
         # CPU pin lives in that file next to the Windows stack flags.
 
     - name: Cache cargo registry (one key per OS, save on main only)
-      uses: Swatinem/rust-cache@v2
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       with:
         workspaces: "."
         shared-key: ${{ runner.os }}-astraweave
@@ -86,4 +86,4 @@ runs:
 
     - name: Install cargo-nextest
       if: inputs.install-nextest == 'true'
-      uses: taiki-e/install-action@nextest
+      uses: taiki-e/install-action@7c48f0a661edab95fdc666d1526d9ef945205245 # nextest
