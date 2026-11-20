@@ -229,6 +229,7 @@ Vec<Encounter> (kind + position + difficulty + empty metadata)  encounters.rs:24
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -287,6 +288,7 @@ The WFC module doc-comment example block ([`wfc.rs:26-46`](../../astraweave-pcg/
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -329,6 +331,7 @@ The WFC module doc-comment example block ([`wfc.rs:26-46`](../../astraweave-pcg/
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is the crate intended to be wired, or is it design-ahead scaffolding?** It has tests + benches + mutation coverage but no runtime caller; the one Cargo consumer (`astraweave-weaving`) does not import it. Is `astraweave-weaving` the intended integration point (dep declared in anticipation), or is the dep vestigial?

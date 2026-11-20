@@ -195,6 +195,7 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -271,6 +272,7 @@ The crate itself is Active and is a declared workspace member. Gameplay scripts 
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -316,6 +318,7 @@ Source: [`docs/masters/MASTER_BENCHMARK_REPORT.md`](../masters/MASTER_BENCHMARK_
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is the AI navigability gate meant to be wired?** `tool_sandbox.rs`'s `MoveTo` nav check is fully implemented but only reachable via `ValidationContext::with_nav`, which has no production caller. Is this intended forward-design, or a missing wire-up in the AI runtime loop? (Context: CLAUDE.md Integration Completeness item 1.)

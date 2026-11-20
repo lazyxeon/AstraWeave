@@ -238,6 +238,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -316,6 +317,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -357,6 +359,7 @@ Cargo consumers of `astraweave-asset` (excluding the crate itself, its `fuzz` me
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **[RESOLVED 2026-06-30, R-series M2/E4]** ~~Is `astraweave-asset-pipeline` intended to replace `tools/aw_asset_cli`'s in-house compression/validation, or are both intentional?~~ **Neither is wired.** The E4 recon found the cook capability fragmented across **three** caller-less/standalone implementations — real `intel_tex` BC7 in `astraweave-asset-pipeline::texture` (island, no container), the placeholder BC encoder + KTX2 writer in `aw_asset_cli/texture_baker.rs` (DFD sRGB bug at `:393`), and the external `toktx`/`basisu` path in `aw_asset_cli/main.rs` (never invoked live). Unifying them (the CLAUDE.md "never build a second implementation" resolution) is scope for the **deferred post-v1.0 cook build**, not v1.0. See `docs/audits/e4_cook_path_recon_2026-06.md`.

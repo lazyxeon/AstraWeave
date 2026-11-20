@@ -270,6 +270,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -360,6 +361,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -412,6 +414,7 @@ Wiredness verified by workspace grep for non-test/non-example production callers
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **CLOSED 2026-10-16.** `phase_1_6_f3_phase_2_end_to_end_timing` walked a 5×5 grid for six climates, printed a timing table, and asserted nothing. Windows CI terminated it at 240s on every retry. The test now generates one chunk per climate through the same halo-and-erosion path and asserts the heightmap is non-empty, finite, and has relief.

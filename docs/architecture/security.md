@@ -211,6 +211,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -282,6 +283,7 @@ There is no single pipeline. The system is a set of independent utility surfaces
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -329,6 +331,7 @@ Performance is largely irrelevant for the wired surface (path validation runs at
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is the dormant surface intended to ship, or is it design scaffolding?** `SecurityPlugin`, `ScriptSandbox`, `CAntiCheat`, the deserialization limiters, and the ed25519 helpers have zero callers. The hardening plan (Phases 2-4) describes *intended* integration, but as of `7c29b8182` none has landed. Resolution belongs to the S-series; until then this is in-design-but-tested code.

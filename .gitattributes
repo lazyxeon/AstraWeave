@@ -14,3 +14,4 @@ assets/aravath/**/*.md text eol=lf
 *.usda text eol=lf
 *.hdr binary
 *.ktx2 binary
+tools/aw_trace_sync/src/oracle_js.txt text eol=lf

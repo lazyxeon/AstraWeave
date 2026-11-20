@@ -365,6 +365,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -479,6 +480,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -565,6 +567,7 @@ There are several distinct flows through this layer. The first is the canonical 
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **What is the long-term plan for the legacy `astraweave-core::World`?** [Decisional — requires Andrew's call on direction.] Factual state (verified 2026-05-10): `astraweave-core/src/ecs_components.rs:1` describes the components as "Phase 1 incremental migration". The bridge in `ecs_adapter::build_app` is in active use. Workspace-wide audit of `use astraweave_core::World` finds the legacy `World` consumed by: AI orchestrators, the SDK (`AwWorldWrap` wraps it), `validate_and_execute`, `capture_replay`, and the editor (`tools/aw_editor/`). Retiring the legacy World would require coordinated changes across all of those plus replacement of the `EntityBridge` machinery. No retirement campaign was identified in `docs/current/` or audit docs.

@@ -258,6 +258,7 @@ Dialogue path: DialoguePlayer::speak_current(dlg, st)  (dialogue_runtime.rs:33-1
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -371,6 +372,7 @@ Dialogue path: DialoguePlayer::speak_current(dlg, st)  (dialogue_runtime.rs:33-1
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -437,6 +439,7 @@ Dialogue path: DialoguePlayer::speak_current(dlg, st)  (dialogue_runtime.rs:33-1
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Send/Sync story for `AudioEngine`:** Verified `!Send + !Sync` via source inspection of vendored rodio 0.17.3 + cpal 0.15.3. `cpal::Stream` (held transitively by `AudioEngine._stream`) carries an explicit `NotSendSyncAcrossAllPlatforms(PhantomData<*mut ()>)` marker (`cpal-0.15.3/src/platform/mod.rs:73, 736`) — the constraint propagates up through `rodio::OutputStream` (`stream.rs:16-19`) into `AudioEngine`. Consequence: the engine cannot be moved across threads, cannot be wrapped in `Arc<RwLock<_>>` for cross-thread access, and cannot be stored as an ECS `Resource` (which requires `Send + Sync` per `astraweave-ecs::Resource`). The crate consequently bypasses the ECS entirely. A speculative comment in `examples/ui_menu_demo/src/main.rs:373` suggests `Arc<Mutex<AudioEngine>>` "in production code" — this would not compile given the Send/Sync constraint. Is single-threaded audio an intentional design, or a constraint that should be addressed at the rodio/cpal level? Andrew's call.

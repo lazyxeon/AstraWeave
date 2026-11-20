@@ -417,6 +417,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -557,6 +558,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -629,6 +631,7 @@ The standalone server/client binaries are functional and tested by hand (`net/RE
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Why is `astraweave-net-ecs` declared by `astraweave-stress-test` but not imported?** Workspace grep `use astraweave_net_ecs` returns no source-file matches outside `astraweave-net-ecs`'s own tests/benches. `astraweave-stress-test/Cargo.toml:20` declares `astraweave-net-ecs = { workspace = true }` but no source file in that crate references the types. **Investigation (2026-05-12):** The dep was added in commit `08befc6ec` (2025-10-01, "phase 6 implementation") — the **same** commit that created `astraweave-net-ecs` itself. `astraweave-stress-test/src/lib.rs:38-42` defines its own `CNetworkStress { player_id, input_buffer, last_sync }` component, parallel to but disjoint from `astraweave-net-ecs::CNetworkClient`. So the dep was added at crate creation and never wired through; the stress test invented its own simulated network state types. Is this stale residue, future planning, or a deliberate ABI-only inclusion? Andrew's call.

@@ -1,8 +1,14 @@
 name: Trace Sync
 
-# Drift gate for the architecture-trace registry/map. Trace front-matter is the
-# source of truth; this fails if the CLAUDE.md trace table or workspace_map.html
-# trace links are out of sync with it. Fix locally with:
+# Drift gate for the architecture-trace registry/map. Trace front-matter and
+# cargo metadata are the sources. On push to main, on pull_request, and on
+# workflow_dispatch, the check step runs
+# `cargo run --locked -p aw_trace_sync -- --check`. That fails if the CLAUDE.md
+# trace table, workspace_map.html trace links, nodes, normal path edges,
+# examples aggregate, footer, trace-section anchors, or crate src line counts
+# are out of sync, and if the map page has a markup or script sink. The test
+# step runs `cargo test --locked -p aw_trace_sync`, which scans that map again.
+# Fix locally with:
 #   cargo run -p aw_trace_sync -- --write
 # Design: docs/architecture/_meta/TRACE_SYNC_PROPOSAL.md
 
@@ -12,6 +18,11 @@ on:
     paths:
       - 'docs/architecture/**'
       - '**/Cargo.toml'
+      - '**/src/**/*.rs'
+      - '**/*.wgsl'
+      - '**/README.md'
+      - '**/tests/**'
+      - '**/benches/**'
       - 'CLAUDE.md'
       - 'tools/aw_trace_sync/**'
       - '.github/workflows/trace-sync.yml'
@@ -19,6 +30,11 @@ on:
     paths:
       - 'docs/architecture/**'
       - '**/Cargo.toml'
+      - '**/src/**/*.rs'
+      - '**/*.wgsl'
+      - '**/README.md'
+      - '**/tests/**'
+      - '**/benches/**'
       - 'CLAUDE.md'
       - 'tools/aw_trace_sync/**'
       - '.github/workflows/trace-sync.yml'
@@ -44,7 +60,10 @@ jobs:
         uses: ./.github/actions/rust-ci-setup
 
       - name: Validate front-matter and report untraced subsystems
-        run: cargo run -p aw_trace_sync -- --validate-only --list-untraced
+        run: cargo run --locked -p aw_trace_sync -- --validate-only --list-untraced
 
       - name: Check registry/map are in sync with trace front-matter
-        run: cargo run -p aw_trace_sync -- --check
+        run: cargo run --locked -p aw_trace_sync -- --check
+
+      - name: Test aw_trace_sync
+        run: cargo test --locked -p aw_trace_sync

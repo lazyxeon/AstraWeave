@@ -200,6 +200,7 @@ There are **two distinct entry paths** into the cinematics data layer that conve
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -268,6 +269,7 @@ There are **two distinct entry paths** into the cinematics data layer that conve
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -299,6 +301,7 @@ Not a hot-path system. `tick_cinematics` runs once per frame but `Sequencer::ste
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Editor `CinematicsPanel` has no runtime consumer (L.7.4):** The panel authors `Vec<CameraKey>` and interpolates a preview key, but nothing emits this to a renderer or a saved `Timeline`. Is the panel intended to remain a preview-only authoring surface, or to eventually produce an `awc::Timeline` consumed by the editor viewport via `tick_cinematics`? (C.7.0 audit L.7.4, characterized as out-of-C.7-scope.)

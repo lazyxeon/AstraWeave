@@ -265,6 +265,7 @@ Persistence path:
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -367,6 +368,7 @@ Persistence path:
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -431,6 +433,7 @@ Persistence path:
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Why do `astraweave-gameplay` and `astraweave-ui` declare the dependency without using it?** Both Cargo.tomls pull in `astraweave-input` (lines 21 and 22 respectively), but workspace grep confirms zero `use astraweave_input` in either `src/`. Investigation (2026-05-12) traced addition commits: `astraweave-gameplay`'s dep was added in commit `3f0ab730d` (2025-10-01, "phase 5 implementation"); `astraweave-ui`'s dep landed at Cargo.toml creation in `dfbe059a4` (2025-09-05, same day as the input crate itself). Neither addition has a paired source-file `use` statement in git history (`git log -p --all -S "use astraweave_input"` on those crate roots returns no matches). Is this stale residue from a planned integration that was reverted, or a pre-positioning of the dep ahead of future wiring? Andrew's call.
