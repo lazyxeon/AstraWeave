@@ -22,7 +22,7 @@ async-trait = "0.1"
 # (bundled SQLite 3.54.0, RUSTSEC-2026-0459). `cache` is the statement
 # cache 0.37 always compiled in. The 0.41 default `ffi-sqlite-wasm-rs`
 # is wasm-only and is left off.
-rusqlite = { version = "0.41", default-features = false, features = ["bundled", "cache"] }
+rusqlite = { version = "0.43", default-features = false, features = ["bundled", "cache"] }
 bevy_ecs = { version = "0.17", optional = true }
 
 [features]

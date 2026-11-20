@@ -20,14 +20,14 @@ indexmap = "2.0"
 smallvec = "1.11"
 
 # Token counting
-tiktoken-rs = "0.7"
+tiktoken-rs = "0.12"
 
 # LLM integration
 astraweave-llm = { path = "../astraweave-llm" }
 
 # Concurrent data structures
 dashmap = "6.1"
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 [dev-dependencies]
 criterion = { version = "0.7", features = ["html_reports"] }

@@ -13,7 +13,7 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
-ron = "0.8"
+ron = "0.12"
 tokio = { workspace = true }
 sha2 = { workspace = true }
 ed25519-dalek = { workspace = true }
@@ -28,5 +28,5 @@ astraweave-weaving = { path = "../astraweave-weaving" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 proptest = "1.5"
