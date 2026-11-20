@@ -105,7 +105,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 | `astraweave-materials` | _(none)_ |
 | `astraweave-cinematics` | _(none)_ |
 | `astraweave-camera` | _(none — glam/winit/optional serde only; canonical `Projection`/`RenderView`/`CameraProducer` types, created Unified Camera C.2 `52b9e711c` 2026-05-18)_ |
-| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:45), **aw_asset_cli** (tool — unusual direction, verified 2026-05-13 still present at Cargo.toml:60) |
+| `astraweave-render` | core, materials, cinematics, terrain, profiling, asset, **camera** (non-optional, Cargo.toml:46), **aw_asset_cli** (tool — unusual direction, `astraweave-render/Cargo.toml:64`) |
 | `astraweave-asset` | blend |
 | `astraweave-asset-pipeline` | _(none)_ |
 | `astraweave-blend` | _(in crates/)_ |
@@ -164,7 +164,7 @@ The 5-prompt trace toolkit lives at `_meta/` (`ARCHITECTURE_TRACE_TEMPLATE.md`, 
 ### 2.3 Architectural Anomalies
 
 1. **`terrain` → `gameplay`** (reverse dependency): World-gen crate imports gameplay biome types. Should flow the other way. Verified 2026-05-13 still present. Blast radius: changing gameplay biome types breaks terrain generation.
-2. **`render` → `aw_asset_cli`** (production → tool): A runtime rendering crate depending on a CLI tool crate. Verified 2026-05-13 still present at `astraweave-render/Cargo.toml:60`. Unusual dependency direction.
+2. **`render` → `aw_asset_cli`** (production → tool): A runtime rendering crate depending on a CLI tool crate. Present at `astraweave-render/Cargo.toml:64`. Unusual dependency direction.
 3. **`npc` does NOT depend on `ai` or `behavior`**: NPC crate depends on physics/audio/gameplay instead. NPC behavior logic is decoupled from the AI orchestration layer. Confirmed by `ai_pipeline.md` §13.3 — NPC is "a fully isolated AI subsystem with its own parallel vocabulary (`NpcAction`/`NpcPlan`/`NpcWorldView`/`LlmAdapter`/`CommandSink`), zero imports of canonical AI types, and direct physics/audio integration."
 4. **`core` → `behavior`**: Core foundation depends on behavior trees (behavioral is part of the core abstraction).
 5. **`aw_editor` → `render` is REQUIRED** (Fix 27): Previously optional (`#[cfg(feature = "astraweave-render")]`), now always compiled. ~30 `#[cfg]` guards removed. Build time increased ~45s but editor always has engine-grade PBR rendering.
@@ -268,7 +268,7 @@ There are no dependency cycles in the workspace graph as of 2026-05-13. The "rev
 - Types: `Transform`, `Node`, `Scene`, `SceneError`
 - Modules: gpu_resource_manager, partitioned_scene, streaming, world_partition
 - Animation ECS components: `CSkeleton`, `CSkinnedMesh`, `CAnimator`, `CJointMatrices`, `CParentBone` + systems `update_animations`, `compute_poses_stub`, `update_bone_attachments`
-- **Reconciliation note (v0.7.0)**: `animation.md` §6 documents `compute_poses_stub` (literal name "_stub"): the function checks for ECS component presence but does not write a full pose. The canonical hierarchical-pose computation is render-side `compute_joint_matrices` (`astraweave-render/src/animation.rs:274-336`). See `animation.md` §11 (decisional question: when does it stop being a stub?).
+- **Reconciliation note (v0.7.0)**: `animation.md` §6 documents `compute_poses_stub` (literal name "_stub"): the function checks for ECS component presence but does not write a full pose. The canonical hierarchical-pose computation is render-side `compute_joint_matrices` (`astraweave-render/src/animation.rs:282-374`). See `animation.md` §11 (decisional question: when does it stop being a stub?).
 
 **astraweave-terrain** (Trace: [`terrain_materials.md`](terrain_materials.md) for the 32-layer material pipeline)
 - Types: `Biome`, `BiomeType`, `ChunkManager`, `TerrainChunk`, `Heightmap`, `VoxelGrid`, `WorldConfig`, `ZoneRegistry`
@@ -363,7 +363,7 @@ These are not properties of any one subsystem — they're cross-cutting rules th
 | `add_water_aabb` registers an AABB (`lib.rs:1522`) | `astraweave-physics/src/lib.rs:1522` | `physics.md` §6 |
 | `compute_poses_stub` checks components but doesn't write poses | `astraweave-scene/src/lib.rs:941` | `animation.md` §6 |
 | ~~HMAC server verification always fails (16-byte sig vs 32-byte HMAC-SHA256 OutputSize), failure only `warn!`~~ **RESOLVED** (`561b20957`+`79424389e`+`066cd6cfd`; refute `eb9977b88`) — client+server unified on canonical HMAC-SHA256 (`aw-net-proto`), server verifies FIRST and kicks by default; `sign16`/`SessionKey`/`session_key_hint` deleted | `net/aw-net-server/src/lib.rs` (`on_client_msg{,_tls}`), `net/aw-net-proto/src/lib.rs` | `net_ecs.md` §6/§7; `docs/audits/net_trio_signature_remediation_findings_2026-06.md` |
-| `deserialize_ecs_world` on empty blob returns `Ok(())` silently | `astraweave-persistence-ecs/src/lib.rs:447-450` | `persistence_ecs.md` §6 |
+| `deserialize_ecs_world` on empty blob returns `Ok(())` silently | `astraweave-persistence-ecs/src/lib.rs:656-659` | `persistence_ecs.md` §6 |
 | `load_bindings` collapses every error mode to `None` | `astraweave-input/src/save.rs:16-19` | `input.md` §6 |
 | `safe_llm_invoke` has zero workspace callers (4096-char limit unreachable) | `astraweave-llm/src/llm_adapter.rs` (file labeled "stub") | `ai_pipeline.md` §6, §13.7 |
 | `LLM_CACHE_SIM_THRESH < 1.0` causes test pollution; off by default | `astraweave-llm/src/lib.rs:57-67` | `ai_pipeline.md` §6 |
@@ -651,7 +651,7 @@ Source files (.blend, .gltf, textures)
 
 ```
 ECS World
-  → serialize_ecs_world(&world) (persistence-ecs/lib.rs:278-366)
+  → serialize_ecs_world(&world) (astraweave-persistence-ecs/src/lib.rs:479-574)
   → 10 separate Query<C> passes for entity discovery (CPos/CHealth/CTeam/CAmmo/CCooldowns/CDesiredPos/CAiAgent/CPersona/CMemory, plus CLegacyId)
   → SerializedEntity { entity_raw: u64, plus 10 Option<C> fields }
   → SerializedWorld { entities, world_tick: 0 (HARDCODED — TODO) }
@@ -944,7 +944,7 @@ These are decisional questions that cross subsystem boundaries or affect the bro
 
 13. **Four parallel `Skeleton`/`Joint`/`Transform`/`AnimationClip` type families — unify into a shared `astraweave-animation` crate?** `animation.md` §11.
 
-14. **`MAX_JOINTS = 256` — permanent limit or scale with hardware?** Hard-coded in Rust (`animation.rs:358`) and WGSL (`skinning_gpu.rs:261`); kept in sync manually; surplus joints silently drop. `animation.md` §11.
+14. **`MAX_JOINTS = 256` — permanent limit or scale with hardware?** Hard-coded in Rust (`animation.rs:396`) and WGSL (`skinning_gpu.rs:262`); kept in sync manually; surplus joints silently drop. `animation.md` §11.
 
 15. **CubicSpline interpolation — implement or remove the variant?** Render-side and asset-side both have the variant but fall back to Linear/Slerp. glTF cubic-spline clips lose fidelity. `animation.md` §11.
 
@@ -1021,7 +1021,7 @@ D.2.A.1 W.1-contamination correction (doc-truth campaign), driven by `docs/campa
 ### v0.7.2 (2026-06-10)
 Engine-health-audit reconciliation pass (doc-only), driven by the 2026-06-10 full workspace audit:
 - §1: total workspace members corrected **143 → 130** — the root Cargo.toml `[workspace].members` list contains 130 entries (128 unique paths; `astraweave-npc` and `astraweave-security` are each listed twice) and `cargo metadata --no-deps` resolves exactly 130 packages (the two extras are auto-included path-dependency packages). Examples count corrected to **59**.
-- §2.1: added `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) to the Rendering & Assets table; appended `camera` to `astraweave-render`'s workspace-deps row (non-optional, astraweave-render/Cargo.toml:45). Other production consumers: `tools/aw_editor` + 13 examples.
+- §2.1: added `astraweave-camera` (Unified Camera C.2, `52b9e711c`, 2026-05-18) to the Rendering & Assets table; appended `camera` to `astraweave-render`'s workspace-deps row (non-optional, astraweave-render/Cargo.toml:46). Other production consumers: `tools/aw_editor` + 13 examples.
 - §0: render-pipeline trace row updated (Multi-Tool SP3/SP4 closed, SP5 in flight; Render Parity P.1–P.7 closed 2026-05-17); aw_editor trace row updated (Real-Fix.A–E all landed; SP3/SP4 complete; SP5 in flight per commits `85786bf70`/`3cdb23239`).
 - Companion edits in the same pass: README engine-health section rewritten against this map + the live audit; `workspace_map.html` counts re-reconciled; MASTER_COVERAGE_REPORT bumped v5.3.0; MASTER_ROADMAP bumped v1.51; PROJECT_STATUS refreshed; CLAUDE.md known-build-issues + networking-hazard rows corrected.
 

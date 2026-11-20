@@ -10,7 +10,8 @@ fn poc_gltf_buffer_uri_rejects_parent_segments() {
         "asset": { "version": "2.0" },
         "buffers": [ { "uri": "../secret.bin", "byteLength": 4 } ]
     }"#;
-    let err = load_first_mesh_and_material(json).expect_err("hostile glTF must not load");
+    let err = load_first_mesh_and_material(std::path::Path::new("."), json)
+        .expect_err("hostile glTF must not load");
     let msg = format!("{err:#}");
     assert!(
         msg.to_lowercase().contains("traversal") || msg.to_lowercase().contains("rejected"),

@@ -9,11 +9,13 @@ lifecycle_status: active
 integration_status: wired
 summary: "Created Unified Camera C.2 (52b9e711c, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, and 13 examples"
 owns: [astraweave-camera]
-doc_version: "1.2"
-last_verified_commit: 7c29b8182
+doc_version: "1.3"
+last_verified_commit: ac9587de9
 ---
 
 # Architecture Trace: Camera System
+
+> **Revision note (1.3).** The renderer and editor cites in this trace were checked against `ac9587de9`: `renderer.rs` `update_view`, `apply_camera_key`, `tick_cinematics`, and the degrees conversion; `engine_adapter.rs` `update_view` and `update_water`; the editor viewport water call; `camera.rs` camera-relative method; `freefly.rs` camera-relative method.
 
 ## Metadata
 
@@ -21,9 +23,9 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Camera System |
 | **Primary crates** | [`astraweave-camera`](../../astraweave-camera) (canonical types + FreeFly producer); consumed by [`astraweave-render`](../../astraweave-render) and [`tools/aw_editor`](../../tools/aw_editor) (OrbitCamera producer) |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-10-13 |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `ac9587de9` |
+| **Last verified date** | 2026-11-11 |
 | **Status** | Active. Unified Camera campaign (C.0→C.9) closed 2026-06-01 — single upload contract, hardened cinematics path. 1.2 adds `ThirdPersonCamera` as a third producer (world-relative `to_render_view`, camera-relative method beside it, same split as `FreeFly`). |
 | **Owner notes** | Product of the Unified Camera campaign. Canonical convention reference: [`docs/current/CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md). Campaign outcome: [`docs/audits/unified_camera_outcome_2026-06.md`](../audits/unified_camera_outcome_2026-06.md). |
 
@@ -72,7 +74,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
     │ Renderer::update_view(&RenderView)   — the SOLE upload entry point
     ▼
 [Renderer GPU upload: camera UBO, CSM cascade splits, water/sky/impostor passes]
-    file: astraweave-render/src/renderer.rs:4093 (update_view)
+    file: astraweave-render/src/renderer.rs:5010 (update_view)
     role: store view_proj in camera UBO; derive shadow subviews from this primary RenderView
     key data: GPU camera uniforms consumed by shaders
 ```
@@ -101,14 +103,14 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 **Notes:** Caller responsibilities are documented in the constructor doc-comment: `position` should equal `inverse_view.col(3).xyz` (or the camera-relative equivalent), and `view_dir` should equal `-inverse_view.col(2).xyz` ([`render_view.rs:118-125`](../../astraweave-camera/src/render_view.rs)). TAA jitter fields (`unjittered_*`, `previous_view_proj`) and explicit basis-vector fields (`right`, `up`) are **deferred** — shaders extract basis from `inverse_view` columns ([`render_view.rs:33-48`](../../astraweave-camera/src/render_view.rs)).
 
 #### Stage 4: Renderer upload
-**File(s):** [`astraweave-render/src/renderer.rs:4093`](../../astraweave-render/src/renderer.rs) (`update_view`).
+**File(s):** [`astraweave-render/src/renderer.rs:5010`](../../astraweave-render/src/renderer.rs) (`update_view`).
 **Role:** The sole camera-upload entry point; stores `view_proj` in the camera UBO and derives shadow CSM subviews from this single primary `RenderView`.
 **Inputs:** `&RenderView`.
 **Outputs:** GPU camera uniforms.
-**Notes:** Per `CAMERA_CONVENTIONS.md` §2.9, there are no per-producer-type renderer APIs. The CSM cascade computation derives subview matrices inside the renderer from the one primary `RenderView` (`producer.rs:32-41` doc-comment; `CAMERA_CONVENTIONS.md` §2.9). `Renderer::update_view` stores the supplied `view_proj` directly without per-pipeline transformation (`engine_adapter.rs:776-779` doc-comment).
+**Notes:** Per `CAMERA_CONVENTIONS.md` §2.9, there are no per-producer-type renderer APIs. The CSM cascade computation derives subview matrices inside the renderer from the one primary `RenderView` (`producer.rs:32-41` doc-comment; `CAMERA_CONVENTIONS.md` §2.9). `Renderer::update_view` stores the supplied `view_proj` directly without per-pipeline transformation (`engine_adapter.rs:993-994` doc-comment).
 
 #### Stage 5 (specialized): Cinematics bridge
-**File(s):** [`astraweave-render/src/renderer.rs:3420`](../../astraweave-render/src/renderer.rs) (`apply_camera_key`, private), [`renderer.rs:3492`](../../astraweave-render/src/renderer.rs) (`tick_cinematics`).
+**File(s):** [`astraweave-render/src/renderer.rs:4244`](../../astraweave-render/src/renderer.rs) (`apply_camera_key`, private), [`renderer.rs:4316`](../../astraweave-render/src/renderer.rs) (`tick_cinematics`).
 **Role:** Route `astraweave_cinematics::CameraKey` keyframes through the `FreeFly` producer.
 **Inputs:** `dt`, `&mut FreeFly`, the active cinematics `Timeline`.
 **Outputs:** `Vec<SequencerEvent>`; mutates the supplied `FreeFly`.
@@ -135,7 +137,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 - **`FreeFly` vs `CameraController`:** `FreeFly` is the camera *state* and producer (it owns the matrices). `CameraController` is the *input handler* that mutates a `FreeFly`'s yaw/pitch/position/fovy each frame; it does not implement `CameraProducer`. A `CameraMode` enum on the controller (`FreeFly` / `Orbit`) is **a movement mode of the controller**, not the editor's `OrbitCamera` type ([`freefly.rs:153-158`](../../astraweave-camera/src/freefly.rs)).
 - **`CameraController::CameraMode::Orbit` vs editor `OrbitCamera`:** the controller's `Orbit` mode is a free-fly-camera movement style (WASD moves an orbit target, mouse rotates around it) implemented entirely on `FreeFly`+`CameraController` in `astraweave-camera`. The editor's `OrbitCamera` (`tools/aw_editor`) is a *separate producer type* with its own spherical state and picking surface. They are unrelated implementations that share a word.
 - **`fovy` (radians) vs `fov`/`fov_deg` (degrees):** the canonical field is `fovy` storing **radians** (§2.1). `OrbitCamera` keeps a degrees *boundary* at its UI (`set_fov(degrees)`, `fov_degrees()`) but stores `fovy` radians internally (C.4.B). `CameraKey.fov_deg` stays degrees as the data-layer keyframe format and converts at the apply boundary.
-- **`to_render_view` (trait, world-relative) vs `to_render_view_camera_relative` (concrete, off-trait):** the trait method is always world-relative. The camera-relative variant is an opt-in concrete capability, **not** on the `CameraProducer` trait ([`freefly.rs:74-94`](../../astraweave-camera/src/freefly.rs); `CAMERA_CONVENTIONS.md` §2.9). It is **not** FreeFly-exclusive: `OrbitCamera` also exposes its own `to_render_view_camera_relative` ([`tools/aw_editor/src/viewport/camera.rs:863`](../../tools/aw_editor/src/viewport/camera.rs)) — and the editor's main render path uses it. Both producers carry the method as a concrete-type capability; neither puts it on the trait.
+- **`to_render_view` (trait, world-relative) vs `to_render_view_camera_relative` (concrete, off-trait):** the trait method is always world-relative. The camera-relative variant is an opt-in concrete capability, **not** on the `CameraProducer` trait ([`freefly.rs:89-94`](../../astraweave-camera/src/freefly.rs); `CAMERA_CONVENTIONS.md` §2.9). It is **not** FreeFly-exclusive: `OrbitCamera` also exposes its own `to_render_view_camera_relative` ([`tools/aw_editor/src/viewport/camera.rs:883-889`](../../tools/aw_editor/src/viewport/camera.rs)). The editor's main render path calls `to_render_view` ([`engine_adapter.rs:1010`](../../tools/aw_editor/src/viewport/engine_adapter.rs)). Both producers carry the camera-relative method as a concrete-type capability; neither puts it on the trait.
 
 ---
 
@@ -146,16 +148,16 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 | Source system | Interface | Data | Notes |
 |---|---|---|---|
 | Input (`winit`) | `CameraController::process_keyboard / process_mouse_button / process_mouse_move / process_mouse_delta / process_scroll` ([`freefly.rs:226-314`](../../astraweave-camera/src/freefly.rs)) | `winit::keyboard::KeyCode`, `winit::event::MouseButton`, `Vec2` deltas | `astraweave-camera` depends on `winit` directly (Cargo.toml). Controller accumulates input, then `update_camera(&mut FreeFly, dt)` applies it. |
-| Cinematics (`astraweave-cinematics`) | `Renderer::tick_cinematics(dt, &mut FreeFly)` → private `apply_camera_key` ([`renderer.rs:3420,3492`](../../astraweave-render/src/renderer.rs)) | `CameraKey { pos, look_at, fov_deg }` | Mutates a caller-supplied `&mut FreeFly`; `aspect/znear/zfar` persist through apply. First production caller: `examples/cutscene_render_demo` (C.7.B). |
+| Cinematics (`astraweave-cinematics`) | `Renderer::tick_cinematics(dt, &mut FreeFly)` → private `apply_camera_key` ([`renderer.rs:4244,4316`](../../astraweave-render/src/renderer.rs)) | `CameraKey { pos, look_at, fov_deg }` | Mutates a caller-supplied `&mut FreeFly`; `aspect/znear/zfar` persist through apply. First production caller: `examples/cutscene_render_demo` (C.7.B). |
 
 ### Downstream (what consumes this system's output)
 
 | Consumer system | Interface | Data | Notes |
 |---|---|---|---|
-| Render (`astraweave-render`) | `Renderer::update_view(&RenderView)` ([`renderer.rs:4093`](../../astraweave-render/src/renderer.rs)) | `&RenderView` | The SOLE upload entry point. The renderer's update path is **not** generic over `CameraProducer` — it takes `&RenderView` directly (`producer.rs:19-31`). |
+| Render (`astraweave-render`) | `Renderer::update_view(&RenderView)` ([`renderer.rs:5010`](../../astraweave-render/src/renderer.rs)) | `&RenderView` | The SOLE upload entry point. The renderer's update path is **not** generic over `CameraProducer` — it takes `&RenderView` directly (`producer.rs:19-31`). |
 | Render shadow CSM | derives subview matrices from the primary `RenderView` inside the renderer | `view_proj`, `position`, `fovy/aspect/znear/zfar` | Single-view producer; multi-view (`to_render_views`) is an additive future option, not in scope (`producer.rs:33-41`). |
-| Render water pass | `EngineRenderAdapter::update_water(&RenderView, time)` ([`engine_adapter.rs:3836`](../../tools/aw_editor/src/viewport/engine_adapter.rs)) | `&RenderView` | Editor viewport calls `adapter.update_water(&camera.to_render_view(), water_time)` ([`renderer.rs:696-697`](../../tools/aw_editor/src/viewport/renderer.rs)). |
-| Editor viewport | `EngineRenderAdapter::update_camera` → `self.renderer.update_view(&camera.to_render_view())` ([`engine_adapter.rs:794-795`](../../tools/aw_editor/src/viewport/engine_adapter.rs)) | `&RenderView` from `OrbitCamera` | Single-line delegation through the canonical contract (C.4). |
+| Render water pass | `EngineRenderAdapter::update_water(&RenderView, time)` ([`engine_adapter.rs:4263`](../../tools/aw_editor/src/viewport/engine_adapter.rs)) | `&RenderView` | Editor viewport calls `adapter.update_water(&camera.to_render_view(), water_time)` ([`renderer.rs:705`](../../tools/aw_editor/src/viewport/renderer.rs)). |
+| Editor viewport | `EngineRenderAdapter::update_camera` → `self.renderer.update_view(&camera.to_render_view())` ([`engine_adapter.rs:1008-1010`](../../tools/aw_editor/src/viewport/engine_adapter.rs)) | `&RenderView` from `OrbitCamera` | Single-line delegation through the canonical contract (C.4). |
 | Editor picking | `OrbitCamera::ray_from_screen` / `unproject_depth_to_world` (`tools/aw_editor/src/viewport/camera.rs`) | screen coords → world ray | Producer-specific ergonomic surface (lives on the concrete type, not the trait). Migrated to precision-stable camera-relative VP in C.4. |
 
 ### Bidirectional / Coupled
@@ -256,7 +258,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 - **Date:** 2026-06-01 (C.7 chapter)
 - **Status:** Accepted (honest divergence from the C.0 plan)
 - **Context:** C.0/§5 envisioned `CameraKey` evolving into a continuous `RenderView` evaluator, eliminating the `apply_camera_key` round-trip.
-- **Decision:** Instead, `tick_cinematics(dt, &mut FreeFly)` dispatches keyframes to `apply_camera_key`, which sanitizes and builds a `FreeFly`; `FreeFly` produces `RenderView` via the canonical contract. `CameraKey.fov_deg` stays degrees in the serialized `Timeline`; degrees→radians happens at the apply boundary (`cam.fovy = k.fov_deg.to_radians()` at `renderer.rs:3444`).
+- **Decision:** Instead, `tick_cinematics(dt, &mut FreeFly)` dispatches keyframes to `apply_camera_key`, which sanitizes and builds a `FreeFly`; `FreeFly` produces `RenderView` via the canonical contract. `CameraKey.fov_deg` stays degrees in the serialized `Timeline`; degrees→radians happens at the apply boundary (`cam.fovy = k.fov_deg.to_radians()` at `renderer.rs:4268`).
 - **Alternatives considered:** the evaluator-elimination path — not taken; the chapter *routed and hardened* the boundary instead (`CAMERA_CONVENTIONS.md` §3 #10 family; `unified_camera_outcome_2026-06.md` §2/§3.5).
 - **Consequences:** No bespoke cinematics renderer API (§2.9 holds); producer-internal degrees convention is permitted because the `RenderView` boundary is canonical (§2.5/§2.6).
 

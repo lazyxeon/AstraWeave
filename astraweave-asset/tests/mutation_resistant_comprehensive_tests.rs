@@ -831,7 +831,7 @@ mod gltf_loader_mutation_kill_tests {
     fn load_first_mesh_short_bytes_not_treated_as_glb() {
         // 4 bytes of GLB magic but total length < 12: must not enter GLB branch
         let short = b"glTF\x02\x00\x00\x00";
-        let result = load_first_mesh_and_material(short);
+        let result = load_first_mesh_and_material(std::path::Path::new("."), short);
         // This should fail (not enough data for GLB, and not valid JSON either)
         assert!(result.is_err(), "Short GLB-like bytes must fail");
     }

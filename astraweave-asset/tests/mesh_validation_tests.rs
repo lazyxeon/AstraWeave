@@ -32,7 +32,8 @@ mod mesh_validation_tests {
     fn test_validate_vertex_data_integrity() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // All vertex attribute arrays should have same length
         assert_eq!(
@@ -57,7 +58,8 @@ mod mesh_validation_tests {
     fn test_validate_index_bounds() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         let max_index = mesh.positions.len() as u32;
         for (i, &index) in mesh.indices.iter().enumerate() {
@@ -77,7 +79,7 @@ mod mesh_validation_tests {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
-        match load_first_mesh_and_material(&bytes) {
+        match load_first_mesh_and_material(std::path::Path::new("."), &bytes) {
             Ok((mesh, _)) => {
                 for (i, normal) in mesh.normals.iter().enumerate() {
                     // Skip invalid normals
@@ -109,7 +111,8 @@ mod mesh_validation_tests {
     fn test_validate_uv_range() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for (i, uv) in mesh.texcoords.iter().enumerate() {
             assert!(
@@ -133,7 +136,7 @@ mod mesh_validation_tests {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
-        match load_first_mesh_and_material(&bytes) {
+        match load_first_mesh_and_material(std::path::Path::new("."), &bytes) {
             Ok((mesh, _)) => {
                 let mut valid_count = 0;
                 for i in 0..mesh.normals.len() {
@@ -177,7 +180,8 @@ mod mesh_validation_tests {
     fn test_detect_corrupted_mesh_data() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Check positions
         for (i, pos) in mesh.positions.iter().enumerate() {
@@ -200,7 +204,7 @@ mod mesh_validation_tests {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
-        match load_first_mesh_and_material(&bytes) {
+        match load_first_mesh_and_material(std::path::Path::new("."), &bytes) {
             Ok((mesh, _)) => {
                 for tri_idx in (0..mesh.indices.len()).step_by(3) {
                     let i0 = mesh.indices[tri_idx];
@@ -228,7 +232,8 @@ mod mesh_validation_tests {
     fn test_calculate_acmr() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         let acmr = calculate_acmr(&mesh.indices, 32);
 
@@ -265,7 +270,8 @@ mod mesh_validation_tests {
     fn test_validate_mesh_bounds() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         let mut min = [f32::INFINITY; 3];
         let mut max = [f32::NEG_INFINITY; 3];
@@ -298,7 +304,8 @@ mod mesh_validation_tests {
     fn test_validate_tangent_handedness() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         for (i, tangent) in mesh.tangents.iter().enumerate() {
             let w = tangent[3];
@@ -346,7 +353,7 @@ mod mesh_validation_tests {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
-        match load_first_mesh_and_material(&bytes) {
+        match load_first_mesh_and_material(std::path::Path::new("."), &bytes) {
             Ok((mesh, _)) => {
                 for tri_idx in (0..mesh.indices.len()).step_by(3) {
                     let i0 = mesh.indices[tri_idx] as usize;
@@ -394,7 +401,8 @@ mod mesh_validation_tests {
     fn test_vertex_reuse_statistics() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         let unique_indices: HashSet<u32> = mesh.indices.iter().copied().collect();
         let reuse_ratio = mesh.indices.len() as f32 / unique_indices.len() as f32;
@@ -413,7 +421,8 @@ mod mesh_validation_tests {
     fn test_validate_uv_seams() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Check that UVs don't have extreme discontinuities within a triangle
         for tri_idx in (0..mesh.indices.len()).step_by(3) {
@@ -496,7 +505,8 @@ mod mesh_validation_tests {
     fn test_normals_point_outward_cube() {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
-        let (mesh, _) = load_first_mesh_and_material(&bytes).expect("Failed to load mesh");
+        let (mesh, _) = load_first_mesh_and_material(std::path::Path::new("."), &bytes)
+            .expect("Failed to load mesh");
 
         // Calculate centroid
         let mut centroid = [0.0f32; 3];
@@ -543,8 +553,10 @@ mod mesh_validation_tests {
         let path = fixture_path("cube.gltf");
         let bytes = fs::read(&path).expect("Failed to read cube.gltf");
 
-        let (mesh1, _) = load_first_mesh_and_material(&bytes).expect("Load 1 failed");
-        let (mesh2, _) = load_first_mesh_and_material(&bytes).expect("Load 2 failed");
+        let (mesh1, _) =
+            load_first_mesh_and_material(std::path::Path::new("."), &bytes).expect("Load 1 failed");
+        let (mesh2, _) =
+            load_first_mesh_and_material(std::path::Path::new("."), &bytes).expect("Load 2 failed");
 
         assert_eq!(
             mesh1.positions.len(),
