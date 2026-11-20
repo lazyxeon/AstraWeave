@@ -40,7 +40,7 @@ impostor-bake = ["astraweave-render/impostor-bake"]
 [dependencies]
 eframe = { workspace = true, features = ["wgpu"] }
 egui = { workspace = true }
-egui-wgpu = "0.32.0"
+egui-wgpu = "0.33.3"
 egui_dock = { workspace = true }
 wgpu = { workspace = true }
 raw-window-handle = "0.6"
@@ -48,7 +48,7 @@ bytemuck = { version = "1.19", features = ["derive"] }
 petgraph = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-ron = "0.8"
+ron = "0.12"
 toml = { workspace = true }
 notify = "8"
 anyhow = { workspace = true }
@@ -64,11 +64,11 @@ rand = "0.8"
 rayon = "1.11"
 # 0.17 talks to the XDG portal through libdbus/zenity. 0.15 used ashpd,
 # which pinned zbus 5.
-rfd = "0.17"
+rfd = "0.18"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 chrono = "0.4"
-pollster = "0.4"
+pollster = "1.0"
 astract = { path = "../../crates/astract" }
 astraweave-core = { path = "../../astraweave-core" }
 astraweave-ecs = { path = "../../astraweave-ecs" }
@@ -104,7 +104,7 @@ log = "0.4"
 # 0.14.3 that zip also links. The editor only calls `encode_all` and
 # `stream::Decoder::new`, which are available with the defaults off.
 zstd = { version = "0.14.3", default-features = false }
-lz4_flex = "0.11"
+lz4_flex = "0.14"
 crc32fast = "1.4"
 # astraweave-asset-pipeline: dep removed 2026-06-30 (R-series M2/E4, relabel-and-defer) —
 # in-design / caller-less crate the editor never referenced (zero `use`). Re-add only when
@@ -115,7 +115,7 @@ mp4 = "0.14"
 openh264 = "0.9"
 [dev-dependencies]
 approx = "0.5"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 tempfile = "3"
 # Editor-Engine Render Parity harness (tests/render_parity_harness.rs) decodes
 # Rgba16Float bytes for linear-space SAD attribution.
@@ -128,7 +128,7 @@ half = "2"
 # Headless WGSL validation (tests/wgsl_validation.rs) — editor shaders are
 # include_str!'d and only validated at pipeline creation at runtime; this
 # catches parse/validation errors at test time. Version matches wgpu 25's naga.
-naga = { version = "25", features = ["wgsl-in"] }
+naga = { version = "27", features = ["wgsl-in"] }
 
 [[bench]]
 name = "editor_performance"

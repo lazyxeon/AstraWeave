@@ -24,7 +24,7 @@ rand.workspace = true  # Phase 10: Terrain quest triggers
 [dev-dependencies]
 astraweave-embeddings = { path = "../astraweave-embeddings" }
 sha2 = { workspace = true }
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 
 [[bench]]
 name = "quest_bench"

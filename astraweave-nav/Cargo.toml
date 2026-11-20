@@ -10,7 +10,7 @@ astraweave-destruction = { workspace = true }
 glam = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 
 [[bench]]
 name = "navmesh_benchmarks"

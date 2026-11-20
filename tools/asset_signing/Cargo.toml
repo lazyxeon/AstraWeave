@@ -9,7 +9,7 @@ ed25519-dalek = { workspace = true, features = ["rand_core"] }
 sha2 = { workspace = true }
 rand = "0.8"
 keyring = "3.6"
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 tempfile = "3"
