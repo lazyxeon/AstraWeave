@@ -25,9 +25,7 @@ jobs:
   test:
     name: Test AW Editor (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    # Skip if editor has known compilation issues - allows CI to pass while editor is being fixed
-    continue-on-error: true
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -63,6 +61,10 @@ jobs:
     - name: Run Unit Tests
       run: cargo test -p aw_editor --lib --all-features -- --nocapture
       continue-on-error: true  # Don't fail CI on test failures (89% pass rate acceptable)
+
+    # Bin harness: recovery_tests and voxel_tools compile only here.
+    - name: Run editor bin tests
+      run: cargo test -p aw_editor --all-features --bin aw_editor -- --nocapture
       
     # Run integration tests (require headless environment)
     - name: Run Integration Tests  

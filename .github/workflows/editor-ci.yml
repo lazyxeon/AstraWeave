@@ -27,9 +27,7 @@ jobs:
   editor-ci:
     name: editor-ci
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    # Skip if editor has known compilation issues
-    continue-on-error: true
+    timeout-minutes: 75
 
     steps:
       - name: Checkout repository
@@ -52,6 +50,9 @@ jobs:
 
       - name: Unit tests
         run: cargo test -p aw_editor --all-features --lib -- --nocapture
+
+      - name: Editor bin tests
+        run: cargo test -p aw_editor --all-features --bin aw_editor -- --nocapture
 
       - name: Headless smoke tests
         run: >
