@@ -62,9 +62,12 @@ jobs:
       run: cargo test -p aw_editor --lib --all-features -- --nocapture
       continue-on-error: true  # Kept from the previous policy. The bin step fails the job.
 
-    # Bin harness. Pull requests run the same tests from ci.yml
-    # (Test (ubuntu, build archive)): cargo test --locked -p aw_editor --all-features --bins.
-    # This workflow is not on pull_request.
+    # Bin harness for aw_editor only (`--bin aw_editor`). ci.yml job
+    # Test (ubuntu, build archive) runs
+    # `cargo test --locked -p aw_editor --all-features --bins`, which also
+    # builds the aw_game_runtime harness. That harness has no tests.
+    # This workflow is not on pull_request. PR Rust checks needs the
+    # archive job. Ruleset enforcement is issue 702.
     - name: Run editor bin tests
       run: cargo test -p aw_editor --all-features --bin aw_editor -- --nocapture
       
@@ -94,8 +97,8 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "### Steps" >> $GITHUB_STEP_SUMMARY
         echo "- Bin tests: cargo test -p aw_editor --all-features --bin aw_editor fails the job. The harness includes the library modules redeclared by src/main.rs, not only recovery_tests and voxel_tools." >> $GITHUB_STEP_SUMMARY
-        echo "- The --lib, integration, fmt, and clippy steps keep continue-on-error from the previous policy." >> $GITHUB_STEP_SUMMARY
-        echo "- Pull requests run cargo test --locked -p aw_editor --all-features --bins in ci.yml, job Test (ubuntu, build archive), with no continue-on-error." >> $GITHUB_STEP_SUMMARY
+        echo "- The test job keeps continue-on-error on --lib, integration, fmt, and clippy. The coverage job keeps it on Generate Coverage Report and Upload Coverage to Codecov." >> $GITHUB_STEP_SUMMARY
+        echo "- A pull request that is not docs-only, and whose affected set is the full workspace or at least one package, runs cargo test --locked -p aw_editor --all-features --bins in ci.yml, job Test (ubuntu, build archive). PR Rust checks needs that job. Ruleset enforcement is https://github.com/lazyxeon/AstraWeave/issues/702. The step has no continue-on-error. --bins also builds the aw_game_runtime harness, which has no tests." >> $GITHUB_STEP_SUMMARY
         
   # Coverage job (optional - Linux only for speed)
   coverage:

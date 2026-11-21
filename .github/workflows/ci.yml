@@ -7,10 +7,15 @@ name: Comprehensive CI Pipeline
 # Determinism Replay, which is a separate workflow with no path filter.
 # Heavy optional workflows (PBR, editor, AW Editor tests) are not on
 # pull_request, so they do not occupy runners ahead of this workflow.
-# The aw_editor bin harness does. Test (ubuntu, build archive) runs
-# `cargo test --locked -p aw_editor --all-features --bins` on pull_request,
-# with no continue-on-error. editor-ci.yml and aw-editor-tests.yml stay off
-# pull_request.
+# The aw_editor bin harness is a step of Test (ubuntu, build archive),
+# which the PR Rust checks job needs. Ruleset enforcement is tracked in
+# https://github.com/lazyxeon/AstraWeave/issues/702. That job is skipped
+# on a docs-only pull request and when no crate is selected
+# (`full` is not set and the package list is empty).
+# The step runs `cargo test --locked -p aw_editor --all-features --bins`
+# with no continue-on-error. `--bins` builds every bin harness, including
+# aw_game_runtime (test = false, and that harness has no tests).
+# editor-ci.yml and aw-editor-tests.yml stay off pull_request.
 #
 # Main, schedule, and workflow_dispatch: the same gate against the full
 # workspace, then the 3-OS test matrix and a release build. Sanitizers,
@@ -145,10 +150,11 @@ jobs:
     # 60, not 45. Run 40235303264 compiled the test profile in 24m 12s and
     # then spent 6m 05s running 31672 tests. A dev-profile aw_audio_probe
     # before that compile took another 7m 15s and could not be reused.
-    # This job compiles once (debuginfo off, same as the Windows archive),
-    # builds the probe with the test profile, and uploads both. Partition
-    # jobs do not compile. The archive is not built inside the gate: that
-    # would hold the Windows archive until this compile finished.
+    # The nextest archive is one compile (debuginfo off). The editor bin
+    # step compiles aw_editor again with --all-features. Run 44916883830
+    # spent 6m 06s on that step and 37m 24s on this job. Partition jobs do
+    # not compile. The archive is not built inside the gate: that would
+    # hold the Windows archive until this compile finished.
     timeout-minutes: 60
     if: >-
       github.event_name == 'pull_request' &&
@@ -259,7 +265,9 @@ jobs:
         # these. recovery_tests and voxel_tools compile only in this bin.
         # --all-features matches editor-ci. The feature set is fixed in the
         # lock (including profiling/tracy-client). It is not a replay hash.
-        # aw_game_runtime has test = false, so --bins tests aw_editor only.
+        # `--bins` builds every bin harness. aw_game_runtime has test = false
+        # and no #[test], so its harness runs 0 tests. Cargo 1.89 does not
+        # skip test = false when --bins selects the target.
         env:
           CARGO_PROFILE_TEST_DEBUG: "0"
         run: cargo test --locked -p aw_editor --all-features --bins

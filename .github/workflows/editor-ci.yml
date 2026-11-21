@@ -52,9 +52,12 @@ jobs:
         run: cargo test -p aw_editor --all-features --lib -- --nocapture
 
       - name: Editor bin tests
-        # Not the pull-request gate. ci.yml job Test (ubuntu, build archive)
-        # runs `cargo test --locked -p aw_editor --all-features --bins`.
-        # This workflow stays off pull_request.
+        # This workflow stays off pull_request. ci.yml job
+        # Test (ubuntu, build archive) runs
+        # `cargo test --locked -p aw_editor --all-features --bins`.
+        # `--bins` also builds the aw_game_runtime harness, which has no
+        # tests. PR Rust checks needs that job. Ruleset enforcement is
+        # https://github.com/lazyxeon/AstraWeave/issues/702.
         run: cargo test -p aw_editor --all-features --bin aw_editor -- --nocapture
 
       - name: Headless smoke tests
