@@ -1466,8 +1466,8 @@ The NPC crate **does not import any canonical AI types** and is therefore not co
 
 ### 13.4 Subsystem Trace — Dialogue
 
-**Last verified against commit:** `7318eb3ea` (the last commit that changed `llm_dialogue.rs`). Symbol cites in this section (`DialogueRunner` import, `DialogueConfig`, `DialogueContextConfig`, `BranchingConfig`, `LlmClient`, the clamps, and `disabled`)
-**Last verified date:** 2026-11-11. The 2026-05-12 pass was `32afac52f`.
+**Last verified against commit:** `7318eb3ea` (the last commit that changed `llm_dialogue.rs`). Symbol cites in this section (`DialogueRunner` import, `DialogueConfig`, `DialogueContextConfig`, `BranchingConfig`, `LlmClient`, the clamps, and `disabled`) name those symbols in `llm_dialogue.rs`.
+**Last verified date:** 2026-11-18. The touchpoint rows below were re-checked on 2026-11-18. The 2026-05-12 pass was `32afac52f`, and the 2026-11-11 pass was the dialogue cite correction.
 **Status:** **Two-layer architecture, mixed status.** The **basic dialogue layer** (`lib.rs` types, `runner.rs` state machine, `toml_loader.rs` authoring) is Active and production-wired into `veilweaver_slice_runtime/src/game_loop.rs` and the editor's `dialogue_editor_panel.rs`. The **LLM-enhanced layer** (`llm_dialogue.rs`, 2,231 lines, about half of the 4,420 under `src/`) is Active (code-wise) / Dormant (runtime-wise) — workspace grep confirms zero external consumers outside the file itself. The two layers share no types: the LLM path defines its own `LlmDialogueSystem`, `DialogueConfig`, `ActiveConversation`, etc., distinct from the basic `DialogueGraph` / `DialogueRunner`.
 
 #### 13.4.1 Role within the parent system
@@ -1595,7 +1595,7 @@ The basic layer compiles without any of the LLM-stack deps; the LLM layer pulls 
 
 **Inside the parent AI system (LLM layer, DORMANT):**
 
-| Designed touchpoint | Interface | Verified 2026-05-12 |
+| Designed touchpoint | Interface | Verified 2026-11-18 |
 |---|---|---|
 | LLM client | `use astraweave_llm::LlmClient` at `llm_dialogue.rs:20`. The field is `llm_client: Arc<dyn LlmClient>` at `llm_dialogue.rs:30`. | No external code constructs `LlmDialogueSystem` |
 | RAG retrieval | `use astraweave_rag::{MemoryQuery, RagPipeline, RetrievedMemory}` at `llm_dialogue.rs:25`. The field is `rag_pipeline: Arc<RwLock<RagPipeline>>` at `llm_dialogue.rs:33`. | Same |

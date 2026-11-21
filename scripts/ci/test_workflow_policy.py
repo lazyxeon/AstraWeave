@@ -119,7 +119,7 @@ def _uses_single_quoted(line: str):
 
 def _uses_block(lines: list[str], index: int, indicator: str):
     line = lines[index]
-    if re.search(rf"uses:\s*\{indicator}\s*(?:#.*)?$", line) is None:
+    if re.search(rf"uses:\s*{re.escape(indicator)}\s*(?:#.*)?$", line) is None:
         return None
     base = len(line) - len(line.lstrip(" "))
     for follow in range(index + 1, len(lines)):
@@ -156,6 +156,16 @@ def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
             folded = _uses_block(lines, index, "|")
             if folded is None:
                 folded = _uses_block(lines, index, ">")
+            if folded is None:
+                folded = _uses_block(lines, index, "|-")
+            if folded is None:
+                folded = _uses_block(lines, index, ">-")
+            if folded is None:
+                folded = _uses_block(lines, index, "|+")
+            if folded is None:
+                folded = _uses_block(lines, index, ">+")
+            if folded is None:
+                folded = _uses_block(lines, index, "|2")
             if folded is not None:
                 match, at = folded
                 line_no = at + 1
@@ -251,6 +261,10 @@ def _on_header(stripped: str) -> bool:
     return False
 
 
+def _header_with_space(stripped: str) -> bool:
+    return bool(re.fullmatch(r"""(?:on|"on"|'on')\s+:""", stripped))
+
+
 def _scalar_on_pull_request(stripped: str) -> bool:
     return bool(re.fullmatch(r"""(?:on:|"on":|'on':)\s*pull_request\s*""", stripped))
 
@@ -279,18 +293,101 @@ def _list_item_pull_request(stripped: str) -> bool:
     return bool(re.fullmatch(r"-\s*pull_request\s*:?", stripped))
 
 
+def _qscalar_pull_request(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"""(?:on:|"on":|'on':)\s*(?:"pull_request"|'pull_request')\s*(?:#.*)?""",
+            stripped,
+        )
+    )
+
+
+def _commented_pull_request_scalar(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(r"""(?:on:|"on":|'on':)\s*pull_request\s+#.*""", stripped)
+    )
+
+
+def _colon_spaced_pull_request(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"""(?:on|"on"|'on')\s+:\s*['"]?pull_request['"]?\s*(?:#.*)?""",
+            stripped,
+        )
+    )
+
+
+def _key_with_space(stripped: str) -> bool:
+    return bool(re.fullmatch(r"""['"]?pull_request['"]?\s+:\s*(?:#.*)?""", stripped))
+
+
+def _qlist_pull_request(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"""-\s*(?:"pull_request"|'pull_request')\s*:?\s*(?:#.*)?""",
+            stripped,
+        )
+    )
+
+
+def _commented_list_pull_request(stripped: str) -> bool:
+    return bool(re.fullmatch(r"-\s*pull_request\s*:?\s+#.*", stripped))
+
+
+def _flow_lines_list(text: str) -> bool:
+    return _multiline_flow_on_pull_request(text, "[", "]")
+
+
+def _flow_lines_map(text: str) -> bool:
+    return _multiline_flow_on_pull_request(text, "{", "}")
+
+
+def _multiline_flow_on_pull_request(text: str, open_ch: str, close_ch: str) -> bool:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if (
+            re.fullmatch(
+                rf"""(?:on:|"on":|'on':)\s*\{open_ch}\s*(?:#.*)?""",
+                stripped,
+            )
+            is None
+        ):
+            continue
+        for follow in lines[index + 1 :]:
+            item = follow.strip()
+            if item.startswith(close_ch):
+                break
+            if re.search(
+                r"""(?<![A-Za-z0-9_])['"]?pull_request['"]?(?![A-Za-z0-9_])""",
+                item,
+            ):
+                return True
+    return False
+
+
 def has_pull_request(text: str) -> bool:
     # Quoted "on" (scorecard) and bare on: both count.
+    if _flow_lines_list(text):
+        return True
+    if _flow_lines_map(text):
+        return True
     in_on = False
     for line in text.splitlines():
         stripped = line.strip()
         if _scalar_on_pull_request(stripped):
             return True
+        if _qscalar_pull_request(stripped):
+            return True
+        if _commented_pull_request_scalar(stripped):
+            return True
+        if _colon_spaced_pull_request(stripped):
+            return True
         if _flow_list_on_pull_request(stripped):
             return True
         if _flow_map_on_pull_request(stripped):
             return True
-        if _on_header(stripped):
+        if _on_header(stripped) or _header_with_space(stripped):
             in_on = True
             continue
         if in_on and line and not line.startswith(" ") and not line.startswith("#"):
@@ -301,7 +398,13 @@ def has_pull_request(text: str) -> bool:
             return True
         if in_on and _single_quoted_pull_request_key(stripped):
             return True
+        if in_on and _key_with_space(stripped):
+            return True
         if in_on and _list_item_pull_request(stripped):
+            return True
+        if in_on and _qlist_pull_request(stripped):
+            return True
+        if in_on and _commented_list_pull_request(stripped):
             return True
     return False
 
@@ -332,6 +435,15 @@ def _exec_has_pull_request(source: str):
         "_double_quoted_pull_request_key": _double_quoted_pull_request_key,
         "_single_quoted_pull_request_key": _single_quoted_pull_request_key,
         "_list_item_pull_request": _list_item_pull_request,
+        "_qscalar_pull_request": _qscalar_pull_request,
+        "_commented_pull_request_scalar": _commented_pull_request_scalar,
+        "_colon_spaced_pull_request": _colon_spaced_pull_request,
+        "_header_with_space": _header_with_space,
+        "_key_with_space": _key_with_space,
+        "_qlist_pull_request": _qlist_pull_request,
+        "_commented_list_pull_request": _commented_list_pull_request,
+        "_flow_lines_list": _flow_lines_list,
+        "_flow_lines_map": _flow_lines_map,
     }
     exec(compile(source, "<has_pull_request>", "exec"), namespace)
     fn = namespace.get("has_pull_request")
@@ -1298,6 +1410,11 @@ class WorkflowPolicyTest(unittest.TestCase):
             "_uses_single_quoted(line)": "uses: 'actions/checkout@main'",
             '_uses_block(lines, index, "|")': "steps:\n  - uses: |\n      actions/checkout@main\n",
             '_uses_block(lines, index, ">")': "steps:\n  - uses: >\n      actions/checkout@main\n",
+            '_uses_block(lines, index, "|-")': "steps:\n  - uses: |-\n      actions/checkout@main\n",
+            '_uses_block(lines, index, ">-")': "steps:\n  - uses: >-\n      actions/checkout@main\n",
+            '_uses_block(lines, index, "|+")': "steps:\n  - uses: |+\n      actions/checkout@main\n",
+            '_uses_block(lines, index, ">+")': "steps:\n  - uses: >+\n      actions/checkout@main\n",
+            '_uses_block(lines, index, "|2")': "steps:\n  - uses: |2\n      actions/checkout@main\n",
         }
         for call, sample in uses_samples.items():
             self.assertTrue(workflow_action_pin_violations(sample), sample)
@@ -1317,6 +1434,15 @@ class WorkflowPolicyTest(unittest.TestCase):
             "_double_quoted_pull_request_key(stripped)": 'on:\n  "pull_request":\n    types: [opened]\n',
             "_single_quoted_pull_request_key(stripped)": "on:\n  'pull_request':\n    types: [opened]\n",
             "_list_item_pull_request(stripped)": "on:\n  - pull_request\n",
+            "_qscalar_pull_request(stripped)": 'on: "pull_request"\n',
+            "_commented_pull_request_scalar(stripped)": "on: pull_request # comment\n",
+            "_colon_spaced_pull_request(stripped)": "on : pull_request\n",
+            "_header_with_space(stripped)": "on :\n  pull_request:\n",
+            "_key_with_space(stripped)": "on:\n  pull_request :\n",
+            "_qlist_pull_request(stripped)": 'on:\n  - "pull_request"\n',
+            "_commented_list_pull_request(stripped)": "on:\n  - pull_request # c\n",
+            "_flow_lines_list(text)": "on: [\n  push,\n  pull_request\n]\n",
+            "_flow_lines_map(text)": "on: {\n  pull_request: {types: [opened]}\n}\n",
         }
         for call, sample in event_samples.items():
             self.assertTrue(has_pull_request(sample), sample)
@@ -1343,6 +1469,15 @@ class WorkflowPolicyTest(unittest.TestCase):
             "_double_quoted_pull_request_key": _double_quoted_pull_request_key,
             "_single_quoted_pull_request_key": _single_quoted_pull_request_key,
             "_list_item_pull_request": _list_item_pull_request,
+            "_qscalar_pull_request": _qscalar_pull_request,
+            "_commented_pull_request_scalar": _commented_pull_request_scalar,
+            "_colon_spaced_pull_request": _colon_spaced_pull_request,
+            "_header_with_space": _header_with_space,
+            "_key_with_space": _key_with_space,
+            "_qlist_pull_request": _qlist_pull_request,
+            "_commented_list_pull_request": _commented_list_pull_request,
+            "_flow_lines_list": _flow_lines_list,
+            "_flow_lines_map": _flow_lines_map,
         }
         exec(compile(source, "<has_pull_request>", "exec"), namespace)
         self.assertFalse(namespace["has_pull_request"](quoted_on))
@@ -1350,6 +1485,10 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertTrue(has_pull_request('"on":\n  pull_request:\n'))
         self.assertFalse(has_pull_request("on:\n  pull_request_target:\n"))
         self.assertFalse(has_pull_request("on: [push, pull_request_target]\n"))
+        self.assertTrue(has_pull_request("on: 'pull_request'\n"))
+        self.assertFalse(
+            has_pull_request("on: [\n  pull_request_target\n]\n")
+        )
 
 
 if __name__ == "__main__":

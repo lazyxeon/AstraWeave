@@ -1245,10 +1245,18 @@ fn select_end(s: &str) -> SelectEnd {
                     }
                 }
             // A longer tail is not a prefix of "select", and the exact word
-            // was handled above (`name_at` is on a char boundary for this ASCII
-            // name). `starts_with` is that incomplete-prefix test by itself.
-            } else if "select".starts_with(&s[name_at..].to_ascii_lowercase()) {
-                return SelectEnd::Open(i);
+            // was handled above. Only an unfinished name, shorter than the
+            // six letters of "select", can still be that prefix. Compare those
+            // bytes, not the rest of the chunk.
+            } else {
+                let rest = &s[name_at..];
+                let n = rest.len().min("select".len());
+                if n < "select".len()
+                    && rest.is_char_boundary(n)
+                    && "select".starts_with(&rest[..n].to_ascii_lowercase())
+                {
+                    return SelectEnd::Open(i);
+                }
             }
         }
         i += 1;
@@ -2535,6 +2543,7 @@ mod tests {
         assert_eq!(select_s("</division>"), "open:11");
         assert_eq!(select_s("</divisi>"), "open:9");
         assert_eq!(select_s("</div>"), "open:6");
+        assert_eq!(select_s("</selecting>"), "open:12");
         assert_eq!(select_s("</select "), "open:0");
         assert_eq!(select_s("</select id='>'>"), "closed:16");
         assert_eq!(select_s("</select id=\"ab\">"), "closed:17");
@@ -2845,5 +2854,136 @@ mod tests {
             .find(|e| e["source"] == "alpha" && e["target"] == "beta")
             .unwrap();
         assert_eq!(edge["kind"], "declared-unused");
+
+        let mut anomalous = serde_json::json!({
+            "nodes": [],
+            "edges": [{
+                "source": "alpha",
+                "target": "beta",
+                "kind": "anomalous",
+                "optional": false
+            }]
+        });
+        sync_topology(&mut anomalous, &graph, dir.path(), &[]).unwrap();
+        let edge = anomalous["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["source"] == "alpha" && e["target"] == "beta")
+            .unwrap();
+        assert_eq!(edge["kind"], "anomalous");
+    }
+
+    #[test]
+    fn the_workspace_graph_lists_packages_and_optional_edges() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let graph = workspace_graph(&root).unwrap();
+        assert!(graph.packages.len() > 1, "{}", graph.packages.len());
+        assert!(!graph.deps.is_empty());
+        assert_eq!(
+            graph.deps.get(&(
+                "veilweaver_slice_runtime".into(),
+                "astraweave-director".into()
+            )),
+            Some(&true)
+        );
+    }
+
+    #[test]
+    fn src_rs_lines_counts_rust_files_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::write(src.join("lib.rs"), "fn a() {}\n").unwrap();
+        std::fs::write(src.join("note.txt"), "a\nb\nc\n").unwrap();
+        assert_eq!(src_rs_lines(dir.path(), "Cargo.toml"), 1);
+    }
+
+    #[test]
+    fn domain_labels_prefer_the_node_label() {
+        let data = serde_json::json!({
+            "domains": [{"id": "core", "label": "Core"}],
+            "nodes": [{"domain": "core", "domainLabel": "Engine"}]
+        });
+        let labels = domain_labels(&data);
+        let mut expected = BTreeMap::new();
+        expected.insert("core".to_string(), "Engine".to_string());
+        assert_eq!(labels, expected);
+        assert_eq!(label_for(&labels, "core"), "Engine");
+    }
+
+    #[test]
+    fn the_examples_node_carries_the_member_list() {
+        let mut node = serde_json::json!({"label": "old"});
+        refresh_examples_node(&mut node, &["a".into(), "b".into()]);
+        assert_eq!(node["label"], "examples (2)");
+        assert_eq!(node["exampleList"], serde_json::json!(["a", "b"]));
+        assert_eq!(node["isExample"], true);
+        let labels = BTreeMap::from([("examples".to_string(), "Examples".to_string())]);
+        let made = new_examples_node(&["a".into()], &labels);
+        assert_eq!(made["id"], "examples_collapsed");
+        assert_eq!(made["label"], "examples (1)");
+        assert_eq!(made["domainLabel"], "Examples");
+    }
+
+    #[test]
+    fn the_examples_one_liner_replaces_the_quoted_string() {
+        let html = "prefix 'examples_collapsed': 'stale', suffix";
+        let out = sync_examples_oneliner(html, 3).unwrap();
+        let line = examples_oneliner(3);
+        assert_eq!(
+            out,
+            format!("prefix 'examples_collapsed': '{line}', suffix")
+        );
+    }
+
+    #[test]
+    fn the_footer_splits_sorted_traces_across_two_lists() {
+        let alpha = trace_owning("core", "alpha");
+        let mut beta = trace_owning("core", "beta");
+        alpha_id(&mut beta, "beta");
+        let mut first = alpha;
+        alpha_id(&mut first, "alpha");
+        let html = footer_block(&[beta, first]);
+        let parts: Vec<&str> = html.split("<ul>").collect();
+        assert!(parts[1].contains("alpha.md"), "{html}");
+        assert!(!parts[1].contains("beta.md"), "{html}");
+        assert!(parts[2].contains("beta.md"), "{html}");
+    }
+
+    fn alpha_id(trace: &mut TraceDoc, id: &str) {
+        trace.fm.as_mut().unwrap().trace_id = id.to_string();
+    }
+
+    #[test]
+    fn the_members_sentence_counts_non_example_crates() {
+        let graph = Graph {
+            packages: vec![
+                pkg("a", "a/Cargo.toml"),
+                pkg("b", "b/Cargo.toml"),
+                pkg("ex", "examples/ex/Cargo.toml"),
+            ],
+            deps: BTreeMap::new(),
+        };
+        let sentence = members_sentence(&graph, 4, 5);
+        assert!(
+            sentence.contains("3 (2 non-example crates, 1 examples)"),
+            "{sentence}"
+        );
+        assert!(sentence.contains("4 nodes and 5 edges"), "{sentence}");
+    }
+
+    #[test]
+    fn replace_marked_keeps_the_text_around_the_markers() {
+        assert_eq!(
+            replace_marked("AA<!--S-->old<!--E-->ZZ", "<!--S-->", "<!--E-->", "new").unwrap(),
+            "AA<!--S-->new<!--E-->ZZ"
+        );
+    }
+
+    #[test]
+    fn count_nodes_edges_reads_both_arrays() {
+        let data = serde_json::json!({"nodes": [{}, {}], "edges": [{}, {}, {}]});
+        assert_eq!(count_nodes_edges(&data), (2, 3));
     }
 }

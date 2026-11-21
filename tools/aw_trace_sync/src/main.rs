@@ -17,8 +17,34 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use serde::Deserialize;
+#[cfg(test)]
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+
+#[cfg(test)]
+thread_local! {
+    static TEST_ARGS: RefCell<Option<Vec<OsString>>> = const { RefCell::new(None) };
+    static TEST_NOTES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+fn cli_args() -> Vec<OsString> {
+    #[cfg(test)]
+    {
+        let overridden = TEST_ARGS.with(|slot| slot.borrow().clone());
+        if let Some(args) = overridden {
+            return args;
+        }
+    }
+    std::env::args_os().collect()
+}
+
+fn note_line(line: &str) {
+    eprintln!("{line}");
+    #[cfg(test)]
+    TEST_NOTES.with(|notes| notes.borrow_mut().push(line.to_string()));
+}
 
 const TABLE_START: &str = "<!-- TRACE-TABLE:START -->";
 const TABLE_END: &str = "<!-- TRACE-TABLE:END -->";
@@ -918,7 +944,7 @@ fn first_line_diff(a: &str, b: &str) -> Option<(usize, String, String)> {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = Cli::parse_from(cli_args());
 
     let root = match &cli.root {
         Some(r) => r.clone(),
@@ -1072,9 +1098,9 @@ fn main() -> Result<()> {
         if !drift {
             let nodes = added_lengths(map_render.missing_nodes.len(), map_render.extra_nodes.len());
             let edges = added_lengths(map_render.missing_edges.len(), map_render.extra_edges.len());
-            eprintln!(
+            note_line(&format!(
                 "In sync: CLAUDE.md trace table, map nodes/edges, footer, and trace anchors match cargo metadata and front-matter ({nodes} node diffs, {edges} edge diffs)."
-            );
+            ));
         }
     }
 
@@ -3475,6 +3501,8 @@ owns: [demo-crate]
         assert!(notes.contains("8 `[[bench]]` targets"), "{notes}");
         assert!(notes.contains("`fluids_adversarial` 1,676"), "{notes}");
         assert!(notes.contains("`fluid_baselines` 175"), "{notes}");
+        assert!(notes.contains("Eight bench files are 7-line"), "{notes}");
+        assert!(!notes.contains("six bench"), "{notes}");
         assert!(!notes.contains("1,678"), "{notes}");
         assert!(!notes.contains("`fluid_baselines` 149"), "{notes}");
         let opt =
@@ -3559,7 +3587,7 @@ owns: [demo-crate]
             .find(|item| item.contains("**`SimParams`**"))
             .expect("SimParams row");
         assert!(params_row.contains("`lib.rs:191`"), "{params_row}");
-        assert!(!params_row.contains("`lib.rs:458`"), "{params_row}");
+        assert!(params_row.contains("`lib.rs:458`"), "{params_row}");
         assert!(
             params_row.contains("`_pad0` through `_pad3`"),
             "{params_row}"
@@ -3776,5 +3804,75 @@ owns: [demo-crate]
             "unescaped identifier reached the footer"
         );
         assert_eq!(html.matches("bad&quot;id&lt;x&gt;").count(), 2);
+    }
+
+    fn with_args<T>(args: &[&str], body: impl FnOnce() -> T) -> T {
+        let mut full = vec![OsString::from("aw_trace_sync")];
+        full.extend(args.iter().copied().map(OsString::from));
+        TEST_ARGS.with(|slot| *slot.borrow_mut() = Some(full));
+        TEST_NOTES.with(|notes| notes.borrow_mut().clear());
+        let result = body();
+        TEST_ARGS.with(|slot| *slot.borrow_mut() = None);
+        result
+    }
+
+    fn notes() -> Vec<String> {
+        TEST_NOTES.with(|slot| slot.borrow().clone())
+    }
+
+    #[test]
+    fn an_empty_root_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = with_args(&["--root", dir.path().to_str().unwrap()], main);
+        assert!(err.is_err(), "{err:?}");
+    }
+
+    #[test]
+    fn check_on_the_repo_notes_zero_diffs() {
+        let root =
+            std::fs::canonicalize(Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")).unwrap();
+        let err = with_args(&["--check", "--root", root.to_str().unwrap()], main);
+        assert!(err.is_ok(), "{err:?}");
+        let lines = notes();
+        assert!(
+            lines.iter().any(|line| line.contains("0 node diffs")),
+            "{lines:?}"
+        );
+    }
+
+    fn write_sink_repo(dir: &std::path::Path) {
+        let arch = dir.join("docs/architecture");
+        std::fs::create_dir_all(&arch).unwrap();
+        std::fs::create_dir_all(dir.join("crates/demo/src")).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"crates/demo\"]\nresolver = \"2\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("crates/demo/Cargo.toml"),
+            "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("crates/demo/src/lib.rs"), "pub fn demo() {}\n").unwrap();
+        std::fs::write(
+            dir.join("CLAUDE.md"),
+            "<!-- TRACE-TABLE:START -->\n<!-- TRACE-TABLE:END -->\n",
+        )
+        .unwrap();
+        let yaml = "---\nschema_version: 1\ntrace_id: demo\ntitle: Demo\ndescription: Demo trace\n\
+             primary_crate: demo\ndomain: core\nlifecycle_status: active\nintegration_status: wired\n\
+             owns: [demo]\ndoc_version: \"1.0\"\nlast_verified_commit: abc1234\n---\n";
+        std::fs::write(arch.join("demo.md"), yaml).unwrap();
+        std::fs::write(arch.join("workspace_map.html"), "eval(1);\n").unwrap();
+    }
+
+    #[test]
+    fn a_map_sink_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        write_sink_repo(dir.path());
+        let err = with_args(&["--check", "--root", dir.path().to_str().unwrap()], main);
+        let message = err.expect_err("a sink is an error").to_string();
+        assert!(message.contains("HTML parsing sink"), "{message}");
     }
 }

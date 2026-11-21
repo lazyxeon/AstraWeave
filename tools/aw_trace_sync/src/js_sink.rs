@@ -43,20 +43,29 @@ use std::collections::BTreeSet;
 /// Sorted. Member names the page calls (`.name(` / `['name'](`).
 const MEMBER_CALL: &[&str] = &[
     "$",
+    "abs",
     "add",
     "addClass",
+    "addColorStop",
     "addEventListener",
     "animate",
     "append",
     "appendChild",
+    "arc",
+    "beginPath",
+    "boundingBox",
     "call",
+    "ceil",
     "charAt",
     "classList",
     "clear",
     "click",
+    "closedNeighborhood",
+    "connectedEdges",
     "contains",
     "cos",
     "createElement",
+    "createLinearGradient",
     "createTextNode",
     "customViz",
     "data",
@@ -68,23 +77,28 @@ const MEMBER_CALL: &[&str] = &[
     "entries",
     "error",
     "exec",
+    "fillRect",
     "filter",
     "find",
     "fit",
     "flatMap",
+    "floor",
     "forEach",
     "from",
     "fromEntries",
     "get",
     "getAttribute",
     "getBoundingClientRect",
+    "getContext",
     "getElementById",
+    "getItem",
     "has",
     "hasClass",
     "hasOwnProperty",
     "id",
     "includes",
     "indexOf",
+    "insertBefore",
     "isArray",
     "isEdge",
     "isFinite",
@@ -93,48 +107,67 @@ const MEMBER_CALL: &[&str] = &[
     "join",
     "keys",
     "layout",
+    "lineTo",
     "log",
     "map",
     "match",
+    "matchMedia",
     "max",
     "min",
     "move",
+    "moveTo",
     "nodes",
+    "not",
+    "observe",
     "on",
     "one",
+    "padStart",
     "parse",
     "pathTo",
     "pop",
     "position",
+    "pow",
     "push",
     "querySelector",
     "querySelectorAll",
+    "reduce",
     "remove",
     "removeClass",
     "replace",
     "replaceChildren",
     "replaceState",
     "resize",
+    "round",
     "run",
     "select",
     "selector",
     "set",
     "setAttribute",
+    "setItem",
+    "setTransform",
+    "sign",
     "sin",
     "slice",
     "some",
     "sort",
+    "splice",
     "split",
+    "sqrt",
     "startsWith",
     "stop",
+    "stroke",
     "style",
     "test",
     "then",
+    "toFixed",
     "toLocaleString",
     "toLowerCase",
+    "toString",
     "toUpperCase",
     "toggle",
+    "toggleClass",
     "trim",
+    "union",
     "unselect",
     "update",
     "warn",
@@ -144,24 +177,33 @@ const MEMBER_CALL: &[&str] = &[
 /// Sorted. Members the page assigns (`node.name =`).
 const MEMBER_ASSIGN: &[&str] = &[
     "_timer",
+    "active",
     "background",
     "blastEnabled",
+    "c",
     "checked",
     "className",
     "color",
+    "cssText",
     "currentTour",
     "disabled",
     "display",
+    "fillStyle",
     "focusModeActive",
     "fontFamily",
     "fontSize",
     "fontStyle",
     "fontWeight",
+    "globalCompositeOperation",
     "hash",
+    "height",
     "id",
     "left",
     "letterSpacing",
+    "life",
+    "lineCap",
     "lineHeight",
+    "lineWidth",
     "margin",
     "marginBottom",
     "marginTop",
@@ -169,14 +211,23 @@ const MEMBER_ASSIGN: &[&str] = &[
     "opacity",
     "overflowY",
     "padding",
+    "pos",
+    "r",
     "selectedNodeId",
+    "showAllEdges",
+    "speed",
     "stepIndex",
+    "strokeStyle",
     "text",
     "textAlign",
     "textTransform",
     "title",
     "top",
     "value",
+    "w",
+    "width",
+    "x",
+    "y",
 ];
 
 /// Sorted. Bare calls (`name(`) the page makes, plus `setTimeout`.
@@ -184,22 +235,26 @@ const BARE_CALL: &[&str] = &[
     "Number",
     "String",
     "alert",
+    "angleAt",
     "appendKids",
     "appendMarkup",
     "applyBlastHighlight",
     "applyFilters",
     "applyFocusMode",
+    "applySelectionReveal",
     "applyStory",
     "attachCompounds",
     "buildEdgeGradient",
     "cb",
     "centerOnNode",
     "clearHighlights",
+    "clearHover",
     "clearTimeout",
     "computeBlastRadius",
     "cytoscape",
     "decodeHash",
     "decodeURIComponent",
+    "depReachable",
     "detachCompounds",
     "detailsBlock",
     "dotSpan",
@@ -211,9 +266,12 @@ const BARE_CALL: &[&str] = &[
     "expandPanelOnMobile",
     "filterToDomains",
     "fontForBand",
+    "heightForBand",
+    "isAlwaysShownEdge",
     "isDomainFilterActive",
     "isNaN",
     "kindMark",
+    "labelColorFor",
     "locText",
     "parseFloat",
     "parseInt",
@@ -223,42 +281,54 @@ const BARE_CALL: &[&str] = &[
     "renderTourStep",
     "replaceContent",
     "requestAnimationFrame",
+    "resize",
     "restoreFromHash",
     "restoreOnLoad",
     "rewriteStaticTraceLinks",
     "riskPill",
+    "rnd",
     "runDormancyStratification",
     "runInitialLayout",
+    "runLayeredLayout",
     "runLayout",
     "safeColor",
     "setChipsEnabled",
+    "setFx",
+    "setInterval",
     "setPickMode",
     "setSelectedNode",
+    "setShowAllEdges",
     "setText",
     "setTimeout",
+    "shadeHex",
     "showToast",
     "sizeForBand",
+    "spawn",
     "startTour",
     "statusLabelFor",
     "statusPill",
+    "step",
     "textOf",
     "toggleBlast",
     "toggleFocus",
     "tourExit",
     "tourNext",
     "tourPrev",
+    "updateEdgeCounter",
     "updateFilterHint",
     "updateHash",
     "updatePathBtn",
     "waitForContainerSize",
+    "widthForLabel",
 ];
 
 /// Sorted. `new Name`.
-const NEW_OK: &[&str] = &["Map", "Set", "URLSearchParams"];
+const NEW_OK: &[&str] = &["Map", "ResizeObserver", "Set", "URLSearchParams"];
 
 /// Sorted. Static `setAttribute` names the page writes.
 const ATTR_OK: &[&str] = &[
     "aria-expanded",
+    "aria-hidden",
     "aria-pressed",
     "data-domain",
     "href",
@@ -379,8 +449,8 @@ const URL_ATTR: &[&str] = &[
 ];
 
 const ELEMENT_TAG: &[&str] = &[
-    "a", "br", "button", "code", "details", "div", "em", "h2", "h3", "li", "option", "span",
-    "strong", "summary", "ul",
+    "a", "br", "button", "canvas", "code", "details", "div", "em", "h2", "h3", "li", "option",
+    "span", "strong", "summary", "ul",
 ];
 
 /// Sorted. Static markup the map page and the oracle samples use. Any other
@@ -901,7 +971,160 @@ fn collect_binds(tokens: &[Tok]) -> Vec<Bind> {
         }
         i = next;
     }
+    for name in unmodeled_bind_names(tokens) {
+        found.push(Bind {
+            name,
+            at: 0,
+            start: 0,
+            end: 0,
+        });
+    }
     found
+}
+
+/// Names bound by a form `collect_binds` does not record. A second bind, or a
+/// bind with an empty range, is not proof, so a later use of the name stays
+/// unproven. Simple `const name = …` declarations are left to `collect_binds`.
+fn unmodeled_bind_names(tokens: &[Tok]) -> Vec<String> {
+    let mut names = Vec::new();
+    for (i, tok) in tokens.iter().enumerate() {
+        let Tok::Ident(kw) = tok else {
+            continue;
+        };
+        match kw.as_str() {
+            "for" => names.extend(for_bind_names(tokens, i)),
+            "catch" => names.extend(catch_bind_names(tokens, i)),
+            "function" => names.extend(function_param_names(tokens, i)),
+            "const" | "let" | "var" => names.extend(decl_pattern_names(tokens, i)),
+            _ => {}
+        }
+    }
+    names.extend(arrow_param_names(tokens));
+    names
+}
+
+fn for_bind_names(tokens: &[Tok], at: usize) -> Vec<String> {
+    if !matches!(tokens.get(at + 1), Some(Tok::LParen)) {
+        return Vec::new();
+    }
+    let mut names = Vec::new();
+    let mut depth = 1i32;
+    let mut i = at + 2;
+    while i < tokens.len() && depth > 0 {
+        match &tokens[i] {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            Tok::Ident(name) if depth == 1 && matches!(name.as_str(), "of" | "in") => break,
+            Tok::Ident(name)
+                if depth >= 1
+                    && !matches!(name.as_str(), "const" | "let" | "var" | "of" | "in") =>
+            {
+                names.push(name.clone());
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    names
+}
+
+fn catch_bind_names(tokens: &[Tok], at: usize) -> Vec<String> {
+    if !matches!(tokens.get(at + 1), Some(Tok::LParen)) {
+        return Vec::new();
+    }
+    match tokens.get(at + 2) {
+        Some(Tok::Ident(name)) => vec![name.clone()],
+        Some(Tok::LBrace | Tok::LBrack) => pattern_idents(tokens, at + 2),
+        _ => Vec::new(),
+    }
+}
+
+fn function_param_names(tokens: &[Tok], at: usize) -> Vec<String> {
+    let mut j = at + 1;
+    if matches!(tokens.get(j), Some(Tok::Ident(_))) {
+        j += 1;
+    }
+    if !matches!(tokens.get(j), Some(Tok::LParen)) {
+        return Vec::new();
+    }
+    pattern_idents(tokens, j)
+}
+
+fn decl_pattern_names(tokens: &[Tok], at: usize) -> Vec<String> {
+    if matches!(tokens.get(at + 1), Some(Tok::LBrace | Tok::LBrack)) {
+        pattern_idents(tokens, at + 1)
+    } else {
+        Vec::new()
+    }
+}
+
+fn arrow_param_names(tokens: &[Tok]) -> Vec<String> {
+    let mut names = Vec::new();
+    for (i, tok) in tokens.iter().enumerate() {
+        if !matches!(tok, Tok::Arrow) || i == 0 {
+            continue;
+        }
+        match &tokens[i - 1] {
+            Tok::Ident(name) => names.push(name.clone()),
+            Tok::RParen => {
+                if let Some(open) = matching_open(tokens, i - 1) {
+                    names.extend(pattern_idents(tokens, open));
+                }
+            }
+            _ => {}
+        }
+    }
+    names
+}
+
+fn matching_open(tokens: &[Tok], close: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut i = close;
+    loop {
+        match &tokens[i] {
+            Tok::RParen | Tok::RBrace | Tok::RBrack => depth += 1,
+            Tok::LParen | Tok::LBrace | Tok::LBrack => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+        if i == 0 {
+            return None;
+        }
+        i -= 1;
+    }
+}
+
+fn pattern_idents(tokens: &[Tok], open: usize) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut depth = 0i32;
+    for tok in tokens.iter().skip(open) {
+        match tok {
+            Tok::LParen | Tok::LBrace | Tok::LBrack => depth += 1,
+            Tok::RParen | Tok::RBrace | Tok::RBrack => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            Tok::Ident(name)
+                if depth == 1
+                    && !matches!(name.as_str(), "const" | "let" | "var" | "of" | "in") =>
+            {
+                names.push(name.clone());
+            }
+            _ => {}
+        }
+    }
+    names
 }
 
 fn prev_is_decl(tokens: &[Tok], index: usize) -> bool {
@@ -2261,14 +2484,11 @@ impl<'a> Lx<'a> {
                 // `i` is on a char boundary and still inside the string, so
                 // `advance` moves. A valid `&str` has no truncated byte here.
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    // On a char boundary `advance` moves, so a stuck index is
-                    // the fail-closed stop. `advance`'s bool is that same stop.
-                    let tick = self.i;
+                    // `advance` moves the index, or sets it to `len` when it
+                    // cannot. Either way this loop reaches the newline or the
+                    // end. A second compare against the old index is the same
+                    // stop, because the index is already past it.
                     let _ = self.advance();
-                    if self.i <= tick {
-                        self.failed = true;
-                        return (out, flags);
-                    }
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -2277,12 +2497,9 @@ impl<'a> Lx<'a> {
             if c == b'/' && b.get(self.i + 1) == Some(&b'*') {
                 self.i = self.i.saturating_add(2);
                 while self.i + 1 < b.len() && !(b[self.i] == b'*' && b[self.i + 1] == b'/') {
-                    let tick = self.i;
+                    // Same contract as the line comment: `advance` moves or
+                    // jumps to `len`, so the index cannot stay put.
                     let _ = self.advance();
-                    if self.i <= tick {
-                        self.failed = true;
-                        return (out, flags);
-                    }
                 }
                 let next = self.i.saturating_add(2);
                 if next <= self.i {
@@ -2302,18 +2519,11 @@ impl<'a> Lx<'a> {
                 continue;
             }
             if self.src[self.i..].starts_with("<!--") {
-                let tick = self.i;
                 while self.i < b.len() && b[self.i] != b'\n' {
-                    let tick = self.i;
+                    // `advance` moves or jumps to `len`. The loop started on
+                    // `<`, which is not a newline, so it runs at least once
+                    // and the index is past the start when it stops.
                     let _ = self.advance();
-                    if self.i <= tick {
-                        self.failed = true;
-                        return (out, flags);
-                    }
-                }
-                if self.i <= tick {
-                    self.failed = true;
-                    return (out, flags);
                 }
                 regex_ready = false;
                 self.charge(start);
@@ -3141,10 +3351,16 @@ fn skip_quoted(src: &str, start: usize) -> usize {
 }
 
 fn is_markup(src: &str) -> bool {
-    // A `<script` open is a tag or an unclosed tag: the byte after `<` is
-    // alphabetic, so `parse_tag` returns `Tag` or `Unclosed`. `attr_markup`
-    // already returns true for that, and for every other tag.
-    attr_markup(src)
+    // A document begins with a tag. A program that only contains a finished
+    // tag inside a string stays a program: scanning it as markup hides the
+    // rest of the program. Leading whitespace does not change which one it is.
+    let start = src.trim_start_matches(|c: char| {
+        c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\u{feff}'
+    });
+    if !start.starts_with('<') {
+        return false;
+    }
+    attr_markup(start)
 }
 
 fn script_open_at(src: &str, i: usize) -> bool {
@@ -4193,6 +4409,90 @@ mod class_tests {
         let mut injected = html.clone();
         injected.insert_str(end, "eval(1);");
         assert!(html_parsing_sink(&injected).is_some());
+    }
+
+    #[test]
+    fn a_finished_tag_inside_a_program_does_not_hide_the_program() {
+        let problems = html_parsing_problems("const s=\"<div></div>\"; eval(1)");
+        assert!(
+            problems.iter().any(|item| item.contains("eval")),
+            "{problems:?}"
+        );
+        let spaced = html_parsing_problems("  <img src=\"x\" onerror=\"eval(1)\">");
+        assert!(
+            spaced.iter().any(|item| item.contains("eval")),
+            "{spaced:?}"
+        );
+    }
+
+    #[test]
+    fn an_unmodeled_binding_is_not_proof() {
+        for sample in [
+            "const loc='safe'; for (const loc of [location]) { loc.replace(1) }",
+            "const loc='safe'; for (const loc in location) { loc.replace(1) }",
+            "const loc='safe'; const [loc] = [location]; loc.replace(1)",
+            "const loc='safe'; const {loc} = location; loc.replace(1)",
+            "const loc='safe'; function f(loc) { loc.replace(1) }",
+            "const loc='safe'; try {} catch (loc) { loc.replace(1) }",
+            "const loc='safe'; const g = loc => loc.replace(1)",
+        ] {
+            let problems = html_parsing_problems(sample);
+            assert!(
+                problems.iter().any(|item| item.contains("replace")),
+                "{sample} -> {problems:?}"
+            );
+        }
+        clean("const loc='safe'; loc.replace(1)");
+    }
+
+    #[test]
+    fn a_line_break_before_plus_keeps_the_initializer() {
+        sink("const loc = 'safe'\n+ location; loc.replace(1)");
+    }
+
+    #[test]
+    fn an_optional_computed_member_without_a_call_is_not_a_computed_call() {
+        let problems = html_parsing_problems("obj[0]?.name");
+        assert!(
+            !problems.iter().any(|item| item.contains("computed call")),
+            "{problems:?}"
+        );
+    }
+
+    #[test]
+    fn a_digit_before_u_is_not_an_identifier_start() {
+        assert!(!is_ident_start("1u", 0));
+        assert!(!is_ident_start("\\n", 0));
+    }
+
+    #[test]
+    fn an_end_tag_search_does_not_stop_on_a_start_tag_whose_tail_matches() {
+        let src = "<ascript>y</script>";
+        assert_eq!(find_end_tag(src, 0, "script"), Some(src.len() - 1));
+        let shifted = "<xscript>y</script>";
+        assert_eq!(find_end_tag(shifted, 0, "script"), Some(shifted.len() - 1));
+    }
+
+    #[test]
+    fn an_unpinned_script_source_is_flagged() {
+        let tag = Parsed {
+            name: "script".into(),
+            attrs: vec![("src".into(), "https://example.invalid/a.js".into())],
+            end: 0,
+            closing: false,
+        };
+        let mut out = BTreeSet::new();
+        note_script_src(&tag, false, &mut out);
+        assert!(out.contains("script src"), "{out:?}");
+        let mut other = BTreeSet::new();
+        let div = Parsed {
+            name: "div".into(),
+            attrs: vec![("src".into(), "https://example.invalid/a.js".into())],
+            end: 0,
+            closing: false,
+        };
+        note_script_src(&div, false, &mut other);
+        assert!(other.is_empty(), "{other:?}");
     }
 
     #[test]
