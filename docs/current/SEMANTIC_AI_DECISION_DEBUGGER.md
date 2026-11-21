@@ -168,7 +168,7 @@ Editor CI on `main` is partly red, and both failures already have owners:
 | #273 `deferred-failure` | `editor_engine_render_parity` hashes diverge on llvmpipe. Engine and editor LDR SHA-256 differ; overlay isolation holds. Mean SAD 1.538 over 262144 pixels | Editor render parity. Find the setter that still differs for the 512×512 grassland fixture. Do not widen the assert |
 | #265 `deferred-failure` | Ubuntu and macOS editor jobs fail in `libudev-sys` because `libudev.pc` is missing | CI cleanup, PR #217. Install `pkg-config`, `libudev-dev`, and `libasound2-dev` |
 
-`editor-ci.yml` and `aw-editor-tests.yml` on `main` still do not install `libudev-dev`. Both workflows set `continue-on-error: true` and do not run on pull requests. A decision panel in `aw_editor` would build in those jobs. This design leaves `tools/aw_editor` untouched until #265 and #273 are closed.
+`editor-ci.yml` and `aw-editor-tests.yml` do not run on pull requests. Both install `libudev-dev`: `aw-editor-tests.yml` in its Linux apt step, and `editor-ci.yml` through `rust-ci-setup` (that action installs `libudev-dev`). Neither job sets `continue-on-error`. `aw-editor-tests.yml` still sets it on the `--lib`, integration, fmt, and clippy steps. Pull requests run `cargo test --locked -p aw_editor --all-features --bins` in `ci.yml` job `Test (ubuntu, build archive)`, and that step has no `continue-on-error`. A decision panel in `aw_editor` would build in those jobs. This design leaves `tools/aw_editor` untouched until #265 and #273 are closed.
 
 ### 2.8 Aravath agents that already exist
 

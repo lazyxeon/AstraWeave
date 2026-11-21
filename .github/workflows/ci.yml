@@ -7,6 +7,10 @@ name: Comprehensive CI Pipeline
 # Determinism Replay, which is a separate workflow with no path filter.
 # Heavy optional workflows (PBR, editor, AW Editor tests) are not on
 # pull_request, so they do not occupy runners ahead of this workflow.
+# The aw_editor bin harness does. Test (ubuntu, build archive) runs
+# `cargo test --locked -p aw_editor --all-features --bins` on pull_request,
+# with no continue-on-error. editor-ci.yml and aw-editor-tests.yml stay off
+# pull_request.
 #
 # Main, schedule, and workflow_dispatch: the same gate against the full
 # workspace, then the 3-OS test matrix and a release build. Sanitizers,
@@ -249,6 +253,16 @@ jobs:
           AW_CI_PACKAGES: ${{ needs.changes.outputs.packages }}
           AW_CI_PROFILE: ci-pr
         run: bash scripts/ci/feature-gated-tests.sh
+
+      - name: Editor bin tests
+        # aw_editor stays in EXCLUDED_PACKAGES, so the archive does not run
+        # these. recovery_tests and voxel_tools compile only in this bin.
+        # --all-features matches editor-ci. The feature set is fixed in the
+        # lock (including profiling/tracy-client). It is not a replay hash.
+        # aw_game_runtime has test = false, so --bins tests aw_editor only.
+        env:
+          CARGO_PROFILE_TEST_DEBUG: "0"
+        run: cargo test --locked -p aw_editor --all-features --bins
 
   test-linux:
     name: Test (ubuntu, ${{ matrix.partition }}/3)

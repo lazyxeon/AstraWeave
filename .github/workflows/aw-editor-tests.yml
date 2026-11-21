@@ -60,9 +60,11 @@ jobs:
     # Run library unit tests (headless tests work everywhere)
     - name: Run Unit Tests
       run: cargo test -p aw_editor --lib --all-features -- --nocapture
-      continue-on-error: true  # Don't fail CI on test failures (89% pass rate acceptable)
+      continue-on-error: true  # Kept from the previous policy. The bin step fails the job.
 
-    # Bin harness: recovery_tests and voxel_tools compile only here.
+    # Bin harness. Pull requests run the same tests from ci.yml
+    # (Test (ubuntu, build archive)): cargo test --locked -p aw_editor --all-features --bins.
+    # This workflow is not on pull_request.
     - name: Run editor bin tests
       run: cargo test -p aw_editor --all-features --bin aw_editor -- --nocapture
       
@@ -75,11 +77,11 @@ jobs:
     # Code quality checks
     - name: Check Formatting
       run: cargo fmt -p aw_editor -- --check
-      continue-on-error: true  # Don't block on format issues
+      continue-on-error: true  # Kept from the previous policy.
       
     - name: Run Clippy
       run: cargo clippy -p aw_editor --all-features -- -D warnings
-      continue-on-error: true  # Don't block on lints (52 warnings exist)
+      continue-on-error: true  # Kept from the previous policy. editor-ci.yml enforces clippy -D warnings.
       
     # Generate test report
     - name: Generate Test Summary
@@ -90,13 +92,10 @@ jobs:
         echo "**Platform**: ${{ matrix.os }}" >> $GITHUB_STEP_SUMMARY
         echo "**Rust Version**: $(rustc --version)" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
-        echo "- **Unit Tests**: 146/164 passing (89%)" >> $GITHUB_STEP_SUMMARY
-        echo "- **Integration Tests**: 9 test files (ui_gizmo_smoke, play_mode, prefab_workflow, etc.)" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### Known Issues" >> $GITHUB_STEP_SUMMARY
-        echo "- 18 unit test failures (gizmo math, undo stack, scene serialization)" >> $GITHUB_STEP_SUMMARY
-        echo "- 52 warnings (dead code, unused fields - tracked in Known Issues)" >> $GITHUB_STEP_SUMMARY
+        echo "### Steps" >> $GITHUB_STEP_SUMMARY
+        echo "- Bin tests: cargo test -p aw_editor --all-features --bin aw_editor fails the job. The harness includes the library modules redeclared by src/main.rs, not only recovery_tests and voxel_tools." >> $GITHUB_STEP_SUMMARY
+        echo "- The --lib, integration, fmt, and clippy steps keep continue-on-error from the previous policy." >> $GITHUB_STEP_SUMMARY
+        echo "- Pull requests run cargo test --locked -p aw_editor --all-features --bins in ci.yml, job Test (ubuntu, build archive), with no continue-on-error." >> $GITHUB_STEP_SUMMARY
         
   # Coverage job (optional - Linux only for speed)
   coverage:
