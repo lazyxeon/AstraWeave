@@ -227,6 +227,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -297,6 +298,7 @@ WeaveTutorialState mutated (anchors stabilized, triggers active)
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -335,6 +337,7 @@ No benchmarks live in this crate's runtime path beyond `benches/combat_pipeline`
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Is `water_movement.rs` slated for deletion, or kept as forward-design?** It is dormant (zero callers) and tied to an abandoned plan (§7). Resolving this decides whether it should be marked Legacy/removed or retained. *(Verification note 2026-06-24: workspace grep for `WaterPlayerState`/`WaterMovementHelper`/`WaterUpdateResult` returns only `water_movement.rs` itself + the two test files; no example or runtime caller.)*

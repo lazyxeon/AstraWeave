@@ -103,16 +103,78 @@ def action_ref_violation(action: str, ref: str) -> str | None:
     return f"{action}@{ref} {NON_SHA_TAG_MSG}"
 
 
+def _uses_double_quoted(line: str):
+    return re.search(
+        rf'uses:\s*"(?P<action>{_POLICY_ACTION_PATTERN})@(?P<ref>[^"\s#]+)"',
+        line,
+    )
+
+
+def _uses_single_quoted(line: str):
+    return re.search(
+        rf"uses:\s*'(?P<action>{_POLICY_ACTION_PATTERN})@(?P<ref>[^'\s#]+)'",
+        line,
+    )
+
+
+def _uses_block(lines: list[str], index: int, indicator: str):
+    line = lines[index]
+    if re.search(rf"uses:\s*{re.escape(indicator)}\s*(?:#.*)?$", line) is None:
+        return None
+    base = len(line) - len(line.lstrip(" "))
+    for follow in range(index + 1, len(lines)):
+        nxt = lines[follow]
+        if not nxt.strip() or nxt.lstrip().startswith("#"):
+            continue
+        indent = len(nxt) - len(nxt.lstrip(" "))
+        if indent <= base:
+            return None
+        match = re.search(
+            rf"""^\s*['"]?(?P<action>{_POLICY_ACTION_PATTERN})@(?P<ref>[^\s#'"]+)""",
+            nxt,
+        )
+        if match:
+            return match, follow
+        return None
+    return None
+
+
 def workflow_action_pin_violations(text: str, *, path: str = "") -> list[str]:
     violations: list[str] = []
     prefix = f"{path}: " if path else ""
-    for line_no, line in enumerate(text.splitlines(), start=1):
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        line_no = index + 1
         match = ACTION_USES_RE.search(line)
-        if not match:
-            continue
-        violation = action_ref_violation(match.group("action"), match.group("ref"))
-        if violation:
-            violations.append(f"{prefix}{line_no}: {violation}")
+        if match is None:
+            match = _uses_double_quoted(line)
+        if match is None:
+            match = _uses_single_quoted(line)
+        if match is None:
+            folded = _uses_block(lines, index, "|")
+            if folded is None:
+                folded = _uses_block(lines, index, ">")
+            if folded is None:
+                folded = _uses_block(lines, index, "|-")
+            if folded is None:
+                folded = _uses_block(lines, index, ">-")
+            if folded is None:
+                folded = _uses_block(lines, index, "|+")
+            if folded is None:
+                folded = _uses_block(lines, index, ">+")
+            if folded is None:
+                folded = _uses_block(lines, index, "|2")
+            if folded is not None:
+                match, at = folded
+                line_no = at + 1
+                index = at
+        if match is not None:
+            violation = action_ref_violation(match.group("action"), match.group("ref"))
+            if violation:
+                violations.append(f"{prefix}{line_no}: {violation}")
+        index += 1
     return violations
 
 
@@ -191,19 +253,212 @@ def nightly_failure_watched_workflows(text: str) -> list[str]:
     return watched
 
 
+def _on_header(stripped: str) -> bool:
+    if stripped in {"on:", '"on":'}:
+        return True
+    if stripped == "'on':":
+        return True
+    return False
+
+
+def _header_with_space(stripped: str) -> bool:
+    return bool(re.fullmatch(r"""(?:on|"on"|'on')\s+:""", stripped))
+
+
+def _scalar_on_pull_request(stripped: str) -> bool:
+    return bool(re.fullmatch(r"""(?:on:|"on":|'on':)\s*pull_request\s*""", stripped))
+
+
+def _flow_list_on_pull_request(stripped: str) -> bool:
+    if not re.match(r"""(?:on:|"on":|'on':)\s*\[""", stripped):
+        return False
+    return bool(re.search(r"(?<![A-Za-z0-9_])pull_request(?![A-Za-z0-9_])", stripped))
+
+
+def _flow_map_on_pull_request(stripped: str) -> bool:
+    if not re.match(r"""(?:on:|"on":|'on':)\s*\{""", stripped):
+        return False
+    return bool(re.search(r"""(?<![A-Za-z0-9_])['"]?pull_request['"]?\s*:""", stripped))
+
+
+def _double_quoted_pull_request_key(stripped: str) -> bool:
+    return stripped.startswith('"pull_request":')
+
+
+def _single_quoted_pull_request_key(stripped: str) -> bool:
+    return stripped.startswith("'pull_request':")
+
+
+def _list_item_pull_request(stripped: str) -> bool:
+    return bool(re.fullmatch(r"-\s*pull_request\s*:?", stripped))
+
+
+def _qscalar_pull_request(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"""(?:on:|"on":|'on':)\s*(?:"pull_request"|'pull_request')\s*(?:#.*)?""",
+            stripped,
+        )
+    )
+
+
+def _commented_pull_request_scalar(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(r"""(?:on:|"on":|'on':)\s*pull_request\s+#.*""", stripped)
+    )
+
+
+def _colon_spaced_pull_request(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"""(?:on|"on"|'on')\s+:\s*['"]?pull_request['"]?\s*(?:#.*)?""",
+            stripped,
+        )
+    )
+
+
+def _key_with_space(stripped: str) -> bool:
+    return bool(re.fullmatch(r"""['"]?pull_request['"]?\s+:\s*(?:#.*)?""", stripped))
+
+
+def _qlist_pull_request(stripped: str) -> bool:
+    return bool(
+        re.fullmatch(
+            r"""-\s*(?:"pull_request"|'pull_request')\s*:?\s*(?:#.*)?""",
+            stripped,
+        )
+    )
+
+
+def _commented_list_pull_request(stripped: str) -> bool:
+    return bool(re.fullmatch(r"-\s*pull_request\s*:?\s+#.*", stripped))
+
+
+def _flow_lines_list(text: str) -> bool:
+    return _multiline_flow_on_pull_request(text, "[", "]")
+
+
+def _flow_lines_map(text: str) -> bool:
+    return _multiline_flow_on_pull_request(text, "{", "}")
+
+
+def _multiline_flow_on_pull_request(text: str, open_ch: str, close_ch: str) -> bool:
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if (
+            re.fullmatch(
+                rf"""(?:on:|"on":|'on':)\s*\{open_ch}\s*(?:#.*)?""",
+                stripped,
+            )
+            is None
+        ):
+            continue
+        for follow in lines[index + 1 :]:
+            item = follow.strip()
+            if item.startswith(close_ch):
+                break
+            if re.search(
+                r"""(?<![A-Za-z0-9_])['"]?pull_request['"]?(?![A-Za-z0-9_])""",
+                item,
+            ):
+                return True
+    return False
+
+
 def has_pull_request(text: str) -> bool:
     # Quoted "on" (scorecard) and bare on: both count.
+    if _flow_lines_list(text):
+        return True
+    if _flow_lines_map(text):
+        return True
     in_on = False
     for line in text.splitlines():
         stripped = line.strip()
-        if stripped in {"on:", '"on":'}:
+        if _scalar_on_pull_request(stripped):
+            return True
+        if _qscalar_pull_request(stripped):
+            return True
+        if _commented_pull_request_scalar(stripped):
+            return True
+        if _colon_spaced_pull_request(stripped):
+            return True
+        if _flow_list_on_pull_request(stripped):
+            return True
+        if _flow_map_on_pull_request(stripped):
+            return True
+        if _on_header(stripped) or _header_with_space(stripped):
             in_on = True
             continue
         if in_on and line and not line.startswith(" ") and not line.startswith("#"):
             in_on = False
         if in_on and stripped.startswith("pull_request:"):
             return True
+        if in_on and _double_quoted_pull_request_key(stripped):
+            return True
+        if in_on and _single_quoted_pull_request_key(stripped):
+            return True
+        if in_on and _key_with_space(stripped):
+            return True
+        if in_on and _list_item_pull_request(stripped):
+            return True
+        if in_on and _qlist_pull_request(stripped):
+            return True
+        if in_on and _commented_list_pull_request(stripped):
+            return True
     return False
+
+
+def _exec_pin_violations(source: str):
+    namespace: dict[str, object] = {
+        "re": re,
+        "ACTION_USES_RE": ACTION_USES_RE,
+        "_uses_double_quoted": _uses_double_quoted,
+        "_uses_single_quoted": _uses_single_quoted,
+        "_uses_block": _uses_block,
+        "action_ref_violation": action_ref_violation,
+    }
+    exec(compile(source, "<workflow_action_pin_violations>", "exec"), namespace)
+    fn = namespace.get("workflow_action_pin_violations")
+    if not callable(fn):
+        raise RuntimeError("workflow_action_pin_violations missing after exec")
+    return fn
+
+
+def _exec_has_pull_request(source: str):
+    namespace: dict[str, object] = {
+        "re": re,
+        "_on_header": _on_header,
+        "_scalar_on_pull_request": _scalar_on_pull_request,
+        "_flow_list_on_pull_request": _flow_list_on_pull_request,
+        "_flow_map_on_pull_request": _flow_map_on_pull_request,
+        "_double_quoted_pull_request_key": _double_quoted_pull_request_key,
+        "_single_quoted_pull_request_key": _single_quoted_pull_request_key,
+        "_list_item_pull_request": _list_item_pull_request,
+        "_qscalar_pull_request": _qscalar_pull_request,
+        "_commented_pull_request_scalar": _commented_pull_request_scalar,
+        "_colon_spaced_pull_request": _colon_spaced_pull_request,
+        "_header_with_space": _header_with_space,
+        "_key_with_space": _key_with_space,
+        "_qlist_pull_request": _qlist_pull_request,
+        "_commented_list_pull_request": _commented_list_pull_request,
+        "_flow_lines_list": _flow_lines_list,
+        "_flow_lines_map": _flow_lines_map,
+    }
+    exec(compile(source, "<has_pull_request>", "exec"), namespace)
+    fn = namespace.get("has_pull_request")
+    if not callable(fn):
+        raise RuntimeError("has_pull_request missing after exec")
+    return fn
+
+
+def _exec_on_header(source: str):
+    namespace: dict[str, object] = {}
+    exec(compile(source, "<on_header>", "exec"), namespace)
+    fn = namespace.get("_on_header")
+    if not callable(fn):
+        raise RuntimeError("_on_header missing after exec")
+    return fn
 
 
 def jobs_missing_timeout(text: str) -> list[str]:
@@ -1148,6 +1403,92 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_each_uses_and_pull_request_spelling_is_its_own_check(self) -> None:
+        uses_samples = {
+            "_uses_double_quoted(line)": 'uses: "actions/checkout@main"',
+            "_uses_single_quoted(line)": "uses: 'actions/checkout@main'",
+            '_uses_block(lines, index, "|")': "steps:\n  - uses: |\n      actions/checkout@main\n",
+            '_uses_block(lines, index, ">")': "steps:\n  - uses: >\n      actions/checkout@main\n",
+            '_uses_block(lines, index, "|-")': "steps:\n  - uses: |-\n      actions/checkout@main\n",
+            '_uses_block(lines, index, ">-")': "steps:\n  - uses: >-\n      actions/checkout@main\n",
+            '_uses_block(lines, index, "|+")': "steps:\n  - uses: |+\n      actions/checkout@main\n",
+            '_uses_block(lines, index, ">+")': "steps:\n  - uses: >+\n      actions/checkout@main\n",
+            '_uses_block(lines, index, "|2")': "steps:\n  - uses: |2\n      actions/checkout@main\n",
+        }
+        for call, sample in uses_samples.items():
+            self.assertTrue(workflow_action_pin_violations(sample), sample)
+            source = inspect.getsource(workflow_action_pin_violations).replace(call, "None", 1)
+            self.assertNotIn(call, source)
+            broken = _exec_pin_violations(source)
+            self.assertEqual(broken(sample), [], call)
+        self.assertEqual(
+            workflow_action_pin_violations("uses: ./.github/actions/local@v1"),
+            [],
+        )
+
+        event_samples = {
+            "_scalar_on_pull_request(stripped)": "on: pull_request\n",
+            "_flow_list_on_pull_request(stripped)": "on: [push, pull_request]\n",
+            "_flow_map_on_pull_request(stripped)": "on: {pull_request: {types: [opened]}}\n",
+            "_double_quoted_pull_request_key(stripped)": 'on:\n  "pull_request":\n    types: [opened]\n',
+            "_single_quoted_pull_request_key(stripped)": "on:\n  'pull_request':\n    types: [opened]\n",
+            "_list_item_pull_request(stripped)": "on:\n  - pull_request\n",
+            "_qscalar_pull_request(stripped)": 'on: "pull_request"\n',
+            "_commented_pull_request_scalar(stripped)": "on: pull_request # comment\n",
+            "_colon_spaced_pull_request(stripped)": "on : pull_request\n",
+            "_header_with_space(stripped)": "on :\n  pull_request:\n",
+            "_key_with_space(stripped)": "on:\n  pull_request :\n",
+            "_qlist_pull_request(stripped)": 'on:\n  - "pull_request"\n',
+            "_commented_list_pull_request(stripped)": "on:\n  - pull_request # c\n",
+            "_flow_lines_list(text)": "on: [\n  push,\n  pull_request\n]\n",
+            "_flow_lines_map(text)": "on: {\n  pull_request: {types: [opened]}\n}\n",
+        }
+        for call, sample in event_samples.items():
+            self.assertTrue(has_pull_request(sample), sample)
+            source = inspect.getsource(has_pull_request).replace(call, "False", 1)
+            self.assertNotIn(call, source)
+            broken = _exec_has_pull_request(source)
+            self.assertFalse(broken(sample), call)
+        quoted_on = "'on':\n  pull_request:\n"
+        self.assertTrue(has_pull_request(quoted_on))
+        header = inspect.getsource(_on_header).replace(
+            "if stripped == \"'on':\":\n        return True\n",
+            "",
+            1,
+        )
+        self.assertNotIn("'on':", header)
+        broken_header = _exec_on_header(header)
+        source = inspect.getsource(has_pull_request)
+        namespace: dict[str, object] = {
+            "re": re,
+            "_on_header": broken_header,
+            "_scalar_on_pull_request": _scalar_on_pull_request,
+            "_flow_list_on_pull_request": _flow_list_on_pull_request,
+            "_flow_map_on_pull_request": _flow_map_on_pull_request,
+            "_double_quoted_pull_request_key": _double_quoted_pull_request_key,
+            "_single_quoted_pull_request_key": _single_quoted_pull_request_key,
+            "_list_item_pull_request": _list_item_pull_request,
+            "_qscalar_pull_request": _qscalar_pull_request,
+            "_commented_pull_request_scalar": _commented_pull_request_scalar,
+            "_colon_spaced_pull_request": _colon_spaced_pull_request,
+            "_header_with_space": _header_with_space,
+            "_key_with_space": _key_with_space,
+            "_qlist_pull_request": _qlist_pull_request,
+            "_commented_list_pull_request": _commented_list_pull_request,
+            "_flow_lines_list": _flow_lines_list,
+            "_flow_lines_map": _flow_lines_map,
+        }
+        exec(compile(source, "<has_pull_request>", "exec"), namespace)
+        self.assertFalse(namespace["has_pull_request"](quoted_on))
+        self.assertTrue(has_pull_request('on:\n  pull_request:\n    types: [opened]\n'))
+        self.assertTrue(has_pull_request('"on":\n  pull_request:\n'))
+        self.assertFalse(has_pull_request("on:\n  pull_request_target:\n"))
+        self.assertFalse(has_pull_request("on: [push, pull_request_target]\n"))
+        self.assertTrue(has_pull_request("on: 'pull_request'\n"))
+        self.assertFalse(
+            has_pull_request("on: [\n  pull_request_target\n]\n")
+        )
 
 
 if __name__ == "__main__":

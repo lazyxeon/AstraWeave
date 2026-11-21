@@ -329,6 +329,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -451,6 +452,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -532,6 +534,7 @@ The runtime selects via the `InterestPolicy` enum (lib.rs:212-226): `Radius | Fo
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Co-existence with `astraweave-net-ecs`.** Two networking subsystems live in the workspace with disjoint data models, wire formats, and integration patterns (see §6 row 1). `astraweave-net` is consumed by `coop_server` / `coop_client` / `net_headless_sim`; `astraweave-net-ecs` is consumed by `astraweave-stress-test` (per workspace Cargo.toml). Are these intended to coexist long-term as parallel options for different game architectures, or is one slated to supersede the other? Andrew's call.

@@ -7,10 +7,10 @@ primary_crate: astraweave-camera
 domain: rendering
 lifecycle_status: active
 integration_status: wired
-summary: "Created Unified Camera C.2 (52b9e711c, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, and 13 examples"
+summary: "Created Unified Camera C.2 (8c551c6ea, 2026-05-18): canonical Projection/RenderView/CameraProducer types; sole renderer upload contract via Renderer::update_view; consumed by astraweave-render (non-optional), aw_editor, aravath_runtime, and 13 examples"
 owns: [astraweave-camera]
-doc_version: "1.2"
-last_verified_commit: 7c29b8182
+doc_version: "1.3"
+last_verified_commit: 604d35d1
 ---
 
 # Architecture Trace: Camera System
@@ -21,11 +21,11 @@ last_verified_commit: 7c29b8182
 |---|---|
 | **System name** | Camera System |
 | **Primary crates** | [`astraweave-camera`](../../astraweave-camera) (canonical types + FreeFly producer); consumed by [`astraweave-render`](../../astraweave-render) and [`tools/aw_editor`](../../tools/aw_editor) (OrbitCamera producer) |
-| **Document version** | 1.2 |
-| **Last verified against commit** | `7c29b8182` |
-| **Last verified date** | 2026-10-13 |
+| **Document version** | 1.3 |
+| **Last verified against commit** | `604d35d1` (v1.3: summary SHA and consumers). Prior `7c29b8182`. |
+| **Last verified date** | 2026-11-09 (v1.3: summary SHA and consumers). Prior 2026-10-13. |
 | **Status** | Active. Unified Camera campaign (C.0→C.9) closed 2026-06-01 — single upload contract, hardened cinematics path. 1.2 adds `ThirdPersonCamera` as a third producer (world-relative `to_render_view`, camera-relative method beside it, same split as `FreeFly`). |
-| **Owner notes** | Product of the Unified Camera campaign. Canonical convention reference: [`docs/current/CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md). Campaign outcome: [`docs/audits/unified_camera_outcome_2026-06.md`](../audits/unified_camera_outcome_2026-06.md). |
+| **Owner notes** | **Rev 1.3 (2026-11-09, `604d35d1`):** the summary cites reachable `8c551c6ea` and the consumers `astraweave-render`, `aw_editor`, `aravath_runtime`, and 13 examples. Product of the Unified Camera campaign. Canonical convention reference: [`docs/current/CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md). Campaign outcome: [`docs/audits/unified_camera_outcome_2026-06.md`](../audits/unified_camera_outcome_2026-06.md). |
 
 ---
 
@@ -186,6 +186,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -262,6 +263,7 @@ The campaign is **closed and immutable** as recorded in the outcome doc; the con
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 These are the parity-critical coordinate conventions. Authoritative source: [`CAMERA_CONVENTIONS.md`](../current/CAMERA_CONVENTIONS.md) §2. **Discrepancies between code and that doc are bugs in the code.**
@@ -309,6 +311,7 @@ These are the parity-critical coordinate conventions. Authoritative source: [`CA
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **`CameraMode` is `#[non_exhaustive]` with two variants (`FreeFly`, `Orbit`) ([`freefly.rs:153-158`](../../astraweave-camera/src/freefly.rs)).** Is a third controller mode (e.g. follow/cinematic movement) planned, or is `#[non_exhaustive]` purely forward-compat hygiene? Not recovered from available sources.

@@ -451,6 +451,7 @@ Auto-save path:
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -614,6 +615,7 @@ Auto-save path:
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -693,6 +695,7 @@ Auto-save path:
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **Why is `astraweave-persistence-ecs` declared by `astraweave-stress-test` but not imported?** Workspace grep returns no `use astraweave_persistence_ecs` in `astraweave-stress-test/src/`. **Investigation (2026-05-12):** The dep was added in commit `08befc6ec` (2025-10-01, "phase 6 implementation") — the **same commit** that created `astraweave-persistence-ecs` itself, **and** the same commit that added the parallel `astraweave-net-ecs` dep to the same crate. Both deps were added on day one and neither has been imported. Is this stale residue, future-positioning, or part of a transitive-dep test? Andrew's call.

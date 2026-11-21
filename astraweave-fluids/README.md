@@ -1,6 +1,6 @@
 # astraweave-fluids
 
-A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo; no production game-loop crate depends on it yet.
+A GPU-accelerated, research-stage fluid simulation crate (PBD core solver) for the AstraWeave game engine. In-design: consumed only by examples/fluids_demo and examples/weaving_playground; no production game-loop crate depends on it yet.
 
 ## Features
 

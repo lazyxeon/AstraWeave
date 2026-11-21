@@ -302,6 +302,7 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 
 ---
 
+<a id="6-conflict-map"></a>
 ## 6. Conflict Map / Residue
 
 ### Coexisting abstractions
@@ -431,6 +432,7 @@ Public modules, in `lib.rs` declaration order: `deformed`, `traversal`, `async_s
 
 ---
 
+<a id="8-invariants"></a>
 ## 8. Known Invariants
 
 | # | Invariant | Checkable? | Enforced by |
@@ -526,6 +528,7 @@ Per inline `lib.rs:1071-1075`: "Allocation-measurement instrumentation (audit 20
 
 ---
 
+<a id="11-open-questions"></a>
 ## 11. Open Questions / Parked Decisions
 
 - **`SpatialHash` module — wire in or remove?** [Decisional / factual, **enriched 2026-05-12 deep investigation**.] Factual state (re-verified 2026-05-12): the `spatial_hash.rs` module (1,038 LoC) defines a complete grid-broadphase data structure with `AABB` + `SpatialHash<T>` and is advertised in the crate-level doc-comment at `lib.rs:25-26` as the broadphase. Workspace grep for `use astraweave_physics::SpatialHash` or `use astraweave_physics::spatial_hash` outside the crate's own `src` + `tests` returned zero matches. `PhysicsWorld` uses Rapier's `DefaultBroadPhase` (`lib.rs:907`). **Test surface is more extensive than previously documented:** 4 test files reference `SpatialHash` — `tests/behavioral_correctness_tests.rs` (3+ tests including `test_spatial_hash_no_false_negatives` at `:652`, `test_spatial_hash_no_false_positives` at `:684`, `test_mutation_spatial_hash_cell_boundary` at `:996`), `tests/coverage_boost_tests.rs:868-…` (`spatial_hash_coverage` mod with multiple tests), `tests/cross_subsystem_validation.rs:13, :280-…` (including `test_spatial_hash_with_multiple_physics_objects` and `test_spatial_hash_determinism`), and `tests/spatial_hash_character_tests.rs` (33 `#[test]` attributes total, mixed with character_controller tests — first ~20 are SpatialHash + AABB tests at lines `:18-:240`). **No dedicated benchmark file:** workspace grep for `SpatialHash\|spatial_hash` in `benches/*.rs` returned zero matches; the previous trace claim about `benches/raycast.rs` mentioning spatial-hash patterns was incorrect (`grep -c "SpatialHash\|spatial_hash" benches/raycast.rs` returned `0`). The "3.77 ms vs 5.61 ms" comparison cited at `lib.rs:48` and `Cargo.toml:32` was a Phase B measurement preserved in code comments, not an ongoing bench harness. Whether to wire `SpatialHash` into `PhysicsWorld` (replacing or supplementing `DefaultBroadPhase`), expose it as a public utility for external broadphase needs, or remove it is undecided. The doc-comment claim "99.96% pair reduction vs brute-force" is sourced from the Phase B comment, not from a currently-running bench.
