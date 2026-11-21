@@ -57,7 +57,7 @@ jobs:
         # `cargo test --locked -p aw_editor --all-features --bins`.
         # `--bins` also builds the aw_game_runtime harness, which has no
         # tests. PR Rust checks needs that job. Ruleset enforcement is
-        # https://github.com/lazyxeon/AstraWeave/issues/702.
+        # PR #702, https://github.com/lazyxeon/AstraWeave/pull/702.
         run: cargo test -p aw_editor --all-features --bin aw_editor -- --nocapture
 
       - name: Headless smoke tests

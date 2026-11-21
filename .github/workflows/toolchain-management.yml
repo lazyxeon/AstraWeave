@@ -161,7 +161,7 @@ jobs:
           # job Test (ubuntu, build archive), with no continue-on-error.
           # `--bins` also builds the aw_game_runtime harness (test = false,
           # no tests). PR Rust checks needs that job. Ruleset enforcement
-          # is https://github.com/lazyxeon/AstraWeave/issues/702. The job
+          # is PR #702, https://github.com/lazyxeon/AstraWeave/pull/702. The job
           # is skipped on a docs-only pull request and when no crate
           # is selected (`full` is not set and the package list is empty).
           # editor-ci.yml has no continue-on-error. It runs on push to main,

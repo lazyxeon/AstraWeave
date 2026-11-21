@@ -304,7 +304,7 @@ incremental = false
 
 # third_party/candle-core exists because candle-core 0.8.4, candle 0.11.0,
 # and current candle main all depend on zip < 9. This copy is crates.io 0.8.4
-# pinned to workspace zip 9.7.0, the current patched 9.x release. Delete this
+# pinned to workspace zip 9.7.0, patched for the advisories it addresses. Delete this
 # directory and the patch below once candle upstream depends on zip >= 9.
 #
 # Rapier 0.22 `PhysicsPipeline::step` takes the modified-body and

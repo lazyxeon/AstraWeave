@@ -9,7 +9,7 @@ name: Comprehensive CI Pipeline
 # pull_request, so they do not occupy runners ahead of this workflow.
 # The aw_editor bin harness is a step of Test (ubuntu, build archive),
 # which the PR Rust checks job needs. Ruleset enforcement is tracked in
-# https://github.com/lazyxeon/AstraWeave/issues/702. That job is skipped
+# PR #702, https://github.com/lazyxeon/AstraWeave/pull/702. That job is skipped
 # on a docs-only pull request and when no crate is selected
 # (`full` is not set and the package list is empty).
 # The step runs `cargo test --locked -p aw_editor --all-features --bins`
