@@ -514,3 +514,6 @@ mod tests {
         assert_eq!(strategies.len(), 5);
     }
 }
+
+#[cfg(test)]
+mod unix_instant;

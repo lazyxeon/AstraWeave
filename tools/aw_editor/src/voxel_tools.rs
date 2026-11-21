@@ -666,7 +666,9 @@ mod tests {
 
     #[test]
     fn test_brush_shape_display() {
-        assert_eq!(format!("{}", BrushShape::Sphere), "Sphere");
+        assert_eq!(format!("{}", BrushShape::Sphere), "(O) Sphere");
+        assert_eq!(format!("{}", BrushShape::Cube), "[#] Cube");
+        assert_eq!(format!("{}", BrushShape::Cylinder), "(|) Cylinder");
     }
 
     // ====================================================================
@@ -709,7 +711,9 @@ mod tests {
 
     #[test]
     fn test_brush_mode_display() {
-        assert_eq!(format!("{}", BrushMode::Add), "Add");
+        assert_eq!(format!("{}", BrushMode::Add), "+ Add");
+        assert_eq!(format!("{}", BrushMode::Remove), "- Remove");
+        assert_eq!(format!("{}", BrushMode::Paint), "[P] Paint");
     }
 
     // ====================================================================

@@ -56,6 +56,7 @@ mod gizmo;
 mod interaction; // Phase 8.1 Week 5 Day 3 - Gizmo interaction helpers (auto-tracking)
 #[allow(dead_code)]
 mod level_doc; // Level document types
+mod local_clock;
 #[allow(dead_code)]
 mod material_inspector;
 #[allow(dead_code)]
@@ -76,6 +77,7 @@ mod runtime; // Week 4 - Deterministic runtime integration
 mod scene_serialization; // Phase 2.2 - Scene Save/Load
 #[allow(dead_code)]
 mod scene_state; // Week 1 - Canonical edit-mode world owner
+mod session_files;
 #[allow(dead_code)]
 mod splash; // Startup splash screen with logo + cinematic video
 mod subsystems;
@@ -1194,118 +1196,6 @@ impl EditorApp {
         }
     }
 
-    /// Week 7: Enhanced auto-save with timestamped backups in .autosave/ directory
-    fn perform_auto_save(&mut self) {
-        if let Some(world) = self.edit_world() {
-            let auto_save_path = if self.auto_save_to_separate_dir {
-                // Save to .autosave/ directory with timestamp
-                let autosave_dir = self.content_root.join(".autosave");
-                if let Err(e) = fs::create_dir_all(&autosave_dir) {
-                    self.toast_error(format!("Failed to create autosave dir: {}", e));
-                    return;
-                }
-
-                // Generate timestamped filename
-                let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                let base_name = self
-                    .current_scene_path
-                    .as_ref()
-                    .and_then(|p| p.file_stem())
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("untitled");
-                let filename = format!("{}_{}.autosave.scene.ron", base_name, timestamp);
-                autosave_dir.join(filename)
-            } else {
-                // Save to scene path or default
-                self.current_scene_path
-                    .clone()
-                    .unwrap_or_else(|| self.content_root.join("scenes/autosave.scene.ron"))
-            };
-
-            match scene_serialization::save_scene_with_overlay(
-                world,
-                &self.entity_manager,
-                &auto_save_path,
-            ) {
-                Ok(()) => {
-                    self.last_auto_save = std::time::Instant::now();
-                    let filename = auto_save_path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy();
-                    self.toast_info(format!("Auto-saved: {}", filename));
-                    self.log(format!("Auto-saved to {}", filename));
-
-                    // Cleanup old auto-saves if using separate directory
-                    if self.auto_save_to_separate_dir {
-                        self.cleanup_old_autosaves();
-                    }
-                }
-                Err(e) => {
-                    self.toast_error(format!("Auto-save failed: {}", e));
-                    self.log(format!("Auto-save failed: {}", e));
-                }
-            }
-        }
-    }
-
-    /// Week 7: Remove old auto-save files, keeping only the most recent N
-    fn cleanup_old_autosaves(&mut self) {
-        let autosave_dir = self.content_root.join(".autosave");
-        if !autosave_dir.exists() {
-            return;
-        }
-
-        // Get the base name of the current scene
-        let base_name = self
-            .current_scene_path
-            .as_ref()
-            .and_then(|p| p.file_stem())
-            .and_then(|s| s.to_str())
-            .unwrap_or("untitled");
-
-        // Collect matching auto-save files
-        let mut autosaves: Vec<_> = match fs::read_dir(&autosave_dir) {
-            Ok(entries) => entries
-                .filter_map(|e| {
-                    e.map_err(|err| tracing::debug!("Autosave dir entry error: {}", err))
-                        .ok()
-                })
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map(|s| s.starts_with(base_name) && s.ends_with(".autosave.scene.ron"))
-                        .unwrap_or(false)
-                })
-                .collect(),
-            Err(_) => return,
-        };
-
-        // Sort by modification time (newest first)
-        autosaves.sort_by(|a, b| {
-            let a_time = fs::metadata(a).and_then(|m| m.modified()).ok();
-            let b_time = fs::metadata(b).and_then(|m| m.modified()).ok();
-            b_time.cmp(&a_time)
-        });
-
-        // Remove older files beyond keep_count
-        for old_file in autosaves.iter().skip(self.auto_save_keep_count) {
-            if let Err(e) = fs::remove_file(old_file) {
-                self.log(format!(
-                    "Failed to remove old autosave {:?}: {}",
-                    old_file.file_name().unwrap_or_default(),
-                    e
-                ));
-            } else {
-                self.log(format!(
-                    "Removed old autosave: {:?}",
-                    old_file.file_name().unwrap_or_default()
-                ));
-            }
-        }
-    }
-
     /// Week 7: Get the most recent auto-save file for crash recovery
     pub fn get_most_recent_autosave(&self) -> Option<std::path::PathBuf> {
         let autosave_dir = self.content_root.join(".autosave");
@@ -1343,25 +1233,6 @@ impl EditorApp {
         });
 
         autosaves.into_iter().next()
-    }
-
-    /// Week 7 Day 5: Create lock file to detect crashes
-    fn create_lock_file(&self) {
-        use std::io::Write;
-
-        // Create or overwrite lock file with current session info
-        if let Ok(mut file) = fs::File::create(&self.lock_file_path) {
-            let session_info = format!(
-                "pid={}\nstarted={}\nscene={}\n",
-                std::process::id(),
-                chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
-                self.current_scene_path
-                    .as_ref()
-                    .and_then(|p| p.to_str())
-                    .unwrap_or("Untitled")
-            );
-            let _ = file.write_all(session_info.as_bytes());
-        }
     }
 
     /// Week 7 Day 5: Remove lock file on clean exit
@@ -1419,7 +1290,13 @@ impl EditorApp {
             // Clear the recovery state and create new lock file
             self.show_recovery_dialog = false;
             self.remove_lock_file();
-            self.create_lock_file();
+            session_files::write_lock_file(
+                &self.lock_file_path,
+                self.current_scene_path
+                    .as_ref()
+                    .and_then(|path| path.to_str())
+                    .unwrap_or("Untitled"),
+            );
         }
     }
 
@@ -1428,7 +1305,13 @@ impl EditorApp {
         self.recovery_autosave_path = None;
         self.show_recovery_dialog = false;
         self.remove_lock_file();
-        self.create_lock_file();
+        session_files::write_lock_file(
+            &self.lock_file_path,
+            self.current_scene_path
+                .as_ref()
+                .and_then(|path| path.to_str())
+                .unwrap_or("Untitled"),
+        );
         self.console_logs
             .push("Recovery declined - starting fresh".to_string());
     }
@@ -2928,7 +2811,13 @@ impl EditorApp {
         }
 
         // Week 7 Day 5: Create lock file for this session
-        app.create_lock_file();
+        session_files::write_lock_file(
+            &app.lock_file_path,
+            app.current_scene_path
+                .as_ref()
+                .and_then(|path| path.to_str())
+                .unwrap_or("Untitled"),
+        );
 
         Ok(app)
     }
@@ -10122,7 +10011,35 @@ impl eframe::App for EditorApp {
             && self.is_dirty
             && self.last_auto_save.elapsed().as_secs_f32() > self.auto_save_interval_secs
         {
-            self.perform_auto_save();
+            let saved = {
+                let world = self.edit_world();
+                session_files::write_autosave(session_files::AutosaveRequest {
+                    world,
+                    entities: &self.entity_manager,
+                    content_root: &self.content_root,
+                    scene_path: self.current_scene_path.as_deref(),
+                    separate_dir: self.auto_save_to_separate_dir,
+                    keep_count: self.auto_save_keep_count,
+                })
+            };
+            match saved {
+                Ok(None) => {}
+                Ok(Some(saved)) => {
+                    self.last_auto_save = std::time::Instant::now();
+                    self.toast_info(format!("Auto-saved: {}", saved.filename));
+                    self.log(format!("Auto-saved to {}", saved.filename));
+                    for note in saved.notes {
+                        self.log(note);
+                    }
+                }
+                Err(session_files::AutosaveError::Directory(message)) => {
+                    self.toast_error(message);
+                }
+                Err(session_files::AutosaveError::Save(message)) => {
+                    self.toast_error(message.clone());
+                    self.log(message);
+                }
+            }
         }
 
         // Render modal dialogs
@@ -10418,4 +10335,75 @@ fn main() -> Result<()> {
     )
     .map_err(|e| anyhow::anyhow!("Failed to run eframe: {}", e))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = PathBuf::from("target")
+            .join("aw-editor-recovery")
+            .join(name);
+        fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn app_in(dir: &std::path::Path) -> EditorApp {
+        let mut app = EditorApp::default();
+        app.lock_file_path = dir.join("session.lock");
+        app.recent_files.set_storage_path(dir.join("recent.json"));
+        app.splash = None;
+        app
+    }
+
+    #[test]
+    fn recover_from_autosave_loads_the_scene_and_clears_the_dialog() {
+        let dir = scratch("recover");
+        let scene = dir.join("recovered.scene.ron");
+        scene_serialization::save_scene(&World::new(), &scene).expect("save");
+        let mut app = app_in(&dir);
+        app.recovery_autosave_path = Some(scene.clone());
+        app.show_recovery_dialog = true;
+
+        app.recover_from_autosave();
+
+        assert!(!app.show_recovery_dialog);
+        assert!(app.recovery_autosave_path.is_none());
+        assert_eq!(app.current_scene_path.as_deref(), Some(scene.as_path()));
+        assert!(app.status.starts_with("Loaded:"));
+        assert!(app.lock_file_path.is_file());
+    }
+
+    #[test]
+    fn decline_recovery_drops_the_offer_and_logs_it() {
+        let dir = scratch("decline");
+        let mut app = app_in(&dir);
+        app.recovery_autosave_path = Some(dir.join("stale.scene.ron"));
+        app.show_recovery_dialog = true;
+
+        app.decline_recovery();
+
+        assert!(app.recovery_autosave_path.is_none());
+        assert!(!app.show_recovery_dialog);
+        assert!(app
+            .console_logs
+            .iter()
+            .any(|line| line.contains("Recovery declined")));
+        assert!(app.lock_file_path.is_file());
+    }
+
+    #[test]
+    fn one_update_records_a_frame() {
+        let dir = scratch("update");
+        let mut app = app_in(&dir);
+        let ctx = egui::Context::default();
+        let mut frame = eframe::Frame::_new_kittest();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            eframe::App::update(&mut app, ctx, &mut frame);
+        });
+        assert!(app.style_applied);
+        assert_eq!(app.startup_assert_frames, 29);
+        assert!(app.last_update_end.is_some());
+    }
 }

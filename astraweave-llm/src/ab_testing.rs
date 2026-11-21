@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -52,9 +51,12 @@ pub struct Experiment {
     pub name: String,
     pub description: String,
     pub status: ExperimentStatus,
-    pub created_at: DateTime<Utc>,
-    pub started_at: Option<DateTime<Utc>>,
-    pub ended_at: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub started_at: Option<time::OffsetDateTime>,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub ended_at: Option<time::OffsetDateTime>,
     pub duration_hours: u64,
     pub traffic_percentage: f32, // 0.0 to 1.0
     pub control_variant: Variant,
@@ -139,7 +141,8 @@ pub struct ExperimentResults {
     pub statistical_analysis: Option<StatisticalAnalysis>,
     pub winner: Option<String>, // Variant ID
     pub confidence_level: f64,
-    pub last_updated: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
 }
 
 /// Status of experiment results
@@ -199,7 +202,8 @@ pub struct Outcome {
     pub user_id: String,
     pub experiment_id: String,
     pub variant_id: String,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub metrics: HashMap<String, f32>,
     pub success: bool,
     pub metadata: HashMap<String, String>,
@@ -211,7 +215,7 @@ pub struct VariantAssignment {
     pub experiment_id: String,
     pub variant_id: String,
     pub variant: Variant,
-    pub assigned_at: DateTime<Utc>,
+    pub assigned_at: time::OffsetDateTime,
 }
 
 impl ABTestFramework {
@@ -239,7 +243,7 @@ impl ABTestFramework {
         }
 
         experiment.status = ExperimentStatus::Draft;
-        experiment.created_at = Utc::now();
+        experiment.created_at = time::OffsetDateTime::now_utc();
 
         // Check concurrent experiment limit
         {
@@ -272,7 +276,7 @@ impl ABTestFramework {
                     statistical_analysis: None,
                     winner: None,
                     confidence_level: 0.0,
-                    last_updated: Utc::now(),
+                    last_updated: time::OffsetDateTime::now_utc(),
                 },
             );
         }
@@ -294,7 +298,7 @@ impl ABTestFramework {
             }
 
             experiment.status = ExperimentStatus::Running;
-            experiment.started_at = Some(Utc::now());
+            experiment.started_at = Some(time::OffsetDateTime::now_utc());
 
             info!(
                 "Started experiment: {} ({})",
@@ -316,7 +320,7 @@ impl ABTestFramework {
             }
 
             experiment.status = ExperimentStatus::Stopped;
-            experiment.ended_at = Some(Utc::now());
+            experiment.ended_at = Some(time::OffsetDateTime::now_utc());
 
             info!(
                 "Stopped experiment: {} ({})",
@@ -353,7 +357,7 @@ impl ABTestFramework {
                 experiment_id: experiment_id.to_string(),
                 variant_id: variant.id.clone(),
                 variant,
-                assigned_at: Utc::now(),
+                assigned_at: time::OffsetDateTime::now_utc(),
             }))
         } else {
             Err(anyhow!("Experiment {} not found", experiment_id))
@@ -379,7 +383,7 @@ impl ABTestFramework {
             let mut results = self.results.write().await;
             if let Some(experiment_results) = results.get_mut(&outcome.experiment_id) {
                 self.update_variant_results(experiment_results, &outcome);
-                experiment_results.last_updated = Utc::now();
+                experiment_results.last_updated = time::OffsetDateTime::now_utc();
 
                 // Perform statistical analysis if we have enough data
                 if self.has_sufficient_data(experiment_results) {
@@ -574,7 +578,7 @@ impl ABTestFramework {
     /// Round-robin variant assignment (simplified)
     fn assign_variant_round_robin(&self, experiment: &Experiment) -> Result<Variant> {
         // For simplicity, use time-based round robin
-        let now = Utc::now().timestamp() as usize;
+        let now = time::OffsetDateTime::now_utc().unix_timestamp() as usize;
         let total_variants = 1 + experiment.test_variants.len();
         let variant_index = now % total_variants;
 
@@ -720,7 +724,7 @@ mod tests {
             name: "Test Experiment".to_string(),
             description: "A test experiment".to_string(),
             status: ExperimentStatus::Draft,
-            created_at: Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
             started_at: None,
             ended_at: None,
             duration_hours: 24,
@@ -816,7 +820,7 @@ mod tests {
             user_id: "user123".to_string(),
             experiment_id: experiment_id.clone(),
             variant_id: "control".to_string(),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             metrics,
             success: true,
             metadata: HashMap::new(),
@@ -1191,7 +1195,7 @@ mod tests {
             user_id: "user123".to_string(),
             experiment_id: experiment_id.clone(),
             variant_id: "control".to_string(),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             metrics: HashMap::new(),
             success: true,
             metadata: HashMap::new(),
@@ -1210,7 +1214,7 @@ mod tests {
             user_id: "user123".to_string(),
             experiment_id: "nonexistent".to_string(),
             variant_id: "control".to_string(),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             metrics: HashMap::new(),
             success: true,
             metadata: HashMap::new(),
@@ -1404,7 +1408,7 @@ mod tests {
             statistical_analysis: None,
             winner: None,
             confidence_level: 0.0,
-            last_updated: Utc::now(),
+            last_updated: time::OffsetDateTime::now_utc(),
         };
 
         assert_eq!(results.experiment_id, "exp-1");
@@ -1418,7 +1422,7 @@ mod tests {
             user_id: "user456".to_string(),
             experiment_id: "exp-1".to_string(),
             variant_id: "control".to_string(),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             metrics: {
                 let mut m = HashMap::new();
                 m.insert("success_rate".to_string(), 0.8);
@@ -1448,7 +1452,7 @@ mod tests {
             experiment_id: "exp-1".to_string(),
             variant_id: "test".to_string(),
             variant,
-            assigned_at: Utc::now(),
+            assigned_at: time::OffsetDateTime::now_utc(),
         };
 
         assert_eq!(assignment.experiment_id, "exp-1");
@@ -1518,7 +1522,7 @@ mod tests {
                 user_id: format!("user{}", i),
                 experiment_id: experiment_id.clone(),
                 variant_id: "control".to_string(),
-                timestamp: Utc::now(),
+                timestamp: time::OffsetDateTime::now_utc(),
                 metrics,
                 success: i % 2 == 0,
                 metadata: HashMap::new(),
@@ -1529,5 +1533,32 @@ mod tests {
 
         let results = framework.get_results(&experiment_id).await.unwrap();
         assert_eq!(results.variant_results["control"].sample_size, 5);
+    }
+
+    fn assert_optional_stamp(key: &str, is_none: impl Fn(&Experiment) -> bool) {
+        let experiment = create_test_experiment();
+        let mut omitted = serde_json::to_value(&experiment).unwrap();
+        assert!(
+            omitted.as_object_mut().unwrap().remove(key).is_some(),
+            "{key}"
+        );
+        let back: Experiment = serde_json::from_value(omitted).unwrap();
+        assert!(is_none(&back), "{key} omitted");
+
+        let mut explicit_null = serde_json::to_value(&experiment).unwrap();
+        explicit_null[key] = serde_json::Value::Null;
+        let back: Experiment = serde_json::from_value(explicit_null).unwrap();
+        assert!(is_none(&back), "{key} null");
+
+        let mut present = serde_json::to_value(&experiment).unwrap();
+        present[key] = serde_json::json!("2020-01-02T03:04:05Z");
+        let back: Experiment = serde_json::from_value(present).unwrap();
+        assert!(!is_none(&back), "{key} present");
+    }
+
+    #[test]
+    fn omitted_optional_timestamps_load_as_none() {
+        assert_optional_stamp("started_at", |experiment| experiment.started_at.is_none());
+        assert_optional_stamp("ended_at", |experiment| experiment.ended_at.is_none());
     }
 }

@@ -162,7 +162,7 @@ impl InjectionEngine {
 
     /// Calculate recency boost for memory
     fn recency_boost(&self, memory: &Memory) -> f32 {
-        let now = chrono::Utc::now().timestamp();
+        let now = time::OffsetDateTime::now_utc().unix_timestamp();
         let age_seconds = (now - memory.timestamp as i64).max(0) as f32;
         let age_hours = age_seconds / 3600.0;
 
@@ -228,7 +228,7 @@ mod tests {
             id: "1".to_string(),
             text: "Cats are independent animals".to_string(),
             category: MemoryCategory::Social,
-            timestamp: chrono::Utc::now().timestamp() as u64,
+            timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
             importance: 0.5,
             valence: 0.0,
             entities: vec![],

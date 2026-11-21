@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -62,8 +61,10 @@ pub struct BatchRequest {
     pub prompt: String,
     pub parameters: InferenceParameters,
     pub priority: RequestPriority,
-    pub created_at: DateTime<Utc>,
-    pub timeout_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timeout_at: time::OffsetDateTime,
     #[serde(skip)]
     pub response_sender: Option<oneshot::Sender<Result<String>>>,
 }
@@ -107,13 +108,13 @@ pub enum RequestPriority {
 pub struct ActiveBatch {
     pub id: String,
     pub requests: Vec<BatchRequest>,
-    pub started_at: DateTime<Utc>,
+    pub started_at: time::OffsetDateTime,
     pub client_id: usize,
     pub processing: bool,
 }
 
 /// Metrics for batch inference performance
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BatchMetrics {
     pub total_requests: u64,
     pub completed_requests: u64,
@@ -124,7 +125,25 @@ pub struct BatchMetrics {
     pub throughput_requests_per_second: f32,
     pub queue_depth: usize,
     pub active_batches: usize,
-    pub last_updated: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
+}
+
+impl Default for BatchMetrics {
+    fn default() -> Self {
+        Self {
+            total_requests: 0,
+            completed_requests: 0,
+            failed_requests: 0,
+            average_batch_size: 0.0,
+            average_processing_time_ms: 0.0,
+            average_wait_time_ms: 0.0,
+            throughput_requests_per_second: 0.0,
+            queue_depth: 0,
+            active_batches: 0,
+            last_updated: time::OffsetDateTime::UNIX_EPOCH,
+        }
+    }
 }
 
 /// Result of batch processing
@@ -224,9 +243,11 @@ impl BatchInferenceEngine {
             prompt,
             parameters,
             priority,
-            created_at: Utc::now(),
-            timeout_at: Utc::now()
-                + chrono::Duration::from_std(self.config.request_timeout).unwrap_or_default(),
+            created_at: time::OffsetDateTime::now_utc(),
+            timeout_at: crate::utc_stamp::instant_after(
+                time::OffsetDateTime::now_utc(),
+                self.config.request_timeout,
+            ),
             response_sender: Some(response_tx),
         };
 
@@ -244,7 +265,7 @@ impl BatchInferenceEngine {
             let mut metrics = self.metrics.write().await;
             metrics.total_requests += 1;
             metrics.queue_depth = self.request_queue.read().await.len();
-            metrics.last_updated = Utc::now();
+            metrics.last_updated = time::OffsetDateTime::now_utc();
         }
 
         debug!("Submitted request to batch queue");
@@ -305,19 +326,22 @@ impl BatchInferenceEngine {
         tokio::spawn(async move {
             info!("Started batch scheduler");
 
-            let mut last_schedule = Utc::now();
+            let mut last_schedule = time::OffsetDateTime::now_utc();
 
             loop {
-                let now = Utc::now();
+                let now = time::OffsetDateTime::now_utc();
 
                 // Check if we should create a new batch
                 let should_schedule = {
                     let queue = request_queue.read().await;
-
-                    queue.len() >= config.min_batch_size
-                        || (!queue.is_empty()
-                            && (now - last_schedule).to_std().unwrap_or(Duration::ZERO)
-                                >= config.batch_timeout)
+                    let elapsed =
+                        crate::utc_stamp::saturating_std(now - last_schedule, Duration::ZERO);
+                    Self::should_schedule_batch(
+                        queue.len(),
+                        elapsed,
+                        config.min_batch_size,
+                        config.batch_timeout,
+                    )
                 };
 
                 if should_schedule {
@@ -339,20 +363,19 @@ impl BatchInferenceEngine {
 
         tokio::spawn(async move {
             let mut last_completed = 0u64;
-            let mut last_time = Utc::now();
+            let mut last_time = time::OffsetDateTime::now_utc();
 
             loop {
                 sleep(Duration::from_secs(1)).await;
 
-                let now = Utc::now();
+                let now = time::OffsetDateTime::now_utc();
                 let mut m = metrics.write().await;
 
                 // Calculate throughput
-                let completed_diff = m.completed_requests - last_completed;
-                let time_diff = (now - last_time)
-                    .to_std()
-                    .unwrap_or(Duration::from_secs(1))
-                    .as_secs_f32();
+                let completed_diff = Self::completed_since(m.completed_requests, last_completed);
+                let time_diff =
+                    crate::utc_stamp::saturating_std(now - last_time, Duration::from_secs(1))
+                        .as_secs_f32();
 
                 if time_diff > 0.0 {
                     m.throughput_requests_per_second = completed_diff as f32 / time_diff;
@@ -500,6 +523,19 @@ impl BatchInferenceEngine {
         );
     }
 
+    fn should_schedule_batch(
+        queue_len: usize,
+        elapsed: Duration,
+        min_batch_size: usize,
+        batch_timeout: Duration,
+    ) -> bool {
+        queue_len >= min_batch_size || (queue_len > 0 && elapsed >= batch_timeout)
+    }
+
+    fn completed_since(total: u64, previous: u64) -> u64 {
+        total - previous
+    }
+
     /// Schedule a new batch from the request queue
     async fn schedule_batch(
         request_queue: &Arc<RwLock<Vec<BatchRequest>>>,
@@ -526,7 +562,7 @@ impl BatchInferenceEngine {
         let batch = ActiveBatch {
             id: Uuid::new_v4().to_string(),
             requests: batch_requests,
-            started_at: Utc::now(),
+            started_at: time::OffsetDateTime::now_utc(),
             client_id: 0, // Will be assigned by worker
             processing: false,
         };
@@ -550,7 +586,7 @@ impl BatchInferenceEngine {
         // Check urgency based on request timeouts
         let urgent_count = queue
             .iter()
-            .filter(|req| (req.timeout_at - Utc::now()).num_seconds() < 5)
+            .filter(|req| (req.timeout_at - time::OffsetDateTime::now_utc()).whole_seconds() < 5)
             .count();
 
         if urgent_count > 0 {
@@ -568,7 +604,7 @@ impl BatchInferenceEngine {
     /// Clean up expired requests from the queue
     async fn clean_expired_requests(
         request_queue: &Arc<RwLock<Vec<BatchRequest>>>,
-        current_time: DateTime<Utc>,
+        current_time: time::OffsetDateTime,
     ) {
         let mut queue = request_queue.write().await;
         let initial_len = queue.len();
@@ -686,13 +722,141 @@ mod tests {
             prompt: "Test".to_string(),
             parameters: InferenceParameters::default(),
             priority: RequestPriority::Normal,
-            created_at: Utc::now(),
-            timeout_at: Utc::now() + chrono::Duration::seconds(30),
+            created_at: time::OffsetDateTime::now_utc(),
+            timeout_at: time::OffsetDateTime::now_utc() + time::Duration::seconds(30),
             response_sender: None,
         }];
 
         let batch_size = BatchInferenceEngine::calculate_dynamic_batch_size(&queue, &config);
         assert!(batch_size > 0);
         assert!(batch_size <= config.max_batch_size);
+    }
+
+    fn request_due(seconds_left: i64) -> BatchRequest {
+        let now = time::OffsetDateTime::now_utc();
+        BatchRequest {
+            id: format!("req-{seconds_left}"),
+            prompt: "p".into(),
+            parameters: InferenceParameters::default(),
+            priority: RequestPriority::Normal,
+            created_at: now,
+            timeout_at: now
+                + time::Duration::seconds(seconds_left)
+                + time::Duration::milliseconds(200),
+            response_sender: None,
+        }
+    }
+
+    #[test]
+    fn schedule_predicate_matches_queue_length_and_timeout() {
+        let min = 4;
+        let timeout = Duration::from_millis(100);
+        let due = |len, elapsed_ms| {
+            BatchInferenceEngine::should_schedule_batch(
+                len,
+                Duration::from_millis(elapsed_ms),
+                min,
+                timeout,
+            )
+        };
+        assert!(due(4, 0));
+        assert!(due(5, 0));
+        assert!(!due(3, 0));
+        assert!(!due(0, 500));
+        assert!(due(1, 100));
+        assert!(due(1, 101));
+        assert!(!due(1, 99));
+    }
+
+    #[test]
+    fn completed_since_is_a_difference() {
+        assert_eq!(BatchInferenceEngine::completed_since(10, 4), 6);
+        assert_eq!(BatchInferenceEngine::completed_since(4, 4), 0);
+    }
+
+    #[tokio::test]
+    async fn submit_request_sets_a_future_timeout_and_schedule_batch_drains_the_queue() {
+        let engine =
+            BatchInferenceEngine::new(vec![Arc::new(MockLlm)], BatchInferenceConfig::default());
+        let before = time::OffsetDateTime::now_utc();
+        engine
+            .submit_request(
+                "p".into(),
+                InferenceParameters::default(),
+                RequestPriority::High,
+            )
+            .await
+            .unwrap();
+        let queued = engine.request_queue.read().await;
+        assert!(queued[0].timeout_at > queued[0].created_at);
+        assert!(queued[0].timeout_at >= before + time::Duration::seconds(29));
+        drop(queued);
+        let metrics = engine.get_metrics().await;
+        assert_eq!(metrics.total_requests, 1);
+
+        let config = BatchInferenceConfig {
+            enable_dynamic_batching: false,
+            max_batch_size: 2,
+            ..BatchInferenceConfig::default()
+        };
+        let queue = Arc::new(RwLock::new(vec![request_due(30), request_due(30)]));
+        let batches = Arc::new(RwLock::new(HashMap::new()));
+        BatchInferenceEngine::schedule_batch(&queue, &batches, &config).await;
+        assert!(queue.read().await.is_empty());
+        assert_eq!(batches.read().await.len(), 1);
+        assert_eq!(
+            batches.read().await.values().next().unwrap().requests.len(),
+            2
+        );
+    }
+
+    #[test]
+    fn dynamic_batch_size_treats_under_five_seconds_as_urgent() {
+        let config = BatchInferenceConfig {
+            min_batch_size: 1,
+            ..BatchInferenceConfig::default()
+        };
+        let urgent = vec![request_due(4), request_due(4), request_due(4)];
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&urgent, &config),
+            1
+        );
+        let on_boundary = vec![request_due(5), request_due(5), request_due(5)];
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&on_boundary, &config),
+            3
+        );
+        let comfortable = vec![request_due(6), request_due(6), request_due(6)];
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&comfortable, &config),
+            3
+        );
+        let full: Vec<_> = (0..20).map(|_| request_due(30)).collect();
+        assert_eq!(
+            BatchInferenceEngine::calculate_dynamic_batch_size(&full, &config),
+            config.optimal_batch_size
+        );
+    }
+
+    #[tokio::test]
+    async fn a_ten_thousand_year_request_timeout_does_not_abort() {
+        let config = BatchInferenceConfig {
+            request_timeout: Duration::from_secs(10_000 * 365 * 24 * 3600),
+            ..BatchInferenceConfig::default()
+        };
+        let engine = BatchInferenceEngine::new(vec![Arc::new(MockLlm)], config);
+        engine
+            .submit_request(
+                "p".into(),
+                InferenceParameters::default(),
+                RequestPriority::Normal,
+            )
+            .await
+            .unwrap();
+        let queued = engine.request_queue.read().await;
+        assert_eq!(
+            queued[0].timeout_at,
+            time::OffsetDateTime::new_utc(time::Date::MAX, time::Time::MAX)
+        );
     }
 }

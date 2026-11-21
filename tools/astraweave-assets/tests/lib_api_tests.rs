@@ -569,7 +569,7 @@ fn create_cached_lockfile(manifest: &AssetManifest, handle: &str, paths: Vec<(&s
         urls: url_map,
         paths: path_map,
         hashes: HashMap::new(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: "2020-01-02T03:04:05+00:00".to_string(),
         resolved_res: "1k".to_string(),
     };
 
@@ -765,7 +765,7 @@ async fn test_ensure_asset_partial_cache_redownloads() {
         urls: url_map,
         paths: path_map,
         hashes: HashMap::new(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: "2020-01-02T03:04:05+00:00".to_string(),
         resolved_res: "1k".to_string(),
     };
 

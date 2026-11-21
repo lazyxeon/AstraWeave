@@ -14,6 +14,8 @@ pub use summary::FetchSummary;
 
 use std::path::Path;
 
+mod utc_stamp;
+
 pub mod config;
 pub mod direct_url_provider;
 pub mod downloader;

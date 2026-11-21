@@ -93,7 +93,7 @@ The trace copies the buffer the planner received. On `main` that includes the co
 
 On `main`, `astraweave-memory` is a full pipeline (records, episodes, consolidation, forgetting, retrieval, persona) and it is DORMANT for the planning tick. Nothing in `astraweave-ai` calls it.
 
-`MemoryDebugComponent` (`astraweave-memory/src/components.rs`) looks like a debugger and is the wrong one to extend. `recent_operations` is a `Vec<MemoryOperation>`. Each operation stores a `String` id, a `chrono` UTC timestamp, and a `String` detail. That is a wall clock and a heap growth on every operation.
+`MemoryDebugComponent` (`astraweave-memory/src/components.rs`) looks like a debugger and is the wrong one to extend. `recent_operations` is a `Vec<MemoryOperation>`. Each operation stores a `String` id, a UTC timestamp, and a `String` detail. That is a wall clock and a heap growth on every operation.
 
 PR #213 (`cursor/engine-ws-ai2`, draft, tip `61ebe2fa`) owns the wiring. `astraweave-dialogue/src/depth_tick.rs` on that branch defines `AiDepthState` and `sys_ai_depth`. One step calls `MemoryManager`, the embedding store, RAG consolidation, prompts, context, persona, the NPC `RulePlanner`, and coordination. A missing log line becomes `scripted:` plus the rendered prompt. `SimRng` is seeded with `(world_seed, tick, SIM_SYSTEM_LLM_DIALOGUE + entity)` and is not drawn. The branch's own `TickTrace` is a growing `Vec` of `String`s (`memory_ids`, prompt, dialogue, note). That trace allocates, and it is the depth tick's replay payload, so this debugger does not write into it and does not read it from inside `plan_route`.
 
@@ -168,7 +168,7 @@ Editor CI on `main` is partly red, and both failures already have owners:
 | #273 `deferred-failure` | `editor_engine_render_parity` hashes diverge on llvmpipe. Engine and editor LDR SHA-256 differ; overlay isolation holds. Mean SAD 1.538 over 262144 pixels | Editor render parity. Find the setter that still differs for the 512×512 grassland fixture. Do not widen the assert |
 | #265 `deferred-failure` | Ubuntu and macOS editor jobs fail in `libudev-sys` because `libudev.pc` is missing | CI cleanup, PR #217. Install `pkg-config`, `libudev-dev`, and `libasound2-dev` |
 
-`editor-ci.yml` and `aw-editor-tests.yml` on `main` still do not install `libudev-dev`. Both workflows set `continue-on-error: true` and do not run on pull requests. A decision panel in `aw_editor` would build in those jobs. This design leaves `tools/aw_editor` untouched until #265 and #273 are closed.
+`editor-ci.yml` and `aw-editor-tests.yml` do not run on pull requests. Both install `libudev-dev`: `aw-editor-tests.yml` in its Linux apt step, and `editor-ci.yml` through `rust-ci-setup` (that action installs `libudev-dev`). Neither job sets `continue-on-error`. `aw-editor-tests.yml` still sets it on the `--lib`, integration, fmt, and clippy steps. Pull requests run `cargo test --locked -p aw_editor --all-features --bins` in `ci.yml` job `Test (ubuntu, build archive)`, and that step has no `continue-on-error`. A decision panel in `aw_editor` would build in those jobs. This design leaves `tools/aw_editor` untouched until #265 and #273 are closed.
 
 ### 2.8 Aravath agents that already exist
 
@@ -192,7 +192,7 @@ Rejected:
 
 | Option | Why it loses |
 |---|---|
-| Extend `MemoryDebugComponent` | `Vec`, `String`, and `chrono::Utc`. Wall clock in a sim debug path |
+| Extend `MemoryDebugComponent` | `Vec`, `String`, and a UTC timestamp. Wall clock in a sim debug path |
 | Extend `goap::TelemetryCollector` | `String`, `VecDeque`, `Instant`, and it lives in the dormant advanced GOAP tree |
 | Send reasons through `message!` or `tracing` | Allocates when the sink is on, and a global subscriber can change timing |
 | Put the ring inside `SpatialTick` or `World` | A new field changes the bytes of a sim struct the moment the feature is on |

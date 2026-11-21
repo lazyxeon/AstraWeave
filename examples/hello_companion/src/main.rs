@@ -120,8 +120,6 @@ impl std::fmt::Display for AIMode {
 // ============================================================================
 
 #[cfg(feature = "metrics")]
-use chrono::Utc;
-#[cfg(feature = "metrics")]
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "metrics")]
@@ -157,7 +155,7 @@ impl AIMetrics {
             mode: mode.to_string(),
             plan_steps,
             latency_ms,
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: format_utc_rfc3339(time::OffsetDateTime::now_utc()),
             success,
             error,
             tools_used: None,
@@ -167,6 +165,7 @@ impl AIMetrics {
         }
     }
 
+    #[cfg(feature = "llm")]
     fn with_phase7_data(
         mut self,
         tools_used: Vec<String>,
@@ -186,7 +185,9 @@ impl AIMetrics {
 // MAIN ENTRY POINT
 // ============================================================================
 
+/// Opens a window and needs a GPU, so mutation testing leaves this entry alone.
 #[cfg(feature = "visual")]
+#[mutants::skip]
 fn main() -> Result<()> {
     visual_demo::run_visual_demo()
 }
@@ -201,10 +202,12 @@ fn main() -> Result<()> {
     // Parse command-line arguments
     let args: Vec<String> = std::env::args().collect();
     let demo_all = args.contains(&"--demo-all".to_string());
-    let _show_metrics = args.contains(&"--metrics".to_string());
-    let _export_metrics = args.contains(&"--export-metrics".to_string());
-
     #[cfg(feature = "metrics")]
+    let show_metrics = args.contains(&"--metrics".to_string());
+    #[cfg(feature = "metrics")]
+    let export_metrics = args.contains(&"--export-metrics".to_string());
+
+    #[cfg(all(feature = "metrics", feature = "llm"))]
     let mut all_metrics: Vec<AIMetrics> = Vec::new();
 
     if demo_all {
@@ -274,7 +277,7 @@ fn main() -> Result<()> {
     #[cfg(feature = "metrics")]
     {
         if show_metrics {
-            print_metrics_table(&[metrics.clone()]);
+            print_metrics_table(std::slice::from_ref(&metrics));
         }
         if export_metrics {
             export_metrics_to_files(&[metrics])?;
@@ -409,7 +412,7 @@ fn run_single_demo(mode: AIMode) -> Result<AIMetrics> {
         println!("Enemy HP:  {}", enemy_hp.hp);
     }
 
-    let mut metrics = AIMetrics::new(
+    let metrics = AIMetrics::new(
         &mode.to_string(),
         plan.steps.len(),
         latency_ms,
@@ -418,10 +421,10 @@ fn run_single_demo(mode: AIMode) -> Result<AIMetrics> {
     );
 
     #[cfg(feature = "llm")]
-    {
+    let metrics = {
         let tools = extract_tools_used(&plan);
-        metrics = metrics.with_phase7_data(tools, None, None, None);
-    }
+        metrics.with_phase7_data(tools, None, None, None)
+    };
 
     Ok(metrics)
 }
@@ -1423,4 +1426,114 @@ fn export_metrics_to_files(metrics: &[AIMetrics]) -> Result<()> {
     println!("✅ Exported CSV:  hello_companion_metrics.csv");
 
     Ok(())
+}
+
+#[cfg(any(feature = "metrics", test))]
+/// Four digits for years `0..=9999`. Any other year keeps a sign and at least
+/// four digits of magnitude.
+fn year_text(year: i32) -> String {
+    if !(0..=9999).contains(&year) {
+        format!("{year:+05}")
+    } else {
+        format!("{year:04}")
+    }
+}
+
+#[cfg(any(feature = "metrics", test))]
+fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
+    let utc = dt.to_offset(time::UtcOffset::UTC);
+    let mut out = format!(
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        year_text(utc.year()),
+        u8::from(utc.month()),
+        utc.day(),
+        utc.hour(),
+        utc.minute(),
+        utc.second()
+    );
+    let nano = utc.nanosecond();
+    if nano != 0 {
+        if nano % 1_000_000 == 0 {
+            out.push_str(&format!(".{:03}", nano / 1_000_000));
+        } else if nano % 1_000 == 0 {
+            out.push_str(&format!(".{:06}", nano / 1_000));
+        } else {
+            out.push_str(&format!(".{nano:09}"));
+        }
+    }
+    out.push_str("+00:00");
+    out
+}
+
+#[cfg(any(feature = "metrics", test))]
+mod utc_rfc3339_pins {
+    #[cfg_attr(not(test), allow(unused_imports))]
+    use super::{format_utc_rfc3339, year_text};
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn at(nanos: i128) -> time::OffsetDateTime {
+        time::OffsetDateTime::from_unix_timestamp_nanos(1_577_934_245_000_000_000 + nanos).unwrap()
+    }
+
+    #[test]
+    fn rfc3339_matches_pinned_strings() {
+        assert_eq!(format_utc_rfc3339(at(0)), "2020-01-02T03:04:05+00:00");
+        assert_eq!(
+            format_utc_rfc3339(at(100_000_000)),
+            "2020-01-02T03:04:05.100+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(100_000)),
+            "2020-01-02T03:04:05.000100+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(1_000_000)),
+            "2020-01-02T03:04:05.001+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(1)),
+            "2020-01-02T03:04:05.000000001+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(123_456_789)),
+            "2020-01-02T03:04:05.123456789+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(123_400_000)),
+            "2020-01-02T03:04:05.123400+00:00"
+        );
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    fn civil(year: i32) -> time::OffsetDateTime {
+        let date = time::Date::from_calendar_date(year, time::Month::January, 2).unwrap();
+        let clock = time::Time::from_hms(3, 4, 5).unwrap();
+        time::PrimitiveDateTime::new(date, clock).assume_utc()
+    }
+
+    #[test]
+    fn year_width_keeps_a_sign_and_four_digit_magnitude() {
+        assert_eq!(format_utc_rfc3339(civil(-1)), "-0001-01-02T03:04:05+00:00");
+        assert_eq!(format_utc_rfc3339(civil(0)), "0000-01-02T03:04:05+00:00");
+        assert_eq!(format_utc_rfc3339(civil(9999)), "9999-01-02T03:04:05+00:00");
+        assert_eq!(
+            format_utc_rfc3339(civil(-9999)),
+            "-9999-01-02T03:04:05+00:00"
+        );
+        assert_eq!(year_text(10_000), "+10000");
+        assert_eq!(year_text(-10_000), "-10000");
+    }
+}
+
+#[cfg(all(test, feature = "metrics"))]
+mod metrics_tests {
+    use super::*;
+
+    #[test]
+    fn single_demo_records_classical_metrics() {
+        let metrics = run_single_demo(AIMode::Classical).expect("classical demo");
+        assert_eq!(metrics.mode, "Classical (RuleOrchestrator)");
+        assert!(metrics.success);
+        assert!(!metrics.timestamp.is_empty());
+    }
 }

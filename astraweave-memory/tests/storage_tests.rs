@@ -8,7 +8,6 @@ use astraweave_memory::{
     Memory, MemoryContent, MemoryMetadata, MemorySource, MemoryStorage, MemoryType,
     SpatialTemporalContext,
 };
-use chrono::Utc;
 use std::time::SystemTime;
 
 fn create_test_memory(
@@ -37,8 +36,8 @@ fn create_test_memory(
             },
         },
         metadata: MemoryMetadata {
-            created_at: Utc::now(),
-            last_accessed: Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
+            last_accessed: time::OffsetDateTime::now_utc(),
             access_count: 0,
             importance,
             confidence: 1.0,
