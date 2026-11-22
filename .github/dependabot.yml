@@ -7,11 +7,19 @@ updates:
       interval: "weekly"
     # Limit the number of open pull requests for dependencies
     open-pull-requests-limit: 10
-    # Group all updates together
+    # Group updates by semver level (Cargo pre-1.0 rules apply for classification)
     groups:
-      dependencies:
+      minor-patch:
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     # Specify labels for pull requests
     labels:
       - "dependencies"
