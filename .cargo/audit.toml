@@ -10,7 +10,14 @@
 # depends on zip >= 9. No published candle release does, through 0.11.0.
 # https://github.com/lazyxeon/AstraWeave/issues/324
 # url is 2.5.9. form_urlencoded is 1.2.3, which that url release requires.
-# RUSTSEC-2026-0592 is fixed by url 2.5.9. It is not an ignore.
+# quinn-udp is 0.5.16. chrono is not in the lock. zip is 9.7.0.
+# PR #758. https://github.com/lazyxeon/AstraWeave/pull/758
+# #756 is the audit failure this lock clears. None of the four is an ignore.
+# https://github.com/lazyxeon/AstraWeave/issues/756
+# stack overflow, RUSTSEC-2026-0592 (url)
+# privilege escalation, RUSTSEC-2026-0548 (zip)
+# denial of service, RUSTSEC-2026-0538 (quinn-udp)
+# unmaintained, RUSTSEC-2026-0543 (chrono)
 
 [advisories]
 ignore = [
