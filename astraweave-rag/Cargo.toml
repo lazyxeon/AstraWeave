@@ -29,7 +29,7 @@ dashmap = "6.1"
 parking_lot = "0.12"
 
 # Date and time
-chrono = { version = "0.4", features = ["serde"] }
+time = "0.3"
 
 # Random sampling for diversity
 rand = "0.9"

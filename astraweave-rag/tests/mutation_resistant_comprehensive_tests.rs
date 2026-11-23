@@ -19,7 +19,7 @@ fn make_memory(id: &str, text: &str, category: MemoryCategory, importance: f32) 
         id: id.to_string(),
         text: text.to_string(),
         category,
-        timestamp: chrono::Utc::now().timestamp() as u64,
+        timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
         importance,
         valence: 0.0,
         entities: vec![],
@@ -45,7 +45,7 @@ fn make_memory_with_entities(id: &str, text: &str, entities: Vec<String>) -> Mem
         id: id.to_string(),
         text: text.to_string(),
         category: MemoryCategory::Combat,
-        timestamp: chrono::Utc::now().timestamp() as u64,
+        timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
         importance: 0.5,
         valence: 0.0,
         entities,
@@ -1060,7 +1060,7 @@ fn decay_modifier_formula_importance_matters() {
     let mut engine = ForgettingEngine::new(config);
 
     // Use timestamps far enough in the past that decay is visible
-    let old_ts = (chrono::Utc::now().timestamp() - 36000) as u64; // 10 hours ago
+    let old_ts = (time::OffsetDateTime::now_utc().unix_timestamp() - 36000) as u64; // 10 hours ago
 
     let m_high = make_memory_with_timestamp("high", "important memory", old_ts, 0.9);
     let m_low = make_memory_with_timestamp("low", "unimportant memory", old_ts, 0.1);
@@ -1097,7 +1097,7 @@ fn should_forget_boundary_at_threshold() {
     let mut engine = ForgettingEngine::new(config);
 
     // Insert a memory into the strength map by processing it
-    let now_ts = chrono::Utc::now().timestamp() as u64;
+    let now_ts = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
     let m = make_memory_with_timestamp("boundary", "at threshold", now_ts, 0.5);
     let (retained, _) = engine.process_forgetting(vec![m]).unwrap();
 
@@ -1147,7 +1147,7 @@ fn should_forget_boundary_at_max_age() {
     let mut engine = ForgettingEngine::new(config);
 
     // Memory timestamp exactly max_age seconds ago
-    let now = chrono::Utc::now().timestamp();
+    let now = time::OffsetDateTime::now_utc().unix_timestamp();
     let ts_at_boundary = (now - max_age as i64) as u64;
     let m = make_memory_with_timestamp("age_boundary", "exactly at max age", ts_at_boundary, 0.5);
     let (retained, result) = engine.process_forgetting(vec![m]).unwrap();
@@ -1178,7 +1178,7 @@ fn strengthen_memory_adds_boost() {
     let mut engine = ForgettingEngine::new(config);
 
     // First populate the strength map
-    let now_ts = chrono::Utc::now().timestamp() as u64;
+    let now_ts = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
     let m = make_memory_with_timestamp("boost_test", "memory to strengthen", now_ts, 0.5);
     engine.process_forgetting(vec![m]).unwrap();
 
@@ -1199,7 +1199,7 @@ fn strengthen_memory_adds_boost() {
     let mut engine2 = ForgettingEngine::new(config2);
 
     // Memory from 10 hours ago to ensure meaningful decay
-    let old_ts = (chrono::Utc::now().timestamp() - 36000) as u64;
+    let old_ts = (time::OffsetDateTime::now_utc().unix_timestamp() - 36000) as u64;
     let m2 = make_memory_with_timestamp("boost2", "decayed memory", old_ts, 0.0);
     engine2.process_forgetting(vec![m2]).unwrap();
 
@@ -1247,7 +1247,7 @@ fn statistics_weak_count_and_average_strength() {
     let mut engine = ForgettingEngine::new(config);
 
     // Populate with 3 memories (all retained since threshold=0.5 and strength=1.0)
-    let now_ts = chrono::Utc::now().timestamp() as u64;
+    let now_ts = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
     let m1 = make_memory_with_timestamp("s1", "strong 1", now_ts, 0.5);
     let m2 = make_memory_with_timestamp("s2", "strong 2", now_ts, 0.5);
     let m3 = make_memory_with_timestamp("s3", "strong 3", now_ts, 0.5);
@@ -1273,7 +1273,7 @@ fn statistics_weak_count_and_average_strength() {
     // Recent memory: strength ≈ 1.0 (above threshold)
     let m_recent = make_memory_with_timestamp("recent", "recent mem", now_ts, 0.0);
     // Old memory: decays to low strength (below threshold)
-    let old_ts = (chrono::Utc::now().timestamp() - 72000) as u64; // 20 hours ago
+    let old_ts = (time::OffsetDateTime::now_utc().unix_timestamp() - 72000) as u64; // 20 hours ago
     let m_old = make_memory_with_timestamp("old", "old mem", old_ts, 0.0);
 
     let (_retained, _) = engine2.process_forgetting(vec![m_recent, m_old]).unwrap();

@@ -427,7 +427,8 @@ impl BackpressureManager {
                 .insert(priority, queues.queued_by_priority(priority));
         }
 
-        metrics.last_updated = chrono::Utc::now().to_rfc3339();
+        metrics.last_updated =
+            crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc());
         metrics
     }
 

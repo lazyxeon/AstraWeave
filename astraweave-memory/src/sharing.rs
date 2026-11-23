@@ -67,7 +67,8 @@ pub struct SharedMemoryContent {
     /// Memory type
     pub memory_type: MemoryType,
     /// Timestamp
-    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
     /// Importance level
     pub importance: f32,
     /// Associated entities (filtered)
@@ -88,7 +89,8 @@ pub struct SharingAuditEntry {
     /// Type of sharing
     pub sharing_type: SharingType,
     /// When the sharing occurred
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     /// Success status
     pub success: bool,
     /// Reason for sharing
@@ -245,7 +247,7 @@ impl SharingEngine {
             SharingType::Metadata => format!(
                 "Memory of type {:?} created on {}",
                 memory.memory_type,
-                memory.metadata.created_at.format("%Y-%m-%d")
+                crate::utc_stamp::format_utc_date(memory.metadata.created_at)
             ),
             SharingType::Restricted => {
                 return Err(anyhow!(
@@ -323,7 +325,7 @@ impl SharingEngine {
             source_entity: requesting_entity.to_string(),
             target_entity: request.target_entity.clone(),
             sharing_type: request.sharing_type.clone(),
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             success,
             reason: if success {
                 request.reason.clone()
@@ -410,7 +412,7 @@ impl SharingEngine {
             source_entity: revoking_entity.to_string(),
             target_entity: target_entity.to_string(),
             sharing_type: SharingType::Restricted,
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             success: true,
             reason: "Access revoked".to_string(),
         };
@@ -1179,9 +1181,9 @@ mod tests {
             conditions: Vec::new(),
         };
 
-        let before = chrono::Utc::now();
+        let before = time::OffsetDateTime::now_utc();
         engine.share_memory(&request, &memory, "owner").unwrap();
-        let after = chrono::Utc::now();
+        let after = time::OffsetDateTime::now_utc();
 
         let audit = engine.get_audit_log(&memory.id);
         assert!(audit[0].timestamp >= before);

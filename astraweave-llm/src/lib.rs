@@ -1149,6 +1149,8 @@ use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
 
 // --- Core modules (always available) ---
+mod utc_stamp;
+
 pub mod ab_testing;
 pub mod backpressure;
 pub mod batch_executor;

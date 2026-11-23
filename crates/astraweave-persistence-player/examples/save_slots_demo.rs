@@ -88,7 +88,7 @@ fn main() {
         println!("      Playtime: {}h {}m", hours, minutes);
         println!(
             "      Saved: {}",
-            slot.timestamp.format("%Y-%m-%d %H:%M:%S")
+            astraweave_persistence_player::format_utc_seconds(slot.timestamp)
         );
     }
 

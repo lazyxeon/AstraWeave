@@ -9,7 +9,6 @@ use astraweave_coordination::agent::*;
 use astraweave_coordination::coordination::*;
 use astraweave_coordination::narrative_coherence::*;
 use astraweave_coordination::world_events::*;
-use chrono::{Duration as ChronoDuration, Utc};
 use serde_json::json;
 use std::time::Duration;
 
@@ -168,21 +167,21 @@ fn agent_goal_is_overdue_no_deadline() {
 #[test]
 fn agent_goal_is_overdue_future_deadline() {
     let mut g = AgentGoal::new("x".into(), GoalType::Achieve, 1.0);
-    g.deadline = Some(Utc::now() + ChronoDuration::hours(1));
+    g.deadline = Some(time::OffsetDateTime::now_utc() + time::Duration::hours(1));
     assert!(!g.is_overdue());
 }
 
 #[test]
 fn agent_goal_is_overdue_past_deadline_active() {
     let mut g = AgentGoal::new("x".into(), GoalType::Achieve, 1.0);
-    g.deadline = Some(Utc::now() - ChronoDuration::hours(1));
+    g.deadline = Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1));
     assert!(g.is_overdue());
 }
 
 #[test]
 fn agent_goal_is_overdue_past_deadline_completed_not_overdue() {
     let mut g = AgentGoal::new("x".into(), GoalType::Achieve, 1.0);
-    g.deadline = Some(Utc::now() - ChronoDuration::hours(1));
+    g.deadline = Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1));
     g.status = GoalStatus::Completed;
     // completed goals are NOT overdue even if past deadline
     assert!(!g.is_overdue());
@@ -249,14 +248,14 @@ fn task_is_overdue_no_deadline() {
 #[test]
 fn task_is_overdue_past_deadline() {
     let mut t = Task::new("x".into(), "y".into());
-    t.deadline = Some(Utc::now() - ChronoDuration::hours(1));
+    t.deadline = Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1));
     assert!(t.is_overdue());
 }
 
 #[test]
 fn task_is_overdue_future_deadline() {
     let mut t = Task::new("x".into(), "y".into());
-    t.deadline = Some(Utc::now() + ChronoDuration::hours(1));
+    t.deadline = Some(time::OffsetDateTime::now_utc() + time::Duration::hours(1));
     assert!(!t.is_overdue());
 }
 
@@ -385,7 +384,7 @@ fn base_agent_create_response_swaps_from_to() {
         to: a.id.clone(),
         message_type: MessageType::Request,
         content: json!({"q": "hello"}),
-        timestamp: Utc::now(),
+        timestamp: time::OffsetDateTime::now_utc(),
         priority: MessagePriority::High,
         reply_to: None,
     };
@@ -421,7 +420,7 @@ fn base_agent_update_resource_usage() {
         memory_mb: 200,
         active_tasks: 3,
         queue_size: 5,
-        last_activity: Utc::now(),
+        last_activity: time::OffsetDateTime::now_utc(),
     };
     a.update_resource_usage(usage.clone());
     assert_eq!(a.resource_usage.llm_calls_per_minute, 10);
@@ -541,6 +540,7 @@ fn resource_usage_default_all_zero() {
     assert_eq!(u.memory_mb, 0);
     assert_eq!(u.active_tasks, 0);
     assert_eq!(u.queue_size, 0);
+    assert_eq!(u.last_activity.unix_timestamp(), 0);
 }
 
 // =========================================================================
@@ -675,7 +675,7 @@ fn plot_point_serde_roundtrip() {
         related_characters: vec!["hero".into()],
         prerequisites: vec![],
         consequences: vec!["world peace".into()],
-        introduced_at: Utc::now(),
+        introduced_at: time::OffsetDateTime::now_utc(),
         deadline: None,
     };
     let json = serde_json::to_string(&pp).unwrap();
@@ -828,7 +828,7 @@ fn world_event_serde_roundtrip() {
         location: Some("riverside".into()),
         participants: vec!["hero".into(), "orcs".into()],
         event_data: json!({"intensity": 0.9}),
-        timestamp: Utc::now(),
+        timestamp: time::OffsetDateTime::now_utc(),
         severity: EventSeverity::Major,
     };
     let json = serde_json::to_string(&we).unwrap();
@@ -846,8 +846,8 @@ fn coordination_context_serde_roundtrip() {
         participants: vec!["a1".into(), "a2".into()],
         shared_state: std::collections::HashMap::new(),
         coordination_goals: vec![],
-        start_time: Utc::now(),
-        last_update: Utc::now(),
+        start_time: time::OffsetDateTime::now_utc(),
+        last_update: time::OffsetDateTime::now_utc(),
         status: CoordinationStatus::Active,
     };
     let json = serde_json::to_string(&ctx).unwrap();
@@ -923,7 +923,7 @@ fn agent_message_serde_roundtrip() {
         to: "receiver".into(),
         message_type: MessageType::Question,
         content: json!({"q": "where?"}),
-        timestamp: Utc::now(),
+        timestamp: time::OffsetDateTime::now_utc(),
         priority: MessagePriority::Normal,
         reply_to: None,
     };
@@ -944,7 +944,7 @@ fn agent_message_with_reply_to() {
         to: "b".into(),
         message_type: MessageType::Response,
         content: json!(null),
-        timestamp: Utc::now(),
+        timestamp: time::OffsetDateTime::now_utc(),
         priority: MessagePriority::Low,
         reply_to: Some("m-1".into()),
     };
@@ -1001,7 +1001,7 @@ fn resource_allocation_serde_roundtrip() {
         llm_calls_used: 42,
         memory_allocated: 512,
         memory_used: 256,
-        allocated_at: Utc::now(),
+        allocated_at: time::OffsetDateTime::now_utc(),
         expires_at: None,
     };
     let json = serde_json::to_string(&ra).unwrap();
@@ -1033,4 +1033,104 @@ fn routing_rule_serde_roundtrip() {
     assert_eq!(back.from_pattern, Some("npc-*".into()));
     assert_eq!(back.to_pattern, None);
     assert_eq!(back.priority, 10);
+}
+
+fn assert_optional_stamp<T>(value: &T, key: &str, is_none: impl Fn(&T) -> bool)
+where
+    T: serde::Serialize + for<'de> serde::Deserialize<'de>,
+{
+    let mut omitted = serde_json::to_value(value).unwrap();
+    assert!(
+        omitted.as_object_mut().unwrap().remove(key).is_some(),
+        "{key}"
+    );
+    let back: T = serde_json::from_value(omitted).unwrap();
+    assert!(is_none(&back), "{key} omitted");
+
+    let mut explicit_null = serde_json::to_value(value).unwrap();
+    explicit_null[key] = serde_json::Value::Null;
+    let back: T = serde_json::from_value(explicit_null).unwrap();
+    assert!(is_none(&back), "{key} null");
+
+    let mut present = serde_json::to_value(value).unwrap();
+    present[key] = serde_json::json!("2020-01-02T03:04:05Z");
+    let back: T = serde_json::from_value(present).unwrap();
+    assert!(!is_none(&back), "{key} present");
+}
+
+#[test]
+fn omitted_optional_timestamps_load_as_none() {
+    let goal = AgentGoal::new("goal".into(), GoalType::Achieve, 1.0);
+    assert_optional_stamp(&goal, "deadline", |goal| goal.deadline.is_none());
+
+    let task = Task::new("act".into(), "do".into());
+    assert_optional_stamp(&task, "deadline", |task| task.deadline.is_none());
+
+    let allocation = ResourceAllocation {
+        agent_id: "a".into(),
+        llm_calls_allocated: 0,
+        llm_calls_used: 0,
+        memory_allocated: 0,
+        memory_used: 0,
+        allocated_at: time::OffsetDateTime::UNIX_EPOCH,
+        expires_at: None,
+    };
+    assert_optional_stamp(&allocation, "expires_at", |row| row.expires_at.is_none());
+
+    let plot = PlotPoint {
+        id: "p".into(),
+        description: "d".into(),
+        plot_type: PlotType::MainQuest,
+        importance: 1.0,
+        status: PlotStatus::Active,
+        related_characters: vec![],
+        prerequisites: vec![],
+        consequences: vec![],
+        introduced_at: time::OffsetDateTime::UNIX_EPOCH,
+        deadline: None,
+    };
+    assert_optional_stamp(&plot, "deadline", |row| row.deadline.is_none());
+
+    let thread = StoryThread {
+        id: "t".into(),
+        title: "title".into(),
+        theme: "theme".into(),
+        related_plot_points: vec![],
+        characters_involved: vec![],
+        current_status: ThreadStatus::Introduced,
+        importance: 1.0,
+        estimated_resolution_time: None,
+        branching_possibilities: vec![],
+    };
+    assert_optional_stamp(&thread, "estimated_resolution_time", |row| {
+        row.estimated_resolution_time.is_none()
+    });
+
+    let milestone = ArcMilestone {
+        description: "m".into(),
+        achieved: false,
+        achievement_date: None,
+        impact_on_character: "i".into(),
+    };
+    assert_optional_stamp(&milestone, "achievement_date", |row| {
+        row.achievement_date.is_none()
+    });
+
+    let storyline = Storyline {
+        id: "s".into(),
+        title: "title".into(),
+        description: "d".into(),
+        category: "c".into(),
+        events: vec![],
+        current_phase: 0,
+        total_phases: 1,
+        participants: vec![],
+        start_time: time::OffsetDateTime::UNIX_EPOCH,
+        estimated_end_time: None,
+        status: StorylineStatus::Planning,
+        branching_points: vec![],
+    };
+    assert_optional_stamp(&storyline, "estimated_end_time", |row| {
+        row.estimated_end_time.is_none()
+    });
 }

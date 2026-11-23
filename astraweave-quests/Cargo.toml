@@ -18,7 +18,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 futures = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
 rand.workspace = true  # Phase 10: Terrain quest triggers
 
 [dev-dependencies]

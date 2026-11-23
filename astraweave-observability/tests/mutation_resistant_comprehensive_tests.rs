@@ -5,7 +5,6 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use astraweave_observability::*;
-use chrono::Utc;
 use std::collections::HashMap;
 
 // ========================================================================
@@ -233,6 +232,7 @@ fn llm_metrics_default_zeroed() {
     assert_eq!(m.p99_latency_ms, 0);
     assert!((m.error_rate - 0.0).abs() < 1e-6);
     assert_eq!(m.active_requests, 0);
+    assert_eq!(m.last_updated.unix_timestamp(), 0);
 }
 
 #[test]
@@ -311,7 +311,7 @@ fn alert_manager_default_empty() {
 
 #[test]
 fn llm_trace_serde_roundtrip() {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let trace = LlmTrace {
         request_id: "req-001".to_string(),
         session_id: Some("sess-1".to_string()),
@@ -358,7 +358,7 @@ async fn telemetry_new_empty_metrics() {
 #[tokio::test]
 async fn telemetry_record_success_increments() {
     let tel = LlmTelemetry::new(TelemetryConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let trace = LlmTrace {
         request_id: "r1".into(),
         session_id: None,
@@ -391,7 +391,7 @@ async fn telemetry_record_success_increments() {
 #[tokio::test]
 async fn telemetry_record_failure_increments() {
     let tel = LlmTelemetry::new(TelemetryConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let trace = LlmTrace {
         request_id: "r2".into(),
         session_id: None,
@@ -424,7 +424,7 @@ async fn telemetry_record_failure_increments() {
 #[tokio::test]
 async fn telemetry_clear_data_resets() {
     let tel = LlmTelemetry::new(TelemetryConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let trace = LlmTrace {
         request_id: "r3".into(),
         session_id: None,
@@ -483,7 +483,7 @@ async fn telemetry_dashboard_data_has_structure() {
 #[tokio::test]
 async fn telemetry_multiple_requests_accumulate() {
     let tel = LlmTelemetry::new(TelemetryConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     for i in 0..5 {
         let trace = LlmTrace {
             request_id: format!("req-{}", i),
@@ -685,7 +685,7 @@ fn make_trace(
     cost: f64,
     success: bool,
 ) -> LlmTrace {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     LlmTrace {
         request_id: id.into(),
         session_id: None,

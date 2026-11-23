@@ -1,6 +1,5 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -77,7 +76,8 @@ pub struct AgentMessage {
     pub to: String,
     pub message_type: MessageType,
     pub content: serde_json::Value,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub priority: MessagePriority,
     pub reply_to: Option<String>,
 }
@@ -114,7 +114,8 @@ pub struct AgentGoal {
     pub priority: f32,
     pub target_value: Option<f32>,
     pub current_value: f32,
-    pub deadline: Option<DateTime<Utc>>,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub deadline: Option<time::OffsetDateTime>,
     pub dependencies: Vec<String>, // Goal IDs this depends on
     pub status: GoalStatus,
 }
@@ -150,7 +151,8 @@ pub struct Task {
     pub parameters: HashMap<String, serde_json::Value>,
     pub priority: f32,
     pub estimated_duration: Option<u64>, // milliseconds
-    pub deadline: Option<DateTime<Utc>>,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub deadline: Option<time::OffsetDateTime>,
     pub required_capabilities: Vec<String>,
     pub resource_requirements: ResourceRequirements,
 }
@@ -186,13 +188,26 @@ pub struct SideEffect {
 }
 
 /// Current resource usage by an agent
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceUsage {
     pub llm_calls_per_minute: u32,
     pub memory_mb: u32,
     pub active_tasks: u32,
     pub queue_size: u32,
-    pub last_activity: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_activity: time::OffsetDateTime,
+}
+
+impl Default for ResourceUsage {
+    fn default() -> Self {
+        Self {
+            llm_calls_per_minute: 0,
+            memory_mb: 0,
+            active_tasks: 0,
+            queue_size: 0,
+            last_activity: time::OffsetDateTime::UNIX_EPOCH,
+        }
+    }
 }
 
 /// World event that agents can react to
@@ -204,7 +219,8 @@ pub struct WorldEvent {
     pub location: Option<String>,
     pub participants: Vec<String>,
     pub event_data: serde_json::Value,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub severity: EventSeverity,
 }
 
@@ -240,8 +256,10 @@ pub struct CoordinationContext {
     pub participants: Vec<String>, // Agent IDs
     pub shared_state: HashMap<String, serde_json::Value>,
     pub coordination_goals: Vec<AgentGoal>,
-    pub start_time: DateTime<Utc>,
-    pub last_update: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub start_time: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_update: time::OffsetDateTime,
     pub status: CoordinationStatus,
 }
 
@@ -319,7 +337,7 @@ impl BaseAgent {
             to: original.from.clone(),
             message_type: MessageType::Response,
             content,
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: original.priority.clone(),
             reply_to: Some(original.id.clone()),
         }
@@ -338,7 +356,7 @@ impl BaseAgent {
             to,
             message_type: MessageType::Notification,
             content,
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority,
             reply_to: None,
         }
@@ -347,7 +365,7 @@ impl BaseAgent {
     /// Update resource usage
     pub fn update_resource_usage(&mut self, usage: ResourceUsage) {
         self.resource_usage = usage;
-        self.resource_usage.last_activity = Utc::now();
+        self.resource_usage.last_activity = time::OffsetDateTime::now_utc();
     }
 
     /// Check if agent is available for new tasks
@@ -370,7 +388,7 @@ impl BaseAgent {
         let mut ctx = context.write().await;
         if !ctx.participants.contains(&self.id) {
             ctx.participants.push(self.id.clone());
-            ctx.last_update = Utc::now();
+            ctx.last_update = time::OffsetDateTime::now_utc();
         }
         self.coordination_context = Some(context.clone());
         info!(
@@ -385,7 +403,7 @@ impl BaseAgent {
         if let Some(context) = &self.coordination_context {
             let mut ctx = context.write().await;
             ctx.participants.retain(|id| id != &self.id);
-            ctx.last_update = Utc::now();
+            ctx.last_update = time::OffsetDateTime::now_utc();
             info!(
                 "Agent {} left coordination session {}",
                 self.id, ctx.session_id
@@ -400,7 +418,7 @@ impl BaseAgent {
         if let Some(context) = &self.coordination_context {
             let mut ctx = context.write().await;
             ctx.shared_state.insert(key, value);
-            ctx.last_update = Utc::now();
+            ctx.last_update = time::OffsetDateTime::now_utc();
         }
         Ok(())
     }
@@ -466,8 +484,12 @@ impl AgentGoal {
 
     /// Check if goal is overdue
     pub fn is_overdue(&self) -> bool {
+        self.is_overdue_at(time::OffsetDateTime::now_utc())
+    }
+
+    pub fn is_overdue_at(&self, now: time::OffsetDateTime) -> bool {
         if let Some(deadline) = &self.deadline {
-            Utc::now() > *deadline && self.status != GoalStatus::Completed
+            now > *deadline && self.status != GoalStatus::Completed
         } else {
             false
         }
@@ -510,8 +532,12 @@ impl Task {
 
     /// Check if task is overdue
     pub fn is_overdue(&self) -> bool {
+        self.is_overdue_at(time::OffsetDateTime::now_utc())
+    }
+
+    pub fn is_overdue_at(&self, now: time::OffsetDateTime) -> bool {
         if let Some(deadline) = &self.deadline {
-            Utc::now() > *deadline
+            now > *deadline
         } else {
             false
         }
@@ -564,7 +590,7 @@ mod tests {
             to: agent.id.clone(),
             message_type: MessageType::Request,
             content: serde_json::json!({"test": "data"}),
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             priority: MessagePriority::Normal,
             reply_to: None,
         };
@@ -585,8 +611,8 @@ mod tests {
             participants: Vec::new(),
             shared_state: HashMap::new(),
             coordination_goals: Vec::new(),
-            start_time: Utc::now(),
-            last_update: Utc::now(),
+            start_time: time::OffsetDateTime::now_utc(),
+            last_update: time::OffsetDateTime::now_utc(),
             status: CoordinationStatus::Planning,
         }));
 
@@ -661,8 +687,8 @@ mod tests {
             participants: Vec::new(),
             shared_state: HashMap::new(),
             coordination_goals: Vec::new(),
-            start_time: Utc::now(),
-            last_update: Utc::now(),
+            start_time: time::OffsetDateTime::now_utc(),
+            last_update: time::OffsetDateTime::now_utc(),
             status: CoordinationStatus::Planning,
         }));
 
@@ -772,7 +798,7 @@ mod tests {
         // Targets: agent.rs L470 > → >= in is_overdue
         // Past deadline + Active → true
         let mut goal = AgentGoal::new("g".into(), GoalType::Achieve, 0.5);
-        goal.deadline = Some(Utc::now() - chrono::Duration::hours(1));
+        goal.deadline = Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1));
         goal.status = GoalStatus::Active;
         assert!(
             goal.is_overdue(),
@@ -788,7 +814,7 @@ mod tests {
 
         // Future deadline + Active → false
         let mut goal2 = AgentGoal::new("g2".into(), GoalType::Achieve, 0.5);
-        goal2.deadline = Some(Utc::now() + chrono::Duration::hours(1));
+        goal2.deadline = Some(time::OffsetDateTime::now_utc() + time::Duration::hours(1));
         goal2.status = GoalStatus::Active;
         assert!(!goal2.is_overdue(), "Future deadline should NOT be overdue");
 
@@ -802,16 +828,46 @@ mod tests {
         // Targets: agent.rs L514 > → >= in Task::is_overdue
         // Past deadline → true
         let mut task = Task::new("t".into(), "d".into());
-        task.deadline = Some(Utc::now() - chrono::Duration::hours(1));
+        task.deadline = Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1));
         assert!(task.is_overdue(), "Past deadline should be overdue");
 
         // Future deadline → false
         let mut task2 = Task::new("t2".into(), "d".into());
-        task2.deadline = Some(Utc::now() + chrono::Duration::hours(1));
+        task2.deadline = Some(time::OffsetDateTime::now_utc() + time::Duration::hours(1));
         assert!(!task2.is_overdue(), "Future deadline should NOT be overdue");
 
         // No deadline → false
         let task3 = Task::new("t3".into(), "d".into());
         assert!(!task3.is_overdue(), "No deadline should NOT be overdue");
+    }
+
+    #[test]
+    fn deadline_equal_to_now_is_not_overdue() {
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(1_700_000_000);
+        let mut goal = AgentGoal::new("g".into(), GoalType::Achieve, 0.5);
+        goal.deadline = Some(now);
+        goal.status = GoalStatus::Active;
+        assert!(!goal.is_overdue_at(now));
+        assert!(goal.is_overdue_at(now + time::Duration::nanoseconds(1)));
+        assert!(!goal.is_overdue_at(now - time::Duration::seconds(1)));
+        goal.status = GoalStatus::Completed;
+        assert!(!goal.is_overdue_at(now + time::Duration::hours(1)));
+        goal.deadline = None;
+        goal.status = GoalStatus::Active;
+        assert!(!goal.is_overdue_at(now + time::Duration::hours(1)));
+
+        let mut task = Task::new("t".into(), "d".into());
+        task.deadline = Some(now);
+        assert!(!task.is_overdue_at(now));
+        assert!(task.is_overdue_at(now + time::Duration::nanoseconds(1)));
+        assert!(!task.is_overdue_at(now - time::Duration::seconds(1)));
+        task.deadline = None;
+        assert!(!task.is_overdue_at(now + time::Duration::hours(1)));
+
+        goal.deadline = Some(time::OffsetDateTime::UNIX_EPOCH);
+        goal.status = GoalStatus::Active;
+        assert!(goal.is_overdue());
+        task.deadline = Some(time::OffsetDateTime::now_utc() + time::Duration::hours(48));
+        assert!(!task.is_overdue());
     }
 }

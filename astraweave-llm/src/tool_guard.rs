@@ -74,7 +74,8 @@ impl ValidationResult {
 /// Audit log entry for tool invocations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
-    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub action_type: String, // "MoveTo", "CoverFire", etc.
     pub result: String,      // "valid", "invalid", "denied"
     pub reason: Option<String>,
@@ -257,7 +258,7 @@ impl ToolGuard {
         let action_type = Self::action_name(action).to_string();
 
         let entry = AuditEntry {
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             action_type,
             result: match result {
                 ValidationResult::Valid => "valid".to_string(),
@@ -577,7 +578,7 @@ mod tests {
     #[test]
     fn test_audit_entry_serialization() {
         let entry = AuditEntry {
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             action_type: "MoveTo".to_string(),
             result: "valid".to_string(),
             reason: None,
@@ -591,7 +592,7 @@ mod tests {
     #[test]
     fn test_audit_entry_with_reason() {
         let entry = AuditEntry {
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             action_type: "Attack".to_string(),
             result: "invalid".to_string(),
             reason: Some("Target out of range".to_string()),
@@ -604,7 +605,7 @@ mod tests {
     #[test]
     fn test_audit_entry_clone() {
         let entry = AuditEntry {
-            timestamp: chrono::Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             action_type: "Wait".to_string(),
             result: "valid".to_string(),
             reason: None,

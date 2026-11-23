@@ -7,7 +7,6 @@
 //! InvalidationStrategy (all variants).
 
 use astraweave_optimization::*;
-use chrono::Utc;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -128,6 +127,7 @@ fn request_priority_serde_roundtrip() {
 fn batch_metrics_default_total_requests() {
     let m = BatchMetrics::default();
     assert_eq!(m.total_requests, 0);
+    assert_eq!(m.last_updated.unix_timestamp(), 0);
 }
 
 #[test]
@@ -295,7 +295,7 @@ fn cache_config_clone() {
 }
 
 // =========================================================================
-// CacheStats — manual Default (last_updated = Utc::now())
+// CacheStats — manual Default (last_updated = time::OffsetDateTime::now_utc())
 // =========================================================================
 
 #[test]
@@ -354,9 +354,9 @@ fn cache_stats_default_compression_savings() {
 
 #[test]
 fn cache_stats_default_last_updated_is_recent() {
-    let before = Utc::now();
+    let before = time::OffsetDateTime::now_utc();
     let s = CacheStats::default();
-    let after = Utc::now();
+    let after = time::OffsetDateTime::now_utc();
     assert!(s.last_updated >= before);
     assert!(s.last_updated <= after);
 }
@@ -377,7 +377,7 @@ fn cache_stats_serde_roundtrip() {
 
 #[test]
 fn cached_response_serde_roundtrip() {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let r = CachedResponse {
         id: "resp1".to_string(),
         response: "Hello world".to_string(),
@@ -404,7 +404,7 @@ fn cached_response_serde_roundtrip() {
 
 #[test]
 fn cached_response_clone() {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let r = CachedResponse {
         id: "r1".to_string(),
         response: "ok".to_string(),
@@ -455,7 +455,7 @@ fn prompt_template_serde_roundtrip() {
 
 #[test]
 fn semantic_cache_entry_serde_roundtrip() {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let entry = SemanticCacheEntry {
         cached_response: CachedResponse {
             id: "se1".to_string(),

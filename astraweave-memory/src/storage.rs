@@ -103,7 +103,7 @@ impl MemoryStorage {
                 .collect::<Vec<u8>>()
         });
 
-        let created_ts = memory.metadata.created_at.timestamp();
+        let created_ts = memory.metadata.created_at.unix_timestamp();
         let memory_type_str = format!("{:?}", memory.memory_type);
 
         self.conn.execute(
@@ -401,7 +401,6 @@ pub struct StorageStats {
 mod tests {
     use super::*;
     use crate::{MemoryContent, MemoryMetadata, MemorySource, SpatialTemporalContext};
-    use chrono::Utc;
 
     fn create_test_memory(id: &str, memory_type: MemoryType, importance: f32) -> Memory {
         Memory {
@@ -421,8 +420,8 @@ mod tests {
                 },
             },
             metadata: MemoryMetadata {
-                created_at: Utc::now(),
-                last_accessed: Utc::now(),
+                created_at: time::OffsetDateTime::now_utc(),
+                last_accessed: time::OffsetDateTime::now_utc(),
                 access_count: 0,
                 importance,
                 confidence: 1.0,
