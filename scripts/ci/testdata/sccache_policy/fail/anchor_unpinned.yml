@@ -1,0 +1,10 @@
+name: fixture-fail-anchor-unpinned
+on: workflow_dispatch
+x-ver: &bad_ver latest
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: *bad_ver

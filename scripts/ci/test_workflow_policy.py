@@ -17,6 +17,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
@@ -79,6 +82,171 @@ UNPINNED_BRANCH_REFS = frozenset({"main", "master", "HEAD", "latest", "release"}
 UNPINNED_REF_MSG = "unpinned action ref"
 NON_SHA_TAG_MSG = "must be a 40-char SHA or major tag vN"
 BELOW_FLOOR_MSG = "below major floor"
+
+SCCACHE_ACTION = "mozilla-actions/sccache-action"
+PINNED_SCCACHE_VERSION = "v0.19.0"
+SCCACHE_EXPR_RE = re.compile(r"\$\{\{")
+EXPECTED_SCCACHE_ACTION_STEPS = 10
+
+
+def _sccache_action_from_uses(uses: Any) -> bool:
+    if not isinstance(uses, str):
+        return False
+    return uses.split("@", 1)[0].strip() == SCCACHE_ACTION
+
+
+def _literal_pinned_sccache_version(version: Any) -> bool:
+    if not isinstance(version, str):
+        return False
+    if not version or SCCACHE_EXPR_RE.search(version):
+        return False
+    if "$" in version:
+        return False
+    return version.strip() == PINNED_SCCACHE_VERSION
+
+
+def _sccache_step_violation(path: str, step_path: str, reason: str) -> str:
+    return f"{path}: {step_path}: {reason}"
+
+
+def _sccache_check_step(step: Any, path: str, step_path: str) -> list[str]:
+    if not isinstance(step, dict):
+        return []
+    if not _sccache_action_from_uses(step.get("uses")):
+        return []
+    with_block = step.get("with")
+    if with_block is None:
+        return [
+            _sccache_step_violation(
+                path,
+                step_path,
+                "mozilla-actions/sccache-action requires with.version "
+                f"literal {PINNED_SCCACHE_VERSION!r}",
+            )
+        ]
+    if not isinstance(with_block, dict):
+        return [
+            _sccache_step_violation(
+                path,
+                step_path,
+                "with must be a mapping for mozilla-actions/sccache-action",
+            )
+        ]
+    if "version" not in with_block:
+        return [
+            _sccache_step_violation(
+                path,
+                step_path,
+                "missing with.version for mozilla-actions/sccache-action",
+            )
+        ]
+    version = with_block["version"]
+    if _literal_pinned_sccache_version(version):
+        return []
+    return [
+        _sccache_step_violation(
+            path,
+            step_path,
+            "with.version must be the literal string "
+            f"{PINNED_SCCACHE_VERSION!r} (got {version!r})",
+        )
+    ]
+
+
+def _sccache_walk_steps(
+    steps: Any,
+    path: str,
+    prefix: str,
+    violations: list[str],
+    sites: list[str] | None = None,
+) -> None:
+    if not isinstance(steps, list):
+        return
+    for index, step in enumerate(steps):
+        step_path = f"{prefix}.steps[{index}]"
+        if isinstance(step, dict) and _sccache_action_from_uses(step.get("uses")):
+            if sites is not None:
+                sites.append(f"{path}: {step_path}")
+        violations.extend(_sccache_check_step(step, path, step_path))
+        if isinstance(step, dict) and step.get("steps") is not None:
+            _sccache_walk_steps(step["steps"], path, step_path, violations, sites)
+
+
+def _sccache_walk_document(
+    doc: Any, path: str, violations: list[str], sites: list[str] | None = None
+) -> None:
+    if not isinstance(doc, dict):
+        return
+    jobs = doc.get("jobs")
+    if isinstance(jobs, dict):
+        for job_id, job in jobs.items():
+            if isinstance(job, dict):
+                _sccache_walk_steps(
+                    job.get("steps"), path, f"jobs.{job_id}", violations, sites
+                )
+    runs = doc.get("runs")
+    if isinstance(runs, dict) and runs.get("using") == "composite":
+        _sccache_walk_steps(runs.get("steps"), path, "runs", violations, sites)
+
+
+def _parse_policy_yaml(text: str, path: str) -> tuple[Any, list[str]]:
+    try:
+        doc = yaml.load(text, Loader=yaml.FullLoader)
+    except yaml.YAMLError as exc:
+        return None, [f"{path}: YAML parse error: {exc}"]
+    return doc, []
+
+
+def sccache_pin_violations(text: str, *, path: str) -> list[str]:
+    doc, errors = _parse_policy_yaml(text, path)
+    if errors:
+        return errors
+    if doc is None:
+        return []
+    violations: list[str] = []
+    if isinstance(doc, list):
+        for item in doc:
+            _sccache_walk_document(item, path, violations)
+    else:
+        _sccache_walk_document(doc, path, violations)
+    return violations
+
+
+def github_policy_yaml_paths(root: Path = ROOT) -> list[Path]:
+    paths: set[Path] = set()
+    if WORKFLOWS.is_dir():
+        paths.update(WORKFLOWS.glob("*.yml"))
+        paths.update(WORKFLOWS.glob("*.yaml"))
+    for name in ("action.yml", "action.yaml"):
+        paths.update(root.glob(f"**/{name}"))
+    return sorted(paths)
+
+
+def repo_sccache_pin_violations(root: Path = ROOT) -> list[str]:
+    violations: list[str] = []
+    for yaml_path in github_policy_yaml_paths(root):
+        rel = yaml_path.relative_to(root).as_posix()
+        text = yaml_path.read_text(encoding="utf-8")
+        violations.extend(sccache_pin_violations(text, path=rel))
+    return violations
+
+
+def repo_sccache_action_sites(root: Path = ROOT) -> list[str]:
+    sites: list[str] = []
+    for yaml_path in github_policy_yaml_paths(root):
+        rel = yaml_path.relative_to(root).as_posix()
+        doc, errors = _parse_policy_yaml(
+            yaml_path.read_text(encoding="utf-8"), rel
+        )
+        if errors or doc is None:
+            continue
+        violations: list[str] = []
+        if isinstance(doc, list):
+            for item in doc:
+                _sccache_walk_document(item, rel, violations, sites)
+        else:
+            _sccache_walk_document(doc, rel, violations, sites)
+    return sites
 
 
 def action_ref_violation(action: str, ref: str) -> str | None:
@@ -709,6 +877,40 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("0.5.9", script)
         self.assertIn("9bd3e599314f50810c9d98b8b68a617ff9d3cc20873968d90b29d121f6b226ff", script)
         self.assertIn('"$tool" cyclonedx --version', script)
+
+    def test_sccache_action_pins_binary_version(self) -> None:
+        self.assertEqual(repo_sccache_pin_violations(ROOT), [])
+        self.assertEqual(
+            len(repo_sccache_action_sites(ROOT)), EXPECTED_SCCACHE_ACTION_STEPS
+        )
+
+        fixture_root = ROOT / "scripts" / "ci" / "testdata" / "sccache_policy"
+        for path in sorted((fixture_root / "pass").glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            violations = sccache_pin_violations(text, path=path.name)
+            self.assertEqual(violations, [], path.name)
+
+        for path in sorted((fixture_root / "fail").glob("*.yml")):
+            text = path.read_text(encoding="utf-8")
+            violations = sccache_pin_violations(text, path=path.name)
+            self.assertTrue(violations, path.name)
+
+        action = (
+            ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml"
+        ).read_text(encoding="utf-8")
+        without_version = action.replace('        version: "v0.19.0"\n', "\n", 1)
+        self.assertTrue(sccache_pin_violations(without_version, path="action.yml"))
+        wrong = action.replace(
+            'version: "v0.19.0"', 'version: "v0.20.0"', 1
+        )
+        self.assertTrue(sccache_pin_violations(wrong, path="action.yml"))
+
+        source = inspect.getsource(_literal_pinned_sccache_version)
+        self.assertIn("PINNED_SCCACHE_VERSION", source)
+        self.assertIn("SCCACHE_EXPR_RE", source)
+        stripped = source.replace('if "$" in version:', "if False and '$' in version:", 1)
+        with self.assertRaises(AssertionError):
+            self.assertIn('if "$" in version:', stripped)
 
     def test_sccache_pull_requests_are_read_only(self) -> None:
         action = (ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml").read_text(encoding="utf-8")

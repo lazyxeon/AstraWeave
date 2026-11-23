@@ -11,8 +11,8 @@ The workspace package is still version 0.4.0. [SECURITY.md](SECURITY.md) calls t
 
 ### 2026-11
 
-#### CI
-- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0 so unpinned installs do not pull 0.20.0, whose GHA cache checks can exceed the client startup timeout.
+#### Fixed
+- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0 so unpinned installs do not pull 0.20.0, whose GHA cache checks can exceed the client startup timeout ([#772](https://github.com/lazyxeon/AstraWeave/pull/772)).
 
 ### 2026-10
 

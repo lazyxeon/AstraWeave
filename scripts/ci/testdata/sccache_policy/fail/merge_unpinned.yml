@@ -1,0 +1,11 @@
+name: fixture-fail-merge-unpinned
+on: workflow_dispatch
+x-defaults: &sccache_with
+  version: latest
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          <<: *sccache_with
