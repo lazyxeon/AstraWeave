@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -82,9 +81,11 @@ pub struct SpatialTemporalContext {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryMetadata {
     /// When the memory was created
-    pub created_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
     /// When the memory was last accessed
-    pub last_accessed: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_accessed: time::OffsetDateTime,
     /// How many times the memory has been accessed
     pub access_count: u32,
     /// Importance score (0.0 to 1.0)
@@ -125,7 +126,8 @@ pub struct MemoryAssociation {
     /// Strength of the association (0.0 to 1.0)
     pub strength: f32,
     /// When this association was formed
-    pub formed_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub formed_at: time::OffsetDateTime,
 }
 
 /// Types of associations between memories
@@ -157,8 +159,10 @@ pub struct MemoryCluster {
     pub memory_ids: Vec<String>,
     pub central_concept: String,
     pub importance: f32,
-    pub created_at: DateTime<Utc>,
-    pub last_updated: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
 }
 
 /// Types of memory clusters
@@ -181,7 +185,8 @@ pub struct ConsolidationState {
     /// Number of consolidation passes
     pub passes: u32,
     /// Last consolidation time
-    pub last_consolidation: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_consolidation: time::OffsetDateTime,
     /// Whether consolidation is needed
     pub needs_consolidation: bool,
     /// Priority for consolidation
@@ -225,8 +230,10 @@ pub struct RetrievalContext {
 /// Time window for memory filtering
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimeWindow {
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub start: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub end: time::OffsetDateTime,
 }
 
 /// Memory sharing permissions and metadata
@@ -276,8 +283,8 @@ impl Memory {
             memory_type,
             content,
             metadata: MemoryMetadata {
-                created_at: Utc::now(),
-                last_accessed: Utc::now(),
+                created_at: time::OffsetDateTime::now_utc(),
+                last_accessed: time::OffsetDateTime::now_utc(),
                 access_count: 0,
                 importance: 0.5,
                 confidence: 1.0,
@@ -456,7 +463,7 @@ impl Memory {
 
     /// Update access information
     pub fn accessed(&mut self) {
-        self.metadata.last_accessed = Utc::now();
+        self.metadata.last_accessed = time::OffsetDateTime::now_utc();
         self.metadata.access_count += 1;
 
         // Strengthen memory through access (spaced repetition effect)
@@ -475,8 +482,10 @@ impl Memory {
 
     /// Calculate current memory strength based on age and access
     pub fn calculate_current_strength(&self) -> f32 {
-        let age_days = (Utc::now() - self.metadata.created_at).num_days() as f32;
-        let time_since_access = (Utc::now() - self.metadata.last_accessed).num_days() as f32;
+        let age_days =
+            (time::OffsetDateTime::now_utc() - self.metadata.created_at).whole_days() as f32;
+        let time_since_access =
+            (time::OffsetDateTime::now_utc() - self.metadata.last_accessed).whole_days() as f32;
 
         // Apply forgetting curve: strength = initial * e^(-decay * time)
         let base_strength =
@@ -499,7 +508,7 @@ impl Memory {
             memory_id,
             association_type,
             strength: strength.clamp(0.0, 1.0),
-            formed_at: Utc::now(),
+            formed_at: time::OffsetDateTime::now_utc(),
         };
 
         self.associations.push(association);
@@ -567,7 +576,8 @@ impl Memory {
         relevance += self.calculate_current_strength() * 0.2;
 
         // Recency bonus
-        let age_days = (Utc::now() - self.metadata.created_at).num_days() as f32;
+        let age_days =
+            (time::OffsetDateTime::now_utc() - self.metadata.created_at).whole_days() as f32;
         let recency_bonus = if age_days < 7.0 {
             0.1 * (7.0 - age_days) / 7.0
         } else {
@@ -588,8 +598,8 @@ impl MemoryCluster {
             memory_ids: Vec::new(),
             central_concept,
             importance: 0.5,
-            created_at: Utc::now(),
-            last_updated: Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
+            last_updated: time::OffsetDateTime::now_utc(),
         }
     }
 
@@ -597,14 +607,14 @@ impl MemoryCluster {
     pub fn add_memory(&mut self, memory_id: String) {
         if !self.memory_ids.contains(&memory_id) {
             self.memory_ids.push(memory_id);
-            self.last_updated = Utc::now();
+            self.last_updated = time::OffsetDateTime::now_utc();
         }
     }
 
     /// Remove a memory from this cluster
     pub fn remove_memory(&mut self, memory_id: &str) {
         self.memory_ids.retain(|id| id != memory_id);
-        self.last_updated = Utc::now();
+        self.last_updated = time::OffsetDateTime::now_utc();
     }
 
     /// Calculate cluster importance based on member memories
@@ -772,7 +782,7 @@ mod tests {
         let initial_strength = memory.calculate_current_strength();
 
         // Simulate aging
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(10);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
         let aged_strength = memory.calculate_current_strength();
 
         assert!(aged_strength < initial_strength);
@@ -781,8 +791,8 @@ mod tests {
     #[test]
     fn test_memory_strength_with_recent_access() {
         let mut memory = Memory::working("Test".to_string());
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(5);
-        memory.metadata.last_accessed = Utc::now();
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
+        memory.metadata.last_accessed = time::OffsetDateTime::now_utc();
 
         let strength = memory.calculate_current_strength();
 
@@ -803,8 +813,8 @@ mod tests {
     fn test_should_forget_weak_memory() {
         let mut memory = Memory::sensory("Faint impression".to_string(), None);
         memory.metadata.strength = 0.1;
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(100);
-        memory.metadata.last_accessed = Utc::now() - chrono::Duration::days(100);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
+        memory.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(100);
 
         // With high decay and old age, should be below threshold
         assert!(memory.should_forget(0.5));
@@ -982,7 +992,7 @@ mod tests {
     #[test]
     fn test_matches_context_time_window() {
         let mut memory = Memory::working("Test".to_string());
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(5);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
 
         let context_in_window = RetrievalContext {
             query: "test".to_string(),
@@ -991,8 +1001,8 @@ mod tests {
             recent_memory_ids: Vec::new(),
             preferred_types: vec![],
             time_window: Some(TimeWindow {
-                start: Utc::now() - chrono::Duration::days(10),
-                end: Utc::now(),
+                start: time::OffsetDateTime::now_utc() - time::Duration::days(10),
+                end: time::OffsetDateTime::now_utc(),
             }),
             limit: 10,
         };
@@ -1006,8 +1016,8 @@ mod tests {
             recent_memory_ids: Vec::new(),
             preferred_types: vec![],
             time_window: Some(TimeWindow {
-                start: Utc::now() - chrono::Duration::days(3),
-                end: Utc::now(),
+                start: time::OffsetDateTime::now_utc() - time::Duration::days(3),
+                end: time::OffsetDateTime::now_utc(),
             }),
             limit: 10,
         };
@@ -1284,7 +1294,7 @@ mod tests {
         let state = ConsolidationState {
             consolidation_level: 0.5,
             passes: 3,
-            last_consolidation: Utc::now(),
+            last_consolidation: time::OffsetDateTime::now_utc(),
             needs_consolidation: true,
             priority: 0.7,
         };
@@ -1317,8 +1327,8 @@ mod tests {
     #[test]
     fn test_time_window() {
         let window = TimeWindow {
-            start: Utc::now() - chrono::Duration::days(7),
-            end: Utc::now(),
+            start: time::OffsetDateTime::now_utc() - time::Duration::days(7),
+            end: time::OffsetDateTime::now_utc(),
         };
 
         let json = serde_json::to_string(&window).unwrap();

@@ -18,7 +18,6 @@ use astraweave_memory::{
     RetrievalContext, RetrievalEngine, SafetyRule, SensoryData, ShareRequest, SharingConfig,
     SharingEngine, SharingType, TimeWindow, ValidationResult,
 };
-use chrono::{Duration, Utc};
 use std::collections::HashMap;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -65,8 +64,8 @@ fn mutation_calculate_current_strength_decay_factor() {
     // formula: base = strength * e^(-0.1 * age_days * decay_factor)
     let mut mem = Memory::sensory("decay".to_string(), None);
     mem.metadata.strength = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(10);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(5); // no access_boost
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(5); // no access_boost
 
     // With decay_factor = 1.0: base = 1.0 * e^(-0.1 * 10 * 1.0) = e^(-1.0) ≈ 0.368
     mem.metadata.decay_factor = 1.0;
@@ -105,7 +104,7 @@ fn mutation_calculate_current_strength_access_boost() {
     let mut mem_old = Memory::sensory("old_access".to_string(), None);
     mem_old.metadata.strength = 0.5;
     mem_old.metadata.decay_factor = 1.0;
-    mem_old.metadata.last_accessed = Utc::now() - Duration::days(5);
+    mem_old.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(5);
     // time_since_access = 5 → boost = 0.0
 
     let s_recent = mem_recent.calculate_current_strength();
@@ -137,8 +136,8 @@ fn mutation_calculate_relevance_weights() {
     mem.metadata.importance = 0.0;
     mem.metadata.strength = 0.0;
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(30); // no recency bonus
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30); // no recency bonus
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     // Query = "hello world" → 2 words match out of 2 query words → text_sim = 1.0
     let ctx = RetrievalContext {
@@ -166,8 +165,8 @@ fn mutation_calculate_relevance_importance_weight() {
     mem.metadata.importance = 1.0;
     mem.metadata.strength = 0.0;
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "nonmatching_query".to_string(),
@@ -210,8 +209,8 @@ fn mutation_calculate_relevance_recency_bonus() {
 
     let mut old_mem = Memory::sensory("unique_z_content".to_string(), None);
     old_mem.metadata.importance = 0.0;
-    old_mem.metadata.created_at = Utc::now() - Duration::days(30);
-    old_mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    old_mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    old_mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
     old_mem.metadata.strength = mem.metadata.strength;
     old_mem.metadata.decay_factor = mem.metadata.decay_factor;
 
@@ -443,15 +442,15 @@ fn mutation_retrieval_semantic_partial_match() {
 #[test]
 fn mutation_retrieval_temporal_inside_window() {
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut mem = Memory::sensory("temporal_in".to_string(), None);
-    mem.metadata.created_at = now - Duration::hours(1);
+    mem.metadata.created_at = now - time::Duration::hours(1);
 
     let ctx = RetrievalContext {
         query: "temporal_in".to_string(),
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::hours(2),
+            start: now - time::Duration::hours(2),
             end: now,
         }),
         location: None,
@@ -478,8 +477,8 @@ fn mutation_retrieval_old_memory_lower_score() {
 
     let fresh = Memory::sensory("test_query_word".to_string(), None);
     let mut old = Memory::sensory("test_query_word".to_string(), None);
-    old.metadata.created_at = Utc::now() - Duration::days(60);
-    old.metadata.last_accessed = Utc::now() - Duration::days(30);
+    old.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    old.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "test_query_word".to_string(),
@@ -540,8 +539,8 @@ fn mutation_retrieval_recency_fresh_vs_old() {
     // created_at = now, last_accessed = now → recency = (e^0 + e^0)/2 = 1.0
 
     let mut old = Memory::sensory("old_mem".to_string(), None);
-    old.metadata.created_at = Utc::now() - Duration::days(60);
-    old.metadata.last_accessed = Utc::now() - Duration::days(30);
+    old.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    old.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "fresh_mem".to_string(),
@@ -978,12 +977,12 @@ fn mutation_conceptual_similarity_type_match() {
     // Use identical text so text_sim is high → type_match*0.3 + text_sim*0.5 = 0.3+0.5=0.8 > 0.7 threshold
     // Space memories far apart so they DON'T form temporal associations first
     let mut m1 = Memory::sensory("shared concept text".to_string(), None);
-    m1.metadata.created_at = Utc::now() - Duration::days(30);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
     let m2 = Memory::sensory("shared concept text".to_string(), None);
 
     let mut m3 = Memory::sensory("shared concept text".to_string(), None);
     m3.memory_type = MemoryType::Episodic; // different type → 0+0.5=0.5 < 0.7
-    m3.metadata.created_at = Utc::now() - Duration::days(30);
+    m3.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     // Same type + identical text → similarity = 0.3+0.5 = 0.8 >= 0.7 → association
     let mut memories = vec![m1.clone(), m2.clone()];
@@ -1023,9 +1022,9 @@ fn mutation_consolidation_temporal_within_window() {
     let engine = ConsolidationEngine::new(config);
 
     let mut m1 = Memory::sensory("temporal_a".to_string(), None);
-    m1.metadata.created_at = Utc::now();
+    m1.metadata.created_at = time::OffsetDateTime::now_utc();
     let mut m2 = Memory::sensory("temporal_b".to_string(), None);
-    m2.metadata.created_at = Utc::now() - Duration::hours(12);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::hours(12);
 
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
@@ -1112,7 +1111,7 @@ fn mutation_compress_long_text_truncated() {
     let mut mem = Memory::sensory(text.clone(), None);
     mem.metadata.permanent = false;
     mem.metadata.importance = 0.2;
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let mut memories = vec![mem];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -1166,7 +1165,7 @@ fn mutation_compress_too_young_not_compressed() {
     let text = words.join(" ");
     let mut mem = Memory::sensory(text.clone(), None);
     mem.metadata.permanent = false;
-    mem.metadata.created_at = Utc::now() - Duration::days(5); // age < 10
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5); // age < 10
 
     let mut memories = vec![mem];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -1190,7 +1189,7 @@ fn mutation_compress_too_important_not_compressed() {
     let mut mem = Memory::sensory(text.clone(), None);
     mem.metadata.permanent = false;
     mem.metadata.importance = 0.8; // > 0.5 threshold
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let mut memories = vec![mem];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -2219,16 +2218,16 @@ fn mutation_matches_context_type_filter() {
 
 #[test]
 fn mutation_matches_context_time_window() {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut mem = Memory::sensory("timed".to_string(), None);
-    mem.metadata.created_at = now - Duration::hours(1);
+    mem.metadata.created_at = now - time::Duration::hours(1);
 
     // Inside window
     let ctx_in = RetrievalContext {
         query: "".to_string(),
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::hours(2),
+            start: now - time::Duration::hours(2),
             end: now,
         }),
         location: None,
@@ -2243,7 +2242,7 @@ fn mutation_matches_context_time_window() {
         query: "".to_string(),
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::minutes(30),
+            start: now - time::Duration::minutes(30),
             end: now,
         }),
         location: None,
@@ -2414,7 +2413,8 @@ fn mutation_access_boost_exactly_one_day_boundary() {
     let mut mem_exactly_1day = Memory::sensory("boundary".to_string(), None);
     mem_exactly_1day.metadata.strength = 0.5;
     mem_exactly_1day.metadata.decay_factor = 1.0;
-    mem_exactly_1day.metadata.last_accessed = Utc::now() - Duration::days(1);
+    mem_exactly_1day.metadata.last_accessed =
+        time::OffsetDateTime::now_utc() - time::Duration::days(1);
     // time_since_access = 1.0 day → `1.0 < 1.0` is false → no boost
 
     let mut mem_fresh = Memory::sensory("fresh".to_string(), None);
@@ -2449,8 +2449,8 @@ fn mutation_access_boost_exactly_one_day_boundary() {
 /// Mutant <=: `start <= start` → true → excluded → doesn't match ✗
 #[test]
 fn mutation_matches_context_at_exact_window_start() {
-    let now = Utc::now();
-    let window_start = now - Duration::hours(2);
+    let now = time::OffsetDateTime::now_utc();
+    let window_start = now - time::Duration::hours(2);
 
     let mut mem = Memory::sensory("at_start".to_string(), None);
     mem.metadata.created_at = window_start; // Exactly at window start
@@ -2481,7 +2481,7 @@ fn mutation_matches_context_at_exact_window_start() {
 /// Mutant ==: `end == end` → true → excluded → doesn't match ✗
 #[test]
 fn mutation_matches_context_at_exact_window_end() {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let window_end = now;
 
     let mut mem = Memory::sensory("at_end".to_string(), None);
@@ -2491,7 +2491,7 @@ fn mutation_matches_context_at_exact_window_end() {
         query: "".to_string(),
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::hours(2),
+            start: now - time::Duration::hours(2),
             end: window_end,
         }),
         location: None,
@@ -2522,7 +2522,7 @@ fn mutation_forgetting_decay_reduces_strength() {
         m.memory_type = MemoryType::Working;
         m
     };
-    old_mem.metadata.created_at = Utc::now() - Duration::days(5);
+    old_mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
     old_mem.metadata.strength = 1.0;
     old_mem.metadata.importance = 0.5; // neutral
     old_mem.metadata.access_count = 0;
@@ -2564,7 +2564,7 @@ fn mutation_forgetting_importance_modifier() {
         m.memory_type = MemoryType::Episodic;
         m
     };
-    high_imp.metadata.created_at = Utc::now() - Duration::days(7);
+    high_imp.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     high_imp.metadata.strength = 1.0;
     high_imp.metadata.importance = 1.0; // modifier = 1.0 + (1.0-0.5)*0.5 = 1.25
     high_imp.metadata.access_count = 0;
@@ -2574,7 +2574,7 @@ fn mutation_forgetting_importance_modifier() {
         m.memory_type = MemoryType::Episodic;
         m
     };
-    low_imp.metadata.created_at = Utc::now() - Duration::days(7);
+    low_imp.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     low_imp.metadata.strength = 1.0;
     low_imp.metadata.importance = 0.0; // modifier = 1.0 + (0.0-0.5)*0.5 = 0.75
     low_imp.metadata.access_count = 0;
@@ -2606,7 +2606,7 @@ fn mutation_forgetting_access_modifier() {
         m.memory_type = MemoryType::Episodic;
         m
     };
-    accessed.metadata.created_at = Utc::now() - Duration::days(7);
+    accessed.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     accessed.metadata.strength = 1.0;
     accessed.metadata.importance = 0.5;
     accessed.metadata.access_count = 10; // access_frequency = 10/7 ≈ 1.43, modifier = 1+1.43*0.3=1.43
@@ -2616,7 +2616,7 @@ fn mutation_forgetting_access_modifier() {
         m.memory_type = MemoryType::Episodic;
         m
     };
-    not_accessed.metadata.created_at = Utc::now() - Duration::days(7);
+    not_accessed.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     not_accessed.metadata.strength = 1.0;
     not_accessed.metadata.importance = 0.5;
     not_accessed.metadata.access_count = 0; // modifier = 1.0
@@ -2644,7 +2644,7 @@ fn mutation_forgetting_total_strength_lost() {
         m.memory_type = MemoryType::Episodic;
         m
     };
-    mem.metadata.created_at = Utc::now() - Duration::days(7);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     mem.metadata.strength = 1.0;
     mem.metadata.importance = 0.5;
     mem.metadata.access_count = 0;
@@ -2685,7 +2685,7 @@ fn mutation_forgetting_should_forget_weak_memory() {
         m.memory_type = MemoryType::Working;
         m
     };
-    mem.metadata.created_at = Utc::now() - Duration::days(5);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
     mem.metadata.strength = 1.0;
     mem.metadata.importance = 0.5;
     mem.metadata.access_count = 0;
@@ -2722,7 +2722,7 @@ fn mutation_forgetting_spaced_repetition_bonus() {
             m.memory_type = MemoryType::Episodic;
             m
         };
-        m.metadata.created_at = Utc::now() - Duration::days(7);
+        m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
         m.metadata.strength = 1.0;
         m.metadata.importance = 0.5;
         m.metadata.access_count = 5; // >1 to trigger spaced repetition
@@ -2772,7 +2772,7 @@ fn mutation_compress_at_exact_min_age_boundary() {
     let mut mem = Memory::sensory(text.clone(), None);
     mem.metadata.permanent = false;
     mem.metadata.importance = 0.1;
-    mem.metadata.created_at = Utc::now() - Duration::days(10); // EXACTLY at boundary
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10); // EXACTLY at boundary
 
     let mut memories = vec![mem];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -2800,7 +2800,7 @@ fn mutation_compress_at_exact_importance_boundary() {
     let mut mem = Memory::sensory(text.clone(), None);
     mem.metadata.permanent = false;
     mem.metadata.importance = 0.5; // EXACTLY at threshold
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let mut memories = vec![mem];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -2828,7 +2828,7 @@ fn mutation_compress_preserves_emotional_context() {
     let mut mem = Memory::sensory(text.clone(), None);
     mem.metadata.permanent = false;
     mem.metadata.importance = 0.1;
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
     // Add sensory data that we want preserved
     mem.content.sensory_data = Some(SensoryData {
         visual: Some("detailed visual scene with many elements and textures and colors and lighting and shadows and reflections".to_string()),
@@ -2868,8 +2868,8 @@ fn mutation_relevance_strength_contribution_positive() {
     mem.metadata.importance = 0.0;
     mem.metadata.strength = 1.0;
     mem.metadata.decay_factor = 0.0; // no decay → current_strength stays 1.0
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "completely_disjoint_query_abc".to_string(),
@@ -2903,8 +2903,8 @@ fn mutation_relevance_strength_versus_zero() {
     mem.metadata.importance = 0.0;
     mem.metadata.strength = 0.0;
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "completely_disjoint_query_abc".to_string(),
@@ -2933,8 +2933,8 @@ fn mutation_relevance_recency_exact_value_3days() {
     mem.metadata.importance = 0.0;
     mem.metadata.strength = 0.0;
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(3);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(3);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "nonmatching_zyx_999".to_string(),
@@ -2964,8 +2964,8 @@ fn mutation_relevance_recency_absent_for_old_memory() {
     mem.metadata.importance = 0.0;
     mem.metadata.strength = 0.0;
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(30);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let ctx = RetrievalContext {
         query: "nonmatching_old_test".to_string(),
@@ -3108,8 +3108,8 @@ fn mutation_manager_retrieve_threshold_filters_low_relevance() {
     mem.metadata.importance = 0.05;
     mem.metadata.strength = 0.1;
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(60);
-    mem.metadata.last_accessed = Utc::now() - Duration::days(60);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     mgr.store_memory(mem).unwrap();
 
     let ctx = RetrievalContext {
@@ -3176,8 +3176,8 @@ fn mutation_manager_retrieve_both_above_and_below_threshold() {
     bad.metadata.importance = 0.01;
     bad.metadata.strength = 0.01;
     bad.metadata.decay_factor = 1.0;
-    bad.metadata.created_at = Utc::now() - Duration::days(90);
-    bad.metadata.last_accessed = Utc::now() - Duration::days(90);
+    bad.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(90);
+    bad.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(90);
     mgr.store_memory(bad).unwrap();
 
     let ctx = RetrievalContext {
@@ -3258,8 +3258,8 @@ fn mutation_manager_retrieve_exactly_at_threshold() {
     mem.metadata.importance = 1.0;
     mem.metadata.strength = 0.0; // zero strength
     mem.metadata.decay_factor = 1.0;
-    mem.metadata.created_at = Utc::now() - Duration::days(30); // no recency bonus
-    mem.metadata.last_accessed = Utc::now() - Duration::days(30);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30); // no recency bonus
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
     mgr.store_memory(mem).unwrap();
 
     // Query with no matching words → text_similarity = 0
@@ -3552,7 +3552,7 @@ fn mutation_recorder_with_flush_interval_not_default() {
 /// Helper: create an episodic memory at a specific timestamp with optional location and participants
 fn make_timed_memory(
     text: &str,
-    when: chrono::DateTime<Utc>,
+    when: time::OffsetDateTime,
     location: Option<&str>,
     participants: Vec<&str>,
 ) -> Memory {
@@ -3570,10 +3570,10 @@ fn mutation_consolidation_temporal_within_window_v2() {
     // Two memories 1 hour apart within default 24h window → temporal association formed
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event alpha", now, None, vec![]),
-        make_timed_memory("event beta", now - Duration::hours(1), None, vec![]),
+        make_timed_memory("event beta", now - time::Duration::hours(1), None, vec![]),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert!(
@@ -3587,10 +3587,10 @@ fn mutation_consolidation_temporal_outside_window() {
     // Two memories 48 hours apart > 24h window → no temporal association
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event alpha", now, None, vec![]),
-        make_timed_memory("event beta", now - Duration::hours(48), None, vec![]),
+        make_timed_memory("event beta", now - time::Duration::hours(48), None, vec![]),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert_eq!(
@@ -3604,12 +3604,17 @@ fn mutation_consolidation_temporal_strength_increases_closer() {
     // Two memories close together should have stronger association than far apart
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
 
     // Close pair: 30 minutes apart
     let mut close_memories = vec![
         make_timed_memory("event close A", now, None, vec![]),
-        make_timed_memory("event close B", now - Duration::minutes(30), None, vec![]),
+        make_timed_memory(
+            "event close B",
+            now - time::Duration::minutes(30),
+            None,
+            vec![],
+        ),
     ];
     engine.consolidate(&mut close_memories).unwrap();
     let close_strength = close_memories[0]
@@ -3621,7 +3626,7 @@ fn mutation_consolidation_temporal_strength_increases_closer() {
     // Far pair: 20 hours apart
     let mut far_memories = vec![
         make_timed_memory("event far A", now, None, vec![]),
-        make_timed_memory("event far B", now - Duration::hours(20), None, vec![]),
+        make_timed_memory("event far B", now - time::Duration::hours(20), None, vec![]),
     ];
     engine.consolidate(&mut far_memories).unwrap();
     let far_strength = far_memories[0]
@@ -3644,12 +3649,12 @@ fn mutation_consolidation_spatial_same_location_v2() {
     // Two memories at same location → spatial association formed
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event at forest", now, Some("forest"), vec![]),
         make_timed_memory(
             "another at forest",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             Some("forest"),
             vec![],
         ),
@@ -3666,12 +3671,12 @@ fn mutation_consolidation_spatial_different_location() {
     // Two memories at different locations → NO spatial association
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event at forest", now, Some("forest"), vec![]),
         make_timed_memory(
             "event at cave",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             Some("cave"),
             vec![],
         ),
@@ -3688,12 +3693,12 @@ fn mutation_consolidation_spatial_strength_is_high() {
     // Spatial association strength should be 0.8 (hardcoded in source)
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event A at castle", now, Some("castle"), vec![]),
         make_timed_memory(
             "event B at castle",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             Some("castle"),
             vec![],
         ),
@@ -3720,7 +3725,7 @@ fn mutation_consolidation_conceptual_high_overlap() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory(
             "the brave knight fought the dragon in the castle",
@@ -3730,7 +3735,7 @@ fn mutation_consolidation_conceptual_high_overlap() {
         ),
         make_timed_memory(
             "the brave knight fought the dragon in the castle",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             None,
             vec!["knight"],
         ),
@@ -3747,10 +3752,15 @@ fn mutation_consolidation_conceptual_no_overlap() {
     // Two memories with completely different words → no conceptual association
     let config = ConsolidationConfig::default();
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("alpha bravo charlie", now, None, vec![]),
-        make_timed_memory("xray yankee zulu", now - Duration::days(30), None, vec![]),
+        make_timed_memory(
+            "xray yankee zulu",
+            now - time::Duration::days(30),
+            None,
+            vec![],
+        ),
     ];
     let result = engine.consolidate(&mut memories).unwrap();
     assert_eq!(
@@ -3767,7 +3777,7 @@ fn mutation_consolidation_updates_strength() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![make_timed_memory("event one", now, None, vec![])];
     memories[0].metadata.strength = 0.5;
     let old_strength = memories[0].metadata.strength;
@@ -3786,7 +3796,7 @@ fn mutation_consolidation_strength_capped_at_one() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![make_timed_memory("event max", now, None, vec![])];
     memories[0].metadata.strength = 0.9;
     engine.consolidate(&mut memories).unwrap();
@@ -3804,7 +3814,7 @@ fn mutation_consolidation_result_total() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory(
             "battle at forest clearing",
@@ -3814,7 +3824,7 @@ fn mutation_consolidation_result_total() {
         ),
         make_timed_memory(
             "battle at forest clearing",
-            now - Duration::hours(1),
+            now - time::Duration::hours(1),
             Some("forest"),
             vec!["hero"],
         ),
@@ -3836,18 +3846,18 @@ fn mutation_consolidation_respects_max_associations() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event A", now, Some("castle"), vec![]),
         make_timed_memory(
             "event B",
-            now - Duration::minutes(30),
+            now - time::Duration::minutes(30),
             Some("castle"),
             vec![],
         ),
         make_timed_memory(
             "event C",
-            now - Duration::minutes(60),
+            now - time::Duration::minutes(60),
             Some("castle"),
             vec![],
         ),
@@ -3877,7 +3887,7 @@ fn mutation_compression_eligible_memory_compressed() {
         "this is a long text with many words that should be compressed when old enough to qualify for compression processing and optimization routines in the engine".to_string(),
         None,
     );
-    memory.metadata.created_at = Utc::now() - Duration::days(60);
+    memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     memory.metadata.importance = 0.1;
     let mut memories = vec![memory];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -3895,7 +3905,7 @@ fn mutation_compression_permanent_not_compressed() {
         "important fact about the world".to_string(),
         "fact".to_string(),
     );
-    memory.metadata.created_at = Utc::now() - Duration::days(365);
+    memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
     memory.metadata.permanent = true;
     memory.metadata.importance = 0.01;
     let mut memories = vec![memory];
@@ -3926,7 +3936,7 @@ fn mutation_compression_high_importance_not_compressed() {
     };
     let engine = CompressionEngine::new(config);
     let mut memory = Memory::sensory("old but important memory text".to_string(), None);
-    memory.metadata.created_at = Utc::now() - Duration::days(100);
+    memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
     memory.metadata.importance = 0.9;
     let mut memories = vec![memory];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -3947,7 +3957,7 @@ fn mutation_compression_stats_count() {
             .to_string(),
         None,
     );
-    old_memory.metadata.created_at = Utc::now() - Duration::days(60);
+    old_memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     old_memory.metadata.importance = 0.1;
     let new_memory = Memory::sensory("new memory".to_string(), None);
     let mut memories = vec![old_memory, new_memory];
@@ -3972,7 +3982,7 @@ fn mutation_compression_size_reduction_positive() {
          the text needs to be long enough to trigger meaningful compression behavior and it must also have enough words so that the compression ratio leaves room for both the first portion and the last portion of the text to be included in the final result".to_string(),
         None,
     );
-    memory.metadata.created_at = Utc::now() - Duration::days(60);
+    memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     memory.metadata.importance = 0.1;
     let mut memories = vec![memory];
     let result = engine.compress_memories(&mut memories).unwrap();
@@ -4015,7 +4025,7 @@ fn mutation_retrieval_matching_query_retrieved() {
 fn mutation_retrieval_temporal_in_window_high_score() {
     let engine = RetrievalEngine::new(RetrievalConfig::default());
     let memory = Memory::sensory("test data".to_string(), None);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let context = RetrievalContext {
         query: "test data".to_string(),
         emotional_state: None,
@@ -4023,8 +4033,8 @@ fn mutation_retrieval_temporal_in_window_high_score() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
-            end: now + Duration::days(1),
+            start: now - time::Duration::days(1),
+            end: now + time::Duration::days(1),
         }),
         limit: 10,
     };
@@ -4121,7 +4131,7 @@ fn mutation_forgetting_old_weak_memory_forgotten() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     let mut memory = Memory::sensory("old fading memory".to_string(), None);
-    memory.metadata.created_at = Utc::now() - Duration::days(365);
+    memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
     memory.metadata.strength = 0.01;
     memory.metadata.permanent = false;
     let mut memories = vec![memory];
@@ -4226,7 +4236,7 @@ fn make_populated_storage(episodes: Vec<Episode>) -> MemoryStorage {
 
 /// Helper: create a minimal Episode with given category and quality
 fn make_test_episode(category: EpisodeCategory, quality_score: f32) -> Episode {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut ep = Episode::new("test_ep".to_string(), category.clone());
     for i in 0..3 {
         ep.observations.push(Observation::new(
@@ -4440,12 +4450,12 @@ fn mutation_storage_delete_nonexistent() {
 fn mutation_storage_prune_old() {
     let mut storage = MemoryStorage::in_memory().unwrap();
     let mut old_memory = Memory::sensory("old one".to_string(), None);
-    old_memory.metadata.created_at = Utc::now() - Duration::days(365);
+    old_memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
     let new_memory = Memory::sensory("new one".to_string(), None);
     storage.store_memory(&old_memory).unwrap();
     storage.store_memory(&new_memory).unwrap();
     assert_eq!(storage.count_memories().unwrap(), 2);
-    let cutoff = (Utc::now() - Duration::days(30)).timestamp();
+    let cutoff = (time::OffsetDateTime::now_utc() - time::Duration::days(30)).unix_timestamp();
     let pruned = storage.prune_old(cutoff).unwrap();
     assert!(pruned > 0);
 }
@@ -4585,10 +4595,10 @@ fn mutation_consol_temporal_exact_strength() {
     // Expected: 0.5 + (1.0 - 3*3600/86400) = 0.5 + 0.875 = 1.375
     // If + → * (L92): 0.5 * 0.875 = 0.4375
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("alpha", now, None, vec![]),
-        make_timed_memory("beta", now - Duration::hours(3), None, vec![]),
+        make_timed_memory("beta", now - time::Duration::hours(3), None, vec![]),
     ];
     engine.consolidate(&mut memories).unwrap();
     let strength = memories[0].associations.first().unwrap().strength;
@@ -4610,10 +4620,10 @@ fn mutation_consol_temporal_exact_strength() {
 fn mutation_consol_no_duplicate_assoc() {
     // Run consolidate twice — should NOT create duplicate associations (catches L84 == → !=)
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("alpha", now, None, vec![]),
-        make_timed_memory("beta", now - Duration::hours(1), None, vec![]),
+        make_timed_memory("beta", now - time::Duration::hours(1), None, vec![]),
     ];
     engine.consolidate(&mut memories).unwrap();
     let count1 = memories[0].associations.len();
@@ -4629,12 +4639,12 @@ fn mutation_consol_no_duplicate_assoc() {
 fn mutation_consol_spatial_exact_strength() {
     // Same-location memories get strength 0.8 (catches L120 == → !=)
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event at forest", now, Some("forest"), vec![]),
         make_timed_memory(
             "another at forest",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             Some("forest"),
             vec![],
         ),
@@ -4662,12 +4672,12 @@ fn mutation_consol_conceptual_similarity_word_overlap() {
         association_threshold: 0.1,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("the brave warrior fought", now, None, vec![]),
         make_timed_memory(
             "the brave warrior rested",
-            now - Duration::days(60),
+            now - time::Duration::days(60),
             None,
             vec![],
         ),
@@ -4695,12 +4705,12 @@ fn mutation_consol_conceptual_with_participants() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("event one", now, None, vec!["alice", "bob"]),
         make_timed_memory(
             "event two",
-            now - Duration::days(60),
+            now - time::Duration::days(60),
             None,
             vec!["alice", "charlie"],
         ),
@@ -4726,7 +4736,7 @@ fn mutation_consol_state_boost_exact() {
         consolidation_boost: 0.2,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = make_timed_memory("single memory", now, None, vec![]);
     m.metadata.strength = 0.5;
     let mut memories = vec![m];
@@ -4807,7 +4817,7 @@ fn mutation_compression_text_division() {
         .collect::<Vec<_>>()
         .join(" ");
     let mut m = Memory::sensory(long_text.clone(), None);
-    m.metadata.created_at = Utc::now() - Duration::days(10);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
     m.metadata.importance = 0.1;
     let original_len = m.content.text.split_whitespace().count();
     let mut memories = vec![m];
@@ -4928,9 +4938,9 @@ fn mutation_retrieval_exact_relevance_score() {
 fn mutation_retrieval_temporal_within_window() {
     // Memory within time_window should get score 1.0 (catches L202-203)
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("test memory".to_string(), None);
-    m.metadata.created_at = now - Duration::hours(2);
+    m.metadata.created_at = now - time::Duration::hours(2);
     let context = RetrievalContext {
         query: "test".to_string(),
         emotional_state: None,
@@ -4938,7 +4948,7 @@ fn mutation_retrieval_temporal_within_window() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -4956,9 +4966,9 @@ fn mutation_retrieval_temporal_within_window() {
 fn mutation_retrieval_temporal_decay_outside_window() {
     // Memory outside window should have exponential decay score (catches L218 / → %,*)
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("test memory".to_string(), None);
-    m.metadata.created_at = now - Duration::days(14);
+    m.metadata.created_at = now - time::Duration::days(14);
     let context = RetrievalContext {
         query: "test".to_string(),
         emotional_state: None,
@@ -4966,7 +4976,7 @@ fn mutation_retrieval_temporal_decay_outside_window() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -4992,13 +5002,13 @@ fn mutation_retrieval_temporal_decay_outside_window() {
 fn mutation_retrieval_recency_score_range() {
     // Recent memory vs old memory — recency scores should differ (catches L248-249 / → %,*)
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut recent = Memory::sensory("recent test".to_string(), None);
-    recent.metadata.created_at = now - Duration::hours(1);
-    recent.metadata.last_accessed = now - Duration::hours(1);
+    recent.metadata.created_at = now - time::Duration::hours(1);
+    recent.metadata.last_accessed = now - time::Duration::hours(1);
     let mut old = Memory::sensory("old test".to_string(), None);
-    old.metadata.created_at = now - Duration::days(60);
-    old.metadata.last_accessed = now - Duration::days(60);
+    old.metadata.created_at = now - time::Duration::days(60);
+    old.metadata.last_accessed = now - time::Duration::days(60);
     let context = RetrievalContext {
         query: "test".to_string(),
         emotional_state: None,
@@ -5090,7 +5100,7 @@ fn mutation_forgetting_strength_decay_formula() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     let mut m = Memory::episodic("old event".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(10);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
     let mut memories = vec![m];
     engine.apply_forgetting(&mut memories).unwrap();
     assert!(
@@ -5114,7 +5124,7 @@ fn mutation_forgetting_importance_modifier_v2() {
     // High importance memory should retain more strength (catches L201 > logic)
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
-    let age = Utc::now() - Duration::days(7);
+    let age = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     let mut m_low = Memory::episodic("low importance".to_string(), vec![], None);
     m_low.metadata.created_at = age;
     m_low.metadata.importance = 0.1;
@@ -5149,7 +5159,7 @@ fn mutation_forgetting_should_forget_threshold() {
     let engine = ForgettingEngine::new(config);
     // Set strength well below default threshold (0.1)
     let mut m = Memory::sensory("forgettable".to_string(), None);
-    m.metadata.created_at = Utc::now() - Duration::days(365);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
     m.metadata.strength = 0.001;
     m.metadata.permanent = false;
     let mut memories = vec![m];
@@ -5227,7 +5237,7 @@ fn mutation_forgetting_access_modifier_effect() {
     // Memory with many accesses should decay slower (catches L210 > → >= and L212 * → +)
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
-    let age = Utc::now() - Duration::days(7);
+    let age = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     let mut m_accessed = Memory::episodic("accessed".to_string(), vec![], None);
     m_accessed.metadata.created_at = age;
     m_accessed.metadata.access_count = 50;
@@ -5765,16 +5775,16 @@ fn mutation_storage_prune_returns_count() {
     // Prune should return actual count of deleted, not Ok(1) (catches L294 → Ok(1))
     let mut storage = MemoryStorage::in_memory().unwrap();
     let mut m1 = Memory::sensory("old1".to_string(), None);
-    m1.metadata.created_at = Utc::now() - Duration::days(100);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
     let mut m2 = Memory::sensory("old2".to_string(), None);
-    m2.metadata.created_at = Utc::now() - Duration::days(100);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
     let mut m3 = Memory::sensory("recent".to_string(), None);
-    m3.metadata.created_at = Utc::now();
+    m3.metadata.created_at = time::OffsetDateTime::now_utc();
     storage.store_memory(&m1).unwrap();
     storage.store_memory(&m2).unwrap();
     storage.store_memory(&m3).unwrap();
     // Prune memories older than 50 days — should delete 2
-    let before_ts = (Utc::now() - Duration::days(50)).timestamp();
+    let before_ts = (time::OffsetDateTime::now_utc() - time::Duration::days(50)).unix_timestamp();
     let deleted = storage.prune_old(before_ts).unwrap();
     assert_eq!(
         deleted, 2,
@@ -6064,7 +6074,7 @@ fn mutation_forgetting_decay_negative_exponent() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     let mut m = Memory::episodic("decay_test".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(7);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     let mut memories = vec![m];
     engine.apply_forgetting(&mut memories).unwrap();
     assert!(!memories.is_empty(), "7-day episodic memory should survive");
@@ -6083,9 +6093,9 @@ fn mutation_temporal_score_negative_exponent() {
     // Formula: (-min_distance / 7.0).exp()
     // Without negative: (min_distance / 7.0).exp() = huge number (clamped down somewhere)
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("temporal test".to_string(), None);
-    m.metadata.created_at = now - Duration::days(30); // 30 days before window
+    m.metadata.created_at = now - time::Duration::days(30); // 30 days before window
     let context = RetrievalContext {
         query: "temporal test".to_string(),
         emotional_state: None,
@@ -6093,7 +6103,7 @@ fn mutation_temporal_score_negative_exponent() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -6253,7 +6263,7 @@ fn mutation_compression_text_word_division() {
         .collect::<Vec<_>>()
         .join(" ");
     let mut m = Memory::sensory(text, None);
-    m.metadata.created_at = Utc::now() - Duration::days(10);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
     m.metadata.importance = 0.1;
     let mut memories = vec![m];
     let _ = engine.compress_memories(&mut memories).unwrap();
@@ -6287,7 +6297,7 @@ fn mutation_retrieval_relevance_score_additive() {
         recency_boost: true,
         ..RetrievalConfig::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("battle sword combat warrior".to_string(), None);
     m.metadata.created_at = now; // Very recent — high recency
     m.metadata.importance = 0.9; // High importance
@@ -6298,8 +6308,8 @@ fn mutation_retrieval_relevance_score_additive() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
-            end: now + Duration::days(1),
+            start: now - time::Duration::days(1),
+            end: now + time::Duration::days(1),
         }),
         limit: 10,
     };
@@ -6319,9 +6329,9 @@ fn mutation_retrieval_temporal_within_window_score() {
     // catches retrieval.rs:202-203 (>= → <, && → ||, <= → >)
     // Memory WITHIN time window should get temporal score 1.0
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("temporal within".to_string(), None);
-    m.metadata.created_at = now - Duration::hours(6); // Within a 2-day window
+    m.metadata.created_at = now - time::Duration::hours(6); // Within a 2-day window
     let context = RetrievalContext {
         query: "temporal within".to_string(),
         emotional_state: None,
@@ -6329,7 +6339,7 @@ fn mutation_retrieval_temporal_within_window_score() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -6359,7 +6369,7 @@ fn mutation_retrieval_recency_score_division() {
         recency_boost: true,
         ..RetrievalConfig::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("fresh memory".to_string(), None);
     m.metadata.created_at = now;
     m.metadata.last_accessed = now;
@@ -6409,7 +6419,7 @@ fn mutation_forgetting_importance_modifier_formula() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     // Two memories: importance 0.1 and importance 0.9, both 7 days old episodic
-    let age = Utc::now() - Duration::days(7);
+    let age = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     let mut m_low = Memory::episodic("low imp".to_string(), vec![], None);
     m_low.metadata.created_at = age;
     m_low.metadata.importance = 0.1;
@@ -6444,7 +6454,7 @@ fn mutation_forgetting_access_count_boundary_one() {
     // Test with access_count = 1 vs 0 vs 2
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
-    let age = Utc::now() - Duration::days(7);
+    let age = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     // access_count = 0
     let mut m0 = Memory::episodic("acc0".to_string(), vec![], None);
     m0.metadata.created_at = age;
@@ -6554,14 +6564,14 @@ fn mutation_consolidation_conceptual_similarity_division() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // 2 memories with specific word overlap
     // "a b c d e" and "a b c x y" → 3 common out of 5 total = 0.6 overlap
     let mut memories = vec![
         make_timed_memory("alpha bravo charlie delta echo", now, None, vec![]),
         make_timed_memory(
             "alpha bravo charlie xray yankee",
-            now - Duration::days(60),
+            now - time::Duration::days(60),
             None,
             vec![],
         ),
@@ -6993,11 +7003,16 @@ fn mutation_consolidation_spatial_equality_check() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // DIFFERENT locations — should NOT form spatial associations
     let mut diff_memories = vec![
         make_timed_memory("event a", now, Some("forest"), vec![]),
-        make_timed_memory("event b", now - Duration::days(30), Some("cave"), vec![]),
+        make_timed_memory(
+            "event b",
+            now - time::Duration::days(30),
+            Some("cave"),
+            vec![],
+        ),
     ];
     engine.consolidate(&mut diff_memories).unwrap();
     let spatial_diff = diff_memories[0]
@@ -7018,12 +7033,12 @@ fn mutation_consolidation_conceptual_equality_check() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("test memorization data", now, None, vec![]),
         make_timed_memory(
             "test memorization data",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             None,
             vec![],
         ),
@@ -7054,13 +7069,13 @@ fn mutation_consolidation_state_update_additive() {
     // catches consolidation.rs:214 += → *=
     // strength += boost should ADD, NOT multiply
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::sensory("state test".to_string(), None);
     m.metadata.strength = 0.3; // Low initial strength
     let initial_strength = m.metadata.strength;
     let mut memories = vec![
         m,
-        make_timed_memory("other", now - Duration::hours(1), None, vec![]),
+        make_timed_memory("other", now - time::Duration::hours(1), None, vec![]),
     ];
     engine.consolidate(&mut memories).unwrap();
     // += boost: strength should be > initial (0.3 + boost)
@@ -7373,7 +7388,7 @@ fn mutation_forgetting_decay_with_high_access() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     let mut m = Memory::episodic("high_access".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(7);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     m.metadata.access_count = 10;
     m.metadata.importance = 0.9;
     let mut memories = vec![m];
@@ -7408,7 +7423,7 @@ fn mutation_compression_ratio_boundary_values() {
         .collect::<Vec<_>>()
         .join(" ");
     let mut m = Memory::sensory(text, None);
-    m.metadata.created_at = Utc::now() - Duration::days(10);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
     m.metadata.importance = 0.1;
     let mut memories = vec![m];
     engine.compress_memories(&mut memories).unwrap();
@@ -7478,13 +7493,13 @@ fn mutation_retrieval_temporal_decay_rate() {
     // With * → +: (-7 + 7).exp() = exp(0) = 1.0 (wrong!)
     // With / → *: (-7 * 7).exp() = exp(-49) ≈ 0 (too aggressive)
     let engine = RetrievalEngine::new(RetrievalConfig::default());
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // Memory exactly 7 days before window start
     let mut m7 = Memory::sensory("seven days away".to_string(), None);
-    m7.metadata.created_at = now - Duration::days(14);
+    m7.metadata.created_at = now - time::Duration::days(14);
     // Memory exactly 1 day before window start
     let mut m1 = Memory::sensory("one day away".to_string(), None);
-    m1.metadata.created_at = now - Duration::days(2);
+    m1.metadata.created_at = now - time::Duration::days(2);
     let context = RetrievalContext {
         query: "seven days away one day away".to_string(),
         emotional_state: None,
@@ -7492,7 +7507,7 @@ fn mutation_retrieval_temporal_decay_rate() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -7522,13 +7537,13 @@ fn mutation_consolidation_similarity_boolean_operators() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // Two completely different memories — should have NO conceptual association
     let mut memories = vec![
         make_timed_memory("unique word alpha", now, None, vec!["tag1"]),
         make_timed_memory(
             "different phrase beta",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             None,
             vec!["tag2"],
         ),
@@ -7559,11 +7574,11 @@ fn mutation_forgetting_retention_threshold_exact() {
     let engine = ForgettingEngine::new(config);
     // Memory with strength ABOVE threshold — should survive
     let mut m_above = Memory::episodic("above_ret".to_string(), vec![], None);
-    m_above.metadata.created_at = Utc::now(); // Fresh, so won't decay
+    m_above.metadata.created_at = time::OffsetDateTime::now_utc(); // Fresh, so won't decay
     m_above.metadata.strength = 0.5;
     // Memory with strength BELOW threshold — should be forgotten
     let mut m_below = Memory::episodic("below_ret".to_string(), vec![], None);
-    m_below.metadata.created_at = Utc::now() - Duration::days(365); // Very old
+    m_below.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365); // Very old
     m_below.metadata.importance = 0.0;
     m_below.metadata.strength = 0.1; // Below threshold
     let mut memories = vec![m_above, m_below];
@@ -7669,13 +7684,13 @@ fn mutation_consolidation_same_location_spatial() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // SAME location — should form spatial associations
     let mut memories = vec![
         make_timed_memory("event in forest", now, Some("forest"), vec![]),
         make_timed_memory(
             "another event in forest",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             Some("forest"),
             vec![],
         ),
@@ -7844,12 +7859,12 @@ fn mutation_consolidation_both_directions() {
         association_threshold: 0.01,
         ..Default::default()
     });
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory("shared concept idea", now, None, vec![]),
         make_timed_memory(
             "shared concept idea",
-            now - Duration::days(30),
+            now - time::Duration::days(30),
             None,
             vec![],
         ),
@@ -7870,7 +7885,7 @@ fn mutation_forgetting_permanent_memories_preserved() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     let mut m = Memory::episodic("permanent_data".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(365 * 10); // 10 years old
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365 * 10); // 10 years old
     m.metadata.strength = 0.001; // Very weak
     m.metadata.importance = 0.0;
     m.metadata.permanent = true; // BUT permanent!
@@ -7887,7 +7902,7 @@ fn mutation_forgetting_very_old_semantic_survives() {
     let config = ForgettingConfig::default();
     let engine = ForgettingEngine::new(config);
     let mut m = Memory::semantic("important fact".to_string(), "knowledge".to_string());
-    m.metadata.created_at = Utc::now() - Duration::days(90); // 90 days old
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(90); // 90 days old
     m.metadata.importance = 0.5;
     let mut memories = vec![m];
     engine.apply_forgetting(&mut memories).unwrap();
@@ -7912,7 +7927,7 @@ fn make_combat_episode_exact(
     duration_ms: u64,
     resources_used: f32,
 ) -> Episode {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut ep = Episode::new("boundary_ep".to_string(), EpisodeCategory::Combat);
     ep.observations.push(Observation::new(
         0,
@@ -7943,7 +7958,7 @@ fn make_combat_episode_exact(
 }
 
 fn make_puzzle_episode_exact(success_rating: f32, duration_ms: u64) -> Episode {
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut ep = Episode::new("puzzle_ep".to_string(), EpisodeCategory::Puzzle);
     ep.observations.push(Observation::new(
         0,
@@ -8529,7 +8544,7 @@ fn make_episode_with_n_actions(
             serde_json::json!({"player_health": 100.0}),
         ));
     }
-    ep.end_time = Some(Utc::now().into());
+    ep.end_time = Some(time::OffsetDateTime::now_utc().into());
     ep.outcome = Some(outcome);
     ep
 }
@@ -9127,8 +9142,8 @@ fn mutation_consolidation_spatial_same_location_r6() {
         ),
     ];
     // Set creation times far apart to avoid temporal association stealing the slot
-    memories[0].metadata.created_at = chrono::Utc::now() - chrono::Duration::days(30);
-    memories[1].metadata.created_at = chrono::Utc::now();
+    memories[0].metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    memories[1].metadata.created_at = time::OffsetDateTime::now_utc();
     let result = engine.consolidate(&mut memories).unwrap();
     assert!(
         result.spatial_associations > 0,
@@ -9155,8 +9170,8 @@ fn mutation_consolidation_spatial_different_location_r6() {
             Some("cave".to_string()),
         ),
     ];
-    memories[0].metadata.created_at = chrono::Utc::now() - chrono::Duration::days(30);
-    memories[1].metadata.created_at = chrono::Utc::now();
+    memories[0].metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    memories[1].metadata.created_at = time::OffsetDateTime::now_utc();
     let result = engine.consolidate(&mut memories).unwrap();
     assert_eq!(
         result.spatial_associations, 0,
@@ -9180,8 +9195,8 @@ fn mutation_consolidation_conceptual_at_threshold_r6() {
         Memory::semantic("alpha beta delta".to_string(), "test".to_string()),
     ];
     // Separate creation times to avoid temporal association stealing the slot
-    memories[0].metadata.created_at = chrono::Utc::now() - chrono::Duration::days(30);
-    memories[1].metadata.created_at = chrono::Utc::now();
+    memories[0].metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    memories[1].metadata.created_at = time::OffsetDateTime::now_utc();
     // Same type = 0.3, text overlap = 2/3 words = 0.667 * 0.5 = 0.333
     // Total = 0.633, above 0.3 threshold
     let result = engine.consolidate(&mut memories).unwrap();
@@ -9206,8 +9221,8 @@ fn mutation_consolidation_conceptual_similarity_text_r6() {
         Memory::semantic("cat dog fish".to_string(), "animals".to_string()),
         Memory::semantic("cat dog bird".to_string(), "animals".to_string()),
     ];
-    memories[0].metadata.created_at = chrono::Utc::now() - chrono::Duration::days(30);
-    memories[1].metadata.created_at = chrono::Utc::now();
+    memories[0].metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
+    memories[1].metadata.created_at = time::OffsetDateTime::now_utc();
     // Type match = 0.3, common_words = 2 ("cat","dog"), min_len = 3
     // correct: text_sim = 2/3 = 0.667, total += 0.667*0.5 = 0.333
     // L200 *: text_sim = 2*3 = 6.0, total += 6.0*0.5 = 3.0
@@ -9296,8 +9311,8 @@ fn mutation_forgetting_importance_modifier_r6() {
     // Create memory with high importance, aged 1 day
     let mut mem = Memory::episodic("Important memory".to_string(), vec![], None);
     mem.metadata.importance = 0.9;
-    mem.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(1);
-    mem.metadata.last_accessed = chrono::Utc::now() - chrono::Duration::days(1);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+    mem.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     let mut memories = vec![mem];
     let original_strength = memories[0].metadata.strength;
     engine.apply_forgetting(&mut memories).unwrap();
@@ -9312,8 +9327,8 @@ fn mutation_forgetting_importance_modifier_r6() {
     // Create another with low importance for comparison
     let mut mem_low = Memory::episodic("Low importance".to_string(), vec![], None);
     mem_low.metadata.importance = 0.1;
-    mem_low.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(1);
-    mem_low.metadata.last_accessed = chrono::Utc::now() - chrono::Duration::days(1);
+    mem_low.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+    mem_low.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     let mut mems_low = vec![mem_low];
     engine.apply_forgetting(&mut mems_low).unwrap();
     let s_low = mems_low[0].metadata.strength;
@@ -9341,16 +9356,16 @@ fn mutation_forgetting_access_count_modifier_r6() {
     let engine = ForgettingEngine::new(config);
     let mut mem_accessed = Memory::episodic("Accessed memory".to_string(), vec![], None);
     mem_accessed.metadata.access_count = 5;
-    mem_accessed.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(3);
-    mem_accessed.metadata.last_accessed = chrono::Utc::now();
+    mem_accessed.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(3);
+    mem_accessed.metadata.last_accessed = time::OffsetDateTime::now_utc();
     let mut mems_a = vec![mem_accessed];
     engine.apply_forgetting(&mut mems_a).unwrap();
     let s_accessed = mems_a[0].metadata.strength;
 
     let mut mem_zero = Memory::episodic("Never accessed".to_string(), vec![], None);
     mem_zero.metadata.access_count = 0;
-    mem_zero.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(3);
-    mem_zero.metadata.last_accessed = chrono::Utc::now() - chrono::Duration::days(3);
+    mem_zero.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(3);
+    mem_zero.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(3);
     let mut mems_z = vec![mem_zero];
     engine.apply_forgetting(&mut mems_z).unwrap();
     let s_zero = mems_z[0].metadata.strength;
@@ -9396,8 +9411,8 @@ fn mutation_forgetting_should_forget_threshold_r6() {
 
     // Memory very old (365 days) so decay drops strength below threshold
     let mut mem_below = Memory::episodic("Below threshold".to_string(), vec![], None);
-    mem_below.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(365);
-    mem_below.metadata.last_accessed = chrono::Utc::now() - chrono::Duration::days(365);
+    mem_below.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
+    mem_below.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(365);
     mem_below.metadata.access_count = 0;
     mem_below.metadata.importance = 0.5;
     let mut mems_b = vec![mem_below];
@@ -9496,7 +9511,7 @@ fn mutation_compression_compress_text_formula_r6() {
     let compressed = engine.compress_memories(&mut vec![]).unwrap(); // just test the engine exists
                                                                      // Actually compress_text is private, test via compress_memories
     let mut mem = Memory::episodic(long_text.to_string(), vec![], None);
-    mem.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(60);
+    mem.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     mem.metadata.importance = 0.1;
     let original_len = mem.content.text.split_whitespace().count();
     let mut mems = vec![mem];
@@ -9528,17 +9543,17 @@ fn mutation_compression_should_compress_checks_r6() {
     // Memory aged 31 days, low importance — should compress
     let long_text = "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15";
     let mut mem_eligible = Memory::episodic(long_text.to_string(), vec![], None);
-    mem_eligible.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(31);
+    mem_eligible.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(31);
     mem_eligible.metadata.importance = 0.1;
 
     // Memory aged 29 days — should NOT compress (too young)
     let mut mem_young = Memory::episodic(long_text.to_string(), vec![], None);
-    mem_young.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(29);
+    mem_young.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(29);
     mem_young.metadata.importance = 0.1;
 
     // Memory with high importance — should NOT compress
     let mut mem_important = Memory::episodic(long_text.to_string(), vec![], None);
-    mem_important.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(60);
+    mem_important.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     mem_important.metadata.importance = 0.5;
 
     let mut mems = vec![mem_eligible, mem_young, mem_important];
@@ -9617,7 +9632,7 @@ fn mutation_compression_stats_ratio_r6() {
     });
     let long_text = "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15";
     let mut mem1 = Memory::episodic(long_text.to_string(), vec![], None);
-    mem1.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(60);
+    mem1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     mem1.metadata.importance = 0.1;
     let mut mem2 = Memory::episodic("Short text".to_string(), vec![], None);
     mem2.metadata.importance = 0.1;
@@ -9696,9 +9711,9 @@ fn mutation_retrieval_temporal_score_in_window_r6() {
         follow_associations: false,
         max_results: 10,
     });
-    let now = chrono::Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut mem = Memory::episodic("test memory".to_string(), vec![], None);
-    mem.metadata.created_at = now - chrono::Duration::hours(12);
+    mem.metadata.created_at = now - time::Duration::hours(12);
     let ctx = RetrievalContext {
         query: "test".to_string(),
         emotional_state: None,
@@ -9706,7 +9721,7 @@ fn mutation_retrieval_temporal_score_in_window_r6() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - chrono::Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -9737,10 +9752,10 @@ fn mutation_retrieval_temporal_decay_formula_r6() {
         follow_associations: false,
         max_results: 10,
     });
-    let now = chrono::Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // Memory 14 days outside window
     let mut mem = Memory::episodic("old memory".to_string(), vec![], None);
-    mem.metadata.created_at = now - chrono::Duration::days(21);
+    mem.metadata.created_at = now - time::Duration::days(21);
     let ctx = RetrievalContext {
         query: "old".to_string(),
         emotional_state: None,
@@ -9748,7 +9763,7 @@ fn mutation_retrieval_temporal_decay_formula_r6() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - chrono::Duration::days(7),
+            start: now - time::Duration::days(7),
             end: now,
         }),
         limit: 10,
@@ -9781,12 +9796,12 @@ fn mutation_retrieval_recency_score_formula_r6() {
     let engine = RetrievalEngine::new(RetrievalConfig::default());
     // Recent memory (1 day old, accessed today)
     let mut mem_recent = Memory::episodic("recent".to_string(), vec![], None);
-    mem_recent.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(1);
-    mem_recent.metadata.last_accessed = chrono::Utc::now();
+    mem_recent.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
+    mem_recent.metadata.last_accessed = time::OffsetDateTime::now_utc();
     // Old memory (90 days old, accessed 30 days ago)
     let mut mem_old = Memory::episodic("old".to_string(), vec![], None);
-    mem_old.metadata.created_at = chrono::Utc::now() - chrono::Duration::days(90);
-    mem_old.metadata.last_accessed = chrono::Utc::now() - chrono::Duration::days(30);
+    mem_old.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(90);
+    mem_old.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
     let memories = vec![mem_recent, mem_old];
     let ctx = RetrievalContext {
@@ -10623,8 +10638,8 @@ fn test_compression_compress_memories_long_text_s69() {
         "word1 word2 word3 word4 word5 word6 word7 word8 word9 word10 word11 word12 word13 word14 word15 word16 word17 word18 word19 word20 word21 word22 word23 word24 word25 word26 word27 word28 word29 word30".to_string(),
         vec![], None,
     );
-    m.metadata.created_at = Utc::now() - Duration::days(60);
-    m.metadata.last_accessed = Utc::now() - Duration::days(60);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     m.metadata.importance = 0.1; // Below default threshold 0.3
     m.metadata.tags.clear(); // Remove any default tags
 
@@ -10656,8 +10671,8 @@ fn test_compression_compress_text_formula_s69() {
     let text = words.join(" ");
 
     let mut m = Memory::episodic(text.clone(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(60);
-    m.metadata.last_accessed = Utc::now() - Duration::days(60);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     m.metadata.importance = 0.1;
     m.metadata.tags.clear();
 
@@ -10690,8 +10705,8 @@ fn test_compression_compress_text_boundary_last_part_s69() {
     let text = words.join(" ");
 
     let mut m = Memory::episodic(text.clone(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(60);
-    m.metadata.last_accessed = Utc::now() - Duration::days(60);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     m.metadata.importance = 0.1;
     m.metadata.tags.clear();
 
@@ -10722,8 +10737,8 @@ fn test_forgetting_strength_exact_episodic_s70() {
     // spaced_rep_modifier = 1.0 (access_count <= 1)
     // new_strength = 1.0 * 0.7071 * 1.1 * 1.0 * 1.0 = 0.7778
     let mut m = Memory::episodic("test_decay".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(7);
-    m.metadata.last_accessed = Utc::now() - Duration::days(7);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(7);
     m.metadata.importance = 0.7;
     m.metadata.access_count = 0;
     m.metadata.strength = 1.0;
@@ -10754,8 +10769,8 @@ fn test_forgetting_strength_with_access_s70() {
     // spaced_rep_modifier = 1.0 + 0.10986 = 1.10986
     // new_strength = 1.0 * 0.7071 * 1.0 * 1.1286 * 1.10986 = 0.8858
     let mut m = Memory::episodic("access_test".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(7);
-    m.metadata.last_accessed = Utc::now() - Duration::days(1);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     m.metadata.importance = 0.5;
     m.metadata.access_count = 3;
     m.metadata.strength = 1.0;
@@ -10798,8 +10813,8 @@ fn test_forgetting_access_count_zero_boundary_s70() {
     //   < 0: false → modifier = 1.0 (DIFFERENT!)
     //   >= 0: true → same as > (same result)
     let mut m = Memory::episodic("access_one".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(14);
-    m.metadata.last_accessed = Utc::now() - Duration::days(1);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(14);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     m.metadata.importance = 0.5;
     m.metadata.access_count = 1;
     m.metadata.strength = 1.0;
@@ -10838,8 +10853,8 @@ fn test_forgetting_spaced_rep_boundary_access_two_s70() {
     // For L258 in calculate_adaptive_half_life: access_count > 1 → >=
     // Same equivalence issue. Test with access_count=2 to verify non-boundary.
     let mut m = Memory::episodic("spaced_rep".to_string(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(14);
-    m.metadata.last_accessed = Utc::now() - Duration::days(1);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(14);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(1);
     m.metadata.importance = 0.5;
     m.metadata.access_count = 2;
     m.metadata.strength = 1.0;
@@ -10885,8 +10900,8 @@ fn test_forgetting_should_forget_strength_at_threshold_s70() {
 
     // Very old episodic (365 days), low importance:
     let mut old = Memory::episodic("very_old".to_string(), vec![], None);
-    old.metadata.created_at = Utc::now() - Duration::days(365);
-    old.metadata.last_accessed = Utc::now() - Duration::days(365);
+    old.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
+    old.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(365);
     old.metadata.importance = 0.3; // Low
     old.metadata.access_count = 0;
     old.metadata.strength = 1.0;
@@ -11034,9 +11049,9 @@ fn test_retrieval_temporal_in_window_s71() {
         ..Default::default()
     });
 
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::episodic("temporal test".to_string(), vec![], None);
-    m.metadata.created_at = now - Duration::hours(12); // 12 hours ago
+    m.metadata.created_at = now - time::Duration::hours(12); // 12 hours ago
 
     let context = RetrievalContext {
         query: "temporal test".to_string(),
@@ -11045,7 +11060,7 @@ fn test_retrieval_temporal_in_window_s71() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -11071,8 +11086,8 @@ fn test_retrieval_temporal_at_window_start_s71() {
         ..Default::default()
     });
 
-    let now = Utc::now();
-    let window_start = now - Duration::days(2);
+    let now = time::OffsetDateTime::now_utc();
+    let window_start = now - time::Duration::days(2);
     let mut m = Memory::episodic("at boundary".to_string(), vec![], None);
     m.metadata.created_at = window_start; // Exactly at start
 
@@ -11115,9 +11130,9 @@ fn test_retrieval_temporal_decay_outside_window_s71() {
         ..Default::default()
     });
 
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::episodic("old memory decay".to_string(), vec![], None);
-    m.metadata.created_at = now - Duration::days(14); // 14 days ago
+    m.metadata.created_at = now - time::Duration::days(14); // 14 days ago
 
     let context = RetrievalContext {
         query: "old memory decay".to_string(),
@@ -11126,7 +11141,7 @@ fn test_retrieval_temporal_decay_outside_window_s71() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(7),
+            start: now - time::Duration::days(7),
             end: now,
         }),
         limit: 10,
@@ -11171,10 +11186,10 @@ fn test_retrieval_recency_score_exact_s71() {
         ..Default::default()
     });
 
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::episodic("recency check".to_string(), vec![], None);
-    m.metadata.created_at = now - Duration::days(30);
-    m.metadata.last_accessed = now - Duration::days(7);
+    m.metadata.created_at = now - time::Duration::days(30);
+    m.metadata.last_accessed = now - time::Duration::days(7);
     m.metadata.importance = 0.5;
 
     let context = RetrievalContext {
@@ -11399,8 +11414,8 @@ fn test_consolidation_spatial_same_location_exact_s72() {
         Some("central_park".to_string()),
     );
     // Set creation times far apart to prevent temporal association
-    m1.metadata.created_at = Utc::now() - Duration::days(60);
-    m2.metadata.created_at = Utc::now() - Duration::days(1);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
 
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
@@ -11428,8 +11443,8 @@ fn test_consolidation_conceptual_similarity_exact_s72() {
     // Total: 0.3 + 0.375 = 0.675 → above 0.5 threshold
     let mut m1 = Memory::episodic("alpha beta gamma".to_string(), vec![], None);
     let mut m2 = Memory::episodic("alpha beta gamma delta".to_string(), vec![], None);
-    m1.metadata.created_at = Utc::now() - Duration::days(100);
-    m2.metadata.created_at = Utc::now() - Duration::days(1);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
 
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
@@ -11454,10 +11469,10 @@ fn test_consolidation_strength_boost_addition_s72() {
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
 
     // Create two memories close in time for temporal association (triggers consolidation)
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m1 = Memory::episodic("temporal event one".to_string(), vec![], None);
     let mut m2 = Memory::episodic("temporal event two".to_string(), vec![], None);
-    m1.metadata.created_at = now - Duration::hours(1);
+    m1.metadata.created_at = now - time::Duration::hours(1);
     m2.metadata.created_at = now;
     m1.metadata.strength = 0.7;
 
@@ -11507,8 +11522,8 @@ fn test_compress_text_exact_output_r8() {
     let text = words.join(" ");
 
     let mut m = Memory::episodic(text.clone(), vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(60);
-    m.metadata.last_accessed = Utc::now() - Duration::days(60);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     m.metadata.importance = 0.1;
     m.metadata.tags.clear();
 
@@ -11555,8 +11570,8 @@ fn test_compress_text_20_words_exact_r8() {
     let text = words.join(" ");
 
     let mut m = Memory::episodic(text, vec![], None);
-    m.metadata.created_at = Utc::now() - Duration::days(60);
-    m.metadata.last_accessed = Utc::now() - Duration::days(60);
+    m.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(60);
+    m.metadata.last_accessed = time::OffsetDateTime::now_utc() - time::Duration::days(60);
     m.metadata.importance = 0.1;
     m.metadata.tags.clear();
 
@@ -12038,7 +12053,7 @@ fn test_retrieval_temporal_exactly_at_window_end_r8() {
         ..Default::default()
     });
 
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let window_end = now;
     let mut m = Memory::episodic("end boundary test".to_string(), vec![], None);
     m.metadata.created_at = window_end; // Exactly at end
@@ -12050,7 +12065,7 @@ fn test_retrieval_temporal_exactly_at_window_end_r8() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: window_end,
         }),
         limit: 10,
@@ -12083,9 +12098,9 @@ fn test_retrieval_relevance_total_includes_temporal_r8() {
         max_results: 10,
     });
 
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m = Memory::episodic("temporal test r8".to_string(), vec![], None);
-    m.metadata.created_at = now - Duration::hours(6); // Inside any reasonable window
+    m.metadata.created_at = now - time::Duration::hours(6); // Inside any reasonable window
     m.metadata.importance = 0.0; // Zero importance to isolate temporal
 
     let context = RetrievalContext {
@@ -12095,7 +12110,7 @@ fn test_retrieval_relevance_total_includes_temporal_r8() {
         recent_memory_ids: vec![],
         preferred_types: vec![],
         time_window: Some(TimeWindow {
-            start: now - Duration::days(1),
+            start: now - time::Duration::days(1),
             end: now,
         }),
         limit: 10,
@@ -12276,8 +12291,8 @@ fn test_consolidation_spatial_location_equality_r8() {
     });
     let mut m1 = Memory::episodic("event one".to_string(), vec![], Some("castle".to_string()));
     let mut m2 = Memory::episodic("event two".to_string(), vec![], Some("castle".to_string()));
-    m1.metadata.created_at = Utc::now() - Duration::days(100);
-    m2.metadata.created_at = Utc::now() - Duration::days(1);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
 
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
@@ -12300,8 +12315,8 @@ fn test_consolidation_spatial_different_location_r8() {
     });
     let mut m1 = Memory::episodic("event A".to_string(), vec![], Some("castle".to_string()));
     let mut m2 = Memory::episodic("event B".to_string(), vec![], Some("forest".to_string()));
-    m1.metadata.created_at = Utc::now() - Duration::days(100);
-    m2.metadata.created_at = Utc::now() - Duration::days(1);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
 
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
@@ -12334,8 +12349,8 @@ fn test_consolidation_conceptual_text_overlap_exact_r8() {
     // If L201 +=→-=: subtract instead → 0.3 - 0.25 = 0.05 → below threshold
     let mut m1 = Memory::episodic("aaa bbb ccc ddd".to_string(), vec![], None);
     let mut m2 = Memory::episodic("aaa bbb eee fff".to_string(), vec![], None);
-    m1.metadata.created_at = Utc::now() - Duration::days(100);
-    m2.metadata.created_at = Utc::now() - Duration::days(1);
+    m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
+    m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1);
 
     let mut memories = vec![m1, m2];
     let result = engine.consolidate(&mut memories).unwrap();
@@ -12357,10 +12372,10 @@ fn test_consolidation_strength_boost_exact_r8() {
     // Mutated: 0.5 * 0.2 = 0.1
     let engine = ConsolidationEngine::new(ConsolidationConfig::default());
 
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut m1 = Memory::episodic("boost test one".to_string(), vec![], None);
     let mut m2 = Memory::episodic("boost test two".to_string(), vec![], None);
-    m1.metadata.created_at = now - Duration::hours(1);
+    m1.metadata.created_at = now - time::Duration::hours(1);
     m2.metadata.created_at = now;
     m1.metadata.strength = 0.5;
     m2.metadata.strength = 0.5;
@@ -12425,8 +12440,8 @@ fn test_retrieval_associated_mem_outside_window_r9() {
     // mem1: inside time window, matches query directly
     // mem2: 7 days before window start, connected via association
     // mem2 can ONLY appear through association chain (matches_context rejects it)
-    let now = Utc::now();
-    let seven_days_ago = now - Duration::days(7);
+    let now = time::OffsetDateTime::now_utc();
+    let seven_days_ago = now - time::Duration::days(7);
 
     // mem2 = old memory outside the time window
     let mut mem2 = Memory::sensory("battle plans strategy".to_string(), None);
@@ -12441,8 +12456,8 @@ fn test_retrieval_associated_mem_outside_window_r9() {
     mem1.add_association(mem2_id.clone(), AssociationType::Temporal, 0.5);
 
     let window = TimeWindow {
-        start: now - Duration::days(1),
-        end: now + Duration::days(1),
+        start: now - time::Duration::days(1),
+        end: now + time::Duration::days(1),
     };
 
     let config = RetrievalConfig {
@@ -12523,15 +12538,15 @@ fn test_retrieval_associated_mem_outside_window_r9() {
 fn test_retrieval_direct_mid_window_temporal_one_r9() {
     // Memory in the MIDDLE of a 14-day window should get temporal_score = 1.0
     // With L203 (<=→>): created_at > end is false → falls to decay → score < 1.0
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
 
     let mut mem = Memory::sensory("target word".to_string(), None);
     mem.metadata.created_at = now; // exactly at midpoint of ±7 day window
     mem.metadata.last_accessed = now;
 
     let window = TimeWindow {
-        start: now - Duration::days(7),
-        end: now + Duration::days(7),
+        start: now - time::Duration::days(7),
+        end: now + time::Duration::days(7),
     };
 
     let config = RetrievalConfig {
@@ -12579,7 +12594,7 @@ fn test_retrieval_importance_increases_score_r9() {
     // Two memories with identical text match but different importance.
     // Higher importance should give higher relevance_score.
     // With L147 (+=→-=): importance contribution is SUBTRACTED, inverting the order.
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
 
     let mut mem_low = Memory::sensory("exact match words".to_string(), None);
     mem_low.metadata.importance = 0.1;
@@ -12755,16 +12770,16 @@ fn mutation_spatial_same_location_must_match_r10() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut mem_a = make_timed_memory(
         "event alpha",
-        now - Duration::hours(100),
+        now - time::Duration::hours(100),
         Some("castle_gate"),
         vec![],
     );
     let mem_b = make_timed_memory(
         "event beta",
-        now - Duration::hours(200),
+        now - time::Duration::hours(200),
         Some("castle_gate"),
         vec![],
     );
@@ -12797,17 +12812,17 @@ fn mutation_spatial_different_location_no_association_r10() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mut memories = vec![
         make_timed_memory(
             "event at castle",
-            now - Duration::hours(100),
+            now - time::Duration::hours(100),
             Some("castle"),
             vec![],
         ),
         make_timed_memory(
             "event at forest",
-            now - Duration::hours(200),
+            now - time::Duration::hours(200),
             Some("forest"),
             vec![],
         ),
@@ -12831,11 +12846,21 @@ fn mutation_consolidation_max_associations_boundary_r10() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
-    let mut mem_a = make_timed_memory("topic alpha", now - Duration::hours(100), None, vec![]);
+    let now = time::OffsetDateTime::now_utc();
+    let mut mem_a = make_timed_memory(
+        "topic alpha",
+        now - time::Duration::hours(100),
+        None,
+        vec![],
+    );
     // Pre-fill with exactly 1 association (at the max)
     mem_a.add_association("preexisting_id".to_string(), AssociationType::Temporal, 0.7);
-    let mem_b = make_timed_memory("topic alpha", now - Duration::hours(200), None, vec![]);
+    let mem_b = make_timed_memory(
+        "topic alpha",
+        now - time::Duration::hours(200),
+        None,
+        vec![],
+    );
     let mut memories = vec![mem_a, mem_b];
     let _result = engine.consolidate(&mut memories).unwrap();
     // Memory A (index 0) should still have exactly 1 association — the pre-existing one
@@ -12859,12 +12884,12 @@ fn mutation_consolidation_empty_text_no_nan_v10() {
         ..ConsolidationConfig::default()
     };
     let engine = ConsolidationEngine::new(config);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     // Memory A: empty text, Memory B: non-empty. Same type (Episodic from make_timed_memory).
-    let mem_a = make_timed_memory("", now - Duration::hours(100), None, vec![]);
+    let mem_a = make_timed_memory("", now - time::Duration::hours(100), None, vec![]);
     let mem_b = make_timed_memory(
         "hello world combat battle",
-        now - Duration::hours(200),
+        now - time::Duration::hours(200),
         None,
         vec![],
     );
@@ -12908,16 +12933,16 @@ fn mutation_consolidation_participant_similarity_arithmetic_r10() {
         ..ConsolidationConfig::default()
     };
     let engine_a = ConsolidationEngine::new(config_a);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mem1 = make_timed_memory(
         "xyzzy details",
-        now - Duration::hours(100),
+        now - time::Duration::hours(100),
         None,
         vec!["alice", "bob"],
     );
     let mem2 = make_timed_memory(
         "plugh info",
-        now - Duration::hours(200),
+        now - time::Duration::hours(200),
         None,
         vec!["alice", "carol"],
     );
@@ -12940,16 +12965,16 @@ fn mutation_consolidation_participant_division_not_mult_r10() {
         ..ConsolidationConfig::default()
     };
     let engine_b = ConsolidationEngine::new(config_b);
-    let now = Utc::now();
+    let now = time::OffsetDateTime::now_utc();
     let mem1 = make_timed_memory(
         "xyzzy details",
-        now - Duration::hours(100),
+        now - time::Duration::hours(100),
         None,
         vec!["alice", "bob"],
     );
     let mem2 = make_timed_memory(
         "plugh info",
-        now - Duration::hours(200),
+        now - time::Duration::hours(200),
         None,
         vec!["alice", "carol"],
     );

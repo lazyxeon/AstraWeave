@@ -9,6 +9,8 @@
 //! - Cross-agent memory sharing
 //! - Episode-based interaction recording for companion learning
 
+mod utc_stamp;
+
 pub mod memory_types;
 pub use memory_types::*;
 

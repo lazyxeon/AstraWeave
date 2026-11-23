@@ -20,7 +20,9 @@ tokio = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
-chrono = { version = "0.4", features = ["serde"], optional = true }
+time = { version = "0.3", optional = true }
+# Marks the windowed entry so mutation testing leaves it alone. No runtime effect.
+mutants = { version = "0.0.4", optional = true }
 
 # Visual demo dependencies (enable with --features visual)
 astraweave-render = { path = "../../astraweave-render", features = ["gltf-assets", "assets", "textures"], optional = true }
@@ -39,6 +41,9 @@ egui-winit = { workspace = true, optional = true }
 egui-wgpu = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 
+[dev-dependencies]
+time = { version = "0.3" }
+
 [features]
 # mimalloc is on by default per the 2026-04-17 experiment (+43% FPS on the
 # profiling_demo reference workload; no regression on any measured bench). Opt
@@ -49,7 +54,7 @@ default = ["fast-alloc"]
 fast-alloc = ["dep:astraweave-alloc", "astraweave-alloc/fast-alloc"]
 llm = ["astraweave-llm", "astraweave-llm/llm_cache", "tokio"]
 ollama = ["llm", "astraweave-llm/ollama", "reqwest", "serde_json"]
-metrics = ["serde", "serde_json", "chrono"]
+metrics = ["serde", "serde_json", "time"]
 llm_orchestrator = ["astraweave-ai/llm_orchestrator", "ollama"]
 decision-trace = ["astraweave-ai/decision-trace"]
 # Visual demo with full rendering + LLM support
@@ -69,7 +74,8 @@ visual = [
     "egui-wgpu",
     "rand",
     "ollama",
-    "tokio"
+    "tokio",
+    "dep:mutants",
 ]
 
 

@@ -15,7 +15,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 futures = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["parsing"] }
 dashmap = "6.1"
 async-trait = "0.1"
 # 0.41.0 is the first rusqlite that depends on libsqlite3-sys 0.39

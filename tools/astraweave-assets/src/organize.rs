@@ -92,7 +92,7 @@ impl AssetOrganizer {
             urls,
             paths,
             hashes,
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
             resolved_res: asset.resolution.clone(),
         };
 
@@ -318,7 +318,7 @@ impl AssetOrganizer {
             urls,
             paths,
             hashes,
-            timestamp: chrono::Utc::now().to_rfc3339(),
+            timestamp: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
             resolved_res: asset
                 .metadata
                 .get("resolution")

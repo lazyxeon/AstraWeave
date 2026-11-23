@@ -187,7 +187,9 @@ impl HealthChecker {
                 component.to_string(),
                 ComponentHealth {
                     status: HealthStatus::Healthy,
-                    last_check: chrono::Utc::now().to_rfc3339(),
+                    last_check: crate::utc_stamp::format_utc_rfc3339(
+                        time::OffsetDateTime::now_utc(),
+                    ),
                     consecutive_failures: 0,
                     consecutive_successes: 0,
                     last_error: None,
@@ -217,7 +219,7 @@ impl HealthChecker {
             .entry(component.to_string())
             .or_insert_with(|| ComponentHealth {
                 status: HealthStatus::Healthy,
-                last_check: chrono::Utc::now().to_rfc3339(),
+                last_check: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
                 consecutive_failures: 0,
                 consecutive_successes: 0,
                 last_error: None,
@@ -268,7 +270,8 @@ impl HealthChecker {
             }
         }
 
-        component_health.last_check = chrono::Utc::now().to_rfc3339();
+        component_health.last_check =
+            crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc());
     }
 
     fn get_overall_health(&self) -> SystemHealth {
@@ -294,7 +297,7 @@ impl HealthChecker {
         SystemHealth {
             overall_status,
             components: self.components.clone(),
-            last_check: chrono::Utc::now().to_rfc3339(),
+            last_check: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
             uptime_seconds: self.start_time.elapsed().as_secs(),
         }
     }
@@ -589,7 +592,7 @@ impl ProductionHardeningLayer {
             circuit_breakers: circuit_breaker_status,
             backpressure: backpressure_metrics,
             telemetry: telemetry_metrics,
-            last_updated: chrono::Utc::now().to_rfc3339(),
+            last_updated: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
         }
     }
 

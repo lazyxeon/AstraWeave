@@ -5,7 +5,6 @@
 
 use crate::memory_types::*;
 use anyhow::Result;
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -169,9 +168,9 @@ impl ForgettingEngine {
 
     /// Update memory strength based on decay and usage patterns
     fn update_memory_strength(&self, memory: &mut Memory) -> Result<()> {
-        let now = Utc::now();
-        let age_days = (now - memory.metadata.created_at).num_days() as f32;
-        let _last_access_days = (now - memory.metadata.last_accessed).num_days() as f32;
+        let now = time::OffsetDateTime::now_utc();
+        let age_days = (now - memory.metadata.created_at).whole_days() as f32;
+        let _last_access_days = (now - memory.metadata.last_accessed).whole_days() as f32;
 
         // Get forgetting curve for this memory type
         let default_curve = ForgettingCurve {
@@ -300,7 +299,7 @@ impl ForgettingEngine {
 
         let avg_age_days = type_memories
             .iter()
-            .map(|m| (Utc::now() - m.metadata.created_at).num_days() as f32)
+            .map(|m| (time::OffsetDateTime::now_utc() - m.metadata.created_at).whole_days() as f32)
             .sum::<f32>()
             / type_memories.len() as f32;
 
@@ -372,7 +371,7 @@ mod tests {
         let mut memory = Memory::sensory("Test memory".to_string(), None);
 
         // Artificially age the memory
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(30);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
         let initial_strength = memory.metadata.strength;
         engine.update_memory_strength(&mut memory).unwrap();
@@ -403,7 +402,7 @@ mod tests {
         let mut memory2 = Memory::episodic("Test".to_string(), vec![], None);
 
         // Age both memories equally
-        let old_date = Utc::now() - chrono::Duration::days(10);
+        let old_date = time::OffsetDateTime::now_utc() - time::Duration::days(10);
         memory1.metadata.created_at = old_date;
         memory2.metadata.created_at = old_date;
 
@@ -512,7 +511,7 @@ mod tests {
         let mut memory = Memory::sensory("Very old memory".to_string(), None);
 
         // Age and weaken the memory significantly
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(365);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
         memory.metadata.strength = 0.01; // Below any threshold
 
         let mut memories = vec![memory];
@@ -529,7 +528,7 @@ mod tests {
         let mut memory = Memory::semantic("Important".to_string(), "facts".to_string());
         memory.metadata.permanent = true;
         memory.metadata.strength = 0.001; // Very weak but permanent
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(1000);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(1000);
 
         let mut memories = vec![memory];
         let result = engine.apply_forgetting(&mut memories).unwrap();
@@ -549,7 +548,7 @@ mod tests {
 
         // Old weak memory (will be forgotten)
         let mut old = Memory::sensory("Old".to_string(), None);
-        old.metadata.created_at = Utc::now() - chrono::Duration::days(365);
+        old.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(365);
         old.metadata.strength = 0.01;
 
         // Permanent memory (won't be processed)
@@ -583,7 +582,7 @@ mod tests {
         let mut memory = create_working_memory("Test");
 
         // Age the memory
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(7);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(7);
         let initial = memory.metadata.strength;
 
         engine.update_memory_strength(&mut memory).unwrap();
@@ -598,11 +597,13 @@ mod tests {
 
         let mut low_importance = create_working_memory("Low");
         low_importance.metadata.importance = 0.1;
-        low_importance.metadata.created_at = Utc::now() - chrono::Duration::days(5);
+        low_importance.metadata.created_at =
+            time::OffsetDateTime::now_utc() - time::Duration::days(5);
 
         let mut high_importance = create_working_memory("High");
         high_importance.metadata.importance = 0.9;
-        high_importance.metadata.created_at = Utc::now() - chrono::Duration::days(5);
+        high_importance.metadata.created_at =
+            time::OffsetDateTime::now_utc() - time::Duration::days(5);
 
         engine.update_memory_strength(&mut low_importance).unwrap();
         engine.update_memory_strength(&mut high_importance).unwrap();
@@ -617,11 +618,13 @@ mod tests {
 
         let mut never_accessed = Memory::episodic("Never".to_string(), vec![], None);
         never_accessed.metadata.access_count = 0;
-        never_accessed.metadata.created_at = Utc::now() - chrono::Duration::days(10);
+        never_accessed.metadata.created_at =
+            time::OffsetDateTime::now_utc() - time::Duration::days(10);
 
         let mut frequently_accessed = Memory::episodic("Frequent".to_string(), vec![], None);
         frequently_accessed.metadata.access_count = 100;
-        frequently_accessed.metadata.created_at = Utc::now() - chrono::Duration::days(10);
+        frequently_accessed.metadata.created_at =
+            time::OffsetDateTime::now_utc() - time::Duration::days(10);
 
         engine.update_memory_strength(&mut never_accessed).unwrap();
         engine
@@ -642,7 +645,7 @@ mod tests {
 
         let mut memory = Memory::episodic("Test".to_string(), vec![], None);
         memory.metadata.access_count = 10;
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(5);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(5);
 
         let config_enabled = ForgettingConfig {
             spaced_repetition: true,
@@ -669,7 +672,7 @@ mod tests {
         // Set extreme values
         memory.metadata.importance = 10.0; // Unrealistically high
         memory.metadata.access_count = 10000;
-        memory.metadata.created_at = Utc::now(); // Very fresh
+        memory.metadata.created_at = time::OffsetDateTime::now_utc(); // Very fresh
 
         engine.update_memory_strength(&mut memory).unwrap();
 
@@ -682,7 +685,7 @@ mod tests {
     fn test_update_strength_uses_default_curve() {
         let engine = ForgettingEngine::new(ForgettingConfig::default());
         let mut memory = create_working_memory("Test");
-        memory.metadata.created_at = Utc::now() - chrono::Duration::days(30);
+        memory.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
         // This should work with the default Working curve
         engine.update_memory_strength(&mut memory).unwrap();
@@ -868,10 +871,10 @@ mod tests {
         let engine = ForgettingEngine::new(ForgettingConfig::default());
 
         let mut m1 = create_working_memory("W1");
-        m1.metadata.created_at = Utc::now() - chrono::Duration::days(10);
+        m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(10);
 
         let mut m2 = create_working_memory("W2");
-        m2.metadata.created_at = Utc::now() - chrono::Duration::days(20);
+        m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(20);
 
         let memories = vec![m1, m2];
         let stats = engine.get_type_statistics(&MemoryType::Working, &memories);
@@ -938,10 +941,10 @@ mod tests {
         let engine = ForgettingEngine::new(ForgettingConfig::default());
 
         let mut m1 = create_working_memory("W1");
-        m1.metadata.created_at = Utc::now() - chrono::Duration::days(30);
+        m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
         let mut m2 = create_working_memory("W2");
-        m2.metadata.created_at = Utc::now() - chrono::Duration::days(30);
+        m2.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
         let initial_strength = m1.metadata.strength + m2.metadata.strength;
         let mut memories = vec![m1, m2];
@@ -963,13 +966,13 @@ mod tests {
         // Create 3 memories, mark first and third for removal
         let mut m1 = Memory::sensory("First".to_string(), None);
         m1.metadata.strength = 0.001;
-        m1.metadata.created_at = Utc::now() - chrono::Duration::days(100);
+        m1.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
 
         let m2 = Memory::sensory("Second".to_string(), None); // Fresh, will stay
 
         let mut m3 = Memory::sensory("Third".to_string(), None);
         m3.metadata.strength = 0.001;
-        m3.metadata.created_at = Utc::now() - chrono::Duration::days(100);
+        m3.metadata.created_at = time::OffsetDateTime::now_utc() - time::Duration::days(100);
 
         let mut memories = vec![m1, m2, m3];
         engine.apply_forgetting(&mut memories).unwrap();

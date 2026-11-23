@@ -362,8 +362,9 @@ fn on_close_request(&mut self) -> bool {
 // Auto-save every 5 minutes to .autosave/
 fn auto_save(&mut self) {
     if self.auto_save_enabled && self.is_dirty {
+        let timestamp = local_clock::compact(local_clock::now());
         let backup_path = self.content_root.join(".autosave")
-            .join(format!("scene_{}.ron", chrono::Utc::now().format("%Y%m%d_%H%M%S")));
+            .join(format!("scene_{timestamp}.autosave.scene.ron"));
         // Keep last 3 auto-saves
     }
 }

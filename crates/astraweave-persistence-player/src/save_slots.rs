@@ -1,7 +1,6 @@
 //! Save slot management for multi-slot game saves
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -100,7 +99,7 @@ impl SaveSlotManager {
         // Create metadata
         let metadata = SaveMetadata {
             slot_id,
-            timestamp: Utc::now(),
+            timestamp: time::OffsetDateTime::now_utc(),
             playtime_seconds: player_profile.stats.playtime_seconds,
             level_name,
             character_name: player_profile.name.clone(),
@@ -128,7 +127,11 @@ impl SaveSlotManager {
         // Write to disk
         fs::write(self.save_file_path(slot_id), save_data).context("Failed to write save file")?;
 
-        println!("💾 Saved game to slot {} ({})", slot_id, metadata.timestamp);
+        println!(
+            "💾 Saved game to slot {} ({})",
+            slot_id,
+            crate::utc_stamp::format_utc_display(metadata.timestamp)
+        );
 
         Ok(())
     }
@@ -162,7 +165,8 @@ impl SaveSlotManager {
 
         println!(
             "📂 Loaded game from slot {} ({})",
-            slot_id, save_slot.metadata.timestamp
+            slot_id,
+            crate::utc_stamp::format_utc_display(save_slot.metadata.timestamp)
         );
 
         Ok(save_slot)
@@ -224,7 +228,8 @@ pub struct SaveMetadata {
     pub slot_id: usize,
 
     /// Save timestamp
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
 
     /// Total playtime (seconds)
     pub playtime_seconds: u64,
