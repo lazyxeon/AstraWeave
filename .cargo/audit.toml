@@ -2,8 +2,6 @@
 # `ignore` is a list of advisory IDs. The schema has no reason field;
 # the reason and tracking issue live in the comment and in `deny.toml`.
 #
-# The IDs below are unmaintained. There is no patched release.
-# Each one has a tracking issue.
 # zip 1.1.4 is gone. third_party/candle-core is crates.io candle-core 0.8.4
 # pinned to zip 9.7.0, patched for the advisories it addresses.
 # Drop that directory and the [patch.crates-io] entry once candle upstream
@@ -12,12 +10,14 @@
 # url is 2.5.9. form_urlencoded is 1.2.3, which that url release requires.
 # quinn-udp is 0.5.16. chrono is not in the lock. zip is 9.7.0.
 # PR #758. https://github.com/lazyxeon/AstraWeave/pull/758
-# #756 is the audit failure this lock clears. None of the four is an ignore.
+# #756 tracks the main audit failure.
 # https://github.com/lazyxeon/AstraWeave/issues/756
-# stack overflow, RUSTSEC-2026-0592 (url)
 # privilege escalation, RUSTSEC-2026-0548 (zip)
 # denial of service, RUSTSEC-2026-0538 (quinn-udp)
 # unmaintained, RUSTSEC-2026-0543 (chrono)
+# url 2.5.9 also fixes stack overflow, RUSTSEC-2026-0592, a later advisory. None of these is an ignore.
+# The IDs in the ignore array below are unmaintained. There is no patched release.
+# Each one has a tracking issue.
 
 [advisories]
 ignore = [
