@@ -1,0 +1,10 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: taiki-e/not-install@v2
+        with:
+          tool: sccache

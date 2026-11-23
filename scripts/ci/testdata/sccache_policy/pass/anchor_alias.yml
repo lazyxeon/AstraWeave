@@ -1,3 +1,4 @@
+# sites: 1
 name: fixture-pass-anchor-alias
 on: workflow_dispatch
 x-pin: &sccache_pin

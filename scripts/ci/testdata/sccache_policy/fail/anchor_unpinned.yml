@@ -1,3 +1,4 @@
+# sites: 1
 name: fixture-fail-anchor-unpinned
 on: workflow_dispatch
 x-ver: &bad_ver latest

@@ -1,3 +1,4 @@
+# sites: 1
 name: fixture-fail-missing-with
 on: workflow_dispatch
 jobs:

@@ -1,0 +1,6 @@
+# sites: 0
+name: node
+runs:
+  using: node20
+  steps:
+    - uses: mozilla-actions/sccache-action@v0.0.11

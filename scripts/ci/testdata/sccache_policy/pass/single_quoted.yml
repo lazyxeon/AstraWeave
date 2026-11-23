@@ -1,3 +1,4 @@
+# sites: 1
 name: fixture-pass-single-quoted
 on: workflow_dispatch
 jobs:

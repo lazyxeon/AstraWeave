@@ -1,0 +1,6 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  call:
+    uses: example/repo/.github/workflows/build.yml@main

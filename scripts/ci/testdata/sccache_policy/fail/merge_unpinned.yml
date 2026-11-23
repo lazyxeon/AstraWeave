@@ -1,3 +1,4 @@
+# sites: 1
 name: fixture-fail-merge-unpinned
 on: workflow_dispatch
 x-defaults: &sccache_with
