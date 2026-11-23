@@ -10,6 +10,7 @@ from __future__ import annotations
 import inspect
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -83,37 +84,96 @@ UNPINNED_REF_MSG = "unpinned action ref"
 NON_SHA_TAG_MSG = "must be a 40-char SHA or major tag vN"
 BELOW_FLOOR_MSG = "below major floor"
 
-SCCACHE_ACTION = "mozilla-actions/sccache-action"
+SCCACHE_ACTION_ID = "mozilla-actions/sccache-action"
+TAIKI_INSTALL_ACTION_ID = "taiki-e/install-action"
 PINNED_SCCACHE_VERSION = "v0.19.0"
-SCCACHE_EXPR_RE = re.compile(r"\$\{\{")
+# cargo/binstall and GitHub release URLs accept the crate version or the tag.
+PINNED_SCCACHE_INSTALL_VERSIONS = frozenset({"0.19.0", "v0.19.0"})
 EXPECTED_SCCACHE_ACTION_STEPS = 10
+_CARGO_SCCACHE_INSTALL_RE = re.compile(
+    r"(?:^|&&|\|\||;|\n)\s*"
+    r"cargo(?:\s+\+\S+)?\s+"
+    r"(?P<kind>binstall|install)\b"
+    r"(?P<rest>[^\n;&|]*)",
+    re.IGNORECASE,
+)
+_SCCACHE_PKG_RE = re.compile(
+    r"(?<![\w@./+-])sccache(?:@(?P<atver>\S+))?(?![\w./+-])",
+    re.IGNORECASE,
+)
+_CARGO_VERSION_FLAG_RE = re.compile(
+    r"(?:^|\s)--version(?:=|\s+)(?P<ver>\S+)",
+    re.IGNORECASE,
+)
+_SCCACHE_RELEASE_URL_RE = re.compile(
+    r"https?://github\.com/mozilla/sccache/releases/download/"
+    r"(?P<ver>[^/\s\"'`<>]+)",
+    re.IGNORECASE,
+)
 
 
-def _sccache_action_from_uses(uses: Any) -> bool:
-    if not isinstance(uses, str):
+def _action_repo_and_ref(uses: Any) -> tuple[str, str] | None:
+    """Return ``(owner/repo[/subpath], ref)`` for a GitHub action ``uses``.
+
+    Owner and repository are casefolded. ``.`` and ``..`` after the repository
+    are normalized the way the runner joins the action path. A path that
+    escapes the repository is not that action.
+    """
+    if not isinstance(uses, str) or "@" not in uses:
+        return None
+    action, ref = uses.split("@", 1)
+    action = action.strip()
+    ref = ref.strip()
+    if (
+        not action
+        or action.startswith("./")
+        or action.startswith("docker://")
+    ):
+        return None
+    parts = action.split("/")
+    if len(parts) < 2 or parts[0] == "" or parts[1] == "":
+        return None
+    owner, repo, sub = parts[0], parts[1], parts[2:]
+    extra = ""
+    if sub:
+        normalized = posixpath.normpath("/".join(sub))
+        if normalized in (".", ""):
+            extra = ""
+        elif normalized == ".." or normalized.startswith("../"):
+            return None
+        else:
+            extra = normalized
+    repo_path = f"{owner}/{repo}" if extra == "" else f"{owner}/{repo}/{extra}"
+    return repo_path.casefold(), ref
+
+
+def _is_sccache_action(uses: Any) -> bool:
+    parsed = _action_repo_and_ref(uses)
+    if parsed is None:
         return False
-    return uses.split("@", 1)[0].strip() == SCCACHE_ACTION
+    repo_path, _ref = parsed
+    return repo_path == SCCACHE_ACTION_ID
 
 
 def _literal_pinned_sccache_version(version: Any) -> bool:
     if not isinstance(version, str):
         return False
-    if not version or SCCACHE_EXPR_RE.search(version):
-        return False
-    if "$" in version:
-        return False
     return version.strip() == PINNED_SCCACHE_VERSION
+
+
+def _pinned_sccache_install_version(version: str | None) -> bool:
+    if version is None:
+        return False
+    return version.strip("\"'") in PINNED_SCCACHE_INSTALL_VERSIONS
 
 
 def _sccache_step_violation(path: str, step_path: str, reason: str) -> str:
     return f"{path}: {step_path}: {reason}"
 
 
-def _sccache_check_step(step: Any, path: str, step_path: str) -> list[str]:
-    if not isinstance(step, dict):
-        return []
-    if not _sccache_action_from_uses(step.get("uses")):
-        return []
+def _sccache_action_pin_violations(
+    step: dict[str, Any], path: str, step_path: str
+) -> list[str]:
     with_block = step.get("with")
     if with_block is None:
         return [
@@ -132,6 +192,16 @@ def _sccache_check_step(step: Any, path: str, step_path: str) -> list[str]:
                 "with must be a mapping for mozilla-actions/sccache-action",
             )
         ]
+    for key in with_block:
+        if isinstance(key, str) and key.casefold() == "version" and key != "version":
+            return [
+                _sccache_step_violation(
+                    path,
+                    step_path,
+                    f"with key {key!r} casefolds to version "
+                    "and is not exactly 'version'",
+                )
+            ]
     if "version" not in with_block:
         return [
             _sccache_step_violation(
@@ -153,6 +223,127 @@ def _sccache_check_step(step: Any, path: str, step_path: str) -> list[str]:
     ]
 
 
+def _tool_specs(value: Any) -> list[tuple[str, str | None]]:
+    if isinstance(value, list):
+        specs: list[tuple[str, str | None]] = []
+        for item in value:
+            specs.extend(_tool_specs(item))
+        return specs
+    if not isinstance(value, str):
+        return []
+    specs = []
+    for token in re.split(r"[\s,]+", value.strip()):
+        if not token:
+            continue
+        if "@" in token:
+            name, ver = token.split("@", 1)
+            specs.append((name, ver))
+        else:
+            specs.append((token, None))
+    return specs
+
+
+def _taiki_sccache_violations(
+    step: dict[str, Any], path: str, step_path: str
+) -> list[str]:
+    parsed = _action_repo_and_ref(step.get("uses"))
+    if parsed is None:
+        return []
+    repo_path, ref = parsed
+    if repo_path != TAIKI_INSTALL_ACTION_ID:
+        return []
+    violations: list[str] = []
+    ref_name, _sep, ref_ver = ref.partition("@")
+    if ref_name.casefold() == "sccache" and not _pinned_sccache_install_version(
+        ref_ver or None
+    ):
+        violations.append(
+            _sccache_step_violation(
+                path,
+                step_path,
+                "taiki-e/install-action ref installs sccache without pin 0.19.0 "
+                f"(got {ref!r})",
+            )
+        )
+    with_block = step.get("with")
+    if with_block is None:
+        return violations
+    if not isinstance(with_block, dict):
+        violations.append(
+            _sccache_step_violation(
+                path,
+                step_path,
+                "taiki-e/install-action with must be a mapping to read tool",
+            )
+        )
+        return violations
+    for key, value in with_block.items():
+        if not isinstance(key, str) or key.casefold() != "tool":
+            continue
+        for name, ver in _tool_specs(value):
+            if name.casefold() != "sccache":
+                continue
+            if _pinned_sccache_install_version(ver):
+                continue
+            violations.append(
+                _sccache_step_violation(
+                    path,
+                    step_path,
+                    "taiki-e/install-action tool installs sccache without pin "
+                    f"0.19.0 (got {value!r})",
+                )
+            )
+    return violations
+
+
+def _run_sccache_violations(run: str, path: str, step_path: str) -> list[str]:
+    script = re.sub(r"\\\n", " ", run)
+    violations: list[str] = []
+    for match in _CARGO_SCCACHE_INSTALL_RE.finditer(script):
+        rest = match.group("rest")
+        flag = _CARGO_VERSION_FLAG_RE.search(rest)
+        flag_ver = flag.group("ver") if flag else None
+        for pkg in _SCCACHE_PKG_RE.finditer(rest):
+            ver = pkg.group("atver") or flag_ver
+            if _pinned_sccache_install_version(ver):
+                continue
+            kind = match.group("kind").lower()
+            violations.append(
+                _sccache_step_violation(
+                    path,
+                    step_path,
+                    f"cargo {kind} of sccache must pin 0.19.0 (got {ver!r})",
+                )
+            )
+    for url in _SCCACHE_RELEASE_URL_RE.finditer(script):
+        ver = url.group("ver")
+        if _pinned_sccache_install_version(ver):
+            continue
+        violations.append(
+            _sccache_step_violation(
+                path,
+                step_path,
+                f"sccache release URL must pin v0.19.0 (got {ver!r})",
+            )
+        )
+    return violations
+
+
+def _sccache_check_step(step: Any, path: str, step_path: str) -> list[str]:
+    if not isinstance(step, dict):
+        return []
+    violations: list[str] = []
+    uses = step.get("uses")
+    if _is_sccache_action(uses):
+        violations.extend(_sccache_action_pin_violations(step, path, step_path))
+    else:
+        violations.extend(_taiki_sccache_violations(step, path, step_path))
+    run = step.get("run")
+    if isinstance(run, str):
+        violations.extend(_run_sccache_violations(run, path, step_path))
+    return violations
+
+
 def _sccache_walk_steps(
     steps: Any,
     path: str,
@@ -164,12 +355,10 @@ def _sccache_walk_steps(
         return
     for index, step in enumerate(steps):
         step_path = f"{prefix}.steps[{index}]"
-        if isinstance(step, dict) and _sccache_action_from_uses(step.get("uses")):
+        if isinstance(step, dict) and _is_sccache_action(step.get("uses")):
             if sites is not None:
                 sites.append(f"{path}: {step_path}")
         violations.extend(_sccache_check_step(step, path, step_path))
-        if isinstance(step, dict) and step.get("steps") is not None:
-            _sccache_walk_steps(step["steps"], path, step_path, violations, sites)
 
 
 def _sccache_walk_document(
@@ -189,9 +378,22 @@ def _sccache_walk_document(
         _sccache_walk_steps(runs.get("steps"), path, "runs", violations, sites)
 
 
+def _sccache_walk_parsed(
+    doc: Any,
+    path: str,
+    violations: list[str],
+    sites: list[str] | None = None,
+) -> None:
+    if isinstance(doc, list):
+        for item in doc:
+            _sccache_walk_document(item, path, violations, sites)
+        return
+    _sccache_walk_document(doc, path, violations, sites)
+
+
 def _parse_policy_yaml(text: str, path: str) -> tuple[Any, list[str]]:
     try:
-        doc = yaml.load(text, Loader=yaml.FullLoader)
+        doc = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         return None, [f"{path}: YAML parse error: {exc}"]
     return doc, []
@@ -204,19 +406,16 @@ def sccache_pin_violations(text: str, *, path: str) -> list[str]:
     if doc is None:
         return []
     violations: list[str] = []
-    if isinstance(doc, list):
-        for item in doc:
-            _sccache_walk_document(item, path, violations)
-    else:
-        _sccache_walk_document(doc, path, violations)
+    _sccache_walk_parsed(doc, path, violations, None)
     return violations
 
 
 def github_policy_yaml_paths(root: Path = ROOT) -> list[Path]:
     paths: set[Path] = set()
-    if WORKFLOWS.is_dir():
-        paths.update(WORKFLOWS.glob("*.yml"))
-        paths.update(WORKFLOWS.glob("*.yaml"))
+    workflows = root / ".github" / "workflows"
+    if workflows.is_dir():
+        paths.update(workflows.glob("*.yml"))
+        paths.update(workflows.glob("*.yaml"))
     for name in ("action.yml", "action.yaml"):
         paths.update(root.glob(f"**/{name}"))
     return sorted(paths)
@@ -239,13 +438,8 @@ def repo_sccache_action_sites(root: Path = ROOT) -> list[str]:
             yaml_path.read_text(encoding="utf-8"), rel
         )
         if errors or doc is None:
-            continue
-        violations: list[str] = []
-        if isinstance(doc, list):
-            for item in doc:
-                _sccache_walk_document(item, rel, violations, sites)
-        else:
-            _sccache_walk_document(doc, rel, violations, sites)
+            continue  # broken documents are not sites; later files still count
+        _sccache_walk_parsed(doc, rel, [], sites)
     return sites
 
 
@@ -905,12 +1099,85 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertTrue(sccache_pin_violations(wrong, path="action.yml"))
 
-        source = inspect.getsource(_literal_pinned_sccache_version)
-        self.assertIn("PINNED_SCCACHE_VERSION", source)
-        self.assertIn("SCCACHE_EXPR_RE", source)
-        stripped = source.replace('if "$" in version:', "if False and '$' in version:", 1)
-        with self.assertRaises(AssertionError):
-            self.assertIn('if "$" in version:', stripped)
+        for name in (
+            "action_owner_case.yml",
+            "action_dot_path.yml",
+            "action_dotdot_path.yml",
+            "version_key_case.yml",
+        ):
+            text = (fixture_root / "fail" / name).read_text(encoding="utf-8")
+            doc, errors = _parse_policy_yaml(text, name)
+            self.assertEqual(errors, [], name)
+            sites: list[str] = []
+            violations: list[str] = []
+            _sccache_walk_parsed(doc, name, violations, sites)
+            self.assertEqual(len(sites), 1, name)
+            self.assertTrue(violations, name)
+
+    def test_sccache_pin_scan_reads_workflows_under_root(self) -> None:
+        unpinned = (
+            "name: unpinned\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: mozilla-actions/sccache-action@v0.0.11\n"
+        )
+        composite = (
+            "name: custom\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - uses: mozilla-actions/sccache-action@v0.0.11\n"
+        )
+        with tempfile.TemporaryDirectory(prefix="sccache-policy-") as raw:
+            root = Path(raw)
+            workflows = root / ".github" / "workflows"
+            workflows.mkdir(parents=True)
+            (workflows / "00-broken.yml").write_text(":\n  - [\n", encoding="utf-8")
+            (workflows / "10-unpinned.yml").write_text(unpinned, encoding="utf-8")
+            (workflows / "20-unpinned.yaml").write_text(unpinned, encoding="utf-8")
+            action = root / "custom" / "tools" / "action.yaml"
+            action.parent.mkdir(parents=True)
+            action.write_text(composite, encoding="utf-8")
+
+            names = [
+                path.relative_to(root).as_posix()
+                for path in github_policy_yaml_paths(root)
+            ]
+            self.assertEqual(
+                names,
+                [
+                    ".github/workflows/00-broken.yml",
+                    ".github/workflows/10-unpinned.yml",
+                    ".github/workflows/20-unpinned.yaml",
+                    "custom/tools/action.yaml",
+                ],
+            )
+            violations = repo_sccache_pin_violations(root)
+            self.assertTrue(
+                any(
+                    "00-broken.yml" in item and "YAML parse error" in item
+                    for item in violations
+                )
+            )
+            for rel in (
+                ".github/workflows/10-unpinned.yml",
+                ".github/workflows/20-unpinned.yaml",
+                "custom/tools/action.yaml",
+            ):
+                self.assertTrue(
+                    any(item.startswith(f"{rel}: ") for item in violations), rel
+                )
+            self.assertEqual(
+                repo_sccache_action_sites(root),
+                [
+                    ".github/workflows/10-unpinned.yml: jobs.check.steps[0]",
+                    ".github/workflows/20-unpinned.yaml: jobs.check.steps[0]",
+                    "custom/tools/action.yaml: runs.steps[0]",
+                ],
+            )
 
     def test_sccache_pull_requests_are_read_only(self) -> None:
         action = (ROOT / ".github" / "actions" / "rust-ci-setup" / "action.yml").read_text(encoding="utf-8")

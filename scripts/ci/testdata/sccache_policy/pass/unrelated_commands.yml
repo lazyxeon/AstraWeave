@@ -1,0 +1,11 @@
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo install --locked --version 0.19.0 cargo-outdated
+      - run: sccache --show-stats || true
+      - run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+      - uses: taiki-e/install-action@nextest
+      - run: curl -sSL "https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook.tar.gz" | tar -xz
