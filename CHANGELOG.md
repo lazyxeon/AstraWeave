@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 The workspace package is still version 0.4.0. [SECURITY.md](SECURITY.md) calls that the supported line. There is no `v0.4.0` git tag. The notes in this section are changes on `main` after 2025-11-18, grouped by the UTC month of the merge or commit. The dated `[0.4.0]` heading further down is the archival note for that day, not a release tag.
 
 
+### 2026-11
+
+#### CI
+- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0 so unpinned installs do not pull 0.20.0, whose GHA cache checks can exceed the client startup timeout.
+
 ### 2026-10
 
 #### Added
