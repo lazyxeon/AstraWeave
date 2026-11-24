@@ -71,11 +71,6 @@ jobs:
           mkdir -p book/assets
           cp -r src/assets/* book/assets/ 2>/dev/null || true
 
-      - name: Copy standalone dashboard
-        run: |
-          mkdir -p docs/book/dashboard/benchmark_dashboard
-          cp -r docs/archive/benchmark_dashboard/* docs/book/dashboard/benchmark_dashboard/ 2>/dev/null || true
-
       - name: Copy workspace architecture map
         run: |
           mkdir -p docs/book/architecture

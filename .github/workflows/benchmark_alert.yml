@@ -366,9 +366,9 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./docs
+          publish_dir: ./docs/benchmark_data
           publish_branch: gh-pages
-          destination_dir: dashboard
+          destination_dir: dashboard/benchmark_data
           commit_message: "Update benchmark dashboard (${{ github.sha }})"
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
