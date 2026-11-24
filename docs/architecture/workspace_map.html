@@ -929,7 +929,7 @@
     <strong>First time here?</strong> Try <strong>Tour → First-time onboarding</strong> for a 10-minute guided walk-through (eight steps, narration + reconfigured graph at each step).
     <br><br>
     <strong>Click any node</strong> for crate detail. The side panel uses progressive disclosure: surface info visible, deeper sections (deps, integration types, open questions, silent failures) behind <code>▸</code> expanders.
-    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — orange = direct, faded = transitive. Honest dependency-graph highlighting, not behavioral simulation.
+    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — a dark rust outline ring (<code>#843b10</code>) marks each hop, thinning and fading with distance. Honest dependency-graph highlighting, not behavioral simulation.
     <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. Use when the graph is too dense.
     <strong>Edges: essential / all</strong> (v2.3, default essential): a cargo dependency that a longer path already implies is hidden, which removes most of the crossings. Nothing is lost: hover or select a node to see every edge it has, and the side panel lists them all. Switch to <em>all</em> to draw every edge; implied ones are dashed. Runtime, anomalous, declared-unused and HIGH/CRITICAL-risk edges always show.
     <strong>Layout</strong> (v2.3): the default is <em>Dependency layers</em>, read left to right from dependents to foundation crates. <em>Domain clusters</em> and <em>Dormancy stratification</em> are still in the dropdown.
@@ -1292,8 +1292,9 @@ function heightForBand(band) {
     default:            return 26;
   }
 }
-// Derive paper tint and graphite rim from each domain's existing colour.
-// Keep labels in dark ink so they're readable even across different tints.
+// Domain rim is DOMAIN_STYLES ink as-is; paper is shadeHex of that ink.
+// domains[].color (the Wong set) is not read. Keep labels in dark ink so
+// they're readable even across different tints.
 function shadeHex(hex, amount) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
   if (!m) return hex;
@@ -1462,7 +1463,8 @@ const cy = cytoscape({
         'background-color': 'data(paper)',
         'background-opacity': 1.0,
         // Static canvas backlight, separate from the domain border and fill.
-        // Highlight/path rules override it; dimmed rules still suppress it.
+        // :selected and dormant rules adjust the underlay; highlighted and
+        // .path-node do not. Dimmed rules still suppress it.
         'underlay-color': '#5deabd',
         'underlay-opacity': 0.28,
         'underlay-padding': 5,
@@ -2651,9 +2653,9 @@ if (!REDUCED_MOTION) {
 // v2.4: generated background ("tidewire"). Drawn in code on a canvas that
 // sits under the graph, so there is no image asset to license or ship.
 //   - Currents: a hundred or so particles drift on a slowly changing flow
-//     field and leave faint neon streaks. The pointer stirs them gently.
-//   - Traces: bright pulses run along the 200px grid lines like signals on
-//     a circuit board.
+//     field and leave faint teal-graphite streaks (COLORS at :2678). The
+//     pointer stirs them gently.
+//   - Traces: muted pulses run along the 200px grid lines like dim signals.
 //   - Ripples: now and then a thin ring spreads out and fades.
 // It is decoration only, and it is tuned to stay out of the way: slow, dim,
 // nothing sudden. It also steps back when you start reading. With the
