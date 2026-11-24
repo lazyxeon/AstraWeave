@@ -563,6 +563,8 @@ def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark
 
 def assert_docs_no_archive_benchmark_dashboard_copy(text: str, *, path: str = "docs.yml") -> None:
     """Documentation must not copy the archived dashboard onto the book dashboard directory."""
+    # Untested: a copy split across multiple steps (cross-step dataflow is out of scope for
+    # this per-step regression lock).
     jobs = _workflow_jobs(text, path=path)
     for job_name, job in jobs.items():
         if not isinstance(job, dict):

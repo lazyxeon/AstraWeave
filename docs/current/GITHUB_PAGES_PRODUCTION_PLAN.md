@@ -112,7 +112,7 @@ Critical Stubs (All Core Systems):
     user_email: 'github-actions[bot]@users.noreply.github.com'
 ```
 
-`docs.yml` must not copy `docs/archive/benchmark_dashboard` into `docs/book/dashboard/benchmark_dashboard` (that overwrote the live dashboard).
+`docs.yml` must not copy `docs/archive/benchmark_dashboard` into `docs/book/dashboard/benchmark_dashboard` (that overwrote the live dashboard). `assert_docs_no_archive_benchmark_dashboard_copy` locks this per step; a copy split across multiple steps is out of scope for that lock.
 
 **Result**:
 - mdBook docs at: `https://lazyxeon.github.io/AstraWeave/`
