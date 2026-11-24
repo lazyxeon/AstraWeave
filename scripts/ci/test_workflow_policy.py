@@ -408,8 +408,13 @@ def without_status_guard(expr: str) -> str:
 BENCHMARK_ALERT_PUBLISH_DIR = "./docs/benchmark_data"
 BENCHMARK_ALERT_DESTINATION_DIR = "dashboard/benchmark_data"
 BENCHMARK_ALERT_GH_PAGES_STEP = "Deploy dashboard to GitHub Pages"
+PEACEIRIS_GH_PAGES = "peaceiris/actions-gh-pages"
 ARCHIVE_BENCHMARK_DASHBOARD = "docs/archive/benchmark_dashboard"
+BOOK_DASHBOARD_DIR = "docs/book/dashboard"
 BOOK_BENCHMARK_DASHBOARD = "docs/book/dashboard/benchmark_dashboard"
+_RUN_PATH_TOKEN = re.compile(
+    r"(?<![\w./-])(?:\./)?(?:[\w.-]+/)+[\w.-]+/?\*?(?![\w./-])"
+)
 
 
 def _workflow_jobs(text: str, *, path: str) -> dict:
@@ -433,8 +438,79 @@ def _step_run_text(step: dict) -> str:
     return str(run)
 
 
+def _read_policy_fixture(directory: str, filename: str) -> str:
+    return (
+        ROOT / "scripts" / "ci" / "testdata" / directory / filename
+    ).read_text(encoding="utf-8")
+
+
+def _posix_norm(path: str) -> str:
+    parts: list[str] = []
+    for part in path.replace("\\", "/").split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+    return "/".join(parts)
+
+
+def _resolve_run_path(token: str, cwd: str) -> str:
+    token = token[2:] if token.startswith("./") else token
+    if token.endswith("/*"):
+        token = token[:-2]
+    norm = _posix_norm(token.strip("/"))
+    if not cwd or norm == cwd or norm.startswith(cwd + "/"):
+        return norm
+    return _posix_norm(f"{cwd}/{norm}")
+
+
+def _run_paths(run_text: str, cwd: str) -> list[str]:
+    return [
+        _resolve_run_path(match.group(0), cwd)
+        for match in _RUN_PATH_TOKEN.finditer(run_text)
+    ]
+
+
+def _is_archive_path(path: str) -> bool:
+    return path == ARCHIVE_BENCHMARK_DASHBOARD or path.startswith(
+        ARCHIVE_BENCHMARK_DASHBOARD + "/"
+    )
+
+
+def _is_book_dashboard_target(path: str) -> bool:
+    return (
+        path == BOOK_DASHBOARD_DIR
+        or path == BOOK_BENCHMARK_DASHBOARD
+        or path.startswith(BOOK_BENCHMARK_DASHBOARD + "/")
+    )
+
+
+def _folded_action_inputs(with_block: dict) -> dict[str, object]:
+    """Fold with-keys the way Actions does: ignore case, and the later key wins."""
+    folded: dict[str, object] = {}
+    for key, value in with_block.items():
+        folded[str(key).replace(" ", "_").lower()] = value
+    return folded
+
+
+def _actions_input_is_true(value: object) -> bool:
+    """Match peaceiris isBoolean: uppercase string TRUE, including a YAML boolean."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().upper() == "TRUE"
+    return False
+
+
+def _is_peaceiris_publisher(step: dict) -> bool:
+    return PEACEIRIS_GH_PAGES in str(step.get("uses", "")).lower()
+
+
 def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark_alert.yml") -> None:
-    """Regression Alerts must publish only benchmark_data, not the whole docs tree."""
+    """Every publisher step publishes benchmark_data, and the force-push input stays off."""
     jobs = _workflow_jobs(text, path=path)
     gh_pages_steps: list[dict] = []
     for job_name, job in jobs.items():
@@ -444,29 +520,26 @@ def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark
         if not isinstance(steps, list):
             raise AssertionError(f"{path}: job {job_name!r} missing steps")
         for step in steps:
-            if not isinstance(step, dict):
-                continue
-            uses = str(step.get("uses", ""))
-            if "peaceiris/actions-gh-pages" in uses:
+            if isinstance(step, dict) and _is_peaceiris_publisher(step):
                 gh_pages_steps.append(step)
     if not gh_pages_steps:
         raise AssertionError(
             f"{path}: missing peaceiris/actions-gh-pages publish step "
             f"({BENCHMARK_ALERT_GH_PAGES_STEP!r})"
         )
-    deploy_steps = [
-        step
+    if not any(
+        BENCHMARK_ALERT_GH_PAGES_STEP in str(step.get("name", ""))
         for step in gh_pages_steps
-        if BENCHMARK_ALERT_GH_PAGES_STEP in str(step.get("name", ""))
-    ]
-    if not deploy_steps:
+    ):
         raise AssertionError(f"{path}: missing step named {BENCHMARK_ALERT_GH_PAGES_STEP!r}")
-    for step in deploy_steps:
+    for step in gh_pages_steps:
+        step_name = str(step.get("name", "<unnamed>"))
         with_block = step.get("with")
         if not isinstance(with_block, dict):
-            raise AssertionError(f"{path}: {BENCHMARK_ALERT_GH_PAGES_STEP} missing with:")
-        publish_dir = with_block.get("publish_dir")
-        destination_dir = with_block.get("destination_dir")
+            raise AssertionError(f"{path}: {step_name} missing with:")
+        inputs = _folded_action_inputs(with_block)
+        publish_dir = inputs.get("publish_dir")
+        destination_dir = inputs.get("destination_dir")
         if publish_dir in ("./docs", "./docs/"):
             raise AssertionError(
                 f"{path}: publish_dir must not be ./docs (would publish the whole tree)"
@@ -484,10 +557,12 @@ def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark
                 f"{path}: expected destination_dir {BENCHMARK_ALERT_DESTINATION_DIR!r}, "
                 f"got {destination_dir!r}"
             )
+        if _actions_input_is_true(inputs.get("force_orphan")):
+            raise AssertionError(f"{path}: force-push input must stay unset or false")
 
 
 def assert_docs_no_archive_benchmark_dashboard_copy(text: str, *, path: str = "docs.yml") -> None:
-    """Documentation must not copy archived dashboard HTML into the mdBook output tree."""
+    """Documentation must not copy the archived dashboard onto the book dashboard directory."""
     jobs = _workflow_jobs(text, path=path)
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
@@ -501,22 +576,15 @@ def assert_docs_no_archive_benchmark_dashboard_copy(text: str, *, path: str = "d
             run_text = _step_run_text(step)
             if not run_text:
                 continue
-            if ARCHIVE_BENCHMARK_DASHBOARD not in run_text:
-                continue
-            if BOOK_BENCHMARK_DASHBOARD in run_text:
-                step_name = step.get("name", "<unnamed>")
-                raise AssertionError(
-                    f"{path}: step {step_name!r} copies {ARCHIVE_BENCHMARK_DASHBOARD} "
-                    f"into {BOOK_BENCHMARK_DASHBOARD}"
-                )
-            if re.search(
-                r"docs/book/dashboard/benchmark_dashboard(?:/|\s|$)",
-                run_text,
+            cwd = str(step.get("working-directory") or "").strip("/")
+            paths = _run_paths(run_text, cwd)
+            if any(_is_archive_path(item) for item in paths) and any(
+                _is_book_dashboard_target(item) for item in paths
             ):
                 step_name = step.get("name", "<unnamed>")
                 raise AssertionError(
-                    f"{path}: step {step_name!r} copies archived dashboard under "
-                    "docs/book/dashboard/benchmark_dashboard"
+                    f"{path}: step {step_name!r} copies {ARCHIVE_BENCHMARK_DASHBOARD} "
+                    f"onto {BOOK_DASHBOARD_DIR}"
                 )
 
 
@@ -1269,30 +1337,39 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
         alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
         assert_benchmark_alert_gh_pages_publish(alert)
-        fixture = (
-            ROOT
-            / "scripts"
-            / "ci"
-            / "testdata"
-            / "benchmark_alert_bad_pages_publish"
-            / "benchmark_alert.yml"
-        ).read_text(encoding="utf-8")
-        with self.assertRaises(AssertionError):
-            assert_benchmark_alert_gh_pages_publish(fixture, path="fixture")
+        honoured = alert.replace("publish_dir:", "Publish_Dir:", 1).replace(
+            "destination_dir:", "Destination_Dir:", 1
+        )
+        assert_benchmark_alert_gh_pages_publish(honoured)
+        safe_force = alert.replace(
+            "destination_dir: dashboard/benchmark_data\n",
+            "destination_dir: dashboard/benchmark_data\n"
+            "          force_orphan: false\n",
+            1,
+        )
+        assert_benchmark_alert_gh_pages_publish(safe_force)
+        for directory in (
+            "benchmark_alert_bad_pages_publish",
+            "benchmark_alert_second_publisher",
+            "benchmark_alert_force_push_input",
+            "benchmark_alert_case_variant_keys",
+            "benchmark_alert_case_variant_action",
+        ):
+            fixture = _read_policy_fixture(directory, "benchmark_alert.yml")
+            with self.assertRaises(AssertionError):
+                assert_benchmark_alert_gh_pages_publish(fixture, path=directory)
 
     def test_docs_no_archive_benchmark_dashboard_copy(self) -> None:
         docs = (WORKFLOWS / "docs.yml").read_text(encoding="utf-8")
         assert_docs_no_archive_benchmark_dashboard_copy(docs)
-        fixture = (
-            ROOT
-            / "scripts"
-            / "ci"
-            / "testdata"
-            / "docs_bad_benchmark_dashboard_copy"
-            / "docs.yml"
-        ).read_text(encoding="utf-8")
-        with self.assertRaises(AssertionError):
-            assert_docs_no_archive_benchmark_dashboard_copy(fixture, path="fixture")
+        for directory in (
+            "docs_bad_benchmark_dashboard_copy",
+            "docs_parent_directory_copy",
+            "docs_parent_directory_copy_relative",
+        ):
+            fixture = _read_policy_fixture(directory, "docs.yml")
+            with self.assertRaises(AssertionError):
+                assert_docs_no_archive_benchmark_dashboard_copy(fixture, path=directory)
 
 
 if __name__ == "__main__":

@@ -78,29 +78,29 @@ Critical Stubs (All Core Systems):
 
 ### Task 0.1: Unify GitHub Pages Deployment Actions
 
-**Problem**: `docs.yml` uses `JamesIves/github-pages-deploy-action@v4` while `benchmark-dashboard.yml` uses `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, causing mutual destruction.
+**Problem**: Regression Alerts published `./docs` to `dashboard`, and Documentation copied `docs/archive/benchmark_dashboard` into `docs/book/dashboard/benchmark_dashboard`. That pair replaces the dashboard at `dashboard/benchmark_dashboard`. `docs.yml` deploys with `peaceiris/actions-gh-pages@v4` and `keep_files: true`. `benchmark-dashboard.yml` publishes to `dashboard/benchmark_dashboard` with `keep_files: true`. No workflow sets `force_orphan`.
 
-**Solution**: Standardize on `peaceiris/actions-gh-pages@v4` with `keep_files: true` and use subdirectory deployment.
+**Solution**: The alert job publishes `./docs/benchmark_data` to `dashboard/benchmark_data` and leaves `force_orphan` unset. Documentation does not copy the archived dashboard into the book.
 
-**Changes Required**:
+**Publishers**:
 
-1. **Update `.github/workflows/docs.yml`**:
+1. **`.github/workflows/docs.yml`** deploy step:
 ```yaml
-# Replace line 58-63:
 - name: Deploy to GitHub Pages
-  if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
   uses: peaceiris/actions-gh-pages@v4
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     publish_dir: ./docs/book
     publish_branch: gh-pages
     keep_files: true
-    commit_message: 'Deploy mdBook documentation'
+    commit_message: 'Deploy mdBook documentation: ${{ github.sha }}'
 ```
 
-2. **Update `.github/workflows/benchmark_alert.yml`** (benchmark history JSONL on Pages):
+2. **`.github/workflows/benchmark_alert.yml`** publish step:
 ```yaml
 - name: Deploy dashboard to GitHub Pages
+  if: steps.merge.outputs.healthy == 'true' && success()
   uses: peaceiris/actions-gh-pages@v4
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -108,13 +108,15 @@ Critical Stubs (All Core Systems):
     publish_branch: gh-pages
     destination_dir: dashboard/benchmark_data
     commit_message: "Update benchmark dashboard (${{ github.sha }})"
+    user_name: 'github-actions[bot]'
+    user_email: 'github-actions[bot]@users.noreply.github.com'
 ```
 
 `docs.yml` must not copy `docs/archive/benchmark_dashboard` into `docs/book/dashboard/benchmark_dashboard` (that overwrote the live dashboard).
 
 **Result**:
 - mdBook docs at: `https://lazyxeon.github.io/AstraWeave/`
-- Benchmark history JSONL at: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_data/`
+- Benchmark history JSONL file: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_data/benchmark_history.jsonl`
 - Interactive dashboard UI remains at: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/`
 
 **Effort**: 15 minutes
