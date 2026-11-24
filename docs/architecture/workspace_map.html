@@ -238,19 +238,11 @@
     font-size: 11px;
     user-select: none;
     color: var(--text-1);
-    opacity: 0.6;                /* v2.1: default = NOT in include set */
-    transition: opacity 0.12s ease, border-color 0.12s ease, background 0.12s ease;
-  }
-  .domain-chip.on {              /* v2.1: in include set */
-    opacity: 1;
-    color: var(--text-0);
-    border-color: var(--accent);
-    background: rgba(88,166,255,0.10);
+    transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
   }
   .domain-chip:hover {
     background: var(--bg-0);
   }
-  .domain-chip.on:hover { background: rgba(88,166,255,0.18); }
   .domain-chip:disabled {
     cursor: not-allowed;
     opacity: 0.25 !important;
@@ -294,7 +286,6 @@
   }
   /* Banner */
   .banner {
-    background: linear-gradient(90deg, rgba(88,166,255,0.10), rgba(88,166,255,0.02));
     border-bottom: 1px solid var(--border);
     padding: 10px 16px;
     font-size: 13px;
@@ -330,7 +321,6 @@
     white-space: nowrap;
   }
   .filter-counter.filtered {
-    background: rgba(88,166,255,0.12);
     border-color: var(--accent);
     color: var(--accent);
   }
@@ -414,7 +404,7 @@
   }
   .risk-pill.CRITICAL { background: rgba(248,81,73,0.25); color: var(--danger); }
   .risk-pill.HIGH     { background: rgba(240,136,62,0.25); color: var(--warn); }
-  .risk-pill.MEDIUM   { background: rgba(88,166,255,0.20); color: var(--accent); }
+  .risk-pill.MEDIUM   { background: rgba(39, 92, 84, 0.18); color: var(--accent); }
   .risk-pill.LOW      { background: rgba(110,118,129,0.30); color: var(--text-1); }
   ul.compact {
     list-style: disc;
@@ -559,7 +549,7 @@
     font-size: 10px;
   }
   .panel-content details[open] > summary::after { transform: rotate(90deg); }
-  .panel-content details > summary:hover { background: rgba(88,166,255,0.06); }
+  .panel-content details > summary:hover { background: var(--code-bg); }
   .panel-content details > summary .count {
     color: var(--text-1);
     font-family: ui-monospace, "SF Mono", Consolas, monospace;
@@ -592,7 +582,6 @@
     gap: 4px;
   }
   .panel-actions .btn-sm:hover { background: var(--bg-0); border-color: var(--accent); }
-  .panel-actions .btn-sm.on { background: rgba(88,166,255,0.18); border-color: var(--accent); color: var(--accent); }
   .one-liner {
     font-size: 12px;
     color: var(--text-1);
@@ -869,7 +858,10 @@
   .domain-chip { opacity: 1; }
   .domain-chip.on .dot { box-shadow: 0 0 0 1px var(--paper-white); }
   .btn:disabled, .domain-chip:disabled { box-shadow: 1px 1px 0 var(--border); }
-  .filter-counter.filtered { font-weight: 700; }
+  .filter-counter.filtered {
+    font-weight: 700;
+    background: var(--code-bg);
+  }
   .banner, .tour-overlay {
     border-left: 4px solid var(--ink);
     background: var(--bg-1);
@@ -1208,7 +1200,8 @@ document.getElementById('htu-toggle').addEventListener('click', (e) => {
 //   * empty enabledDomains set  →  no filter, show all
 //   * partial set               →  include-only, hide non-matching
 //   * full set                  →  no filter, show all (equivalent to empty)
-// Chips default to "off" (dim). Click toggles them "on" (highlighted accent).
+// Chips default to "off" (light paper on warm newsprint). Click toggles "on"
+// (graphite ink fill with mint backlight); see the graphite .domain-chip.on rules.
 const domainFilters = document.getElementById('domain-filters');
 const enabledDomains = new Set();   // v2.1: empty by default = no filter active
 const domLabelSpan = document.createElement('span');
