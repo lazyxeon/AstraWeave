@@ -148,7 +148,7 @@ const INDUSTRY_STANDARDS = {
 };
 
 // ─── COLOR SCHEME ────────────────────────────────────────────────────────────
-// Display-only ink colors; benchmark data, categories and series styles stay unchanged.
+// Display-only category inks; benchmark data and category assignments stay unchanged.
 const COLOR_SCHEME = {
     ecs: '#005987',
     ai: '#00645d',
@@ -167,6 +167,24 @@ const COLOR_SCHEME = {
 };
 
 const INDUSTRY_LINE_COLOR = '#843b10';
+const INDUSTRY_MARK_OPACITY = 0.7;
+const INDUSTRY_DASH = '14,5';
+const USER_DASH = '8,4';
+
+// Give each subsystem a shape + fill signature independent of hue and filter order.
+const SYSTEM_MARK = {
+    ecs: [0, false], ai: [1, false], physics: [2, false], terrain: [3, false],
+    input: [4, false], rendering: [5, false], math: [6, false],
+    networking: [1, true], persistence: [2, true], audio: [3, true],
+    ui: [4, true], tools: [0, true], animation: [5, true], default: [6, true]
+};
+
+function benchmarkMarker(selection, system, color) {
+    const [shape, hollow] = SYSTEM_MARK[system] || SYSTEM_MARK.default;
+    return selection.attr('d', d3.symbol(d3.symbolsFill[shape], 56)())
+        .attr('fill', hollow ? 'var(--panel)' : color)
+        .attr('stroke', color).attr('stroke-width', 1.4);
+}
 
 // ─── PERFORMANCE ─────────────────────────────────────────────────────────────
 const PERF = { loadStart: performance.now(), renderCount: 0 };
@@ -642,6 +660,7 @@ function renderChart() {
                 rawName: name,
                 values: hwVals,
                 color: getSystemColor(hwVals[0].crate),
+                system: detectSystem(hwVals[0].crate),
                 isBaseline: isBase,
                 hardwareId: hwId
             });
@@ -707,7 +726,7 @@ function renderChart() {
     // ── SINGLE-SNAPSHOT: render bar chart instead of line chart ──
     if (isSinglePoint) {
         renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax, valMin);
-        renderLegend(chartSeries, industryLines);
+        renderLegend(chartSeries, industryLines, true);
         renderHistogram(chartSeries);
         renderSparklines(chartSeries);
         return;
@@ -753,7 +772,7 @@ function renderChart() {
         svg.append('line').attr('x1', 0).attr('x2', width)
             .attr('y1', yScale(il.value)).attr('y2', yScale(il.value))
             .attr('stroke', il.color).attr('stroke-width', 2)
-            .attr('stroke-dasharray', '8,4').attr('opacity', 0.7);
+            .attr('stroke-dasharray', INDUSTRY_DASH).attr('opacity', INDUSTRY_MARK_OPACITY);
         const names = Object.keys(il.engines).join('/');
         svg.append('text').attr('x', width + 4).attr('y', yScale(il.value) + 4)
             .attr('fill', il.color).style('font-size', '10px').text(`Industry (${names})`);
@@ -764,10 +783,12 @@ function renderChart() {
     chartSeries.forEach(s => {
         svg.append('path').datum(s.values).attr('class', 'line').attr('d', lineGen)
             .attr('stroke', s.color).attr('stroke-width', s.isBaseline ? 3.5 : 2.5)
-            .attr('stroke-dasharray', s.isBaseline ? 'none' : '8,4').attr('opacity', s.isBaseline ? 1 : 0.85);
-        svg.selectAll(null).data(s.values).enter().append('circle')
-            .attr('cx', d => xScale(d.timestamp)).attr('cy', d => yScale(d.value))
-            .attr('r', 4).attr('fill', s.color).attr('opacity', 0.8);
+            .attr('stroke-dasharray', s.isBaseline ? 'none' : USER_DASH).attr('opacity', s.isBaseline ? 1 : 0.85);
+    });
+    chartSeries.forEach(s => {
+        benchmarkMarker(svg.selectAll(null).data(s.values).enter().append('path')
+            .attr('class', 'trend-marker')
+            .attr('transform', d => `translate(${xScale(d.timestamp)},${yScale(d.value)})`), s.system, s.color);
     });
 
     // Tooltip
@@ -1050,7 +1071,7 @@ function renderIndustryComparisonSection() {
         const y = i * (barH + gap);
         // Industry bar
         svg.append('rect').attr('x', 0).attr('y', y).attr('width', x(comp.industryAvg))
-            .attr('height', barH / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', 0.4).attr('rx', 3);
+            .attr('height', barH / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', INDUSTRY_MARK_OPACITY).attr('rx', 3);
         // Our bar
         const col = comp.ourValue <= comp.industryAvg ? '#275c43' : '#9c283a';
         svg.append('rect').attr('x', 0).attr('y', y + barH / 2).attr('width', x(comp.ourValue))
@@ -1068,7 +1089,7 @@ function renderIndustryComparisonSection() {
 
     // Legend
     svg.append('rect').attr('x', w - 220).attr('y', -18).attr('width', 14).attr('height', 10)
-        .attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', 0.6).attr('rx', 2);
+        .attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', INDUSTRY_MARK_OPACITY).attr('rx', 2);
     svg.append('text').attr('x', w - 202).attr('y', -9).attr('fill', '#50534f').style('font-size', '12px').text('Industry Avg');
     svg.append('rect').attr('x', w - 110).attr('y', -18).attr('width', 14).attr('height', 10)
         .attr('fill', '#275c43').attr('opacity', 0.8).attr('rx', 2);
@@ -1300,16 +1321,32 @@ function renderBenchTable() {
 
 // ─── LEGEND ──────────────────────────────────────────────────────────────────
 
-function renderLegend(series, industryLines = []) {
+function renderLegend(series, industryLines = [], snapshot = false) {
+    function swatch(s, industry = false) {
+        const color = industry ? INDUSTRY_LINE_COLOR : s.color;
+        if (snapshot) {
+            const rect = document.createElement('div');
+            rect.className = 'legend-color';
+            rect.style.backgroundColor = color;
+            rect.style.opacity = industry ? INDUSTRY_MARK_OPACITY : 0.85;
+            return rect;
+        }
+        const icon = d3.create('svg:svg').attr('width', 32).attr('height', 14)
+            .attr('aria-hidden', 'true').style('flex', '0 0 32px');
+        icon.append('line').attr('x1', 0).attr('x2', 32).attr('y1', 7).attr('y2', 7)
+            .attr('stroke', color).attr('stroke-width', industry ? 2 : s.isBaseline ? 3.5 : 2.5)
+            .attr('stroke-dasharray', industry ? INDUSTRY_DASH : s.isBaseline ? 'none' : USER_DASH)
+            .attr('opacity', industry ? INDUSTRY_MARK_OPACITY : s.isBaseline ? 1 : 0.85);
+        if (!industry) benchmarkMarker(icon.append('path').attr('transform', 'translate(16,7)'), s.system, color);
+        return icon.node();
+    }
     const div = document.getElementById('legend');
     div.innerHTML = '';
     const LEGEND_SHOW = 20;
     const visible = series.slice(0, LEGEND_SHOW);
     visible.forEach(s => {
         const item = document.createElement('div'); item.className = 'legend-item';
-        const color = document.createElement('div'); color.className = 'legend-color';
-        color.style.backgroundColor = s.color;
-        if (!s.isBaseline) color.style.borderTop = '2px dashed ' + s.color;
+        const color = swatch(s);
         const label = document.createElement('span'); label.textContent = s.name;
         item.appendChild(color); item.appendChild(label); div.appendChild(item);
     });
@@ -1329,8 +1366,7 @@ function renderLegend(series, industryLines = []) {
                 more.textContent = '− collapse';
                 series.slice(LEGEND_SHOW).forEach(s => {
                     const item = document.createElement('div'); item.className = 'legend-item legend-extra';
-                    const color = document.createElement('div'); color.className = 'legend-color';
-                    color.style.backgroundColor = s.color;
+                    const color = swatch(s);
                     const label = document.createElement('span'); label.textContent = s.name;
                     item.appendChild(color); item.appendChild(label); div.appendChild(item);
                 });
@@ -1340,9 +1376,7 @@ function renderLegend(series, industryLines = []) {
     }
     if (industryLines.length > 0 && currentFilters.showIndustry) {
         const item = document.createElement('div'); item.className = 'legend-item';
-        const color = document.createElement('div'); color.className = 'legend-color';
-        color.style.backgroundColor = INDUSTRY_LINE_COLOR;
-        color.style.borderTop = '2px dashed ' + INDUSTRY_LINE_COLOR;
+        const color = swatch(null, true);
         const label = document.createElement('span'); label.textContent = 'Industry Standard';
         label.style.color = INDUSTRY_LINE_COLOR;
         item.appendChild(color); item.appendChild(label); div.appendChild(item);
@@ -1434,7 +1468,7 @@ function renderProductionHealthSummary() {
         </div>
         <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
             ${Object.entries(sysCounts).map(([s, cnt]) =>
-                `<span style="padding:4px 12px;background:${COLOR_SCHEME[s]||'#50534f'}22;color:${COLOR_SCHEME[s]||'#50534f'};border-radius:1px;font-size:0.8em;">${s}: ${cnt}</span>`
+                `<span style="padding:4px 12px;background:${COLOR_SCHEME[s]||'#50534f'}22;color:#242629;border-radius:1px;font-size:0.8em;">${s}: ${cnt}</span>`
             ).join('')}
         </div>`;
 }
