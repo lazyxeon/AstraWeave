@@ -210,7 +210,6 @@ Top 8 benchmarks by current value, showing:
 - Current mean time (ns, µs, ms)
 - % change over selected time range
 - Color-coded by system (`COLOR_SCHEME` in `dashboard.js`): ECS `#005987`, AI `#00645d` (dark teal), Physics `#207145`, Terrain `#954260`, Input `#803b8a`, Rendering `#806000`, Math `#9c283a`, Networking `#155b73`, Persistence `#8a356a`, Audio `#2e50a0`, UI `#553495`, Tools `#456e16`, Animation `#88431d`, default `#565854`
-- Chart markers use `SYSTEM_MARK`: each system gets a distinct D3 symbol shape (indices 0–6) and either a solid fill in the series color or a hollow marker (`fill: var(--panel)`, colored stroke) for secondary crates in the same hue family
 
 ### Trend Chart
 
@@ -218,6 +217,7 @@ Top 8 benchmarks by current value, showing:
 - **Multi-Series**: Compare multiple benchmarks on same chart
 - **Legend**: Click to highlight specific series
 - **Auto-Scaling**: Y-axis adjusts to data range
+- **Series markers** (`SYSTEM_MARK` in `dashboard.js`): each `detectSystem` category is encoded as a *(shape index 0–6, solid vs hollow)* pair on the trend line and in the legend—seven D3 `symbolsFill` shapes, two categories per index (one solid fill in the category color, one hollow with `fill: var(--panel)` and a colored stroke). Partners are different categories with distinct hues (for example ecs solid circle and tools hollow circle on shape 0), not secondary crates within one category. Summary cards only set `--series` from `COLOR_SCHEME`; markers are not drawn on the cards.
 
 ---
 
