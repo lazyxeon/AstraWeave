@@ -1051,7 +1051,7 @@ function renderIndustryComparisonSection() {
     comparisons.sort((a, b) => (a.ourValue / a.industryAvg) - (b.ourValue / b.industryAvg));
 
     const margin = { top: 24, right: 30, bottom: 50, left: 300 };
-    const barH = 36, gap = 8;
+    const barH = 36, gap = 8, pairGap = 4;
     const totalH = (barH + gap) * comparisons.length + margin.top + margin.bottom;
     const svgW = c.clientWidth || 800;
     const w = svgW - margin.left - margin.right;
@@ -1071,11 +1071,11 @@ function renderIndustryComparisonSection() {
         const y = i * (barH + gap);
         // Industry bar
         svg.append('rect').attr('x', 0).attr('y', y).attr('width', x(comp.industryAvg))
-            .attr('height', barH / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', INDUSTRY_MARK_OPACITY).attr('rx', 3);
+            .attr('height', (barH - pairGap) / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', INDUSTRY_MARK_OPACITY).attr('rx', 3);
         // Our bar
         const col = comp.ourValue <= comp.industryAvg ? '#275c43' : '#9c283a';
-        svg.append('rect').attr('x', 0).attr('y', y + barH / 2).attr('width', x(comp.ourValue))
-            .attr('height', barH / 2).attr('fill', col).attr('opacity', 0.8).attr('rx', 3);
+        svg.append('rect').attr('x', 0).attr('y', y + (barH + pairGap) / 2).attr('width', x(comp.ourValue))
+            .attr('height', (barH - pairGap) / 2).attr('fill', col).attr('opacity', 0.8).attr('rx', 3);
         // Label
         svg.append('text').attr('x', -10).attr('y', y + barH / 2 + 3).attr('text-anchor', 'end')
             .attr('fill', '#242629').style('font-size', '13px').style('font-weight', '400')
