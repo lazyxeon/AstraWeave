@@ -232,7 +232,6 @@
     font-family: inherit;
   }
   input[type="text"]:focus, select:focus {
-    outline: none;
     border-color: var(--accent);
   }
   .domain-chip {
@@ -875,6 +874,8 @@
     box-shadow: 1px 1px 0 #222426, var(--backlight);
   }
   .btn.primary:not(:disabled) { background: var(--ink); color: var(--paper-white); }
+  .domain-chip { opacity: 1; }
+  .domain-chip.on .dot { box-shadow: 0 0 0 1px var(--paper-white); }
   .btn:disabled, .domain-chip:disabled { box-shadow: 1px 1px 0 var(--border); }
   .filter-counter.filtered { font-weight: 700; }
   .banner, .tour-overlay {
@@ -941,11 +942,11 @@
     <strong>Edges: essential / all</strong> (v2.3, default essential): a cargo dependency that a longer path already implies is hidden, which removes most of the crossings. Nothing is lost: hover or select a node to see every edge it has, and the side panel lists them all. Switch to <em>all</em> to draw every edge; implied ones are dashed. Runtime, anomalous, declared-unused and HIGH/CRITICAL-risk edges always show.
     <strong>Layout</strong> (v2.3): the default is <em>Dependency layers</em>, read left to right from dependents to foundation crates. <em>Domain clusters</em> and <em>Dormancy stratification</em> are still in the dropdown.
     <strong>Stories dropdown</strong> for narrative views (Dual-World Bridge, Editor↔Engine Boundary, Silent-Failure Map, Dormant Surface, AI Pipeline, Networking Coexistence, Aspirational Docs).
-    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain.
+    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain with short graphite dashes.
     <strong>Share ↗</strong> copies a URL that reproduces the exact current view (filters, selection, tour step, layout).
     <strong>Domain chips</strong> (v2.1): click any chip to add that domain to the include set. Nothing checked = no filter (show all). Any subset checked = show only those domains. All checked = same as none. Chips lock during a story or tour — use Reset to clear.
     <strong>Theme</strong> (v2.5): Bootleg Manual uses graphite on warm paper, with a soft mint backlight. <strong>FX</strong> controls the moving background, not the static backlight. The background dims while reading the map. Teal marks confirmed runtime wiring: moving dashes by default, solid if your system requests reduced motion.
-    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; fill colour = domain (Wong colourblind-safe palette); dashed border = dormant; <code>⚠</code> = silent-failure locus; <code>📄</code> = traced. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
+    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; tinted paper and ink border = domain (matching the markers in the toolbar and detail panel); dashed border = dormant; <code>⚠</code> = silent-failure locus; <code>📄</code> = traced. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
     <strong>Keyboard</strong>: <code>Esc</code> to clear; <code>←</code> <code>→</code> to navigate tour steps.
     On mobile, tap <code>☰ Controls</code> for the toolbar; the side panel becomes a bottom sheet.
   </div>
@@ -1113,7 +1114,18 @@ const STORIES = workspaceData.stories;
 const RECONCILE = workspaceData.reconciliationNotes;
 const META = workspaceData.metadata;
 
-const domainColor = Object.fromEntries(DOMAINS.map(d => [d.id, d.color]));
+// Render-only ink tones keep domain marks legible against the light paper.
+const DOMAIN_INK = {
+  core: '#005987',
+  ai: '#9e4700',
+  rendering: '#985176',
+  'physics-world': '#007452',
+  gameplay: '#946100',
+  networking: '#286c8d',
+  tools: '#766700',
+  examples: '#64646a',
+};
+const domainInk = id => DOMAIN_INK[id] || '#64646a';
 
 // ============================================================
 // Trace-link base URL
@@ -1214,7 +1226,7 @@ DOMAINS.forEach(d => {
   chip.className = 'domain-chip';
   chip.setAttribute('aria-pressed', 'false');
   chip.setAttribute('data-domain', d.id);
-  chip.innerHTML = `<span class="dot" style="background:${d.color}"></span>${d.label}`;
+  chip.innerHTML = `<span class="dot" style="background:${domainInk(d.id)}"></span>${d.label}`;
   chip.addEventListener('click', () => {
     if (chip.disabled) return;
     const nowOn = chip.classList.toggle('on');
@@ -1393,8 +1405,8 @@ NODES.forEach(n => {
       w: widthForLabel(n.label, n.locBand),
       h: heightForBand(n.locBand),
       font: fontForBand(n.locBand),
-      paper: shadeHex(domainColor[n.domain] || '#888888', 0.84),
-      rim: shadeHex(domainColor[n.domain] || '#888888', -0.23),
+      paper: shadeHex(domainInk(n.domain), 0.64),
+      rim: domainInk(n.domain),
     },
     classes: `node status-${n.status} band-${n.locBand}`,
   });
@@ -1405,8 +1417,8 @@ NODES.forEach(n => {
 // which regressed initial-render time by ~2.5s in headless tests.
 const NODE_DOMAIN_BY_ID = new Map(NODES.map(n => [n.id, n.domain]));
 function buildEdgeGradient(srcDom, tgtDom) {
-  const sc = domainColor[srcDom] || '#6e7681';
-  const tc = domainColor[tgtDom] || '#6e7681';
+  const sc = domainInk(srcDom);
+  const tc = domainInk(tgtDom);
   return sc + ' ' + tc;
 }
 EDGES.forEach((e, i) => {
@@ -1424,7 +1436,7 @@ EDGES.forEach((e, i) => {
       optional: e.optional,
       implied: IMPLIED_EDGES.has(e),
       gradStops: buildEdgeGradient(srcDom, tgtDom),
-      arrowColor: domainColor[tgtDom] || '#6e7681',
+      arrowColor: domainInk(tgtDom),
     },
     classes: `edge kind-${e.kind} risk-${e.risk}${e.runtime ? ' runtime' : ''}` +
              `${IMPLIED_EDGES.has(e) ? ' implied' : ''}${NO_RANK_EDGES.has(e) ? ' no-rank' : ''}`,
@@ -1487,14 +1499,14 @@ const cy = cytoscape({
       style: {
         'border-style': 'dashed',
         'background-opacity': 0.65,
-        'border-color': '#af591a',
+        'border-color': '#a44b13',
         'border-width': 3,
       }
     },
     {
       selector: 'node[?hasSilent]',
       style: {
-        'border-color': '#af591a',
+        'border-color': '#a44b13',
         'border-width': 3,
       }
     },
@@ -1554,7 +1566,7 @@ const cy = cytoscape({
         'line-fill': 'linear-gradient',
         'line-gradient-stop-colors': 'data(gradStops)',
         'line-gradient-stop-positions': '0 100',
-        'line-opacity': 0.6,
+        'line-opacity': 0.94,
         'target-arrow-shape': 'vee',
         'target-arrow-color': 'data(arrowColor)',
         'arrow-scale': 0.85,
@@ -1567,9 +1579,9 @@ const cy = cytoscape({
       style: {
         'width': 2.2,
         'line-fill': 'solid',
-        'line-color': '#af591a',
-        'target-arrow-color': '#af591a',
-        'line-opacity': 0.85,
+        'line-color': '#a44b13',
+        'target-arrow-color': '#a44b13',
+        'line-opacity': 0.94,
       }
     },
     {
@@ -1599,7 +1611,7 @@ const cy = cytoscape({
         'line-style': 'dashed',
         'line-color': '#656c70',
         'target-arrow-color': '#656c70',
-        'line-opacity': 0.6,
+        'line-opacity': 0.94,
         'width': 1.1,
         'target-arrow-shape': 'tee',
       }
@@ -1626,17 +1638,14 @@ const cy = cytoscape({
     },
     // Selected
     {
-      selector: 'node:selected',
+      selector: 'node[size]:selected',
       style: {
-        'background-color': '#343b42',
         'background-opacity': 1,
-        'color': '#ffffff',
         'underlay-color': '#45e5b3',
         'underlay-opacity': 0.48,
         'underlay-padding': 7,
-        'border-color': '#285a54',
+        'border-color': 'data(rim)',
         'border-width': 4,
-        'border-style': 'solid',
       }
     },
     // v2.1: selected edge keeps its gradient — distinguish via thicker stroke
@@ -1674,8 +1683,9 @@ const cy = cytoscape({
       selector: 'edge.highlighted',
       style: {
         'line-fill': 'solid',
-        'line-color': '#343b42',
-        'target-arrow-color': '#343b42',
+        'line-style': 'solid',
+        'line-color': '#657477',
+        'target-arrow-color': '#657477',
         'width': 3.5,
         'line-opacity': 1.0,
       }
@@ -1685,20 +1695,20 @@ const cy = cytoscape({
       style: {
         'line-fill': 'solid',
         'line-style': 'dashed',
-        'line-dash-pattern': [18, 9],
-        'line-color': '#283742',
-        'target-arrow-color': '#283742',
-        'width': 4,
+        'line-dash-pattern': [8, 5],
+        'line-dash-offset': 0,
+        'line-color': '#20262b',
+        'target-arrow-color': '#20262b',
+        'width': 5,
         'line-opacity': 1.0,
         'z-index': 999,
       }
     },
     {
-      selector: '.path-node',
+      selector: 'node[size].path-node',
       style: {
-        'border-color': '#283742',
+        'border-color': 'data(rim)',
         'border-width': 5,
-        'border-style': 'solid',
         'opacity': 1.0,
       }
     },
@@ -2143,7 +2153,7 @@ function renderNodePanel(n) {
       <h3>Crate</h3>
       <h2>${escapeHtml(n.label)}</h2>
       <div class="meta-grid">
-        <span class="key">Domain</span><span class="val"><span class="badge-dot" style="background:${domainColor[n.domain]||'#888'}"></span>${escapeHtml(n.domainLabel)}</span>
+        <span class="key">Domain</span><span class="val"><span class="badge-dot" style="background:${domainInk(n.domain)}"></span>${escapeHtml(n.domainLabel)}</span>
         <span class="key">Status</span><span class="val"><span class="status-pill ${status}">${statusLabel}</span></span>
         <span class="key">LoC band</span><span class="val">${escapeHtml(n.locBand)}${n.locApprox ? ' (~'+n.locApprox.toLocaleString()+')' : ''}</span>
       </div>
@@ -2540,12 +2550,12 @@ const NODE_BY_ID = new Map(NODES.map(n => [n.id, n]));
 // ----------------------------------------------------------------
 cy.style()
   .selector('.blast-direct')
-    .style({ 'border-color': '#f0883e', 'border-width': 5, 'opacity': 1.0,
+    .style({ 'border-color': '#843b10', 'border-width': 5, 'opacity': 1.0,
              'background-blacken': -0.15 })
   .selector('.blast-h2')
-    .style({ 'border-color': '#f0883e', 'border-width': 3, 'opacity': 0.75 })
+    .style({ 'border-color': '#843b10', 'border-width': 3, 'opacity': 0.85 })
   .selector('.blast-h3')
-    .style({ 'border-color': '#f0883e', 'border-width': 2, 'opacity': 0.55 })
+    .style({ 'border-color': '#843b10', 'border-width': 2, 'opacity': 0.74 })
   .selector('.blast-faded')
     .style({ 'opacity': 0.20, 'text-opacity': 0.2, 'underlay-opacity': 0 })
   // v2.1: blast-edge thickens but retains the source→target domain gradient
@@ -2624,21 +2634,25 @@ cy.on('mouseover', 'node', (evt) => {
 });
 cy.on('mouseout', 'node', clearHover);
 // ----------------------------------------------------------------
-// v2.4: flow. Runtime edges and the active path are drawn as long dashes
-// that drift from source to target, so confirmed runtime wiring reads as a
-// current. About 16 frames a second, paused while the tab is hidden, and
-// off entirely under prefers-reduced-motion (the edges then draw solid).
+// Runtime wiring uses long dashes that drift toward the target unless
+// reduced motion is requested. A graphite trace uses shorter, stationary
+// dashes even under reduced motion so it cannot look like a neighbor edge.
 // ----------------------------------------------------------------
 const REDUCED_MOTION = !!(window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 if (REDUCED_MOTION) {
-  cy.style().selector('edge.runtime, .path-edge').style({ 'line-style': 'solid' }).update();
+  cy.style()
+    .selector('edge.runtime').style({ 'line-style': 'solid' })
+    .selector('edge.path-edge').style({ 'line-style': 'dashed' })
+    .update();
 } else {
   let flowOffset = 0;
   setInterval(() => {
     if (document.hidden) return;
     flowOffset = (flowOffset - 0.6) % 27;   // 27 = one dash + one gap; a slow drift
-    cy.edges('.runtime, .path-edge').style('line-dash-offset', flowOffset);
+    cy.edges('.runtime').forEach(edge => {
+      edge.style('line-dash-offset', edge.hasClass('path-edge') ? 0 : flowOffset);
+    });
   }, 80);
 }
 // ----------------------------------------------------------------
