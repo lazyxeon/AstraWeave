@@ -1,4 +1,4 @@
-# sites: 1
+# sites: 0
 name: fixture
 on: workflow_dispatch
 jobs:

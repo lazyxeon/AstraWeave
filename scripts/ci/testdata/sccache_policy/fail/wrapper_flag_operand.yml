@@ -1,0 +1,13 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+
+      - run: sudo -u ubuntu cargo install sccache --locked
+      - run: sudo -u ubuntu -- cargo install sccache --locked
+      - run: sudo -Eu ubuntu cargo install sccache --locked
+      - run: env -u LANG cargo install sccache --locked
+      - run: env --unset LANG cargo install sccache --locked

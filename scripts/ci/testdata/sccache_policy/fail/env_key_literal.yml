@@ -1,0 +1,10 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+env:
+  MY_SCCACHE: "1"
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

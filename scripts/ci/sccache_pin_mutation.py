@@ -16,12 +16,13 @@ from SCCACHE_ACTION_OWNER through repo_sccache_action_sites. Operators:
 - replace one ignored call statement with pass
 
 A mutant is killed when the CI predicate fails: a pass fixture gains a
-violation, a fail fixture loses all violations, sccache_mutation_checks
-raises, or one of the two sccache policy tests fails. A mutant that keeps
-that predicate but changes a violation string is equivalent. Timeouts and
-other exceptions are not kills. The unmutated checker must pass first.
-Exit 0 when every mutant is killed or equivalent, the mutant count is
-non-zero, and there is no timeout or other exception.
+violation, a fail fixture loses all violations, the exact violation snapshot
+changes, sccache_mutation_checks raises, or one of the two sccache policy
+tests fails. A mutant that keeps that predicate and the same violation list
+is a survivor unless identical_proof states a reason that holds for every
+input. Timeouts and other exceptions are not kills. The unmutated checker
+must pass first. Exit 0 when every mutant is killed or proved, the mutant
+count is non-zero, and there is no timeout or other exception.
 """
 
 from __future__ import annotations
@@ -342,161 +343,29 @@ def _alarm(_signum: int, _frame: object) -> None:
 
 
 def identical_proof(spec: Spec) -> str | None:
-    """One-line proof that an identical violation list is equivalent.
+    """Proof that holds for every input, or None.
 
-    Returns None when the mutant is not in a proved class.
+    A bare return is the only proved class. Callers of _follow_scripts,
+    _follow_local, _check_uses, _check_step, _check_steps, and _walk discard
+    the return value, so replacing that return with [] or ['mutation'] still
+    leaves at the same statement.
     """
-    text = spec.desc
-    if spec.kind == "jump" or "index >= length" in text or "not pending" in text or "not queue" in text:
-        if "index >= length" in text or text.endswith("swap Break") or text.endswith("swap Continue"):
-            # Classified below from the source line, not from the short label alone.
-            pass
     try:
         source_line = POLICY.read_text(encoding="utf-8").splitlines()[spec.line - 1].strip()
-        previous = ""
-        if spec.line > 1:
-            previous = POLICY.read_text(encoding="utf-8").splitlines()[spec.line - 2].strip()
     except (OSError, IndexError):
-        source_line = ""
-        previous = ""
-    if spec.kind == "jump" and (
-        previous.startswith("if index >= length")
-        or previous.startswith("if not pending")
-        or previous.startswith("if not queue")
-        or previous.startswith("if char ==")
-        or previous.startswith("index = length")
-        or previous.startswith("index = cursor")
-        or previous.startswith("end = cursor")
-        or previous.startswith("if not isinstance")
-        or "policy path is not a path" in previous
-        or "script path is not a posix string" in previous
-    ):
+        return None
+    if spec.kind == "return" and source_line == "return":
         return (
-            "This jump is the empty-queue or past-the-end stop, or it follows a guard "
-            "the fixtures never take, and the loop bound is range(), so swapping it "
-            "does not read another command."
+            "Callers of _follow_scripts, _follow_local, _check_uses, _check_step, "
+            "_check_steps, and _walk discard the return value. Replacing this bare "
+            "return with [] or ['mutation'] still leaves at the same statement, for every input."
         )
-    if spec.kind == "compare" and "index >= length" in text:
+    if spec.kind == "dropstmt" and source_line == 'kept.append("")':
         return (
-            "When the index equals the length the character slice is empty, so the "
-            "stricter comparison still appends nothing before the range ends."
-        )
-    if "not isinstance(parsed, tuple)" in text or "not isinstance(rel, str)" in text or "isinstance(yaml_path, Path)" in text:
-        return (
-            "YAML parsing returns a 2-tuple and path text is a str without a backslash, "
-            "so both operands stay false and the file is still scanned."
-        )
-    if "policy path is not a path" in text or "script path is not a posix string" in text:
-        return (
-            "Those guards are false for every path the checker returns, so the note "
-            "is not appended."
-        )
-    if "checker error" in text:
-        return "The unmutated checker does not raise, so this handler return is not evaluated."
-    if ".resolve()" in text:
-        return (
-            "Glob paths passed to the site walk are absolute and are not symlinks, "
-            "so resolve() does not change seen-set membership."
-        )
-    if "_sccache_github_host(head)" in text:
-        return (
-            "A schemeless token becomes a violation only when the URL classifier accepts "
-            "its host and path, so dropping either side of this guard adds no violation."
-        )
-    if "token == '--'" in text or "token.startswith('-')" in text:
-        return (
-            "A double dash also starts with a dash, and no fixture uses a bare hyphen as "
-            "a command word, so these flag checks accept the same commands."
-        )
-    if "rustup" in text:
-        return (
-            "Every rustup command in the fixtures is rustup run with a toolchain token, "
-            "so the extra comparisons are true together and the same suffix is returned."
-        )
-    if "_SCCACHE_WRAPPERS" in text or "isspace()" in text or "binstall" in text:
-        return (
-            "The fixtures that reach this check satisfy both operands together, so "
-            "either operand still accepts the same command."
-        )
-    if "--branch=" in text or "nxt is not None" in text or "'-r'" in text or "'-t'" in text:
-        return (
-            "The dropped flag spelling is also recognized by the equals form or the "
-            "other flag in the pair, and the fixtures still pin or reject the same command."
-        )
-    if "cursor >= length" in text or "char == quote" in text or "opener" in text or "index == start" in text:
-        return (
-            "Comment and quote scanning still returns the same command text for the "
-            "fixtures, because a group that is not closed is not treated as an install."
-        )
-    if "SCCACHE" in text or "PS_INVOKE" in text or "_SCCACHE_SHELLS" in text:
-        return (
-            "The package, invoke, and shell names that the fixtures use still match "
-            "after this operand is dropped, because another token in the same command "
-            "keeps the install visible."
-        )
-    if (
-        "script scan stopped" in text
-        or "script follow stopped" in text
-        or "script path is not a posix string" in text
-        or "local action" in text
-        or "run value is not a string" in text
-        or "queue.append" in text
-        or "candidate is None" in text
-    ):
-        return (
-            "The fixtures drain every bounded queue and do not hit this note, so "
-            "removing the note leaves the violation lists unchanged."
-        )
-    if spec.kind == "return" and ("return None" in text or text.startswith("return ->") and "return\n" in text or "return:" in text and source_line == "return"):
-        return "This return is not taken for any fixture input, so the lists stay the same."
-    if source_line == "return":
-        return "This return is not taken for any fixture input, so the lists stay the same."
-    if source_line == "break" and previous == "continue":
-        return (
-            "The index stays on the command word, and continuing repeats that word "
-            "until the bounded loop ends, so the returned suffix is the same."
-        )
-    if "index + 1 < length" in source_line or "index + 2 < length" in source_line:
-        return (
-            "Every rustup run in the fixtures includes the toolchain token, so the "
-            "index is never on the last slot and the boundary comparison stays true."
-        )
-    if source_line == "continue" and previous.startswith("index += 1"):
-        return (
-            "The following character is consumed on the next bounded step, and the "
-            "command splitter still reports the same install."
-        )
-    if source_line == "continue" and previous == "break":
-        return (
-            "This continue follows a comment skip in the parenthesis scan. The "
-            "command splitter still reports the same install, so leaving that scan "
-            "does not remove a violation."
-        )
-    if 'ch == "("' in source_line or "ch == '('" in source_line or source_line.startswith("if end < length"):
-        return (
-            "The fixtures use one closed parenthesis group, so the nested-open and "
-            "end-boundary checks do not change the extracted text."
-        )
-    if source_line.startswith("pending.append"):
-        return (
-            "The invoke argument contains a space, so the later argument scan queues "
-            "the same install text."
-        )
-    if "seen_text" in source_line or "seen_text" in previous:
-        return (
-            "No fixture queues a new install after a repeated command text, so "
-            "stopping at the repeated text leaves the same violations."
-        )
-    if (
-        "script path is not a posix string" in source_line
-        or "not a posix string" in previous
-        or previous.strip() == "if rel is None:"
-        or source_line == "continue" and "posix string" in "\n".join(
-            POLICY.read_text(encoding="utf-8").splitlines()[max(0, spec.line - 8) : spec.line]
-        )
-    ):
-        return (
-            "Path.as_posix() contains no backslash, so this note is not reached."
+            "A stats line matches the whole line. join() keeps a newline between the "
+            "neighbors whether that line is omitted or replaced with an empty string, "
+            "and the literal search does not cross a newline, so the result is the same "
+            "for every input."
         )
     return None
 
@@ -513,7 +382,7 @@ def _evaluate(source: str, spec: Spec, baseline: dict[str, list[str]], fixtures:
         if status == "killed":
             return "killed"
         if found != baseline:
-            return "equivalent"
+            return "survived"
         if identical_proof(spec):
             return "proved"
         return "survived"
@@ -583,7 +452,8 @@ def main() -> int:
     for name in buckets:
         buckets[name].sort(key=lambda item: (item.line, item.kind, item.arg, item.desc))
     print(f"killed {len(buckets['killed'])}")
-    print(f"equivalent {len(buckets['equivalent']) + len(buckets['proved'])}")
+    print(f"proved {len(buckets['proved'])}")
+    print(f"unproved {len(buckets['equivalent'])}")
     print(f"survived {len(buckets['survived'])}")
     print(f"timeout {len(buckets['timeout'])}")
     print(f"error {len(buckets['error'])}")

@@ -5,6 +5,6 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: mozilla-actions/sccache-action/sub@v1
+      - uses: mozilla-actions/sccache-action@v0.0.12
         with:
-          version: v0.19.0
+          version: "v0.19.0"

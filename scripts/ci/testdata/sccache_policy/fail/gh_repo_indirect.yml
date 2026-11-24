@@ -1,0 +1,17 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+
+      - run: |
+          export GH_REPO=mozilla/sccache
+          gh release download
+      - run: |
+          declare -x GH_REPO=mozilla/sccache
+          gh release download
+      - env:
+          GH_REPO: mozilla/sccache
+        run: gh release download

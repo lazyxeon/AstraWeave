@@ -1,0 +1,6 @@
+# sites: 0
+name: fixture
+runs:
+  using: compoſite
+  steps:
+    - run: cargo install sccache
