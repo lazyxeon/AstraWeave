@@ -4,5 +4,6 @@ on: workflow_dispatch
 jobs:
   check:
     runs-on: ubuntu-latest
+    container: sccache
     steps:
-      - run: cargo install scc[a]che
+      - run: echo ok

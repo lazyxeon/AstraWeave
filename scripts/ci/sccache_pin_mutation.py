@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """AST mutation pass for the sccache pin checker.
 
-The checker is the sccache pin block in scripts/ci/test_workflow_policy.py,
+The checker is the sccache pin block in scripts/ci/workflow_policy_cases.py,
 from SCCACHE_ACTION_OWNER through repo_sccache_action_sites. Operators:
 
 - flip compares (==/!=, in/not in, is/is not, < />) and boundary compares (< /<=, >/>=)
@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-POLICY = ROOT / "scripts" / "ci" / "test_workflow_policy.py"
+POLICY = ROOT / "scripts" / "ci" / "workflow_policy_cases.py"
 FIXTURE_ROOT = ROOT / "scripts" / "ci" / "testdata" / "sccache_policy"
 NONEMPTY_RETURN = "mutation"
 CHECKER_START = "SCCACHE_ACTION_OWNER"
@@ -356,9 +356,9 @@ def identical_proof(spec: Spec) -> str | None:
         return None
     if spec.kind == "return" and source_line == "return":
         return (
-            "Callers of _follow_scripts, _follow_local, _check_uses, _check_step, "
-            "_check_steps, and _walk discard the return value. Replacing this bare "
-            "return with [] or ['mutation'] still leaves at the same statement, for every input."
+            "Every bare return in the checker is ignored by its caller. "
+            "Replacing it with [] or ['mutation'] still leaves at that statement, "
+            "for every input."
         )
     if spec.kind == "dropstmt" and source_line == 'kept.append("")':
         return (

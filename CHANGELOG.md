@@ -12,7 +12,7 @@ The workspace package is still version 0.4.0. [SECURITY.md](SECURITY.md) calls t
 ### 2026-11
 
 #### Fixed
-- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0. v0.20.0 hit an intermittent GitHub Actions cache 429 at sccache startup; the pin keeps that from coming back ([#772](https://github.com/lazyxeon/AstraWeave/pull/772)).
+- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0. v0.20.0 hit an intermittent GitHub Actions cache 429 at sccache startup. Those retries can exceed the client startup timeout. The pin keeps 0.19.0's fail-fast check and does not make a 429 succeed ([#772](https://github.com/lazyxeon/AstraWeave/pull/772)).
 
 ### 2026-10
 
