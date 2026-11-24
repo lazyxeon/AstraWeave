@@ -111,6 +111,35 @@ _SCCACHE_SHELLS = frozenset({"bash", "sh", "pwsh", "powershell", "pwsh.exe"})
 _SCCACHE_DOWNLOADERS = frozenset(
     {"curl", "curl.exe", "wget", "wget.exe", "iwr", "invoke-webrequest"}
 )
+_SCCACHE_WRAPPERS = frozenset(
+    {"sudo", "command", "env", "exec", "eval", "time", "nohup"}
+)
+_SCCACHE_PS_INVOKE = frozenset(
+    {"invoke-expression", "iex", "invoke-command", "icm"}
+)
+_SCCACHE_OTHER_MANAGERS = frozenset(
+    {
+        "dnf",
+        "yum",
+        "microdnf",
+        "pacman",
+        "apk",
+        "zypper",
+        "pip",
+        "pip3",
+        "npm",
+        "npx",
+        "winget",
+        "snap",
+        "flatpak",
+        "port",
+        "pkg",
+        "emerge",
+        "conda",
+        "scoop",
+    }
+)
+_SCCACHE_BASH_SHELLS = frozenset({"bash", "sh"})
 
 
 def _sccache_upper(text: str) -> str:
@@ -145,17 +174,21 @@ def _sccache_norm_segments(segments: list[str]) -> list[str] | None:
 
 
 def _sccache_pinned_release(version: str | None) -> bool:
-    return isinstance(version, str) and version.strip() in PINNED_SCCACHE_INSTALL_VERSIONS
+    if not isinstance(version, str):
+        return False
+    return version.strip() in PINNED_SCCACHE_INSTALL_VERSIONS
 
 
 def _sccache_pinned_action_version(version: Any) -> bool:
-    return isinstance(version, str) and version.strip() == PINNED_SCCACHE_VERSION
+    if not isinstance(version, str):
+        return False
+    return version.strip() == PINNED_SCCACHE_VERSION
 
 
 def _sccache_parse_uses(uses: Any) -> tuple[str, dict[str, Any]] | None:
     if not isinstance(uses, str):
         return None
-    text = uses.strip()
+    text = uses.lstrip()
     if text == "":
         return None
     if _sccache_upper(text).startswith("DOCKER://"):
@@ -396,47 +429,97 @@ def _sccache_docker_violations(image: str, path: str, step_path: str) -> list[st
     ]
 
 
-def _sccache_url_unpinned(raw: str) -> bool:
+def _sccache_at(text: str, index: int) -> str:
+    return text[index : index + 1]
+
+
+def _sccache_seg(segments: list[str], index: int) -> str:
+    if index >= len(segments):
+        return ""
+    return segments[index]
+
+
+def _sccache_one_dot(host: str) -> str:
+    if len(host) >= 2 and host.endswith(".") and not host.endswith(".."):
+        return host[:-1]
+    return host
+
+
+def _sccache_github_host(host: str) -> bool:
+    key = _sccache_one_dot(host)
+    return _sccache_ieq(key, "github.com") or _sccache_ieq(key, "www.github.com")
+
+
+def _sccache_cut_url(raw: str) -> str:
     text = raw.strip().strip("\"'<>")
-    has_scheme = "://" in text
-    rest = text.split("://", 1)[1] if has_scheme else ""
+    return text.split("?", 1)[0].split("#", 1)[0]
+
+
+def _sccache_url_parts(raw: str) -> tuple[str, list[str] | None]:
+    text = _sccache_cut_url(raw)
+    rest = text.split("://", 1)[1] if "://" in text else text
     authority, sep, url_path = rest.partition("/")
     if sep == "":
         url_path = ""
     if "@" in authority:
         authority = authority.rsplit("@", 1)[-1]
     host = authority.split(":", 1)[0]
-    host_ok = _sccache_ieq(host, "github.com") or _sccache_ieq(host, "www.github.com")
-    segments: list[str] | None = (
-        _sccache_norm_segments(unquote(url_path).replace("\\", "/").split("/"))
-        if host_ok
-        else []
+    if not _sccache_github_host(host):
+        return host, []
+    return host, _sccache_norm_segments(unquote(url_path).replace("\\", "/").split("/"))
+
+
+def _sccache_url_unpinned(raw: str) -> bool:
+    _host, segments = _sccache_url_parts(raw)
+    if segments is None:
+        return True
+    if len(segments) < 2:
+        return False
+    project = _sccache_ieq(segments[0], "mozilla") and _sccache_ieq(segments[1], "sccache")
+    if not project:
+        return False
+    release = _sccache_ieq(_sccache_seg(segments, 2), "releases") and _sccache_ieq(
+        _sccache_seg(segments, 3), "download"
     )
-    project = bool(segments) and len(segments) >= 2 and (
-        _sccache_ieq(segments[0], "mozilla") and _sccache_ieq(segments[1], "sccache")
+    asset = "/".join(segments[5:])
+    pinned = (
+        release
+        and _sccache_seg(segments, 4) == PINNED_SCCACHE_VERSION
+        and "sccache-v0.19.0" in asset
     )
-    release = bool(segments) and len(segments) >= 6 and (
-        _sccache_ieq(segments[2], "releases") and _sccache_ieq(segments[3], "download")
-    )
-    pinned = release and segments[4] == PINNED_SCCACHE_VERSION and (
-        "sccache-v0.19.0" in "/".join(segments[5:])
-    )
-    return segments is None or (project and not pinned)
+    return not pinned
 
 
 def _sccache_git_names_project(url: str) -> bool:
-    text = unquote(url.strip().strip("\"'")).replace("\\", "/").lower()
-    if "://" in text:
-        text = text.split("://", 1)[1]
-    host, sep, rest = text.partition("/")
-    if "@" in host:
-        host = host.rsplit("@", 1)[-1]
-    host = host.split(":", 1)[0]
-    path = rest.split("?", 1)[0].split("#", 1)[0] if sep else ""
-    if path.endswith(".git"):
-        path = path[: -len(".git")]
-    full = f"{host}/{path}" if sep else host
-    return full in (
+    text = unquote(url.strip().strip("\"'")).replace("\\", "/")
+    text = text.split("?", 1)[0].split("#", 1)[0]
+    lowered = text.lower()
+    if "://" in lowered:
+        rest = lowered.split("://", 1)[1]
+        authority, sep, path = rest.partition("/")
+        if "@" in authority:
+            authority = authority.rsplit("@", 1)[-1]
+        host = authority.split(":", 1)[0]
+        path = path if sep else ""
+    else:
+        hostpart, colon, path = lowered.partition(":")
+        if "@" not in hostpart:
+            return False
+        host = hostpart.rsplit("@", 1)[-1]
+    host = _sccache_one_dot(host)
+    segments = _sccache_norm_segments(path.split("/"))
+    if not segments:
+        return False
+    last = segments[-1]
+    if last.endswith(".git"):
+        last = last[: -len(".git")]
+    if last == "":
+        segments = segments[:-1]
+    else:
+        segments = [*segments[:-1], last]
+    if len(segments) != 2:
+        return False
+    return f"{host}/{segments[0]}/{segments[1]}" in (
         "github.com/mozilla/sccache",
         "www.github.com/mozilla/sccache",
     )
@@ -445,8 +528,12 @@ def _sccache_git_names_project(url: str) -> bool:
 def _sccache_urls(script: str) -> list[str]:
     found: list[str] = []
     for token in script.split():
-        raw = token.strip("\"'<>(),")
+        raw = token
         if "://" in raw:
+            found.append(raw)
+            continue
+        head = raw.split("/", 1)[0].split(":", 1)[0]
+        if _sccache_github_host(head) and "/" in raw:
             found.append(raw)
     return found
 
@@ -455,8 +542,11 @@ def _sccache_strip_comments(script: str) -> str:
     kept: list[str] = []
     quote: str | None = None
     index = 0
-    while index < len(script):
-        char = script[index]
+    length = len(script)
+    for _step in range(length + 1):
+        if index >= length:
+            break
+        char = _sccache_at(script, index)
         if quote is not None:
             kept.append(char)
             if char == quote:
@@ -469,8 +559,11 @@ def _sccache_strip_comments(script: str) -> str:
             index += 1
             continue
         if char == "#":
-            while index < len(script) and script[index] != "\n":
-                index += 1
+            index += 1
+            for cursor in range(index, length + 1):
+                if cursor >= length or _sccache_at(script, cursor) == "\n":
+                    index = cursor
+                    break
             continue
         kept.append(char)
         index += 1
@@ -487,8 +580,11 @@ def _sccache_split_commands(script: str) -> list[str]:
     buf: list[str] = []
     quote: str | None = None
     index = 0
-    while index < len(prepared):
-        char = prepared[index]
+    length = len(prepared)
+    for _step in range(length + 1):
+        if index >= length:
+            break
+        char = _sccache_at(prepared, index)
         if quote is not None:
             buf.append(char)
             if char == quote:
@@ -500,38 +596,49 @@ def _sccache_split_commands(script: str) -> list[str]:
             buf.append(char)
             index += 1
             continue
-        two = prepared[index : index + 2]
-        if char in "\n\r;" or two in ("&&", "||") or char == "|":
+        if char in "\n\r;&|":
             parts.append("".join(buf))
             buf = []
-            index += 2 if two in ("&&", "||") else 1
+            index += 1
             continue
         buf.append(char)
         index += 1
     parts.append("".join(buf))
-    return [part.strip() for part in parts if part.strip()]
+    return [part for part in parts if part]
 
 
 def _sccache_tokenize(command: str) -> list[str]:
     tokens: list[str] = []
     buf: list[str] = []
     quote: str | None = None
-    for char in command:
+    index = 0
+    length = len(command)
+    for _step in range(length + 1):
+        if index >= length:
+            break
+        char = _sccache_at(command, index)
         if quote is not None:
             if char == quote:
                 quote = None
             else:
                 buf.append(char)
+            index += 1
+            continue
+        if char == "$" and _sccache_at(command, index + 1) in "'\"":
+            index += 1
             continue
         if char == "'" or char == '"':
             quote = char
+            index += 1
             continue
         if char.isspace():
             if buf:
                 tokens.append("".join(buf))
                 buf = []
+            index += 1
             continue
         buf.append(char)
+        index += 1
     if buf:
         tokens.append("".join(buf))
     return tokens
@@ -550,18 +657,52 @@ def _sccache_is_assignment(token: str) -> bool:
     )
 
 
-def _sccache_command_words(tokens: list[str]) -> list[str]:
-    index = 0
-    while index < len(tokens):
-        if _sccache_is_assignment(tokens[index]):
+def _sccache_skip_wrapper_flags(tokens: list[str], index: int, gh_repo: str | None) -> tuple[int, str | None]:
+    length = len(tokens)
+    for _step in range(length + 1):
+        if index >= length:
+            break
+        token = tokens[index]
+        if _sccache_is_assignment(token):
+            name, _sep, value = token.partition("=")
+            if _sccache_ieq(name, "GH_REPO"):
+                gh_repo = value
             index += 1
             continue
-        base = _sccache_basename(tokens[index])
-        if _sccache_ieq(base, "sudo") or _sccache_ieq(base, "command") or _sccache_ieq(base, "env"):
+        if token == "--" or (token.startswith("-") and token != "-"):
             index += 1
             continue
         break
-    return tokens[index:]
+    return index, gh_repo
+
+
+def _sccache_command_words(tokens: list[str]) -> tuple[list[str], str | None]:
+    gh_repo: str | None = None
+    index = 0
+    length = len(tokens)
+    for _step in range(length + 1):
+        if index >= length:
+            break
+        token = tokens[index]
+        if _sccache_is_assignment(token):
+            name, _sep, value = token.partition("=")
+            if _sccache_ieq(name, "GH_REPO"):
+                gh_repo = value
+            index += 1
+            continue
+        base = _sccache_basename(token)
+        if (
+            _sccache_ieq(base, "rustup")
+            and index + 1 < length
+            and _sccache_ieq(tokens[index + 1], "run")
+        ):
+            index += 3 if index + 2 < length else 2
+            continue
+        if base.lower() in _SCCACHE_WRAPPERS or token == "&":
+            index, gh_repo = _sccache_skip_wrapper_flags(tokens, index + 1, gh_repo)
+            continue
+        break
+    return tokens[index:], gh_repo
 
 
 def _sccache_plain_package(token: str) -> bool:
@@ -580,10 +721,14 @@ def _sccache_cargo_install(args: list[str], path: str, step_path: str) -> list[s
     ref_override = False
     positionals: list[str] = []
     index = 0
-    while index < len(args):
+    length = len(args)
+    for _step in range(length + 1):
+        if index >= length:
+            break
         token = args[index]
         if token == "--":
             positionals.extend(args[index + 1 :])
+            index = length
             break
         lowered = token.lower()
         if lowered.startswith("--version="):
@@ -598,12 +743,22 @@ def _sccache_cargo_install(args: list[str], path: str, step_path: str) -> list[s
             tag = token.split("=", 1)[1]
             index += 1
             continue
-        if lowered.startswith("--branch=") or lowered.startswith("--rev="):
-            ref_override = True
+        if (
+            lowered.startswith("--branch=")
+            or lowered.startswith("--rev=")
+            or lowered.startswith("--path=")
+            or lowered.startswith("--manifest-path=")
+        ):
+            if lowered.startswith("--branch=") or lowered.startswith("--rev="):
+                ref_override = True
             index += 1
             continue
-        if lowered in _SCCACHE_VALUE_FLAGS and index + 1 < len(args):
-            value = args[index + 1]
+        if lowered in _SCCACHE_VALUE_FLAGS:
+            span = args[index + 1 : index + 2]
+            if not span:
+                index = length
+                break
+            value = span[0]
             if lowered == "--version":
                 version_flag = value
             elif lowered == "--git":
@@ -673,28 +828,34 @@ def _sccache_cargo_install(args: list[str], path: str, step_path: str) -> list[s
     return violations
 
 
-def _sccache_gh_violations(words: list[str], path: str, step_path: str) -> list[str]:
-    padded = [*words, "", ""]
-    if not (
-        _sccache_ieq(padded[1], "release") and _sccache_ieq(padded[2], "download")
-    ):
-        return []
-    repo: str | None = None
+def _sccache_gh_violations(
+    words: list[str], gh_repo: str | None, path: str, step_path: str
+) -> list[str]:
+    repo = gh_repo
     tag: str | None = None
-    index = 3
-    while index < len(words):
+    saw_download = False
+    index = 1
+    length = len(words)
+    for _step in range(length + 1):
+        if index >= length:
+            break
         token = words[index]
         lowered = token.lower()
-        if lowered in ("-r", "--repo") and index + 1 < len(words):
-            repo = words[index + 1]
+        nxt = words[index + 1] if index + 1 < length else None
+        if nxt is not None and _sccache_ieq(token, "release") and _sccache_ieq(nxt, "download"):
+            saw_download = True
+            index += 2
+            continue
+        if lowered in ("-r", "--repo") and nxt is not None:
+            repo = nxt
             index += 2
             continue
         if lowered.startswith("--repo="):
             repo = token.split("=", 1)[1]
             index += 1
             continue
-        if lowered in ("-t", "--tag") and index + 1 < len(words):
-            tag = words[index + 1]
+        if lowered in ("-t", "--tag") and nxt is not None:
+            tag = nxt
             index += 2
             continue
         if lowered.startswith("--tag="):
@@ -702,6 +863,8 @@ def _sccache_gh_violations(words: list[str], path: str, step_path: str) -> list[
             index += 1
             continue
         index += 1
+    if not saw_download:
+        return []
     joined = " ".join(words).lower()
     if repo is not None and _sccache_ieq(repo, "mozilla/sccache"):
         if tag == PINNED_SCCACHE_VERSION:
@@ -739,11 +902,86 @@ def _sccache_pkg_violations(words: list[str], path: str, step_path: str) -> list
     return []
 
 
+def _sccache_extra_texts(script: str) -> list[str]:
+    texts: list[str] = []
+    length = len(script)
+    index = 0
+    quote: str | None = None
+    for _step in range(length + 1):
+        if index >= length:
+            break
+        start = index
+        char = _sccache_at(script, index)
+        if quote is not None:
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in "'\"":
+            quote = char
+            index += 1
+            continue
+        if char == "#":
+            index += 1
+            for cursor in range(index, length + 1):
+                if cursor >= length or _sccache_at(script, cursor) == "\n":
+                    index = cursor
+                    break
+            continue
+        opener = ""
+        if script.startswith("$(", index):
+            opener = "$("
+        elif char == "(" or char == "{":
+            opener = char
+        if opener == "":
+            index += 1
+            continue
+        close = ")" if opener != "{" else "}"
+        depth = 1
+        cursor = index + len(opener)
+        end = length
+        for cursor in range(index + len(opener), length):
+            ch = _sccache_at(script, cursor)
+            if opener != "$(" and ch == opener:
+                depth += 1
+            elif opener == "$(" and ch == "(":
+                depth += 1
+            elif ch == close:
+                depth -= 1
+                if depth == 0:
+                    end = cursor
+                    break
+        if end < length:
+            texts.append(script[index + len(opener) : end])
+            index = end + 1
+        else:
+            index = length
+        if index == start:
+            index += 1
+    return texts
+
+
+def _sccache_mentions(text: str) -> bool:
+    return "sccache" in text.lower()
+
+
+def _sccache_names_install(words: list[str]) -> bool:
+    blob = " ".join(words).lower()
+    return "sccache" in blob and ("install" in blob or "binstall" in blob)
+
+
 def _sccache_command_violations(
-    tokens: list[str], script: str, path: str, step_path: str, seen_text: set[str]
+    tokens: list[str],
+    script: str,
+    path: str,
+    step_path: str,
+    pending: list[str],
 ) -> list[str]:
-    words = _sccache_command_words(tokens)
+    words, gh_repo = _sccache_command_words(tokens)
     if not words:
+        return []
+    if any(char.isspace() for char in words[0]) and _sccache_mentions(words[0]):
+        pending.append(words[0])
         return []
     base = _sccache_basename(words[0])
     base_key = base.lower()
@@ -757,9 +995,19 @@ def _sccache_command_violations(
     elif base_key in ("cargo-binstall", "cargo-binstall.exe"):
         violations.extend(_sccache_cargo_install(words[1:], path, step_path))
     elif base_key == "gh" or base_key == "gh.exe":
-        violations.extend(_sccache_gh_violations(words, path, step_path))
+        violations.extend(_sccache_gh_violations(words, gh_repo, path, step_path))
     elif base_key in _SCCACHE_PKG_MANAGERS:
         violations.extend(_sccache_pkg_violations(words, path, step_path))
+    elif base_key in _SCCACHE_OTHER_MANAGERS and any(
+        "SCCACHE" in _sccache_upper(token) for token in words
+    ):
+        violations.append(
+            _sccache_violation(
+                path,
+                step_path,
+                "package manager install of sccache is not the literal v0.19.0 pin",
+            )
+        )
     elif base_key == "alias":
         folded = _sccache_upper(script)
         if "SCCACHE" in folded and "INSTALL" in folded:
@@ -780,13 +1028,38 @@ def _sccache_command_violations(
                         "download of sccache uses a value that is not a literal pin",
                     )
                 )
-    if base_key in _SCCACHE_SHELLS:
-        for token in words[1:]:
-            if " " not in token:
-                continue
-            violations.extend(
-                _sccache_run_violations(token, path, step_path, seen_text)
+    elif base_key in _SCCACHE_PS_INVOKE and _sccache_names_install(words):
+        pending.append(" ".join(words[1:]))
+    if words[0].startswith("$") and _sccache_names_install(words):
+        violations.append(
+            _sccache_violation(
+                path,
+                step_path,
+                "sccache install command is not a literal pin",
             )
+        )
+    if _sccache_names_install(words) and any(
+        any(char in token for char in "*?[") for token in words
+    ):
+        violations.append(
+            _sccache_violation(
+                path,
+                step_path,
+                "sccache install command is not a literal pin",
+            )
+        )
+    if base_key in _SCCACHE_SHELLS or base_key in _SCCACHE_PS_INVOKE:
+        for token in words[1:]:
+            if token.startswith("$") and _sccache_names_install([script]):
+                violations.append(
+                    _sccache_violation(
+                        path,
+                        step_path,
+                        "sccache install command is not a literal pin",
+                    )
+                )
+            elif any(char.isspace() for char in token) and _sccache_mentions(token):
+                pending.append(token)
     return violations
 
 
@@ -795,11 +1068,17 @@ def _sccache_run_violations(
 ) -> list[str]:
     if seen_text is None:
         seen_text = set()
-    key = script.strip()
+    pending = [script]
     violations: list[str] = []
-    if key not in seen_text:
+    for _step in range(64):
+        if not pending:
+            break
+        current = pending.pop()
+        key = current
+        if key in seen_text:
+            continue
         seen_text.add(key)
-        prepared = _sccache_prepare_script(script)
+        prepared = _sccache_prepare_script(current)
         for url in _sccache_urls(prepared):
             if _sccache_url_unpinned(url):
                 violations.append(
@@ -809,12 +1088,27 @@ def _sccache_run_violations(
                         "sccache release URL must pin v0.19.0",
                     )
                 )
-        for command in _sccache_split_commands(script):
+        for extra in _sccache_extra_texts(current):
+            if _sccache_mentions(extra):
+                pending.append(extra)
+        for command in _sccache_split_commands(current):
             violations.extend(
                 _sccache_command_violations(
-                    _sccache_tokenize(command), prepared, path, step_path, seen_text
+                    _sccache_tokenize(command),
+                    prepared,
+                    path,
+                    step_path,
+                    pending,
                 )
             )
+    if pending:
+        violations.append(
+            _sccache_violation(
+                path,
+                step_path,
+                "script scan stopped before every command was checked",
+            )
+        )
     return violations
 
 
@@ -825,6 +1119,16 @@ def _sccache_script_tokens(script: str) -> list[str]:
     return tokens
 
 
+def _sccache_reject_backslash(text: str) -> str | None:
+    if "\\" in text:
+        return None
+    return text
+
+
+def _sccache_posix_text(value: Path) -> str | None:
+    return _sccache_reject_backslash(value.as_posix())
+
+
 def _sccache_follow_scripts(
     script: str,
     path: str,
@@ -833,37 +1137,57 @@ def _sccache_follow_scripts(
     seen: set[Path],
     violations: list[str],
 ) -> None:
-    for token in _sccache_script_tokens(script):
-        lowered = token.replace("\\", "/").lower()
-        if not (lowered.endswith(".sh") or lowered.endswith(".ps1")):
-            continue
-        if "/" not in lowered and not lowered.startswith("."):
-            continue
-        if root is None:
-            _sccache_note(
-                violations,
-                _sccache_violation(
-                    path, step_path, f"script was not loaded: {token}"
-                ),
-            )
-            continue
-        candidate = _sccache_inside(root, token)
-        if candidate is None or not candidate.is_file():
-            _sccache_note(
-                violations,
-                _sccache_violation(
-                    path, step_path, f"script was not loaded: {token}"
-                ),
-            )
-            continue
-        resolved = candidate.resolve()
-        if resolved in seen:
-            continue
-        seen.add(resolved)
-        rel = candidate.relative_to(root).as_posix()
-        text = candidate.read_text(encoding="utf-8")
-        violations.extend(_sccache_run_violations(text, rel, "script"))
-        _sccache_follow_scripts(text, rel, "script", root, seen, violations)
+    queue = [(script, path, step_path)]
+    for _step in range(32):
+        if not queue:
+            break
+        current, cur_path, cur_step = queue.pop()
+        for token in _sccache_script_tokens(current):
+            lowered = token.replace("\\", "/").lower()
+            if not (lowered.endswith(".sh") or lowered.endswith(".ps1")):
+                continue
+            if "/" not in lowered and not lowered.startswith("."):
+                continue
+            if root is None:
+                _sccache_note(
+                    violations,
+                    _sccache_violation(
+                        cur_path, cur_step, f"script was not loaded: {token}"
+                    ),
+                )
+                continue
+            candidate = _sccache_inside(root, token)
+            if candidate is None or not candidate.is_file():
+                _sccache_note(
+                    violations,
+                    _sccache_violation(
+                        cur_path, cur_step, f"script was not loaded: {token}"
+                    ),
+                )
+                continue
+            resolved = candidate
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            rel = _sccache_posix_text(candidate.relative_to(root))
+            if rel is None:
+                _sccache_note(
+                    violations,
+                    _sccache_violation(
+                        cur_path, cur_step, "script path is not a posix string"
+                    ),
+                )
+                continue
+            text = candidate.read_text(encoding="utf-8")
+            violations.extend(_sccache_run_violations(text, rel, "script"))
+            queue.append((text, rel, "script"))
+    if queue:
+        _sccache_note(
+            violations,
+            _sccache_violation(
+                path, step_path, "script follow stopped before every script was read"
+            ),
+        )
 
 
 def _sccache_follow_local(
@@ -907,11 +1231,21 @@ def _sccache_follow_local(
                 _sccache_violation(path, step_path, "local action file is missing"),
             )
         if file_path is not None:
-            rel = file_path.relative_to(root).as_posix()
-            text = file_path.read_text(encoding="utf-8")
-            violations.extend(
-                sccache_pin_violations(text, path=rel, root=root, seen=seen, sites=sites)
-            )
+            rel = _sccache_posix_text(file_path.relative_to(root))
+            if rel is None:
+                _sccache_note(
+                    violations,
+                    _sccache_violation(
+                        path, step_path, "local action path is not a posix string"
+                    ),
+                )
+            else:
+                text = file_path.read_text(encoding="utf-8")
+                violations.extend(
+                    sccache_pin_violations(
+                        text, path=rel, root=root, seen=seen, sites=sites
+                    )
+                )
 
 
 def _sccache_apply_uses(
@@ -925,45 +1259,48 @@ def _sccache_apply_uses(
     sites: list[str] | None,
 ) -> None:
     parsed = _sccache_parse_uses(uses)
-    if parsed is None:
+    try:
+        if not isinstance(parsed, tuple) or len(parsed) != 2:
+            raise TypeError
+        kind, info = parsed
+    except Exception:
         _sccache_note(
             violations,
             _sccache_violation(path, step_path, "uses value is not a recognized action"),
         )
-    else:
-        kind, info = parsed
-        if kind == "docker":
-            violations.extend(
-                _sccache_docker_violations(str(info["image"]), path, step_path)
-            )
-        elif kind == "local":
-            _sccache_follow_local(
-                str(info["path"]), path, step_path, root, seen, violations, sites
-            )
-        elif kind == "escape":
-            if _sccache_is_action(info) and sites is not None:
-                sites.append(f"{path}: {step_path}")
-            _sccache_note(
-                violations,
-                _sccache_violation(
-                    path, step_path, "action path escapes the repository"
-                ),
-            )
-        elif _sccache_is_reusable(list(info["path"])):
-            _sccache_note(
-                violations,
-                _sccache_violation(
-                    path,
-                    step_path,
-                    "reusable workflow is not in this checkout",
-                ),
-            )
-        elif _sccache_is_action(info):
-            if sites is not None:
-                sites.append(f"{path}: {step_path}")
-            violations.extend(_sccache_action_with_violations(step, path, step_path))
-        elif _sccache_is_taiki(info):
-            violations.extend(_sccache_taiki_violations(info, step, path, step_path))
+        return
+    if kind == "docker":
+        violations.extend(
+            _sccache_docker_violations(str(info["image"]), path, step_path)
+        )
+    elif kind == "local":
+        _sccache_follow_local(
+            str(info["path"]), path, step_path, root, seen, violations, sites
+        )
+    elif kind == "escape":
+        if _sccache_is_action(info) and sites is not None:
+            sites.append(f"{path}: {step_path}")
+        _sccache_note(
+            violations,
+            _sccache_violation(
+                path, step_path, "action path escapes the repository"
+            ),
+        )
+    elif _sccache_is_reusable(list(info["path"])):
+        _sccache_note(
+            violations,
+            _sccache_violation(
+                path,
+                step_path,
+                "reusable workflow is not in this checkout",
+            ),
+        )
+    elif _sccache_is_action(info):
+        if sites is not None:
+            sites.append(f"{path}: {step_path}")
+        violations.extend(_sccache_action_with_violations(step, path, step_path))
+    elif _sccache_is_taiki(info):
+        violations.extend(_sccache_taiki_violations(info, step, path, step_path))
 
 
 def _sccache_check_step(
@@ -984,6 +1321,20 @@ def _sccache_check_step(
         if isinstance(run, str):
             violations.extend(_sccache_run_violations(run, path, step_path))
             _sccache_follow_scripts(run, path, step_path, root, seen, violations)
+            shell = step.get("shell")
+            if isinstance(shell, str) and shell != "":
+                shell_name = _sccache_basename(shell.split()[0]).lower()
+                if shell_name not in _SCCACHE_BASH_SHELLS and re.search(
+                    r"sccache", run, re.IGNORECASE
+                ):
+                    _sccache_note(
+                        violations,
+                        _sccache_violation(
+                            path,
+                            step_path,
+                            "shell is not bash and the step names sccache",
+                        ),
+                    )
         elif "run" in step:
             _sccache_note(
                 violations,
@@ -1115,21 +1466,24 @@ def sccache_pin_violations(
     seen: set[Path] | None = None,
     sites: list[str] | None = None,
 ) -> list[str]:
-    if seen is None:
-        seen = set()
-    if root is not None:
-        marker = (root / path).resolve()
-        if marker in seen:
-            return []
-        seen.add(marker)
-    doc, errors = _parse_policy_yaml(text, path)
-    if errors:
-        return errors
-    if doc is None:
-        return [f"{path}: empty document"]
-    violations: list[str] = []
-    _sccache_walk_parsed(doc, path, violations, sites, root, seen)
-    return violations
+    try:
+        if seen is None:
+            seen = set()
+        if root is not None:
+            marker = (root / path).resolve()
+            if marker in seen:
+                return []
+            seen.add(marker)
+        doc, errors = _parse_policy_yaml(text, path)
+        if errors:
+            return errors
+        if doc is None:
+            return [f"{path}: empty document"]
+        violations: list[str] = []
+        _sccache_walk_parsed(doc, path, violations, sites, root, seen)
+        return violations
+    except Exception as exc:
+        return [f"{path}: checker error: {exc.__class__.__name__}"]
 
 
 def github_policy_yaml_paths(root: Path = ROOT) -> list[Path]:
@@ -1147,7 +1501,13 @@ def repo_sccache_pin_violations(root: Path = ROOT) -> list[str]:
     violations: list[str] = []
     seen: set[Path] = set()
     for yaml_path in github_policy_yaml_paths(root):
+        if not isinstance(yaml_path, Path):
+            violations.append(f"{yaml_path}: policy path is not a path")
+            continue
         rel = yaml_path.relative_to(root).as_posix()
+        if not isinstance(rel, str) or "\\" in rel:
+            violations.append(f"{yaml_path}: script path is not a posix string")
+            continue
         violations.extend(
             sccache_pin_violations(
                 yaml_path.read_text(encoding="utf-8"),
@@ -1163,8 +1523,15 @@ def repo_sccache_action_sites(root: Path = ROOT) -> list[str]:
     sites: list[str] = []
     seen: set[Path] = set()
     for yaml_path in github_policy_yaml_paths(root):
+        if not isinstance(yaml_path, Path):
+            continue
         rel = yaml_path.relative_to(root).as_posix()
-        doc, _errors = _parse_policy_yaml(yaml_path.read_text(encoding="utf-8"), rel)
+        if not isinstance(rel, str) or "\\" in rel:
+            continue
+        parsed = _parse_policy_yaml(yaml_path.read_text(encoding="utf-8"), rel)
+        if not isinstance(parsed, tuple) or len(parsed) != 2:
+            continue
+        doc, _errors = parsed
         if doc is None:
             continue
         marker = yaml_path.resolve()
@@ -1176,6 +1543,15 @@ def repo_sccache_action_sites(root: Path = ROOT) -> list[str]:
 
 def sccache_mutation_checks() -> None:
     """Root-backed pin cases. Workflow fixtures do not carry a checkout."""
+    try:
+        _sccache_mutation_checks()
+    except AssertionError:
+        raise
+    except Exception as exc:
+        raise AssertionError(exc.__class__.__name__) from exc
+
+
+def _sccache_mutation_checks() -> None:
     with tempfile.TemporaryDirectory(prefix="sccache-mutation-") as raw:
         root = Path(raw)
         tools = root / "tools"
@@ -1205,7 +1581,9 @@ def sccache_mutation_checks() -> None:
             path="escape.yml",
             root=root,
         )
-        if not escaped or _sccache_inside(root, "../outside.sh") is not None:
+        if not any("script was not loaded" in item for item in escaped):
+            raise AssertionError(escaped)
+        if _sccache_inside(root, "../outside.sh") is not None:
             raise AssertionError(escaped)
         action = root / "custom" / "tool"
         action.mkdir(parents=True)
@@ -1237,6 +1615,505 @@ def sccache_mutation_checks() -> None:
         both = sccache_pin_violations(caller, path="caller.yml", root=root)
         if both != []:
             raise AssertionError(both)
+        yaml_only = root / "yaml-only"
+        yaml_only.mkdir()
+        (yaml_only / "action.yaml").write_text(
+            "name: yaml-only\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - run: echo ok\n",
+            encoding="utf-8",
+        )
+        yaml_caller = (
+            "name: yaml-caller\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./yaml-only\n"
+        )
+        yaml_hits = sccache_pin_violations(yaml_caller, path="yaml.yml", root=root)
+        if yaml_hits != []:
+            raise AssertionError(yaml_hits)
+        link = tools / "bad-link.sh"
+        link.symlink_to(tools / "bad.sh")
+        linked = sccache_pin_violations(
+            "name: link\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: bash tools/bad-link.sh && bash tools/bad.sh\n",
+            path="link.yml",
+            root=root,
+        )
+        pin_hits = [item for item in linked if "must pin 0.19.0" in item]
+        if len(pin_hits) != 1:
+            raise AssertionError(linked)
+        resolved = _sccache_inside(root, "tools/bad-link.sh")
+        if resolved != (tools / "bad.sh").resolve():
+            raise AssertionError(resolved)
+        real = root / "real-root"
+        real.mkdir()
+        (real / "file.sh").write_text("echo ok\n", encoding="utf-8")
+        alias = root / "alias-root"
+        alias.symlink_to(real, target_is_directory=True)
+        if _sccache_inside(alias, "file.sh") is None:
+            raise AssertionError("root resolve")
+        orphan = root / "orphan"
+        orphan.mkdir()
+        (orphan / "action.yml").write_text(
+            "name: orphan\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - uses: mozilla-actions/sccache-action@v0.0.11\n",
+            encoding="utf-8",
+        )
+        orphan_hits = repo_sccache_pin_violations(root)
+        if not any("orphan/action.yml" in item for item in orphan_hits):
+            raise AssertionError(orphan_hits)
+        linked_action = root / "linked-action"
+        linked_action.mkdir()
+        (linked_action / "action.yml").symlink_to(orphan / "action.yml")
+        linked_hits = [
+            item
+            for item in repo_sccache_pin_violations(root)
+            if "orphan/action.yml" in item or "linked-action/action.yml" in item
+        ]
+        if len(linked_hits) != 1:
+            raise AssertionError(linked_hits)
+        (tools / "also.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        (tools / "bad.sh").write_text("bash tools/also.sh\n", encoding="utf-8")
+        nested = sccache_pin_violations(
+            "name: nest\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: bash tools/bad.sh\n",
+            path="nest.yml",
+            root=root,
+        )
+        if not any("also.sh" in item and "must pin 0.19.0" in item for item in nested):
+            raise AssertionError(nested)
+        empty_dir = root / "empty-action"
+        empty_dir.mkdir()
+        empty_hits = sccache_pin_violations(
+            "name: empty\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./empty-action\n",
+            path="empty.yml",
+            root=root,
+        )
+        if not any("missing" in item for item in empty_hits):
+            raise AssertionError(empty_hits)
+        gone_hits = sccache_pin_violations(
+            "name: gone\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./custom/missing-action\n",
+            path="gone.yml",
+            root=root,
+        )
+        if not any("missing" in item for item in gone_hits):
+            raise AssertionError(gone_hits)
+        local_escape = sccache_pin_violations(
+            "name: out\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./../../outside\n",
+            path="out.yml",
+            root=root,
+        )
+        if not any("escapes" in item for item in local_escape):
+            raise AssertionError(local_escape)
+        two = sccache_pin_violations(
+            "name: two\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: bash tools/a.sh && bash tools/b.sh\n",
+            path="two.yml",
+        )
+        if not any("a.sh" in item for item in two) or not any("b.sh" in item for item in two):
+            raise AssertionError(two)
+        _sccache_require_forms()
+
+
+def _sccache_workflow(run: str, shell: str | None = None) -> str:
+    step: dict[str, str] = {"run": run}
+    if shell is not None:
+        step["shell"] = shell
+    doc = {
+        "name": "t",
+        "on": "workflow_dispatch",
+        "jobs": {"check": {"runs-on": "ubuntu-latest", "steps": [step]}},
+    }
+    return yaml.safe_dump(doc, sort_keys=True)
+
+
+def _sccache_require(text: str, failed: bool) -> None:
+    found = sccache_pin_violations(text, path="check.yml")
+    if failed and not found:
+        raise AssertionError(text)
+    if not failed and found:
+        raise AssertionError(found)
+
+
+def _sccache_require_forms() -> None:
+    if not _sccache_pinned_release("  v0.19.0") or not _sccache_pinned_release("\tv0.19.0\n"):
+        raise AssertionError("strip")
+    if _sccache_pinned_release(" v0.20.0 "):
+        raise AssertionError("strip keeps a bad pin")
+    if not _sccache_git_names_project("https://GitHub.com/Mozilla/sccache.git/"):
+        raise AssertionError("git case")
+    if not _sccache_git_names_project("git@github.com:mozilla/sccache.git"):
+        raise AssertionError("git scp")
+    if not _sccache_git_names_project("https://github.com/mozilla/sccache.git/."):
+        raise AssertionError("git dot")
+    if not _sccache_git_names_project("ssh://git@github.com/mozilla/sccache.git/"):
+        raise AssertionError("git ssh")
+    if _sccache_git_names_project("https://example.com/mozilla/sccache.git"):
+        raise AssertionError("git other host")
+    if _sccache_git_names_project("https://github.com/mozilla/sccache.git ") is not True:
+        raise AssertionError("git strip")
+    if _sccache_git_names_project('https://github.com/mozilla/sccache.git"') is not True:
+        raise AssertionError("git quote")
+    if _sccache_git_names_project("github.com:mozilla/sccache.git") is not False:
+        raise AssertionError("git user")
+    if _sccache_git_names_project("notaurl") is not False:
+        raise AssertionError("git plain")
+    if _sccache_git_names_project("git@github.com:") is not False:
+        raise AssertionError("git empty path")
+    if _sccache_git_names_project("git@github.com:mozilla/sccache/extra.git") is not False:
+        raise AssertionError("git extra")
+    if _sccache_url_unpinned(
+        " github.com/mozilla/sccache/releases/download/v0.20.0/"
+        "sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+    ) is not True:
+        raise AssertionError("url strip")
+    if _sccache_url_unpinned(
+        '"github.com/mozilla/sccache/releases/download/v0.20.0/'
+        'sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz"'
+    ) is not True:
+        raise AssertionError("url quote")
+    if _sccache_url_unpinned(
+        "https://github.com/mozilla/sccache/releases/download/v0.19.0/"
+        "extra/sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz"
+    ) is not False:
+        raise AssertionError("url nested asset")
+    if _sccache_url_unpinned("https://github.com/mozilla") is not False:
+        raise AssertionError("url short")
+    if _sccache_url_unpinned("https://github.com/other/repo") is not False:
+        raise AssertionError("url other project")
+    if _sccache_url_unpinned(
+        "https://github.com/mozilla/sccache/../../../x"
+    ) is not True:
+        raise AssertionError("url escape")
+    if _sccache_parse_uses(None) is not None:
+        raise AssertionError("uses type")
+    if _sccache_parse_uses("   ") is not None:
+        raise AssertionError("uses blank")
+    if _sccache_parse_uses("noslash") is not None:
+        raise AssertionError("uses noslash")
+    if _sccache_parse_uses("mozilla-actions/sccache-action@") is not None:
+        raise AssertionError("uses empty ref")
+    if _sccache_parse_uses("mozilla-actions/sccache-action@   ") is not None:
+        raise AssertionError("uses blank ref")
+    if _sccache_parse_uses("onlyone@v1") is not None:
+        raise AssertionError("uses one part")
+    escaped = _sccache_parse_uses("mozilla-actions/sccache-action/../x@v1")
+    if not isinstance(escaped, tuple) or escaped[0] != "escape":
+        raise AssertionError(escaped)
+    parsed_yaml = _parse_policy_yaml(":\n  - [\n", "bad.yml")
+    if not (
+        isinstance(parsed_yaml, tuple)
+        and len(parsed_yaml) == 2
+        and parsed_yaml[0] is None
+        and parsed_yaml[1]
+        and "YAML parse error" in parsed_yaml[1][0]
+    ):
+        raise AssertionError(parsed_yaml)
+    if _sccache_mentions("SCCACHE") is not True or _sccache_mentions("keep") is not False:
+        raise AssertionError("mentions")
+    if _sccache_pinned_action_version(" v0.19.0 ") is not True:
+        raise AssertionError("action strip")
+    if _sccache_pinned_action_version(1) is not False:
+        raise AssertionError("action type")
+    if _sccache_pinned_release(None) is not False:
+        raise AssertionError("release type")
+    if _sccache_reject_backslash("a/b") != "a/b" or _sccache_reject_backslash("a\\b") is not None:
+        raise AssertionError("backslash")
+    if _sccache_at("ab", 0) != "a" or _sccache_seg(["only"], 1) != "":
+        raise AssertionError("bounds")
+    if _sccache_one_dot("a.") != "a" or _sccache_one_dot(".") != "." or _sccache_one_dot("ab..") != "ab..":
+        raise AssertionError("one dot")
+    if _sccache_github_host("github.com..") is not False:
+        raise AssertionError("two dots")
+    if _sccache_names_install(["CARGO", "INSTALL", "SCCACHE"]) is not True:
+        raise AssertionError("names")
+    padded = _sccache_parse_uses("  mozilla-actions/sccache-action@v0.0.11")
+    if not isinstance(padded, tuple) or not _sccache_is_action(padded[1]):
+        raise AssertionError(padded)
+    query = (
+        "https://github.com/mozilla/sccache/releases/download/v0.20.0/"
+        "sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+        "?/../../v0.19.0/sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz"
+    )
+    if not _sccache_url_unpinned(query):
+        raise AssertionError("query")
+    pinned_query = (
+        "https://github.com/mozilla/sccache/releases/download/v0.19.0/"
+        "sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz?name=keep"
+    )
+    if _sccache_url_unpinned(pinned_query):
+        raise AssertionError(pinned_query)
+    host_dot = (
+        "https://github.com./mozilla/sccache/releases/download/v0.20.0/"
+        "sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+    )
+    if not _sccache_url_unpinned(host_dot):
+        raise AssertionError("host dot")
+    schemeless = (
+        "github.com/mozilla/sccache/releases/download/v0.20.0/"
+        "sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+    )
+    if not _sccache_url_unpinned(schemeless):
+        raise AssertionError("schemeless")
+    if _sccache_url_unpinned("https://example.com/mozilla/sccache/releases/download/v0.20.0/a.tar.gz"):
+        raise AssertionError("other host")
+    both = _sccache_cargo_install(
+        ["--version", "0.19.0", "sccache@0.20.0"], "p", "s"
+    )
+    if not any(" and " in item for item in both):
+        raise AssertionError(both)
+    flag_bad = _sccache_cargo_install(
+        ["--version", "0.20.0", "sccache@0.19.0"], "p", "s"
+    )
+    if not flag_bad:
+        raise AssertionError(flag_bad)
+    two_pkgs = _sccache_cargo_install(["sccache@", "sccache"], "p", "s")
+    if len(two_pkgs) < 2:
+        raise AssertionError(two_pkgs)
+    if _sccache_cargo_install(["--path", "sccache"], "p", "s"):
+        raise AssertionError("path value")
+    if _sccache_cargo_install(["--manifest-path", "sccache"], "p", "s"):
+        raise AssertionError("manifest value")
+    rev = _sccache_cargo_install(
+        [
+            "--git",
+            "https://github.com/mozilla/sccache.git",
+            "--rev",
+            "abc",
+            "--tag",
+            "v0.19.0",
+        ],
+        "p",
+        "s",
+    )
+    if not rev:
+        raise AssertionError(rev)
+    for name in (
+        "curl",
+        "curl.exe",
+        "wget",
+        "wget.exe",
+        "iwr",
+        "invoke-webrequest",
+    ):
+        _sccache_require(_sccache_workflow(f"{name} -fsSL $SCCACHE_URL"), True)
+    for name in (
+        "dnf",
+        "yum",
+        "microdnf",
+        "pacman",
+        "apk",
+        "zypper",
+        "pip",
+        "pip3",
+        "npm",
+        "npx",
+        "winget",
+        "snap",
+        "flatpak",
+        "port",
+        "pkg",
+        "emerge",
+        "conda",
+        "scoop",
+    ):
+        _sccache_require(_sccache_workflow(f"{name} install sccache"), True)
+    for name in ("invoke-expression", "iex", "invoke-command", "icm"):
+        _sccache_require(_sccache_workflow(f"{name} 'cargo install sccache'"), True)
+    for name in ("bash", "sh", "pwsh", "powershell", "pwsh.exe"):
+        _sccache_require(_sccache_workflow(f"{name} -c 'cargo install sccache'"), True)
+    for name in ("sudo", "command", "env", "exec", "eval", "time", "nohup"):
+        _sccache_require(_sccache_workflow(f"{name} cargo install sccache"), True)
+    for name in ("bash", "sh"):
+        _sccache_require(_sccache_workflow("sccache --show-stats", name), False)
+    _sccache_require(
+        "name: t\n"
+        "on: workflow_dispatch\n"
+        "jobs:\n"
+        "  check:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - uses: taiki-e/install-action@v2\n"
+        "        with:\n"
+        "          tool: sccache,nextest\n",
+        True,
+    )
+    _sccache_require(_sccache_workflow("sccache --show-stats", " bash "), False)
+    _sccache_require(_sccache_workflow("sccache --show-stats", "BASH"), False)
+    _sccache_require(_sccache_workflow("sccache --show-stats", ""), False)
+    _sccache_require(
+        "name: t\n"
+        "on: workflow_dispatch\n"
+        "jobs:\n"
+        "  check:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - run: 1\n",
+        True,
+    )
+    _sccache_require(_sccache_workflow("sccache --show-stats", "Python"), True)
+    _sccache_require(
+        _sccache_workflow(
+            "cargo install --git https://github.com/mozilla/sccache.git --tag v0.20.0"
+        ),
+        True,
+    )
+    for flag in ("--branch", "--rev"):
+        _sccache_require(
+            _sccache_workflow(
+                "cargo install --git https://github.com/mozilla/sccache.git "
+                f"{flag} abc --tag v0.19.0"
+            ),
+            True,
+        )
+    for flag in ("--path", "--manifest-path"):
+        _sccache_require(_sccache_workflow(f"cargo install {flag} sccache"), False)
+    runs = [
+        ("SUDO cargo install sccache", True),
+        ("sudo -E -n cargo install sccache", True),
+        ("sudo GH_REPO=mozilla/sccache gh release download --tag v0.19.0", False),
+        ("sudo GH_REPO=mozilla/sccache gh release download", True),
+        ("sudo GH_REPO=mozilla/sccache OTHER=1 gh release download", True),
+        ("dnf install curl", False),
+        ("cargo* binstall sccache", True),
+        ("echo cargo install sccache; bash -c $X", True),
+        ("# $(cargo install sccache)", False),
+        ("sudo env cargo install sccache", True),
+        ("rustup run stable rustup run stable cargo install sccache", True),
+        ("apt INSTALL sccache", True),
+        ("GH_REPO=mozilla/sccache OTHER=1 gh release download --tag v0.19.0", False),
+        ("bash tools/get.SH", True),
+        ("CARGO install sccache", True),
+        ("cargo install sccache --VERSION 0.19.0", False),
+        ("APT install sccache", True),
+        ("CURL -fsSL $SCCACHE_URL", True),
+        ("$(CARGO INSTALL SCCACHE)", True),
+        ("cargo-binstall.exe sccache", True),
+        ("sudo -E cargo install sccache", True),
+        ("sudo -- cargo install sccache --version 0.19.0", False),
+        ("exec cargo install sccache", True),
+        ("eval \"cargo install sccache\"", True),
+        ("rustup run 1.89.0 cargo install sccache", True),
+        ("time cargo install sccache", True),
+        ("nohup cargo install sccache", True),
+        ("true & cargo install sccache", True),
+        ("echo x |& cargo install sccache", True),
+        ("(cargo install sccache)", True),
+        ("$(cargo install sccache)", True),
+        ("bash -c $'cargo install sccache'", True),
+        ("tool=cargo; $tool install sccache", True),
+        ("tool=cargo; ${tool} install sccache", True),
+        ("install_sc() { cargo install sccache; }; install_sc", True),
+        ("cargo* install sccache", True),
+        ("Invoke-Expression 'cargo install sccache'", True),
+        ("& cargo install sccache", True),
+        ("dnf install -y sccache", True),
+        ("apt install sccache", True),
+        ("choco.exe install sccache", True),
+        ("wget -O out $SCCACHE_URL", True),
+        ("iwr $SCCACHE_URL", True),
+        ("sh -c 'cargo install sccache'", True),
+        ("pwsh -c 'cargo install sccache'", True),
+        ("powershell -c 'cargo install sccache'", True),
+        ("pwsh.exe -c 'cargo install sccache'", True),
+        ("gh -R mozilla/sccache release download", True),
+        ("gh --repo mozilla/sccache release download", True),
+        ("GH_REPO=mozilla/sccache gh release download", True),
+        ("GH_REPO=mozilla/sccache gh release download --tag v0.19.0", False),
+        ("gh -R mozilla/sccache release download --tag v0.19.0", False),
+        ("gh --repo mozilla/sccache release download --tag v0.19.0", False),
+        ("gh -R mozilla/sccache release download -t v0.19.0", False),
+        ("gh release download SCCACHE", True),
+        (
+            "cargo install --git git@github.com:mozilla/sccache.git --tag v0.20.0",
+            True,
+        ),
+        (
+            "cargo install --git git@github.com:mozilla/sccache.git --tag v0.19.0",
+            False,
+        ),
+        (
+            "cargo install --git https://github.com/mozilla/sccache.git/ --tag v0.20.0",
+            True,
+        ),
+        (
+            "cargo install --git https://github.com/mozilla/sccache.git/ --tag v0.19.0",
+            False,
+        ),
+        (
+            "curl -fsSL "
+            + query,
+            True,
+        ),
+        ("curl -fsSL " + schemeless, True),
+        ("curl -fsSL " + host_dot, True),
+        (
+            "curl -fsSL https://github.com/mozilla/sccache/releases/download/v0.19.0/"
+            "sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz && "
+            "curl -fsSL https://github.com/mozilla/sccache/releases/download/v0.20.0/"
+            "sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz",
+            True,
+        ),
+        (
+            "curl -fsSL <https://github.com/mozilla/sccache/releases/download/"
+            "v0.19.0/sccache-v0.19.0-x86_64-unknown-linux-musl.tar.gz>",
+            False,
+        ),
+        ("sccache --show-stats", False),
+        ("echo RUSTC_WRAPPER=sccache", False),
+    ]
+    for run, failed in runs:
+        _sccache_require(_sccache_workflow(run), failed)
+    _sccache_require(
+        _sccache_workflow("import os; os.system('cargo install sccache')", "python"),
+        True,
+    )
+    _sccache_require(_sccache_workflow("sccache --show-stats", "bash"), False)
+    padded = _sccache_parse_uses("  mozilla-actions/sccache-action@v0.0.11")
+    if padded is None or not _sccache_is_action(padded[1]):
+        raise AssertionError(padded)
 
 
 def action_ref_violation(action: str, ref: str) -> str | None:
@@ -2037,10 +2914,9 @@ class WorkflowPolicyTest(unittest.TestCase):
                 "cargo install sccache\n", encoding="utf-8"
             )
 
-            names = [
-                path.relative_to(root).as_posix()
-                for path in github_policy_yaml_paths(root)
-            ]
+            found_paths = github_policy_yaml_paths(root)
+            self.assertTrue(all(isinstance(path, Path) for path in found_paths))
+            names = [path.relative_to(root).as_posix() for path in found_paths]
             self.assertEqual(
                 names,
                 [
