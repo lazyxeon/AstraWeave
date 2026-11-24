@@ -145,15 +145,11 @@ def _sccache_norm_segments(segments: list[str]) -> list[str] | None:
 
 
 def _sccache_pinned_release(version: str | None) -> bool:
-    if not isinstance(version, str):
-        return False
-    return version.strip() in PINNED_SCCACHE_INSTALL_VERSIONS
+    return isinstance(version, str) and version.strip() in PINNED_SCCACHE_INSTALL_VERSIONS
 
 
 def _sccache_pinned_action_version(version: Any) -> bool:
-    if not isinstance(version, str):
-        return False
-    return version.strip() == PINNED_SCCACHE_VERSION
+    return isinstance(version, str) and version.strip() == PINNED_SCCACHE_VERSION
 
 
 def _sccache_parse_uses(uses: Any) -> tuple[str, dict[str, Any]] | None:
@@ -199,12 +195,15 @@ def _sccache_is_taiki(info: dict[str, Any]) -> bool:
 
 
 def _sccache_is_reusable(path: list[str]) -> bool:
-    if len(path) < 3:
-        return False
-    if not _sccache_ieq(path[0], ".github") or not _sccache_ieq(path[1], "workflows"):
-        return False
-    leaf = _sccache_upper(path[-1])
-    return leaf.endswith(".YML") or leaf.endswith(".YAML")
+    return (
+        len(path) >= 3
+        and _sccache_ieq(path[0], ".github")
+        and _sccache_ieq(path[1], "workflows")
+        and (
+            _sccache_upper(path[-1]).endswith(".YML")
+            or _sccache_upper(path[-1]).endswith(".YAML")
+        )
+    )
 
 
 def _sccache_inside(root: Path, rel: str) -> Path | None:
@@ -291,18 +290,11 @@ def _sccache_tool_tokens(value: str) -> list[str]:
     return tokens
 
 
-def _sccache_tool_status(token: str) -> str:
-    if "@" in token:
-        name, version = token.split("@", 1)
-    else:
-        name, version = token, None
-    if not _sccache_ieq(name, "sccache"):
-        if "SCCACHE" in _sccache_upper(token):
-            return "unpinned"
-        return "other"
-    if _sccache_pinned_release(version):
-        return "pinned"
-    return "unpinned"
+def _sccache_tool_unpinned(token: str) -> bool:
+    name, sep, version = token.partition("@")
+    named = _sccache_ieq(name, "sccache")
+    pinned = _sccache_pinned_release(version if sep else None)
+    return (named and not pinned) or (not named and "SCCACHE" in _sccache_upper(token))
 
 
 def _sccache_tool_values(value: Any) -> list[str] | None:
@@ -369,7 +361,7 @@ def _sccache_taiki_violations(
             )
         else:
             for token in specs:
-                if _sccache_tool_status(token) == "unpinned":
+                if _sccache_tool_unpinned(token):
                     violations.append(
                         _sccache_violation(
                             path,
@@ -404,36 +396,32 @@ def _sccache_docker_violations(image: str, path: str, step_path: str) -> list[st
     ]
 
 
-def _sccache_classify_url(raw: str) -> str:
+def _sccache_url_unpinned(raw: str) -> bool:
     text = raw.strip().strip("\"'<>")
-    if "://" not in text:
-        return "other"
-    _scheme, rest = text.split("://", 1)
+    has_scheme = "://" in text
+    rest = text.split("://", 1)[1] if has_scheme else ""
     authority, sep, url_path = rest.partition("/")
     if sep == "":
         url_path = ""
     if "@" in authority:
         authority = authority.rsplit("@", 1)[-1]
     host = authority.split(":", 1)[0]
-    if not (_sccache_ieq(host, "github.com") or _sccache_ieq(host, "www.github.com")):
-        return "other"
-    decoded = unquote(url_path).replace("\\", "/")
-    segments = _sccache_norm_segments(decoded.split("/"))
-    if segments is None:
-        return "unpinned"
-    if len(segments) < 2 or not (
+    host_ok = _sccache_ieq(host, "github.com") or _sccache_ieq(host, "www.github.com")
+    segments: list[str] | None = (
+        _sccache_norm_segments(unquote(url_path).replace("\\", "/").split("/"))
+        if host_ok
+        else []
+    )
+    project = bool(segments) and len(segments) >= 2 and (
         _sccache_ieq(segments[0], "mozilla") and _sccache_ieq(segments[1], "sccache")
-    ):
-        return "other"
-    if len(segments) < 6 or not (
+    )
+    release = bool(segments) and len(segments) >= 6 and (
         _sccache_ieq(segments[2], "releases") and _sccache_ieq(segments[3], "download")
-    ):
-        return "unpinned"
-    tag = segments[4]
-    asset = "/".join(segments[5:])
-    if tag == PINNED_SCCACHE_VERSION and "sccache-v0.19.0" in asset:
-        return "pinned"
-    return "unpinned"
+    )
+    pinned = release and segments[4] == PINNED_SCCACHE_VERSION and (
+        "sccache-v0.19.0" in "/".join(segments[5:])
+    )
+    return segments is None or (project and not pinned)
 
 
 def _sccache_git_names_project(url: str) -> bool:
@@ -554,15 +542,12 @@ def _sccache_basename(token: str) -> str:
 
 
 def _sccache_is_assignment(token: str) -> bool:
-    if token.startswith("-") or "=" not in token:
-        return False
-    name = token.split("=", 1)[0]
-    if name == "":
-        return False
-    for char in name:
-        if not (char.isalnum() or char == "_"):
-            return False
-    return True
+    name, sep, _value = token.partition("=")
+    return (
+        bool(sep)
+        and bool(name)
+        and all(char.isalnum() or char == "_" for char in name)
+    )
 
 
 def _sccache_command_words(tokens: list[str]) -> list[str]:
@@ -580,17 +565,12 @@ def _sccache_command_words(tokens: list[str]) -> list[str]:
 
 
 def _sccache_plain_package(token: str) -> bool:
-    name = token
-    if "@" in token:
-        name, version = token.split("@", 1)
-        if version == "":
-            return False
-    if name == "":
-        return False
-    for char in name:
-        if not (char.isalnum() or char in "_.+-"):
-            return False
-    return True
+    name, sep, version = token.partition("@")
+    return (
+        (not sep or bool(version))
+        and bool(name)
+        and all(char.isalnum() or char in "_.+-" for char in name)
+    )
 
 
 def _sccache_cargo_install(args: list[str], path: str, step_path: str) -> list[str]:
@@ -694,12 +674,10 @@ def _sccache_cargo_install(args: list[str], path: str, step_path: str) -> list[s
 
 
 def _sccache_gh_violations(words: list[str], path: str, step_path: str) -> list[str]:
-    name = _sccache_basename(words[0])
-    if name.lower().endswith(".exe"):
-        name = name[: -len(".exe")]
-    if len(words) < 3 or not _sccache_ieq(name, "gh"):
-        return []
-    if not (_sccache_ieq(words[1], "release") and _sccache_ieq(words[2], "download")):
+    padded = [*words, "", ""]
+    if not (
+        _sccache_ieq(padded[1], "release") and _sccache_ieq(padded[2], "download")
+    ):
         return []
     repo: str | None = None
     tag: str | None = None
@@ -747,9 +725,6 @@ def _sccache_gh_violations(words: list[str], path: str, step_path: str) -> list[
 
 
 def _sccache_pkg_violations(words: list[str], path: str, step_path: str) -> list[str]:
-    base = _sccache_basename(words[0]).lower()
-    if base not in _SCCACHE_PKG_MANAGERS:
-        return []
     if not any(token.lower() == "install" for token in words[1:]):
         return []
     for token in words[1:]:
@@ -821,26 +796,25 @@ def _sccache_run_violations(
     if seen_text is None:
         seen_text = set()
     key = script.strip()
-    if key in seen_text:
-        return []
-    seen_text.add(key)
-    prepared = _sccache_prepare_script(script)
     violations: list[str] = []
-    for url in _sccache_urls(prepared):
-        if _sccache_classify_url(url) == "unpinned":
-            violations.append(
-                _sccache_violation(
-                    path,
-                    step_path,
-                    "sccache release URL must pin v0.19.0",
+    if key not in seen_text:
+        seen_text.add(key)
+        prepared = _sccache_prepare_script(script)
+        for url in _sccache_urls(prepared):
+            if _sccache_url_unpinned(url):
+                violations.append(
+                    _sccache_violation(
+                        path,
+                        step_path,
+                        "sccache release URL must pin v0.19.0",
+                    )
+                )
+        for command in _sccache_split_commands(script):
+            violations.extend(
+                _sccache_command_violations(
+                    _sccache_tokenize(command), prepared, path, step_path, seen_text
                 )
             )
-    for command in _sccache_split_commands(script):
-        violations.extend(
-            _sccache_command_violations(
-                _sccache_tokenize(command), prepared, path, step_path, seen_text
-            )
-        )
     return violations
 
 
@@ -901,46 +875,43 @@ def _sccache_follow_local(
     violations: list[str],
     sites: list[str] | None,
 ) -> None:
+    file_path: Path | None = None
     if root is None:
         _sccache_note(
             violations,
             _sccache_violation(path, step_path, "local action was not loaded"),
         )
-        return
-    target = _sccache_inside(root, uses_path)
-    if target is None:
-        _sccache_note(
-            violations,
-            _sccache_violation(path, step_path, "local action path escapes the repo"),
-        )
-        return
-    file_path: Path | None
-    if target.is_dir():
-        file_path = None
-        for name in ("action.yml", "action.yaml"):
-            found = target / name
-            if found.is_file():
-                file_path = found
-                break
-        if file_path is None:
+    else:
+        target = _sccache_inside(root, uses_path)
+        if target is None:
+            _sccache_note(
+                violations,
+                _sccache_violation(path, step_path, "local action path escapes the repo"),
+            )
+        elif target.is_dir():
+            for name in ("action.yml", "action.yaml"):
+                found = target / name
+                if found.is_file():
+                    file_path = found
+                    break
+            if file_path is None:
+                _sccache_note(
+                    violations,
+                    _sccache_violation(path, step_path, "local action file is missing"),
+                )
+        elif target.is_file():
+            file_path = target
+        else:
             _sccache_note(
                 violations,
                 _sccache_violation(path, step_path, "local action file is missing"),
             )
-            return
-    elif target.is_file():
-        file_path = target
-    else:
-        _sccache_note(
-            violations,
-            _sccache_violation(path, step_path, "local action file is missing"),
-        )
-        return
-    rel = file_path.relative_to(root).as_posix()
-    text = file_path.read_text(encoding="utf-8")
-    violations.extend(
-        sccache_pin_violations(text, path=rel, root=root, seen=seen, sites=sites)
-    )
+        if file_path is not None:
+            rel = file_path.relative_to(root).as_posix()
+            text = file_path.read_text(encoding="utf-8")
+            violations.extend(
+                sccache_pin_violations(text, path=rel, root=root, seen=seen, sites=sites)
+            )
 
 
 def _sccache_apply_uses(
@@ -959,45 +930,40 @@ def _sccache_apply_uses(
             violations,
             _sccache_violation(path, step_path, "uses value is not a recognized action"),
         )
-        return
-    kind, info = parsed
-    if kind == "docker":
-        violations.extend(
-            _sccache_docker_violations(str(info["image"]), path, step_path)
-        )
-        return
-    if kind == "local":
-        _sccache_follow_local(
-            str(info["path"]), path, step_path, root, seen, violations, sites
-        )
-        return
-    if kind == "escape":
-        if _sccache_is_action(info) and sites is not None:
-            sites.append(f"{path}: {step_path}")
-        _sccache_note(
-            violations,
-            _sccache_violation(
-                path, step_path, "action path escapes the repository"
-            ),
-        )
-        return
-    if _sccache_is_reusable(list(info["path"])):
-        _sccache_note(
-            violations,
-            _sccache_violation(
-                path,
-                step_path,
-                "reusable workflow is not in this checkout",
-            ),
-        )
-        return
-    if _sccache_is_action(info):
-        if sites is not None:
-            sites.append(f"{path}: {step_path}")
-        violations.extend(_sccache_action_with_violations(step, path, step_path))
-        return
-    if _sccache_is_taiki(info):
-        violations.extend(_sccache_taiki_violations(info, step, path, step_path))
+    else:
+        kind, info = parsed
+        if kind == "docker":
+            violations.extend(
+                _sccache_docker_violations(str(info["image"]), path, step_path)
+            )
+        elif kind == "local":
+            _sccache_follow_local(
+                str(info["path"]), path, step_path, root, seen, violations, sites
+            )
+        elif kind == "escape":
+            if _sccache_is_action(info) and sites is not None:
+                sites.append(f"{path}: {step_path}")
+            _sccache_note(
+                violations,
+                _sccache_violation(
+                    path, step_path, "action path escapes the repository"
+                ),
+            )
+        elif _sccache_is_reusable(list(info["path"])):
+            _sccache_note(
+                violations,
+                _sccache_violation(
+                    path,
+                    step_path,
+                    "reusable workflow is not in this checkout",
+                ),
+            )
+        elif _sccache_is_action(info):
+            if sites is not None:
+                sites.append(f"{path}: {step_path}")
+            violations.extend(_sccache_action_with_violations(step, path, step_path))
+        elif _sccache_is_taiki(info):
+            violations.extend(_sccache_taiki_violations(info, step, path, step_path))
 
 
 def _sccache_check_step(
@@ -1009,21 +975,20 @@ def _sccache_check_step(
     violations: list[str],
     sites: list[str] | None,
 ) -> None:
-    if not isinstance(step, dict):
-        return
-    if "uses" in step:
-        _sccache_apply_uses(
-            step.get("uses"), step, path, step_path, root, seen, violations, sites
-        )
-    run = step.get("run")
-    if isinstance(run, str):
-        violations.extend(_sccache_run_violations(run, path, step_path))
-        _sccache_follow_scripts(run, path, step_path, root, seen, violations)
-    elif "run" in step:
-        _sccache_note(
-            violations,
-            _sccache_violation(path, step_path, "run value is not a string"),
-        )
+    if isinstance(step, dict):
+        if "uses" in step:
+            _sccache_apply_uses(
+                step.get("uses"), step, path, step_path, root, seen, violations, sites
+            )
+        run = step.get("run")
+        if isinstance(run, str):
+            violations.extend(_sccache_run_violations(run, path, step_path))
+            _sccache_follow_scripts(run, path, step_path, root, seen, violations)
+        elif "run" in step:
+            _sccache_note(
+                violations,
+                _sccache_violation(path, step_path, "run value is not a string"),
+            )
 
 
 def _sccache_walk_steps(
@@ -1035,18 +1000,17 @@ def _sccache_walk_steps(
     root: Path | None,
     seen: set[Path],
 ) -> None:
-    if steps is None:
-        return
-    if not isinstance(steps, list):
-        _sccache_note(
-            violations,
-            _sccache_violation(path, prefix, "steps value is not a list"),
-        )
-        return
-    for index, step in enumerate(steps):
-        _sccache_check_step(
-            step, path, f"{prefix}.steps[{index}]", root, seen, violations, sites
-        )
+    if steps is not None:
+        if not isinstance(steps, list):
+            _sccache_note(
+                violations,
+                _sccache_violation(path, prefix, "steps value is not a list"),
+            )
+        else:
+            for index, step in enumerate(steps):
+                _sccache_check_step(
+                    step, path, f"{prefix}.steps[{index}]", root, seen, violations, sites
+                )
 
 
 def _sccache_walk_document(
@@ -1057,8 +1021,18 @@ def _sccache_walk_document(
     root: Path | None,
     seen: set[Path],
 ) -> None:
-    if not isinstance(doc, dict):
-        return
+    if isinstance(doc, dict):
+        _sccache_walk_job_document(doc, path, violations, sites, root, seen)
+
+
+def _sccache_walk_job_document(
+    doc: dict[str, Any],
+    path: str,
+    violations: list[str],
+    sites: list[str] | None,
+    root: Path | None,
+    seen: set[Path],
+) -> None:
     jobs = doc.get("jobs")
     if "jobs" in doc and not isinstance(jobs, dict):
         _sccache_note(
@@ -1119,11 +1093,10 @@ def _sccache_walk_parsed(
     if isinstance(doc, list):
         for item in doc:
             _sccache_walk_document(item, path, violations, sites, root, seen)
-        return
-    if not isinstance(doc, dict):
+    elif not isinstance(doc, dict):
         _sccache_note(violations, f"{path}: unparseable document")
-        return
-    _sccache_walk_document(doc, path, violations, sites, root, seen)
+    else:
+        _sccache_walk_document(doc, path, violations, sites, root, seen)
 
 
 def _parse_policy_yaml(text: str, path: str) -> tuple[Any, list[str]]:
@@ -1200,6 +1173,71 @@ def repo_sccache_action_sites(root: Path = ROOT) -> list[str]:
         seen.add(marker)
         _sccache_walk_parsed(doc, rel, [], sites, root, seen)
     return sites
+
+def sccache_mutation_checks() -> None:
+    """Root-backed pin cases. Workflow fixtures do not carry a checkout."""
+    with tempfile.TemporaryDirectory(prefix="sccache-mutation-") as raw:
+        root = Path(raw)
+        tools = root / "tools"
+        tools.mkdir()
+        (tools / "ok.sh").write_text("echo ok\n", encoding="utf-8")
+        (tools / "bad.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        repeated = (
+            "name: repeated\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: bash tools/ok.sh && bash tools/ok.sh && bash tools/bad.sh\n"
+        )
+        repeated_hits = sccache_pin_violations(repeated, path="repeated.yml", root=root)
+        if not any("tools/bad.sh" in item for item in repeated_hits):
+            raise AssertionError(repeated_hits)
+        escaped = sccache_pin_violations(
+            "name: escape\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - run: bash ../outside.sh\n",
+            path="escape.yml",
+            root=root,
+        )
+        if not escaped or _sccache_inside(root, "../outside.sh") is not None:
+            raise AssertionError(escaped)
+        action = root / "custom" / "tool"
+        action.mkdir(parents=True)
+        (action / "action.yml").write_text(
+            "name: ok\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - run: echo ok\n",
+            encoding="utf-8",
+        )
+        (action / "action.yaml").write_text(
+            "name: bad\n"
+            "runs:\n"
+            "  using: composite\n"
+            "  steps:\n"
+            "    - uses: mozilla-actions/sccache-action@v0.0.11\n",
+            encoding="utf-8",
+        )
+        caller = (
+            "name: caller\n"
+            "on: workflow_dispatch\n"
+            "jobs:\n"
+            "  check:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: ./custom/tool\n"
+        )
+        both = sccache_pin_violations(caller, path="caller.yml", root=root)
+        if both != []:
+            raise AssertionError(both)
+
 
 def action_ref_violation(action: str, ref: str) -> str | None:
     if action not in ACTION_MAJOR_FLOORS:
@@ -1884,6 +1922,7 @@ class WorkflowPolicyTest(unittest.TestCase):
 
         self.assertTrue(sccache_pin_violations("", path="empty.yml"))
         self.assertTrue(sccache_pin_violations("null\n", path="null.yml"))
+        sccache_mutation_checks()
 
     def test_sccache_pin_scan_reads_workflows_under_root(self) -> None:
         unpinned = (

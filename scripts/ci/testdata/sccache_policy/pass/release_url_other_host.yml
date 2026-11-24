@@ -1,0 +1,8 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsSL -o sccache.tar.gz https://example.com/mozilla/sccache/releases/download/v0.20.0/sccache-v0.20.0.tar.gz
