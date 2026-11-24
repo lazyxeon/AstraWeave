@@ -209,7 +209,8 @@ gh workflow run benchmark-dashboard.yml
 Top 8 benchmarks by current value, showing:
 - Current mean time (ns, µs, ms)
 - % change over selected time range
-- Color-coded by system (ECS = blue, AI = cyan, etc.)
+- Color-coded by system (`COLOR_SCHEME` in `dashboard.js`): ECS `#005987`, AI `#00645d` (dark teal), Physics `#207145`, Terrain `#954260`, Input `#803b8a`, Rendering `#806000`, Math `#9c283a`, Networking `#155b73`, Persistence `#8a356a`, Audio `#2e50a0`, UI `#553495`, Tools `#456e16`, Animation `#88431d`, default `#565854`
+- Chart markers use `SYSTEM_MARK`: each system gets a distinct D3 symbol shape (indices 0–6) and either a solid fill in the series color or a hollow marker (`fill: var(--panel)`, colored stroke) for secondary crates in the same hue family
 
 ### Trend Chart
 
@@ -293,7 +294,7 @@ Edit `tools/benchmark-dashboard/dashboard.js` to:
 
 ### Dependencies
 
-- **D3.js v7**: Loaded from CDN (no local install needed)
+- **D3.js 7.9.0**: Pinned at `https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js` via `index.html` (Subresource Integrity hash on that script tag; no local install needed)
 - **Criterion**: Rust benchmarking framework
 - **PowerShell**: Export script (cross-platform with pwsh)
 - **GitHub Pages**: Free static site hosting
@@ -361,11 +362,11 @@ cargo bench
 **Solutions**:
 1. Disable ad blocker for localhost
 2. Check browser console for specific error
-3. Download d3.v7.min.js locally (optional):
+3. Mirror the pinned build locally (optional):
    ```bash
    cd tools/benchmark-dashboard
-   curl https://d3js.org/d3.v7.min.js -o d3.v7.min.js
-   # Update index.html to use local file instead of CDN
+   curl -o d3.min.js https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js
+   # Point index.html at the local file; the integrity attribute on index.html:10 must match the file you serve (recompute SRI if you swap builds)
    ```
 
 **Note**: Stats cards will still display correctly even if D3.js fails to load - only the chart will be unavailable.
