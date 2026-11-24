@@ -98,23 +98,24 @@ Critical Stubs (All Core Systems):
     commit_message: 'Deploy mdBook documentation'
 ```
 
-2. **Update `.github/workflows/benchmark-dashboard.yml`**:
+2. **Update `.github/workflows/benchmark_alert.yml`** (benchmark history JSONL on Pages):
 ```yaml
-# Replace line 142-149 (remove force_orphan, add destination_dir):
-- name: Deploy to GitHub Pages
+- name: Deploy dashboard to GitHub Pages
   uses: peaceiris/actions-gh-pages@v4
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
-    publish_dir: ./gh-pages
+    publish_dir: ./docs/benchmark_data
     publish_branch: gh-pages
-    keep_files: true
-    destination_dir: benchmarks
-    commit_message: 'Update benchmark dashboard: ${{ github.sha }}'
+    destination_dir: dashboard/benchmark_data
+    commit_message: "Update benchmark dashboard (${{ github.sha }})"
 ```
+
+`docs.yml` must not copy `docs/archive/benchmark_dashboard` into `docs/book/dashboard/benchmark_dashboard` (that overwrote the live dashboard).
 
 **Result**:
 - mdBook docs at: `https://lazyxeon.github.io/AstraWeave/`
-- Benchmarks at: `https://lazyxeon.github.io/AstraWeave/benchmarks/`
+- Benchmark history JSONL at: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_data/`
+- Interactive dashboard UI remains at: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/`
 
 **Effort**: 15 minutes
 

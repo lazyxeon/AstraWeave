@@ -18,6 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS = ROOT / ".github" / "workflows"
 sys.path.insert(0, str(ROOT / "scripts" / "ci"))
@@ -401,6 +403,121 @@ def without_status_guard(expr: str) -> str:
     if stripped == expr:
         raise AssertionError(f"status guard was not removed from {expr!r}")
     return stripped
+
+
+BENCHMARK_ALERT_PUBLISH_DIR = "./docs/benchmark_data"
+BENCHMARK_ALERT_DESTINATION_DIR = "dashboard/benchmark_data"
+BENCHMARK_ALERT_GH_PAGES_STEP = "Deploy dashboard to GitHub Pages"
+ARCHIVE_BENCHMARK_DASHBOARD = "docs/archive/benchmark_dashboard"
+BOOK_BENCHMARK_DASHBOARD = "docs/book/dashboard/benchmark_dashboard"
+
+
+def _workflow_jobs(text: str, *, path: str) -> dict:
+    data = yaml.safe_load(text)
+    if not isinstance(data, dict):
+        raise AssertionError(f"{path}: workflow root is not a mapping")
+    jobs = data.get("jobs")
+    if not isinstance(jobs, dict) or not jobs:
+        raise AssertionError(f"{path}: missing jobs")
+    return jobs
+
+
+def _step_run_text(step: dict) -> str:
+    run = step.get("run", "")
+    if isinstance(run, str):
+        return run
+    if isinstance(run, list):
+        return "\n".join(str(line) for line in run)
+    if run is None:
+        return ""
+    return str(run)
+
+
+def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark_alert.yml") -> None:
+    """Regression Alerts must publish only benchmark_data, not the whole docs tree."""
+    jobs = _workflow_jobs(text, path=path)
+    gh_pages_steps: list[dict] = []
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            raise AssertionError(f"{path}: job {job_name!r} is not a mapping")
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            raise AssertionError(f"{path}: job {job_name!r} missing steps")
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            uses = str(step.get("uses", ""))
+            if "peaceiris/actions-gh-pages" in uses:
+                gh_pages_steps.append(step)
+    if not gh_pages_steps:
+        raise AssertionError(
+            f"{path}: missing peaceiris/actions-gh-pages publish step "
+            f"({BENCHMARK_ALERT_GH_PAGES_STEP!r})"
+        )
+    deploy_steps = [
+        step
+        for step in gh_pages_steps
+        if BENCHMARK_ALERT_GH_PAGES_STEP in str(step.get("name", ""))
+    ]
+    if not deploy_steps:
+        raise AssertionError(f"{path}: missing step named {BENCHMARK_ALERT_GH_PAGES_STEP!r}")
+    for step in deploy_steps:
+        with_block = step.get("with")
+        if not isinstance(with_block, dict):
+            raise AssertionError(f"{path}: {BENCHMARK_ALERT_GH_PAGES_STEP} missing with:")
+        publish_dir = with_block.get("publish_dir")
+        destination_dir = with_block.get("destination_dir")
+        if publish_dir in ("./docs", "./docs/"):
+            raise AssertionError(
+                f"{path}: publish_dir must not be ./docs (would publish the whole tree)"
+            )
+        if destination_dir in ("dashboard",):
+            raise AssertionError(
+                f"{path}: destination_dir must not be bare dashboard (overwrites doc subtree)"
+            )
+        if publish_dir != BENCHMARK_ALERT_PUBLISH_DIR:
+            raise AssertionError(
+                f"{path}: expected publish_dir {BENCHMARK_ALERT_PUBLISH_DIR!r}, got {publish_dir!r}"
+            )
+        if destination_dir != BENCHMARK_ALERT_DESTINATION_DIR:
+            raise AssertionError(
+                f"{path}: expected destination_dir {BENCHMARK_ALERT_DESTINATION_DIR!r}, "
+                f"got {destination_dir!r}"
+            )
+
+
+def assert_docs_no_archive_benchmark_dashboard_copy(text: str, *, path: str = "docs.yml") -> None:
+    """Documentation must not copy archived dashboard HTML into the mdBook output tree."""
+    jobs = _workflow_jobs(text, path=path)
+    for job_name, job in jobs.items():
+        if not isinstance(job, dict):
+            raise AssertionError(f"{path}: job {job_name!r} is not a mapping")
+        steps = job.get("steps")
+        if not isinstance(steps, list):
+            raise AssertionError(f"{path}: job {job_name!r} missing steps")
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            run_text = _step_run_text(step)
+            if not run_text:
+                continue
+            if ARCHIVE_BENCHMARK_DASHBOARD not in run_text:
+                continue
+            if BOOK_BENCHMARK_DASHBOARD in run_text:
+                step_name = step.get("name", "<unnamed>")
+                raise AssertionError(
+                    f"{path}: step {step_name!r} copies {ARCHIVE_BENCHMARK_DASHBOARD} "
+                    f"into {BOOK_BENCHMARK_DASHBOARD}"
+                )
+            if re.search(
+                r"docs/book/dashboard/benchmark_dashboard(?:/|\s|$)",
+                run_text,
+            ):
+                step_name = step.get("name", "<unnamed>")
+                raise AssertionError(
+                    f"{path}: step {step_name!r} copies archived dashboard under "
+                    "docs/book/dashboard/benchmark_dashboard"
+                )
 
 
 def assert_alert_followup_runs(text: str) -> None:
@@ -1148,6 +1265,48 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
+        alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
+        assert_benchmark_alert_gh_pages_publish(alert)
+        fixture = (
+            ROOT
+            / "scripts"
+            / "ci"
+            / "testdata"
+            / "benchmark_alert_bad_pages_publish"
+            / "benchmark_alert.yml"
+        ).read_text(encoding="utf-8")
+        with self.assertRaises(AssertionError):
+            assert_benchmark_alert_gh_pages_publish(fixture, path="fixture")
+        base_text = subprocess.check_output(
+            ["git", "show", "e1773a89:.github/workflows/benchmark_alert.yml"],
+            cwd=ROOT,
+            text=True,
+        )
+        with self.assertRaises(AssertionError):
+            assert_benchmark_alert_gh_pages_publish(base_text, path="e1773a89")
+
+    def test_docs_no_archive_benchmark_dashboard_copy(self) -> None:
+        docs = (WORKFLOWS / "docs.yml").read_text(encoding="utf-8")
+        assert_docs_no_archive_benchmark_dashboard_copy(docs)
+        fixture = (
+            ROOT
+            / "scripts"
+            / "ci"
+            / "testdata"
+            / "docs_bad_benchmark_dashboard_copy"
+            / "docs.yml"
+        ).read_text(encoding="utf-8")
+        with self.assertRaises(AssertionError):
+            assert_docs_no_archive_benchmark_dashboard_copy(fixture, path="fixture")
+        base_text = subprocess.check_output(
+            ["git", "show", "e1773a89:.github/workflows/docs.yml"],
+            cwd=ROOT,
+            text=True,
+        )
+        with self.assertRaises(AssertionError):
+            assert_docs_no_archive_benchmark_dashboard_copy(base_text, path="e1773a89")
 
 
 if __name__ == "__main__":

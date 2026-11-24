@@ -374,7 +374,8 @@ cargo bench
 
 **Explanation**: Dashboard tries multiple data sources in order:
 1. `target/benchmark-data/history.jsonl` (local development)
-2. `docs/benchmark_data/benchmark_history.jsonl` (production/GitHub Pages)
+2. `docs/benchmark_data/benchmark_history.jsonl` (repository export before CI publish)
+3. `dashboard/benchmark_data/benchmark_history.jsonl` on the `gh-pages` branch (published by `.github/workflows/benchmark_alert.yml` via `publish_dir: ./docs/benchmark_data` and `destination_dir: dashboard/benchmark_data`)
 
 Check browser console to see which source was used.
 
