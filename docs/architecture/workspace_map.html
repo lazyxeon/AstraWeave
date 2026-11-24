@@ -1109,7 +1109,7 @@ const META = workspaceData.metadata;
 // Render-only ink and compact printed tags. Labels stay identifiable when
 // ink hues look alike or the graph is read in monochrome.
 const DOMAIN_STYLES = {
-  core:            ['FO', '#003f6c'],
+  core:            ['CO', '#003f6c'],
   ai:              ['AI', '#882816'],
   rendering:       ['RE', '#993d6a'],
   'physics-world': ['PH', '#006248'],
@@ -1514,10 +1514,10 @@ const cy = cytoscape({
     {
       // v2.3: `[isExample]` matched any node that carries the field, false
       // included, so all nodes drew as dotted hexagons. `[?x]` tests truthiness.
+      // The hexagon encodes the examples bundle; status owns the border style.
       selector: 'node[?isExample]',
       style: {
         'shape': 'hexagon',
-        'border-style': 'dotted',
       }
     },
     // Labelled domain boxes in the cluster layout.
