@@ -148,24 +148,25 @@ const INDUSTRY_STANDARDS = {
 };
 
 // ─── COLOR SCHEME ────────────────────────────────────────────────────────────
+// Display-only ink colors; benchmark data, categories and series styles stay unchanged.
 const COLOR_SCHEME = {
-    ecs: '#4facfe',
-    ai: '#00f2fe',
-    physics: '#43e97b',
-    terrain: '#fa709a',
-    input: '#f093fb',
-    rendering: '#feca57',
-    math: '#ff6b6b',
-    networking: '#48dbfb',
-    persistence: '#ff9ff3',
-    audio: '#54a0ff',
-    ui: '#5f27cd',
-    tools: '#00d2d3',
-    animation: '#e17055',
-    default: '#a0a0a0'
+    ecs: '#005987',
+    ai: '#00645d',
+    physics: '#207145',
+    terrain: '#954260',
+    input: '#803b8a',
+    rendering: '#806000',
+    math: '#9c283a',
+    networking: '#155b73',
+    persistence: '#8a356a',
+    audio: '#2e50a0',
+    ui: '#553495',
+    tools: '#456e16',
+    animation: '#88431d',
+    default: '#565854'
 };
 
-const INDUSTRY_LINE_COLOR = '#ff9500';
+const INDUSTRY_LINE_COLOR = '#843b10';
 
 // ─── PERFORMANCE ─────────────────────────────────────────────────────────────
 const PERF = { loadStart: performance.now(), renderCount: 0 };
@@ -522,28 +523,28 @@ function renderHardwareComparisonBar() {
     const baseCount = benchmarkData.filter(d => d.hardware_id === BASELINE_HARDWARE_ID).length;
     const userCount = benchmarkData.filter(d => d.hardware_id !== BASELINE_HARDWARE_ID).length;
 
-    let baseInfo = `<span style="color:#43e97b">Baseline: ${BASELINE_HARDWARE_LABEL}</span>`;
+    let baseInfo = `<span style="color:#275c43">Baseline: ${BASELINE_HARDWARE_LABEL}</span>`;
     let userInfo = '';
     const userHw = Array.from(hardwareProfiles.entries()).filter(([id]) => id !== BASELINE_HARDWARE_ID);
     if (userHw.length > 0) {
-        userInfo = userHw.map(([, label]) => `<span style="color:#4facfe">User: ${label}</span>`).join('<br/>');
+        userInfo = userHw.map(([, label]) => `<span style="color:#245777">User: ${label}</span>`).join('<br/>');
     }
 
     c.innerHTML = `
         <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
             <div style="flex:1;min-width:200px;">
-                <div style="font-size:0.85em;color:#a0a0a0;margin-bottom:4px;">Hardware Profiles (${hardwareProfiles.size})</div>
+                <div style="font-size:0.85em;color:#50534f;margin-bottom:4px;">Hardware Profiles (${hardwareProfiles.size})</div>
                 <div style="font-size:0.9em;">${baseInfo}</div>
                 ${userInfo ? `<div style="font-size:0.9em;margin-top:4px;">${userInfo}</div>` : ''}
             </div>
             <div style="display:flex;gap:16px;align-items:center;">
-                <div style="text-align:center;padding:8px 16px;background:rgba(67,233,123,0.1);border-radius:8px;">
-                    <div style="font-size:1.4em;font-weight:bold;color:#43e97b;">${baseCount}</div>
-                    <div style="font-size:0.75em;color:#a0a0a0;">Baseline Points</div>
+                <div class="summary-tile" style="background:#e4ede1;">
+                    <div style="font-size:1.4em;font-weight:bold;color:#275c43;">${baseCount}</div>
+                    <div style="font-size:0.75em;color:#50534f;">Baseline Points</div>
                 </div>
-                <div style="text-align:center;padding:8px 16px;background:rgba(79,172,254,0.1);border-radius:8px;">
-                    <div style="font-size:1.4em;font-weight:bold;color:#4facfe;">${userCount}</div>
-                    <div style="font-size:0.75em;color:#a0a0a0;">User Points</div>
+                <div class="summary-tile" style="background:#e4edf0;">
+                    <div style="font-size:1.4em;font-weight:bold;color:#245777;">${userCount}</div>
+                    <div style="font-size:0.75em;color:#50534f;">User Points</div>
                 </div>
             </div>
         </div>`;
@@ -580,12 +581,13 @@ function renderStatCards() {
     stats.slice(0, 8).forEach(s => {
         const card = document.createElement('div');
         card.className = `stat-card ${s.system}`;
+        card.style.setProperty("--series", COLOR_SCHEME[s.system] || COLOR_SCHEME.default);
         const icon = s.change > 0 ? '▲' : s.change < 0 ? '▼' : '─';
-        const cc = s.change > 10 ? '#ff6b6b' : s.change < -10 ? '#43e97b' : '#a0a0a0';
+        const cc = s.change > 10 ? '#9c283a' : s.change < -10 ? '#275c43' : '#50534f';
         let badge = '';
         if (s.industryAvg !== null && currentFilters.showIndustry) {
             const ratio = ((s.value / s.industryAvg) * 100).toFixed(0);
-            const ic = s.value <= s.industryAvg ? '#43e97b' : '#ff6b6b';
+            const ic = s.value <= s.industryAvg ? '#275c43' : '#9c283a';
             const il = s.value <= s.industryAvg ? 'faster' : 'slower';
             badge = `<div style="font-size:0.75em;color:${ic};margin-top:4px;">vs Industry: ${ratio}% (${il})</div>`;
         }
@@ -593,7 +595,7 @@ function renderStatCards() {
             <div class="stat-label">${s.name}</div>
             <div class="stat-value">${formatNumber(s.value)}<span class="stat-unit">${s.unit}</span></div>
             <div class="stat-change" style="color:${cc}">${icon} ${Math.abs(s.change).toFixed(1)}%
-                ${s.isBaseline ? '<span style="font-size:0.7em;color:#43e97b;margin-left:4px;">[baseline]</span>' : ''}
+                ${s.isBaseline ? '<span style="font-size:0.7em;color:#275c43;margin-left:4px;">[baseline]</span>' : ''}
             </div>${badge}`;
         grid.appendChild(card);
     });
@@ -624,7 +626,7 @@ function renderChart() {
     div.innerHTML = '';
     if (filteredData.length === 0) { div.innerHTML = '<div class="loading">No data</div>'; return; }
     if (typeof d3 === 'undefined') {
-        div.innerHTML = '<div class="loading" style="color:#ff6b6b;">D3.js failed to load.</div>';
+        div.innerHTML = '<div class="loading" style="color:#9c283a;">D3.js failed to load.</div>';
         return;
     }
 
@@ -734,17 +736,17 @@ function renderChart() {
     // Axes
     svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(xScale).ticks(8).tickFormat(d3.timeFormat('%b %d')))
-        .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+        .selectAll('text').style('font-size', '13px').attr('fill', '#50534f');
     const yAxisGen = useLog
         ? d3.axisLeft(yScale).ticks(10).tickFormat(d => d === 0 ? '0' : formatNumber(d))
         : d3.axisLeft(yScale).ticks(8).tickFormat(d => formatNumber(d));
     svg.append('g').attr('class', 'axis').call(yAxisGen)
-        .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+        .selectAll('text').style('font-size', '13px').attr('fill', '#50534f');
     svg.append('text').attr('transform', 'rotate(-90)').attr('y', -75).attr('x', -height / 2)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '15px').style('font-weight', '500')
+        .attr('text-anchor', 'middle').attr('fill', '#50534f').style('font-size', '15px').style('font-weight', '500')
         .text(useLog ? 'Value (log scale)' : 'Time (ns)');
     svg.append('text').attr('x', width / 2).attr('y', height + 55)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '14px').text('Date');
+        .attr('text-anchor', 'middle').attr('fill', '#50534f').style('font-size', '14px').text('Date');
 
     // Industry standard lines
     industryLines.forEach(il => {
@@ -871,7 +873,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
     industryLines.forEach(il => indMap.set(il.name, il));
 
     // Tier accent colors (subtle left-border accent)
-    const tierColors = { ns: '#43e97b', us: '#38f9d7', ms: '#f7971e', s: '#ff6b6b' };
+    const tierColors = { ns: '#275c43', us: '#00645d', ms: '#843b10', s: '#9c283a' };
 
     // ── 5. Render each tier ─────────────────────────────────────────────────
     let cursorY = 0;
@@ -885,7 +887,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
         const xScale = d3.scaleLinear().domain([0, scaledMax]).range([0, barAreaWidth]);
 
         // ── Tier header ─────────────────────────────────────────────────────
-        const accentColor = tierColors[tier.key] || '#ccc';
+        const accentColor = tierColors[tier.key] || '#50534f';
 
         // Accent bar on left
         svg.append('rect')
@@ -904,7 +906,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
         svg.append('line')
             .attr('x1', -labelWidth - 16).attr('x2', barAreaWidth)
             .attr('y1', cursorY + tierHeaderH - 2).attr('y2', cursorY + tierHeaderH - 2)
-            .attr('stroke', 'rgba(255,255,255,0.08)').attr('stroke-width', 1);
+            .attr('stroke', '#c6c1b5').attr('stroke-width', 1);
 
         cursorY += tierHeaderH;
 
@@ -920,7 +922,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
                 .attr('width', barW).attr('height', barHeight)
                 .attr('fill', item.color).attr('opacity', 0.85).attr('rx', 3)
                 .on('mouseenter', function(event) {
-                    d3.select(this).attr('opacity', 1).attr('stroke', '#fff').attr('stroke-width', 1);
+                    d3.select(this).attr('opacity', 1).attr('stroke', '#242629').attr('stroke-width', 1);
                     const sys = detectSystem(item.crate);
                     const ref = findIndustryStandard(item.rawName, sys);
                     let indLine = '';
@@ -955,13 +957,13 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
             // Value label (right of bar)
             svg.append('text')
                 .attr('x', barW + 8).attr('y', y + barHeight / 2 + 4)
-                .attr('fill', '#c0c0c0').style('font-size', '11px').style('font-weight', '500')
+                .attr('fill', '#50534f').style('font-size', '11px').style('font-weight', '500')
                 .text(formatDuration(item.value));
 
             // Benchmark name label (left of bar)
             svg.append('text')
                 .attr('x', -8).attr('y', y + barHeight / 2 + 4)
-                .attr('text-anchor', 'end').attr('fill', '#e0e0e0')
+                .attr('text-anchor', 'end').attr('fill', '#242629')
                 .style('font-size', '12px').style('font-weight', '400')
                 .text(item.name);
         });
@@ -974,7 +976,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
         svg.append('g').attr('class', 'axis')
             .attr('transform', `translate(0,${cursorY + 4})`)
             .call(xAxisGen)
-            .selectAll('text').style('font-size', '11px').attr('fill', '#999');
+            .selectAll('text').style('font-size', '11px').attr('fill', '#50534f');
 
         // Grid lines for this tier
         svg.append('g').attr('class', 'grid')
@@ -982,7 +984,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
             .call(d3.axisBottom(xScale)
                 .tickSize(-(barHeight + gap) * tier.items.length - 4)
                 .tickFormat(''))
-            .selectAll('line').attr('stroke', 'rgba(255,255,255,0.04)');
+            .selectAll('line').attr('stroke', '#d4cec2');
 
         cursorY += tierAxisH;
         if (ti < tiers.length - 1) cursorY += tierGap;
@@ -1050,12 +1052,12 @@ function renderIndustryComparisonSection() {
         svg.append('rect').attr('x', 0).attr('y', y).attr('width', x(comp.industryAvg))
             .attr('height', barH / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', 0.4).attr('rx', 3);
         // Our bar
-        const col = comp.ourValue <= comp.industryAvg ? '#43e97b' : '#ff6b6b';
+        const col = comp.ourValue <= comp.industryAvg ? '#275c43' : '#9c283a';
         svg.append('rect').attr('x', 0).attr('y', y + barH / 2).attr('width', x(comp.ourValue))
             .attr('height', barH / 2).attr('fill', col).attr('opacity', 0.8).attr('rx', 3);
         // Label
         svg.append('text').attr('x', -10).attr('y', y + barH / 2 + 3).attr('text-anchor', 'end')
-            .attr('fill', '#e0e0e0').style('font-size', '13px').style('font-weight', '400')
+            .attr('fill', '#242629').style('font-size', '13px').style('font-weight', '400')
             .text(comp.displayName.substring(0, 50));
         // Values
         const ratio = ((comp.ourValue / comp.industryAvg) * 100).toFixed(0);
@@ -1067,10 +1069,10 @@ function renderIndustryComparisonSection() {
     // Legend
     svg.append('rect').attr('x', w - 220).attr('y', -18).attr('width', 14).attr('height', 10)
         .attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', 0.6).attr('rx', 2);
-    svg.append('text').attr('x', w - 202).attr('y', -9).attr('fill', '#c0c0c0').style('font-size', '12px').text('Industry Avg');
+    svg.append('text').attr('x', w - 202).attr('y', -9).attr('fill', '#50534f').style('font-size', '12px').text('Industry Avg');
     svg.append('rect').attr('x', w - 110).attr('y', -18).attr('width', 14).attr('height', 10)
-        .attr('fill', '#43e97b').attr('opacity', 0.8).attr('rx', 2);
-    svg.append('text').attr('x', w - 92).attr('y', -9).attr('fill', '#c0c0c0').style('font-size', '12px').text('AstraWeave');
+        .attr('fill', '#275c43').attr('opacity', 0.8).attr('rx', 2);
+    svg.append('text').attr('x', w - 92).attr('y', -9).attr('fill', '#50534f').style('font-size', '12px').text('AstraWeave');
 }
 
 // ─── HISTOGRAM ───────────────────────────────────────────────────────────────
@@ -1113,10 +1115,10 @@ function renderHistogram(series) {
     svg.selectAll('rect').data(bins).enter().append('rect')
         .attr('x', d => x(d.x0)).attr('y', d => y(d.length))
         .attr('width', d => Math.max(2, x(d.x1) - x(d.x0) - 2))
-        .attr('height', d => h - y(d.length)).attr('fill', '#4facfe').attr('opacity', 0.75)
+        .attr('height', d => h - y(d.length)).attr('fill', '#245777').attr('opacity', 0.75)
         .attr('rx', 2)
         .on('mouseenter', function(event, d) {
-            d3.select(this).attr('opacity', 1).attr('fill', '#00f2fe');
+            d3.select(this).attr('opacity', 1).attr('fill', '#275c54');
             const names = d.map(v => v.name).slice(0, 5).join('<br>');
             const more = d.length > 5 ? `<br>+${d.length - 5} more` : '';
             tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px')
@@ -1124,7 +1126,7 @@ function renderHistogram(series) {
                 .html(`<strong>${d.length} benchmark${d.length > 1 ? 's' : ''}</strong><br>Range: ${formatNumber(d.x0)} – ${formatNumber(d.x1)}<br>${names}${more}`);
         })
         .on('mouseleave', function() {
-            d3.select(this).attr('opacity', 0.75).attr('fill', '#4facfe');
+            d3.select(this).attr('opacity', 0.75).attr('fill', '#245777');
             tooltip.classed('visible', false);
         });
 
@@ -1139,10 +1141,10 @@ function renderHistogram(series) {
 
     // Axis labels
     svg.append('text').attr('x', w / 2).attr('y', h + 42)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px')
+        .attr('text-anchor', 'middle').attr('fill', '#50534f').style('font-size', '13px')
         .text(histUseLog ? 'Benchmark Value (log scale)' : 'Benchmark Value');
     svg.append('text').attr('transform', 'rotate(-90)').attr('y', -52).attr('x', -h / 2)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px').text('Count');
+        .attr('text-anchor', 'middle').attr('fill', '#50534f').style('font-size', '13px').text('Count');
 }
 
 // ─── SPARKLINES ──────────────────────────────────────────────────────────────
@@ -1200,7 +1202,7 @@ function renderSparklines(series) {
                 .text(formatNumber(latestVal ? latestVal.value : 0));
             sparkSvg.append('text')
                 .attr('x', w / 2).attr('y', h * 0.85)
-                .attr('text-anchor', 'middle').attr('fill', '#888')
+                .attr('text-anchor', 'middle').attr('fill', '#50534f')
                 .style('font-size', '9px')
                 .text('single snapshot');
         } else {
@@ -1255,7 +1257,7 @@ function renderBenchTable() {
     const hr = document.createElement('tr');
     ['Benchmark', 'System', 'Latest', 'p50', 'p95', 'CV%', 'Change', 'vs Industry', 'Hardware'].forEach(h => {
         const th = document.createElement('th');
-        th.style.cssText = 'text-align:left;padding:6px 10px;color:#a0a0a0;font-size:0.85em;';
+        th.style.cssText = 'text-align:left;padding:6px 10px;color:#50534f;font-size:0.85em;';
         th.textContent = h; hr.appendChild(th);
     });
     head.appendChild(hr); table.appendChild(head);
@@ -1263,7 +1265,7 @@ function renderBenchTable() {
     const body = document.createElement('tbody');
     rows.forEach(r => {
         const tr = document.createElement('tr');
-        tr.style.borderTop = '1px solid rgba(255,255,255,0.03)';
+        tr.style.borderTop = '1px solid #e6e0d2';
 
         const td = (text, style) => { const el = document.createElement('td'); el.style.cssText = 'padding:6px 10px;' + (style || ''); el.innerHTML = text; return el; };
 
@@ -1274,22 +1276,22 @@ function renderBenchTable() {
         const cv = coefficientOfVariation(allVals);
 
         tr.appendChild(td(r.latest.display_name || r.name));
-        tr.appendChild(td(`<span style="color:${COLOR_SCHEME[r.system]||'#a0a0a0'};font-size:0.8em;">${r.system}</span>`));
+        tr.appendChild(td(`<span style="color:${COLOR_SCHEME[r.system]||'#50534f'};font-size:0.8em;">${r.system}</span>`));
         tr.appendChild(td(`${formatNumber(r.latest.value)} ${r.latest.unit}`));
-        tr.appendChild(td(`${formatNumber(p50)}`, 'color:#a0a0a0;font-size:0.85em;'));
-        tr.appendChild(td(`${formatNumber(p95)}`, 'color:#a0a0a0;font-size:0.85em;'));
-        const cvColor = cv < 5 ? '#43e97b' : cv < 15 ? '#feca57' : '#ff6b6b';
+        tr.appendChild(td(`${formatNumber(p50)}`, 'color:#50534f;font-size:0.85em;'));
+        tr.appendChild(td(`${formatNumber(p95)}`, 'color:#50534f;font-size:0.85em;'));
+        const cvColor = cv < 5 ? '#275c43' : cv < 15 ? '#805500' : '#9c283a';
         tr.appendChild(td(`<span style="color:${cvColor}">${cv.toFixed(1)}%</span>`, 'font-size:0.85em;'));
-        tr.appendChild(td(`${r.change > 0 ? '+' : ''}${r.change.toFixed(1)}%`, `color:${r.change > 0 ? '#ff6b6b' : '#43e97b'}`));
+        tr.appendChild(td(`${r.change > 0 ? '+' : ''}${r.change.toFixed(1)}%`, `color:${r.change > 0 ? '#9c283a' : '#275c43'}`));
 
         let indTxt = '—';
         if (r.ref && currentFilters.showIndustry) {
             const ratio = ((r.latest.value / r.ref.average) * 100).toFixed(0);
-            const ic = r.latest.value <= r.ref.average ? '#43e97b' : '#ff6b6b';
+            const ic = r.latest.value <= r.ref.average ? '#275c43' : '#9c283a';
             indTxt = `<span style="color:${ic}">${ratio}%</span>`;
         }
         tr.appendChild(td(indTxt));
-        tr.appendChild(td(r.latest.hardware_id === BASELINE_HARDWARE_ID ? '🏠 Baseline' : '🖥️ User', 'font-size:0.8em;color:#a0a0a0;'));
+        tr.appendChild(td(r.latest.hardware_id === BASELINE_HARDWARE_ID ? '🏠 Baseline' : '🖥️ User', 'font-size:0.8em;color:#50534f;'));
 
         body.appendChild(tr);
     });
@@ -1314,7 +1316,7 @@ function renderLegend(series, industryLines = []) {
     if (series.length > LEGEND_SHOW) {
         const more = document.createElement('div');
         more.className = 'legend-item';
-        more.style.cssText = 'color:#a0a0a0;font-style:italic;font-size:0.85em;cursor:pointer;';
+        more.style.cssText = 'color:#50534f;font-style:italic;font-size:0.85em;cursor:pointer;';
         more.textContent = `+ ${series.length - LEGEND_SHOW} more (use filters to narrow)`;
         more.addEventListener('click', () => {
             // Toggle showing all
@@ -1366,16 +1368,16 @@ function renderRegressionAlerts() {
 
     if (regs.length === 0) {
         c.innerHTML = `<div class="alert-success">✅ <strong>No Performance Regressions Detected</strong>
-            <p style="margin-top:8px;font-size:0.9em;color:#a0a0a0;">All ${Object.keys(groups).length} benchmarks within ±10%</p></div>`;
+            <p style="margin-top:8px;font-size:0.9em;color:#50534f;">All ${Object.keys(groups).length} benchmarks within ±10%</p></div>`;
         return;
     }
     regs.sort((a, b) => b.change - a.change);
     c.innerHTML = `<div class="alert-warning">⚠️ <strong>${regs.length} Regression${regs.length > 1 ? 's' : ''}</strong>
         <div style="margin-top:12px;max-height:200px;overflow-y:auto;">
-            ${regs.slice(0, 10).map(r => `<div style="padding:8px;border-left:3px solid #ff6b6b;margin:6px 0;background:rgba(255,107,107,0.1);border-radius:4px;">
-                <div style="font-weight:600;color:#ff6b6b;">${r.name}</div>
-                <div style="font-size:0.85em;color:#a0a0a0;margin-top:4px;">${formatNumber(r.baseline)} → ${formatNumber(r.current)} ${r.unit}
-                    <span style="color:#ff6b6b;font-weight:600;">(+${r.change.toFixed(1)}%)</span></div>
+            ${regs.slice(0, 10).map(r => `<div style="padding:8px;border-left:3px solid #9c283a;margin:6px 0;background:#f4e4e2;border-radius:4px;">
+                <div style="font-weight:600;color:#9c283a;">${r.name}</div>
+                <div style="font-size:0.85em;color:#50534f;margin-top:4px;">${formatNumber(r.baseline)} → ${formatNumber(r.current)} ${r.unit}
+                    <span style="color:#9c283a;font-weight:600;">(+${r.change.toFixed(1)}%)</span></div>
             </div>`).join('')}
         </div></div>`;
 }
@@ -1401,10 +1403,10 @@ function renderProductionHealthSummary() {
     }
     const total = Object.keys(groups).length;
     const pct = total > 0 ? (regCount / total) * 100 : 0;
-    let grade = 'A+', gc = '#00f2fe';
-    if (pct > 20) { grade = 'C'; gc = '#ff6b6b'; }
-    else if (pct > 10) { grade = 'B'; gc = '#feca57'; }
-    else if (pct > 5) { grade = 'A'; gc = '#43e97b'; }
+    let grade = 'A+', gc = '#275c54';
+    if (pct > 20) { grade = 'C'; gc = '#9c283a'; }
+    else if (pct > 10) { grade = 'B'; gc = '#805500'; }
+    else if (pct > 5) { grade = 'A'; gc = '#275c43'; }
 
     let indCount = 0;
     for (const name of Object.keys(groups)) {
@@ -1419,20 +1421,20 @@ function renderProductionHealthSummary() {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;">
             ${[
                 [grade, gc, 'Health Grade'],
-                [uniqueB, '#4facfe', 'Benchmarks'],
-                [uniqueC, '#4facfe', 'Crates'],
-                [uniqueH, '#4facfe', 'Hardware Profiles'],
-                [`${dateRange}d`, '#4facfe', 'Data Range'],
+                [uniqueB, '#245777', 'Benchmarks'],
+                [uniqueC, '#245777', 'Crates'],
+                [uniqueH, '#245777', 'Hardware Profiles'],
+                [`${dateRange}d`, '#245777', 'Data Range'],
                 [indCount, INDUSTRY_LINE_COLOR, 'Industry Comparisons']
             ].map(([v, color, label]) => `
-                <div style="text-align:center;padding:16px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                <div class="summary-tile" style="background:#eeeadf;">
                     <div style="font-size:${String(v).length > 3 ? '1.5' : '2'}em;font-weight:bold;color:${color};">${v}</div>
-                    <div style="color:#a0a0a0;font-size:0.85em;margin-top:4px;">${label}</div>
+                    <div style="color:#50534f;font-size:0.85em;margin-top:4px;">${label}</div>
                 </div>`).join('')}
         </div>
         <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
             ${Object.entries(sysCounts).map(([s, cnt]) =>
-                `<span style="padding:4px 12px;background:${COLOR_SCHEME[s]||'#666'}22;color:${COLOR_SCHEME[s]||'#666'};border-radius:16px;font-size:0.8em;">${s}: ${cnt}</span>`
+                `<span style="padding:4px 12px;background:${COLOR_SCHEME[s]||'#50534f'}22;color:${COLOR_SCHEME[s]||'#50534f'};border-radius:1px;font-size:0.8em;">${s}: ${cnt}</span>`
             ).join('')}
         </div>`;
 }
@@ -1533,7 +1535,7 @@ function _lightboxEscHandler(e) {
 function enlargeImage(imgEl) {
     openLightbox(imgEl.alt || 'Graph', (body) => {
         const clone = imgEl.cloneNode(true);
-        clone.style.cssText = 'max-width:100%;max-height:75vh;height:auto;border-radius:8px;';
+        clone.style.cssText = 'max-width:100%;max-height:75vh;height:auto;border-radius:1px;';
         clone.className = '';
         body.appendChild(clone);
     });
@@ -1567,9 +1569,9 @@ function enlargeSparkline(seriesData) {
         // Axes
         svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${h})`)
             .call(d3.axisBottom(xs).ticks(8).tickFormat(d3.timeFormat('%b %d')))
-            .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+            .selectAll('text').style('font-size', '13px').attr('fill', '#50534f');
         svg.append('g').attr('class', 'axis').call(d3.axisLeft(ys).ticks(8).tickFormat(d => formatNumber(d)))
-            .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+            .selectAll('text').style('font-size', '13px').attr('fill', '#50534f');
 
         // Area
         const area = d3.area().x(d => xs(d.timestamp)).y0(h).y1(d => ys(d.value)).curve(d3.curveMonotoneX);
@@ -1585,7 +1587,7 @@ function enlargeSparkline(seriesData) {
         svg.selectAll('circle').data(seriesData.values).enter().append('circle')
             .attr('cx', d => xs(d.timestamp)).attr('cy', d => ys(d.value))
             .attr('r', 4).attr('fill', seriesData.color).attr('opacity', 0.85)
-            .attr('stroke', '#fff').attr('stroke-width', 1);
+            .attr('stroke', '#242629').attr('stroke-width', 1);
 
         // Tooltip
         const tooltip = d3.select('.tooltip');
@@ -1605,13 +1607,13 @@ function enlargeSparkline(seriesData) {
 
         // Axis labels
         svg.append('text').attr('x', w / 2).attr('y', h + 42)
-            .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px').text('Date');
+            .attr('text-anchor', 'middle').attr('fill', '#50534f').style('font-size', '13px').text('Date');
         svg.append('text').attr('transform', 'rotate(-90)').attr('y', -60).attr('x', -h / 2)
-            .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px').text('Value');
+            .attr('text-anchor', 'middle').attr('fill', '#50534f').style('font-size', '13px').text('Value');
 
         // Stats summary below chart
         const stats = document.createElement('div');
-        stats.style.cssText = 'margin-top:16px;display:flex;gap:24px;flex-wrap:wrap;color:#c0c0c0;font-size:13px;';
+        stats.style.cssText = 'margin-top:16px;display:flex;gap:24px;flex-wrap:wrap;color:#50534f;font-size:13px;';
         const allV = seriesData.values.map(d => d.value);
         const latest = allV[allV.length - 1];
         const min = Math.min(...allV);
@@ -1620,12 +1622,12 @@ function enlargeSparkline(seriesData) {
         const p50 = percentile(allV, 50);
         const cv = coefficientOfVariation(allV);
         stats.innerHTML = [
-            `Latest: <strong style="color:#4facfe">${formatNumber(latest)}</strong>`,
+            `Latest: <strong style="color:#245777">${formatNumber(latest)}</strong>`,
             `Min: <strong>${formatNumber(min)}</strong>`,
             `Max: <strong>${formatNumber(max)}</strong>`,
             `Avg: <strong>${formatNumber(avg)}</strong>`,
             `p50: <strong>${formatNumber(p50)}</strong>`,
-            `CV: <strong style="color:${cv < 5 ? '#43e97b' : cv < 15 ? '#feca57' : '#ff6b6b'}">${cv.toFixed(1)}%</strong>`,
+            `CV: <strong style="color:${cv < 5 ? '#275c43' : cv < 15 ? '#805500' : '#9c283a'}">${cv.toFixed(1)}%</strong>`,
             `Samples: <strong>${allV.length}</strong>`,
         ].map(s => `<span>${s}</span>`).join('');
         body.appendChild(stats);
