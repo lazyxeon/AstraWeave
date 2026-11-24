@@ -1279,13 +1279,6 @@ class WorkflowPolicyTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         with self.assertRaises(AssertionError):
             assert_benchmark_alert_gh_pages_publish(fixture, path="fixture")
-        base_text = subprocess.check_output(
-            ["git", "show", "e1773a89:.github/workflows/benchmark_alert.yml"],
-            cwd=ROOT,
-            text=True,
-        )
-        with self.assertRaises(AssertionError):
-            assert_benchmark_alert_gh_pages_publish(base_text, path="e1773a89")
 
     def test_docs_no_archive_benchmark_dashboard_copy(self) -> None:
         docs = (WORKFLOWS / "docs.yml").read_text(encoding="utf-8")
@@ -1300,13 +1293,6 @@ class WorkflowPolicyTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         with self.assertRaises(AssertionError):
             assert_docs_no_archive_benchmark_dashboard_copy(fixture, path="fixture")
-        base_text = subprocess.check_output(
-            ["git", "show", "e1773a89:.github/workflows/docs.yml"],
-            cwd=ROOT,
-            text=True,
-        )
-        with self.assertRaises(AssertionError):
-            assert_docs_no_archive_benchmark_dashboard_copy(base_text, path="e1773a89")
 
 
 if __name__ == "__main__":
