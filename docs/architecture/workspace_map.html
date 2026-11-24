@@ -2,13 +2,14 @@
 <!--
   AstraWeave Workspace Architecture Map — v2.5 (2026-11-23)
   v2.5: Bootleg Manual — Graphite. Newsprint, stamped graphite chrome and
-    restrained static mint backlights; graph data and interactions unchanged.
+    restrained static mint backlights. Domain ink and printed tags make each
+    grouping readable without relying on hue. Graph data and actions unchanged.
   v2.4: theme pass ("tidewire": fluidpunk water under cyberpunk chrome). Skin only.
     - Page chrome: abyssal gradient with slow drifting currents, glass panels,
       pill controls, aqua accent with magenta for pressed and selected states,
       mono caps for labels, faint scanlines behind the graph.
     - Graph: nodes take a top-lit gradient, a lit rim and a soft halo in their
-      domain colour. Domain hues are unchanged (Wong palette). Runtime edges and
+      domain colour. That version used the source Wong palette. Runtime edges and
       the active path draw as dashes that drift toward the target; that motion
       and the background drift are off under prefers-reduced-motion.
     - Selection and highlight are magenta, the path is lime. Replaced the
@@ -110,15 +111,6 @@
     --good: #3fb950;
     --link: #58a6ff;
     --code-bg: #1c2128;
-    /* Wong colorblind-safe palette for domains */
-    --d-core:       #0072B2;
-    --d-ai:         #D55E00;
-    --d-rendering:  #CC79A7;
-    --d-physics:    #009E73;
-    --d-gameplay:   #E69F00;
-    --d-networking: #56B4E9;
-    --d-tools:      #F0E442;
-    --d-examples:   #999999;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; padding: 0; }
@@ -945,8 +937,8 @@
     <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain with short graphite dashes.
     <strong>Share ↗</strong> copies a URL that reproduces the exact current view (filters, selection, tour step, layout).
     <strong>Domain chips</strong> (v2.1): click any chip to add that domain to the include set. Nothing checked = no filter (show all). Any subset checked = show only those domains. All checked = same as none. Chips lock during a story or tour — use Reset to clear.
-    <strong>Theme</strong> (v2.5): Bootleg Manual uses graphite on warm paper, with a soft mint backlight. <strong>FX</strong> controls the moving background, not the static backlight. The background dims while reading the map. Teal marks confirmed runtime wiring: moving dashes by default, solid if your system requests reduced motion.
-    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; tinted paper and ink border = domain (matching the markers in the toolbar and detail panel); dashed border = dormant; <code>⚠</code> = silent-failure locus; <code>📄</code> = traced. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
+    <strong>Theme</strong> (v2.5): Bootleg Manual uses graphite on warm paper, with a soft mint backlight. <strong>FX</strong> controls the moving background, not the static backlight. The background dims while reading the map. Long teal dashes mark confirmed runtime wiring. They stay still if your system requests reduced motion.
+    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; printed tag, tinted paper and ink border = domain (matching the toolbar markers); dashed border = dormant; dotted border = partial; <code>!</code> = silent-failure locus; an outer graphite ring = selected. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
     <strong>Keyboard</strong>: <code>Esc</code> to clear; <code>←</code> <code>→</code> to navigate tour steps.
     On mobile, tap <code>☰ Controls</code> for the toolbar; the side panel becomes a bottom sheet.
   </div>
@@ -1114,18 +1106,20 @@ const STORIES = workspaceData.stories;
 const RECONCILE = workspaceData.reconciliationNotes;
 const META = workspaceData.metadata;
 
-// Render-only ink tones keep domain marks legible against the light paper.
-const DOMAIN_INK = {
-  core: '#005987',
-  ai: '#9e4700',
-  rendering: '#985176',
-  'physics-world': '#007452',
-  gameplay: '#946100',
-  networking: '#286c8d',
-  tools: '#766700',
-  examples: '#64646a',
+// Render-only ink and compact printed tags. Labels stay identifiable when
+// ink hues look alike or the graph is read in monochrome.
+const DOMAIN_STYLES = {
+  core:            ['FO', '#003f6c'],
+  ai:              ['AI', '#882816'],
+  rendering:       ['RE', '#993d6a'],
+  'physics-world': ['PH', '#006248'],
+  gameplay:        ['GA', '#7e6500'],
+  networking:      ['NE', '#436c90'],
+  tools:           ['TO', '#582ca3'],
+  examples:        ['EX', '#282626'],
 };
-const domainInk = id => DOMAIN_INK[id] || '#64646a';
+const domainInk = id => DOMAIN_STYLES[id]?.[1] || '#282626';
+const domainTag = id => DOMAIN_STYLES[id]?.[0] || '??';
 
 // ============================================================
 // Trace-link base URL
@@ -1226,7 +1220,7 @@ DOMAINS.forEach(d => {
   chip.className = 'domain-chip';
   chip.setAttribute('aria-pressed', 'false');
   chip.setAttribute('data-domain', d.id);
-  chip.innerHTML = `<span class="dot" style="background:${domainInk(d.id)}"></span>${d.label}`;
+  chip.innerHTML = `<span class="dot" style="background:${domainInk(d.id)}"></span><strong>${domainTag(d.id)}</strong> ${d.label}`;
   chip.addEventListener('click', () => {
     if (chip.disabled) return;
     const nowOn = chip.classList.toggle('on');
@@ -1367,13 +1361,20 @@ const cyElements = [];
 // Domain compound parents
 DOMAINS.forEach(d => {
   cyElements.push({
-    data: { id: `dom-${d.id}`, label: d.label, isCompound: true, domain: d.id },
+    data: {
+      id: `dom-${d.id}`,
+      label: `${domainTag(d.id)} · ${d.label}`,
+      rim: domainInk(d.id),
+      isCompound: true,
+      domain: d.id,
+    },
     classes: 'compound',
   });
 });
 
 // Nodes
 NODES.forEach(n => {
+  const graphLabel = `${domainTag(n.domain)} · ${n.label}${n.silentFailures.length ? ' !' : ''}`;
   const overlays = [];
   if (n.silentFailures.length > 0) overlays.push('⚠');
   if (n.trace) overlays.push('📄');
@@ -1383,6 +1384,7 @@ NODES.forEach(n => {
     data: {
       id: n.id,
       label: n.label,
+      graphLabel,
       parent: `dom-${n.domain}`,
       domain: n.domain,
       domainLabel: n.domainLabel,
@@ -1402,7 +1404,7 @@ NODES.forEach(n => {
       isExample: n.isExample,
       exampleList: n.exampleList || null,
       size: sizeForBand(n.locBand),
-      w: widthForLabel(n.label, n.locBand),
+      w: widthForLabel(graphLabel, n.locBand),
       h: heightForBand(n.locBand),
       font: fontForBand(n.locBand),
       paper: shadeHex(domainInk(n.domain), 0.64),
@@ -1465,7 +1467,7 @@ const cy = cytoscape({
         'underlay-opacity': 0.28,
         'underlay-padding': 5,
         'underlay-shape': 'round-rectangle',
-        'label': 'data(label)',
+        'label': 'data(graphLabel)',
         'color': '#242629',
         'font-size': 'data(font)',
         'font-family': 'ui-monospace, "SF Mono", Consolas, monospace',
@@ -1488,7 +1490,6 @@ const cy = cytoscape({
       style: {
         'border-style': 'dashed',
         'background-opacity': 0.30,
-        'border-color': '#a02e43',
         'border-width': 3,
         'underlay-opacity': 0.16,
         'color': '#454845',
@@ -1497,16 +1498,8 @@ const cy = cytoscape({
     {
       selector: 'node.status-partial',
       style: {
-        'border-style': 'dashed',
+        'border-style': 'dotted',
         'background-opacity': 0.65,
-        'border-color': '#a44b13',
-        'border-width': 3,
-      }
-    },
-    {
-      selector: 'node[?hasSilent]',
-      style: {
-        'border-color': '#a44b13',
         'border-width': 3,
       }
     },
@@ -1527,16 +1520,15 @@ const cy = cytoscape({
         'border-style': 'dotted',
       }
     },
-    // Compound parents — match BOTH the compound flag and presence of domain
-    // so we can drive color off `data(domain)` mapped via a function below.
+    // Labelled domain boxes in the cluster layout.
     {
       selector: 'node:parent',
       style: {
         'background-color': '#ded9cc',
         'background-opacity': 0.22,
-        'border-color': '#086e68',
-        'border-opacity': 0.35,
-        'border-width': 1,
+        'border-color': 'data(rim)',
+        'border-opacity': 0.96,
+        'border-width': 1.5,
         'border-style': 'dashed',
         'underlay-color': '#5deabd',
         'underlay-opacity': 0.12,
@@ -1643,9 +1635,11 @@ const cy = cytoscape({
         'background-opacity': 1,
         'underlay-color': '#45e5b3',
         'underlay-opacity': 0.48,
-        'underlay-padding': 7,
-        'border-color': 'data(rim)',
-        'border-width': 4,
+        'underlay-padding': 8,
+        'outline-color': '#20262b',
+        'outline-width': 2.5,
+        'outline-offset': 4,
+        'outline-style': 'solid',
       }
     },
     // v2.1: selected edge keeps its gradient — distinguish via thicker stroke
@@ -1672,16 +1666,16 @@ const cy = cytoscape({
       }
     },
     {
-      selector: '.highlighted',
+      selector: 'node[size].highlighted',
       style: {
         'opacity': 1.0,
-        'border-color': '#285a54',
         'border-width': 4,
       }
     },
     {
       selector: 'edge.highlighted',
       style: {
+        'opacity': 1.0,
         'line-fill': 'solid',
         'line-style': 'solid',
         'line-color': '#657477',
@@ -2549,13 +2543,15 @@ const NODE_BY_ID = new Map(NODES.map(n => [n.id, n]));
 // in v1. Done programmatically so we don't touch the cy() init block.
 // ----------------------------------------------------------------
 cy.style()
-  .selector('.blast-direct')
-    .style({ 'border-color': '#843b10', 'border-width': 5, 'opacity': 1.0,
-             'background-blacken': -0.15 })
-  .selector('.blast-h2')
-    .style({ 'border-color': '#843b10', 'border-width': 3, 'opacity': 0.85 })
-  .selector('.blast-h3')
-    .style({ 'border-color': '#843b10', 'border-width': 2, 'opacity': 0.74 })
+  .selector('node[size].blast-direct:unselected')
+    .style({ 'outline-color': '#843b10', 'outline-width': 3, 'outline-offset': 1,
+             'opacity': 1.0, 'background-blacken': -0.15 })
+  .selector('node[size].blast-h2:unselected')
+    .style({ 'outline-color': '#843b10', 'outline-width': 2, 'outline-offset': 1,
+             'opacity': 0.85 })
+  .selector('node[size].blast-h3:unselected')
+    .style({ 'outline-color': '#843b10', 'outline-width': 1.5, 'outline-offset': 1,
+             'opacity': 0.74 })
   .selector('.blast-faded')
     .style({ 'opacity': 0.20, 'text-opacity': 0.2, 'underlay-opacity': 0 })
   // v2.1: blast-edge thickens but retains the source→target domain gradient
@@ -2564,8 +2560,9 @@ cy.style()
     .style({ 'opacity': 0.95, 'width': 3.6, 'z-index': 50 })
   .selector('.focus-hidden')
     .style({ 'opacity': 0.05, 'text-opacity': 0, 'underlay-opacity': 0 })
-  .selector('.tour-highlight')
-    .style({ 'border-color': '#D55E00', 'border-width': 5 })
+  .selector('node[size].tour-highlight:unselected')
+    .style({ 'outline-color': '#343b42', 'outline-width': 3,
+             'outline-offset': 3, 'outline-style': 'dotted' })
   // v2.3: hover emphasis.
   .selector('.hover-dim')
     .style({ 'opacity': 0.22, 'underlay-opacity': 0 })
@@ -2640,12 +2637,7 @@ cy.on('mouseout', 'node', clearHover);
 // ----------------------------------------------------------------
 const REDUCED_MOTION = !!(window.matchMedia &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-if (REDUCED_MOTION) {
-  cy.style()
-    .selector('edge.runtime').style({ 'line-style': 'solid' })
-    .selector('edge.path-edge').style({ 'line-style': 'dashed' })
-    .update();
-} else {
+if (!REDUCED_MOTION) {
   let flowOffset = 0;
   setInterval(() => {
     if (document.hidden) return;
@@ -3198,7 +3190,7 @@ const TOURS = [
         title: 'The eight domains',
         preset: 'free',
         customViz: (cy) => { /* free exploration, no filtering */ },
-        narration: `The workspace is organised into <strong>eight domain groupings</strong> visible as labelled compound boxes: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. Each is colour-coded with a Wong colourblind-safe palette. Node size encodes LoC band; dashed borders mark dormant crates; <code>⚠</code> overlays mark silent-failure loci; <code>📄</code> overlays mark traced subsystems. Spend a moment scanning the layout — the relative position of clusters and the density of inter-cluster edges already tells you a lot.`,
+        narration: `The workspace is organised into <strong>eight domain groupings</strong> shown as labelled boxes in the Domain clusters layout: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. The two-letter tag on each crate matches its toolbar chip, independently of color. Node height shows the size band. Dashed borders mark dormant crates, dotted borders mark partial crates, and <code>!</code> marks a silent-failure locus. Spend a moment scanning the layout — the relative position of clusters and the density of inter-cluster edges already tells you a lot.`,
       },
       {
         title: 'The foundation — Core domain',
