@@ -586,7 +586,15 @@ def _is_book_dashboard_target(path: str) -> bool:
 
 
 def _folded_action_inputs(with_block: dict) -> dict[str, object]:
-    """Fold with-keys the way Actions does: ignore case, and the later key wins."""
+    """Map with-keys onto action input names.
+
+    A lone key matches ignoring case, and spaces in the key become underscores.
+    Actions rejects a second key that repeats an earlier key ignoring case, so
+    publish_dir together with Publish_Dir never runs. Keeping the later value is
+    defensive only. Keys that are not equal ignoring case, such as publish_dir
+    and "Publish Dir", both load and share one input name, and the later value
+    is the one recorded here.
+    """
     folded: dict[str, object] = {}
     for key, value in with_block.items():
         folded[str(key).replace(" ", "_").lower()] = value
@@ -1684,6 +1692,10 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertFalse(_known_true(None))
         self.assertFalse(_known_true("false"))
         self.assertFalse(_known_true("${{ true }}"))
+        self.assertEqual(
+            _folded_action_inputs({"Publish_Dir": "./docs"})["publish_dir"],
+            "./docs",
+        )
         folded = _folded_action_inputs(
             {"publish_dir": "./docs/benchmark_data", "Publish Dir": "./docs"}
         )
