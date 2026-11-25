@@ -1199,20 +1199,22 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     time.
 
     Untested classes: a copy split across multiple steps; a copy performed by a
-    uses: action; a command word other than cp, mv, or rsync; the word command
-    followed by an option; brace expansion; variable command words; escape
-    splitting; a |, &, or ; inside a command substitution;
-    actions/deploy-pages; actions/upload-pages-artifact; a destination_dir,
-    publish_dir, folder, or target-folder expression that is not a quoted
-    literal; a command substitution other than echo or echo -n of one literal
-    path; a cd whose directory is not the second word, including cd -- and
-    cd -P; a pushd directory that is not the second word; a glued -t
-    destination; a copy word containing *, ?, or [ other than a trailing /*;
-    a working-directory expression other than github.workspace; any input other
-    than folder, target-folder, single-commit, branch, and force on a documentation step
+    uses: action; a command word other than cp, mv, or rsync, with reserved
+    words and subshells listed separately; the word command followed by an
+    option; brace expansion; variable command words; escape splitting; a |, &,
+    or ; inside a command substitution; actions/deploy-pages;
+    actions/upload-pages-artifact; a destination_dir, publish_dir, folder, or
+    target-folder expression that is not a quoted literal; a command
+    substitution other than echo or echo -n of one literal path; a cd whose
+    directory is not the second word, including cd -- and cd -P; a pushd
+    directory that is not the second word; a glued -t destination; a copy word
+    containing *, ?, or [ other than a trailing /*; a working-directory
+    expression other than github.workspace; any input other than folder,
+    target-folder, single-commit, branch, and force on a documentation step
     whose uses contains github-pages-deploy-action; a folder or target-folder
-    that begins with a backslash; a parenthesized subshell; a reserved-word
-    compound command; a wrapper command that runs a copy.
+    that begins with a backslash; a ( ... ) subshell; if, for, while, until,
+    case compound commands and a leading !; a copy run through sudo, exec,
+    time, env, xargs, nohup, or another wrapper command.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
