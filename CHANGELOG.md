@@ -12,7 +12,7 @@ The workspace package is still version 0.4.0. [SECURITY.md](SECURITY.md) calls t
 ### 2026-11
 
 #### Fixed
-- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0. v0.20.0 hit an intermittent GitHub Actions cache 429 at sccache startup, and the cache retries added in that release can exceed the client startup timeout. sccache 0.19.0 logs a 429 on the startup check and starts the server. Any other read error at startup, including a 503, still fails the job. A 503 at sccache startup remains fatal and is out of scope (tracked in #554) ([#772](https://github.com/lazyxeon/AstraWeave/pull/772)).
+- ci: pin `mozilla-actions/sccache-action` to sccache v0.19.0. v0.20.0 hit an intermittent GitHub Actions cache 429 at sccache startup, and the cache retries added in that release can exceed the client startup timeout. sccache 0.19.0 logs a 429 on the startup check and starts the server. Any other read error at startup, including a 503, still fails the job. A 503 on the startup read check remains fatal; a 503 on the write probe drops to read-only and is out of scope (tracked in #554) ([#772](https://github.com/lazyxeon/AstraWeave/pull/772)).
 
 ### 2026-10
 
