@@ -16,3 +16,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           folder: docs/book
           target-folder: api
+          force: false

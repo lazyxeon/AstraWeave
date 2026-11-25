@@ -16,4 +16,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           folder: docs/book
           target-folder: dashboard/benchmark_dashboard
+          force: false
           keep_files: true

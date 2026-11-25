@@ -551,17 +551,22 @@ def _shell_words(command: str) -> list[str]:
 
 
 def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
-    """Split on newline, `;`, `&&`, `|`, `||`, and a single `&`.
+    """Split on newline, `;`, `&&`, `||`, `|`, and a single `&`.
 
     The bool is true when a directory change in that command stays in effect
-    for the next command. Newline, `;`, and `&&` carry it. `|`, `||`, and a
-    single `&` do not.
+    for the next command. Newline, `;`, `&&`, and `||` carry it. A single `|`
+    and a single `&` do not. `&&` and `||` are one operator even when the next
+    command is flush against them. The scan raises if the index does not advance.
     """
     commands: list[tuple[str, bool]] = []
     current: list[str] = []
     quote: str | None = None
     index = 0
+    previous = -1
     while index < len(run_text):
+        if index <= previous:
+            raise AssertionError("shell split did not advance")
+        previous = index
         char = run_text[index]
         if quote is not None:
             current.append(char)
@@ -574,16 +579,19 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
             current.append(char)
             index += 1
             continue
+        if char in ("|", "&"):
+            doubled = index + 1 < len(run_text) and run_text[index + 1] == char
+            # && and || run in the current shell. A single | is a pipeline
+            # and a single & backgrounds the command. One advance consumes the
+            # operator, so the next character stays in the following command
+            # when there is no space.
+            carry = doubled
+            index += 2 if doubled else 1
+            commands.append(("".join(current), carry))
+            current = []
+            continue
         if char in ("\n", ";"):
             commands.append(("".join(current), True))
-            current = []
-            index += 1
-            continue
-        if char in ("|", "&"):
-            carry = char == "&" and index + 1 < len(run_text) and run_text[index + 1] == "&"
-            if carry:
-                index += 1
-            commands.append(("".join(current), carry))
             current = []
             index += 1
             continue
@@ -591,6 +599,34 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
         index += 1
     commands.append(("".join(current), True))
     return [(command.strip(), carry) for command, carry in commands if command.strip()]
+
+
+def _command_body(words: list[str]) -> list[str]:
+    """Drop leading `{` group tokens and a leading `command` word.
+
+    `command` followed by an option stays in place. Brace expansion is one
+    word and stays in place. A parenthesized subshell is not removed. The
+    scan raises if the index does not advance.
+    """
+    index = 0
+    limit = len(words)
+    previous = -1
+    while index < limit:
+        if index <= previous:
+            raise AssertionError("command scan did not advance")
+        previous = index
+        if words[index] == "{":
+            index += 1
+            continue
+        if (
+            words[index] == "command"
+            and index + 1 < limit
+            and not words[index + 1].startswith("-")
+        ):
+            index += 1
+            continue
+        break
+    return words[index:]
 
 
 def _directory_update(words: list[str], current: str, stack: list[str]) -> str | None:
@@ -624,10 +660,18 @@ def _recordable_assignment(value: str) -> bool:
 
 
 def _expand_assigned_word(word: str, env: dict[str, str]) -> str:
-    """Replace a whole-word $name or ${name}. Leave every other word unchanged."""
-    if word.startswith("${") and word.endswith("}") and word[2:-1].isidentifier():
+    """Replace a whole-word $name or ${name}, including a one-character name.
+
+    Leave every other word unchanged.
+    """
+    if (
+        word.startswith("${")
+        and word.endswith("}")
+        and len(word) >= 4
+        and word[2:-1].isidentifier()
+    ):
         return env.get(word[2:-1], word)
-    if word.startswith("$") and word[1:].isidentifier():
+    if word.startswith("$") and len(word) >= 2 and word[1:].isidentifier():
         return env.get(word[1:], word)
     return word
 
@@ -646,10 +690,13 @@ def _path_from_copy_word(command: str, word: str) -> str | None:
 def _run_paths(run_text: str, cwd: str) -> list[str]:
     """Paths copied by cp, mv, or rsync, after cd, pushd, popd, and working-directory.
 
-    The copy command is the basename of the command word. A leading `command`
-    word is skipped, and so is a leading NAME=value. An assignment-only command
-    stores a value with no `$` or backtick when the separator keeps shell state.
-    A later copy word that is `$name` or `${name}` uses that value.
+    The copy command is the basename of the command word. A leading command
+    word is skipped before cd, pushd, popd, and a copy, and so is a leading
+    { group token. command followed by an option is left in place. A leading
+    NAME=value is skipped. An assignment-only command stores a value with no
+    $ or backtick when the separator keeps shell state. A later copy word that
+    is $name or ${name} uses that value, including a one-character name.
+    The assignment scan raises if its index does not advance.
     """
     paths: list[str] = []
     current = _posix_norm(cwd)
@@ -658,12 +705,16 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
     for command, carry in _split_shell_commands(run_text):
         saved_cwd = current
         saved_stack = list(stack)
-        words = _shell_words(command)
+        words = _command_body(_shell_words(command))
         if not words:
             continue
         assignments: list[tuple[str, str]] = []
         index = 0
+        previous = -1
         while index < len(words):
+            if index <= previous:
+                raise AssertionError("assignment scan did not advance")
+            previous = index
             match = _ASSIGNMENT_WORD.match(words[index])
             if match is None:
                 break
@@ -683,8 +734,6 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
             current = updated
         else:
             copy_words = rest
-            if copy_words[0] == "command" and len(copy_words) > 1:
-                copy_words = copy_words[1:]
             command_name = _command_basename(copy_words[0])
             if command_name in _COPY_COMMANDS:
                 for word in copy_words[1:]:
@@ -884,23 +933,61 @@ def _is_jamesives_deploy(step: dict) -> bool:
     return _JAMESIVES_DEPLOY in uses
 
 
+def _jamesives_target_root(value: object) -> bool:
+    """True when target-folder deploys onto the worktree root.
+
+    A missing value is the action's empty target. `.`, `/`, and a path that
+    normalizes to empty are that same root. A non-string, and an expression
+    that is not a quoted literal, are not judged here.
+    """
+    if value is None:
+        return True
+    return _pages_input_path(value) == ""
+
+
+def _jamesives_alert_data(norm: str) -> bool:
+    return norm == BENCHMARK_ALERT_DESTINATION_DIR or norm.startswith(
+        BENCHMARK_ALERT_DESTINATION_DIR + "/"
+    )
+
+
 def _assert_docs_jamesives_publish(
     inputs: dict[str, object], *, path: str, step_name: str
 ) -> None:
-    """folder and target-folder are the paths this action deploys.
+    """folder, target-folder, branch, and force are what this action deploys.
 
-    Other inputs on a documentation step are not read.
+    target-folder must name a directory other than the worktree root, the
+    published dashboard, and the alert data directory. branch must be unset,
+    blank, or gh-pages. force must be an explicit false. Other inputs on a
+    documentation step are not read.
     """
     folder = _pages_input_path(inputs.get("folder"))
     if folder is not None and _publish_dir_hits_archive(folder):
         raise AssertionError(
             f"{path}: {step_name} folder must stay off {ARCHIVE_BENCHMARK_DASHBOARD}"
         )
-    target = _pages_input_path(inputs.get("target-folder"))
+    raw_target = inputs.get("target-folder")
+    if _jamesives_target_root(raw_target):
+        raise AssertionError(
+            f"{path}: {step_name} target-folder must not be the worktree root"
+        )
+    target = _pages_input_path(raw_target)
     if target is not None and _docs_destination_forbidden(target):
         raise AssertionError(
             f"{path}: {step_name} target-folder must not replace the published dashboard"
         )
+    if target is not None and _jamesives_alert_data(target):
+        raise AssertionError(
+            f"{path}: {step_name} target-folder must not replace "
+            f"{BENCHMARK_ALERT_DESTINATION_DIR}"
+        )
+    if not _jamesives_branch_ok(inputs.get("branch")):
+        raise AssertionError(
+            f"{path}: {step_name} branch must stay unset or "
+            f"{BENCHMARK_ALERT_PUBLISH_BRANCH!r}, got {inputs.get('branch')!r}"
+        )
+    if not _explicit_false(inputs.get("force")):
+        raise AssertionError(f"{path}: {step_name} force must be false")
 
 
 def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
@@ -1060,13 +1147,19 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     """Documentation must not copy the archived dashboard onto the book dashboard directory.
 
     A step whose uses contains gh-pages or github-pages is checked. When that
-    uses also contains github-pages-deploy-action, folder and target-folder are
-    the inputs that are read, with the same normalization as publish_dir,
-    including a dropped leading slash. folder must stay off
-    docs/archive/benchmark_dashboard and files under it. target-folder must not
-    be dashboard or dashboard/benchmark_dashboard, or a path under that
-    directory. A missing folder or target-folder does not raise. Other inputs
-    on that step are not read.
+    uses also contains github-pages-deploy-action, the step is held to folder,
+    target-folder, branch, and force. folder and target-folder use the same
+    normalization as publish_dir, including a dropped leading slash. folder
+    must stay off docs/archive/benchmark_dashboard and files under it.
+    Ancestors are not that check. A missing folder does not raise.
+    target-folder must be present. A missing value, a blank value, and a path
+    that normalizes to empty are the worktree root, and that root raises.
+    ".", "/", and dashboard/benchmark_dashboard/../.. are that root.
+    target-folder must not be dashboard or dashboard/benchmark_dashboard, or a
+    path under that directory, and must not be dashboard/benchmark_data or a
+    path under it. branch must be unset, blank, or gh-pages. force must be
+    YAML false or the false string. Unset force is not false. Other inputs on
+    that step are not read.
 
     Otherwise the step is read as peaceiris. force_orphan must stay unset or a
     known false. Known false is YAML false, or a string that is false after
@@ -1082,13 +1175,18 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     workflow defaults. A github.workspace expression and the GITHUB_WORKSPACE
     prefixes are stripped before that directory is used. cd, pushd, and popd
     use the second word. An option in that word is not a directory. A directory
-    change before &&, a newline, or ; applies to later commands in the step. A
-    directory change before |, ||, or a single & does not. The copy command is
-    cp, mv, or rsync, matched by basename. A backslash in that word is a
-    separator. A leading command word is skipped, and so is a leading
-    NAME=value. An assignment-only command stores a value with no
-    $ or backtick when the separator keeps shell state, and a later copy word
-    that is $name or ${name} uses it. cp and mv contribute a
+    change before &&, ||, a newline, or ; applies to later commands in the
+    step, including when the next command is flush against && or ||. A
+    directory change before a single | or a single & does not. The scan
+    raises if its index does not advance. The
+    copy command is cp, mv, or rsync, matched by basename. A backslash in that
+    word is a separator. A leading command word is skipped before cd, pushd,
+    popd, and a copy. A leading { group token is skipped the same way. That
+    scan raises if its index does not advance. command
+    followed by an option is left in place. A leading NAME=value is skipped.
+    An assignment-only command stores a value with no $ or backtick when the
+    separator keeps shell state, and a later copy word that is $name or
+    ${name} uses it, including a one-character name. cp and mv contribute a
     --target-directory= or --target= value. echo, or echo -n, of one literal
     path is reduced. A trailing /* is removed. The check reads one step at a
     time.
@@ -1104,9 +1202,9 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     cd -P; a pushd or popd directory that is not the second word; a glued -t
     destination; a copy word containing *, ?, or [ other than a trailing /*;
     a working-directory expression other than github.workspace; any input other
-    than folder and target-folder on a documentation step whose uses contains
-    github-pages-deploy-action; a folder or target-folder that begins with a
-    backslash.
+    than folder, target-folder, branch, and force on a documentation step
+    whose uses contains github-pages-deploy-action; a folder or target-folder
+    that begins with a backslash; a parenthesized subshell.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
@@ -2526,11 +2624,57 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_copy_near_miss",
             "docs_other_quote_delimiter",
             "docs_jamesives_book",
+            "docs_pipe_cd",
+            "docs_pipe_assign",
+            "docs_background_cd",
+            "docs_brace_only",
+            "docs_command_only",
+            "docs_trailing_pipe",
+            "docs_single_quoted_separator",
+            "docs_command_popd",
+            "docs_assign_plain",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
                 assert_docs_no_archive_benchmark_dashboard_copy, fixture, path=directory
             )
+        book = _call_checker(
+            _read_policy_fixture, "docs_jamesives_book", "docs.yml"
+        )
+        for addition in (
+            "          branch: gh-pages\n",
+            "          branch: ''\n",
+            "          branch: ' gh-pages '\n",
+        ):
+            varied = book.replace("force: false\n", "force: false\n" + addition, 1)
+            self.assertIn(addition.strip(), varied)
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy,
+                varied,
+                path="jamesives-docs-branch",
+            )
+        for force_value in ("false", "'false'", "' FALSE '"):
+            varied = book.replace("force: false\n", f"force: {force_value}\n", 1)
+            self.assertIn("force:", varied)
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy,
+                varied,
+                path="jamesives-docs-force",
+            )
+        folded = book.replace("force: false\n", "Force: false\n", 1).replace(
+            "target-folder: api\n", "Target-Folder: api\n", 1
+        )
+        _call_checker(
+            assert_docs_no_archive_benchmark_dashboard_copy,
+            folded,
+            path="jamesives-docs-folded",
+        )
+        leading_api = book.replace("target-folder: api\n", "target-folder: /api\n", 1)
+        _call_checker(
+            assert_docs_no_archive_benchmark_dashboard_copy,
+            leading_api,
+            path="jamesives-docs-leading-api",
+        )
         omitted_folder = """
 name: Documentation
 on: push
@@ -2542,6 +2686,7 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           target-folder: api
+          force: false
 """
         _call_checker(
             assert_docs_no_archive_benchmark_dashboard_copy,
@@ -2552,11 +2697,13 @@ jobs:
             "          target-folder: api\n",
             "          folder: docs/book\n",
         )
-        _call_checker(
-            assert_docs_no_archive_benchmark_dashboard_copy,
-            omitted_target,
-            path="jamesives-omitted-target",
-        )
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy,
+                omitted_target,
+                path="jamesives-omitted-target",
+            )
+        self.assertIn("worktree root", str(caught.exception))
         copy_dirs = (
             "docs_bad_benchmark_dashboard_copy",
             "docs_parent_directory_copy",
@@ -2610,6 +2757,16 @@ jobs:
             "docs_echo_n_copy",
             "docs_target_short_copy",
             "docs_assigned_dest_copy",
+            "docs_or_cd",
+            "docs_or_assign",
+            "docs_command_cd",
+            "docs_brace_group_copy",
+            "docs_brace_cd",
+            "docs_or_tight",
+            "docs_pipe_tight",
+            "docs_and_tight",
+            "docs_assign_one",
+            "docs_assign_one_brace",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
@@ -2633,6 +2790,20 @@ jobs:
             ("docs_destination_concat", "destination_dir"),
             ("docs_jamesives_archive_folder", "folder"),
             ("docs_jamesives_dashboard_target", "target-folder"),
+            ("docs_jamesives_omitted_target", "worktree root"),
+            ("docs_jamesives_root_dot", "worktree root"),
+            ("docs_jamesives_root_empty", "worktree root"),
+            ("docs_jamesives_root_slash", "worktree root"),
+            ("docs_jamesives_root_dotdot", "worktree root"),
+            ("docs_jamesives_root_blank", "worktree root"),
+            ("docs_jamesives_alert_data", "benchmark_data"),
+            ("docs_jamesives_alert_data_child", "benchmark_data"),
+            ("docs_jamesives_alert_data_clean_false", "benchmark_data"),
+            ("docs_jamesives_alert_data_expr", "benchmark_data"),
+            ("docs_jamesives_alert_leading_slash", "benchmark_data"),
+            ("docs_jamesives_branch_main", "branch"),
+            ("docs_jamesives_force_omitted", "force"),
+            ("docs_jamesives_force_true", "force"),
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             with self.assertRaises(AssertionError) as caught:
