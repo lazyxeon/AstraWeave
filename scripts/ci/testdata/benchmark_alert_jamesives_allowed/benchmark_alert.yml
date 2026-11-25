@@ -15,6 +15,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           folder: docs/benchmark_data/
           target-folder: dashboard/benchmark_data/
+          force: false
           publish_dir: ./docs
           destination_dir: dashboard
           publish_branch: gh-pages

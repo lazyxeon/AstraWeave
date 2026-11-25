@@ -424,9 +424,10 @@ _GITHUB_WORKSPACE_EXPR = re.compile(
     r"\$\{\{\s*github\.workspace\s*\}\}",
     re.IGNORECASE,
 )
-_ECHO_LITERAL = re.compile(r"\$\(\s*echo\s+(.+?)\s*\)\Z")
+_ECHO_LITERAL = re.compile(r"\$\(\s*echo\s+(?:-n\s+)?(.+?)\s*\)\Z")
 _ECHO_METACHARACTERS = frozenset("$`;&|<>(){}\\")
-_TARGET_DIRECTORY_PREFIX = "--target-directory="
+_TARGET_DIRECTORY_PREFIXES = ("--target-directory=", "--target=")
+_ASSIGNMENT_WORD = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
 _JAMESIVES_DEPLOY = "github-pages-deploy-action"
 _JAMESIVES_FOLDER = "docs/benchmark_data"
 _JAMESIVES_TARGET = "dashboard/benchmark_data"
@@ -549,36 +550,54 @@ def _shell_words(command: str) -> list[str]:
     return words
 
 
-def _split_shell_commands(run_text: str) -> list[str]:
-    commands: list[str] = []
+def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
+    """Split on newline, `;`, `&&`, `|`, `||`, and a single `&`.
+
+    The bool is true when a directory change in that command stays in effect
+    for the next command. Newline, `;`, and `&&` carry it. `|`, `||`, and a
+    single `&` do not.
+    """
+    commands: list[tuple[str, bool]] = []
     current: list[str] = []
     quote: str | None = None
-    for char in run_text:
+    index = 0
+    while index < len(run_text):
+        char = run_text[index]
         if quote is not None:
             current.append(char)
             if char == quote:
                 quote = None
+            index += 1
             continue
         if char in ("'", '"'):
             quote = char
             current.append(char)
+            index += 1
             continue
         if char in ("\n", ";"):
-            commands.append("".join(current))
+            commands.append(("".join(current), True))
             current = []
+            index += 1
             continue
-        if char == "&" and current and current[-1] == "&":
-            current.pop()
-            commands.append("".join(current))
+        if char in ("|", "&"):
+            carry = char == "&" and index + 1 < len(run_text) and run_text[index + 1] == "&"
+            if carry:
+                index += 1
+            commands.append(("".join(current), carry))
             current = []
+            index += 1
             continue
         current.append(char)
-    commands.append("".join(current))
-    return [command.strip() for command in commands if command.strip()]
+        index += 1
+    commands.append(("".join(current), True))
+    return [(command.strip(), carry) for command, carry in commands if command.strip()]
 
 
 def _directory_update(words: list[str], current: str, stack: list[str]) -> str | None:
-    """Return the cwd after cd, pushd, or popd. None when the command is not one of those."""
+    """Return the cwd after cd, pushd, or popd. None when the command is not one of those.
+
+    The directory is the second word. An option in that word is not a directory.
+    """
     command = words[0]
     if command == "popd":
         if stack:
@@ -596,35 +615,87 @@ def _directory_update(words: list[str], current: str, stack: list[str]) -> str |
     return None
 
 
+def _command_basename(word: str) -> str:
+    return word.replace("\\", "/").rsplit("/", 1)[-1]
+
+
+def _recordable_assignment(value: str) -> bool:
+    return "$" not in value and "`" not in value
+
+
+def _expand_assigned_word(word: str, env: dict[str, str]) -> str:
+    """Replace a whole-word $name or ${name}. Leave every other word unchanged."""
+    if word.startswith("${") and word.endswith("}") and word[2:-1].isidentifier():
+        return env.get(word[2:-1], word)
+    if word.startswith("$") and word[1:].isidentifier():
+        return env.get(word[1:], word)
+    return word
+
+
 def _path_from_copy_word(command: str, word: str) -> str | None:
-    """Path argument of a copy command, including cp/mv --target-directory=."""
-    if command in ("cp", "mv") and word.startswith(_TARGET_DIRECTORY_PREFIX):
-        return word[len(_TARGET_DIRECTORY_PREFIX) :]
+    """Path argument of a copy command, including cp/mv --target-directory= and --target=."""
+    if command in ("cp", "mv"):
+        for prefix in _TARGET_DIRECTORY_PREFIXES:
+            if word.startswith(prefix):
+                return word[len(prefix) :]
     if word.startswith("-"):
         return None
     return word
 
 
 def _run_paths(run_text: str, cwd: str) -> list[str]:
-    """Paths copied by cp, mv, or rsync, after cd, pushd, popd, and working-directory."""
+    """Paths copied by cp, mv, or rsync, after cd, pushd, popd, and working-directory.
+
+    The copy command is the basename of the command word. A leading `command`
+    word is skipped, and so is a leading NAME=value. An assignment-only command
+    stores a value with no `$` or backtick when the separator keeps shell state.
+    A later copy word that is `$name` or `${name}` uses that value.
+    """
     paths: list[str] = []
     current = _posix_norm(cwd)
     stack: list[str] = []
-    for command in _split_shell_commands(run_text):
+    env: dict[str, str] = {}
+    for command, carry in _split_shell_commands(run_text):
+        saved_cwd = current
+        saved_stack = list(stack)
         words = _shell_words(command)
         if not words:
             continue
-        updated = _directory_update(words, current, stack)
+        assignments: list[tuple[str, str]] = []
+        index = 0
+        while index < len(words):
+            match = _ASSIGNMENT_WORD.match(words[index])
+            if match is None:
+                break
+            assignments.append((match.group(1), match.group(2)))
+            index += 1
+        rest = words[index:]
+        if not rest:
+            if carry:
+                for name, value in assignments:
+                    if _recordable_assignment(value):
+                        env[name] = value
+                    else:
+                        env.pop(name, None)
+            continue
+        updated = _directory_update(rest, current, stack)
         if updated is not None:
             current = updated
-            continue
-        if words[0] not in _COPY_COMMANDS:
-            continue
-        for word in words[1:]:
-            path_word = _path_from_copy_word(words[0], word)
-            if path_word is None:
-                continue
-            paths.append(_resolve_run_path(path_word, current))
+        else:
+            copy_words = rest
+            if copy_words[0] == "command" and len(copy_words) > 1:
+                copy_words = copy_words[1:]
+            command_name = _command_basename(copy_words[0])
+            if command_name in _COPY_COMMANDS:
+                for word in copy_words[1:]:
+                    expanded = _expand_assigned_word(word, env)
+                    path_word = _path_from_copy_word(command_name, expanded)
+                    if path_word is None:
+                        continue
+                    paths.append(_resolve_run_path(path_word, current))
+        if not carry:
+            current = saved_cwd
+            stack[:] = saved_stack
     return paths
 
 
@@ -773,14 +844,63 @@ def _publish_dir_hits_archive(norm: str) -> bool:
 
 
 def _same_repo_path(value: object, expected: str) -> bool:
+    """True when value is the expected workspace path.
+
+    A value whose first non-space character is `/` is a different directory.
+    `./` and a trailing slash still match.
+    """
     if not isinstance(value, str):
         return False
-    return _posix_norm(value) == _posix_norm(expected)
+    text = value.strip()
+    if text.startswith("/"):
+        return False
+    return _posix_norm(text) == _posix_norm(expected)
+
+
+def _explicit_false(value: object) -> bool:
+    """YAML false or the string false. Unset is not false."""
+    if value is False:
+        return True
+    if isinstance(value, str):
+        return value.strip().upper() == "FALSE"
+    return False
+
+
+def _jamesives_branch_ok(value: object) -> bool:
+    """Unset, blank, or gh-pages. Any other branch name is not."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() in ("", "gh-pages")
+    return False
+
+
+def _repository_name_unset(value: object) -> bool:
+    return value is None or value == ""
 
 
 def _is_jamesives_deploy(step: dict) -> bool:
     uses = str(step.get("uses") or "").lower()
     return _JAMESIVES_DEPLOY in uses
+
+
+def _assert_docs_jamesives_publish(
+    inputs: dict[str, object], *, path: str, step_name: str
+) -> None:
+    """folder and target-folder are the paths this action deploys.
+
+    Other inputs on a documentation step are not read.
+    """
+    folder = _pages_input_path(inputs.get("folder"))
+    if folder is not None and _publish_dir_hits_archive(folder):
+        raise AssertionError(
+            f"{path}: {step_name} folder must stay off {ARCHIVE_BENCHMARK_DASHBOARD}"
+        )
+    target = _pages_input_path(inputs.get("target-folder"))
+    if target is not None and _docs_destination_forbidden(target):
+        raise AssertionError(
+            f"{path}: {step_name} target-folder must not replace the published dashboard"
+        )
 
 
 def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
@@ -789,6 +909,9 @@ def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
     if not isinstance(with_block, dict):
         raise AssertionError(f"{path}: {step_name} missing with:")
     inputs = _folded_action_inputs(with_block)
+    if _is_jamesives_deploy(step):
+        _assert_docs_jamesives_publish(inputs, path=path, step_name=step_name)
+        return
     if not _known_false(inputs.get("force_orphan")):
         raise AssertionError(
             f"{path}: {step_name} force_orphan must stay unset or false"
@@ -812,7 +935,14 @@ def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
 def _assert_jamesives_alert_publish(
     inputs: dict[str, object], *, path: str, step_name: str
 ) -> None:
-    """folder and target-folder are the paths github-pages-deploy-action deploys."""
+    """Keys github-pages-deploy-action reads for the alert publish.
+
+    folder and target-folder must be the benchmark_data paths. A leading `/`
+    does not match. single-commit must be a known false. branch must be unset,
+    blank, or gh-pages. repository-name must be unset or the empty string. A
+    value that is only space does not pass. force must be
+    an explicit false; unset is not false.
+    """
     folder = inputs.get("folder")
     target = inputs.get("target-folder")
     if not _same_repo_path(folder, _JAMESIVES_FOLDER):
@@ -824,16 +954,40 @@ def _assert_jamesives_alert_publish(
             f"{path}: {step_name} target-folder must be {_JAMESIVES_TARGET}, "
             f"got {target!r}"
         )
+    if not _known_false(inputs.get("single-commit")):
+        raise AssertionError(
+            f"{path}: {step_name} single-commit must stay unset or false"
+        )
+    if not _jamesives_branch_ok(inputs.get("branch")):
+        raise AssertionError(
+            f"{path}: {step_name} branch must stay unset or {BENCHMARK_ALERT_PUBLISH_BRANCH!r}, "
+            f"got {inputs.get('branch')!r}"
+        )
+    if not _repository_name_unset(inputs.get("repository-name")):
+        raise AssertionError(f"{path}: {step_name} repository-name must stay unset")
+    if not _explicit_false(inputs.get("force")):
+        raise AssertionError(f"{path}: {step_name} force must be false")
 
 
 def assert_benchmark_alert_gh_pages_publish(
     text: str, *, path: str = "benchmark_alert.yml"
 ) -> None:
-    """Every pages publisher step publishes benchmark_data, and the force-push input stays off.
+    """A step whose uses contains gh-pages or github-pages is checked.
 
-    A step whose uses contains github-pages-deploy-action is held to folder and
-    target-folder. Those are the paths that action deploys. The peaceiris input
-    names on that step are not the deploy target.
+    When that uses also contains github-pages-deploy-action, the step is held to folder,
+    target-folder, single-commit, branch, repository-name, and force. folder
+    and target-folder must be the benchmark_data paths, and a leading slash
+    does not match. single-commit must be a known false. branch must be unset,
+    blank, or gh-pages. repository-name must be unset or the empty string. A
+    value that is only space does not pass. force must be
+    an explicit false. The peaceiris input names on that step are not read.
+
+    Otherwise the step is read as peaceiris. publish_dir must be
+    ./docs/benchmark_data, destination_dir must be dashboard/benchmark_data,
+    and publish_branch must be gh-pages. external_repository must be unset or
+    the empty string. force_orphan must be unset or a known false. Known false
+    is YAML false, or a string that is false after surrounding space is removed
+    and the letters are uppercased.
     """
     jobs = _workflow_jobs(text, path=path)
     gh_pages_steps: list[dict] = []
@@ -905,26 +1059,54 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
 ) -> None:
     """Documentation must not copy the archived dashboard onto the book dashboard directory.
 
-    Every peaceiris pages step must leave force_orphan unset or a known false,
-    must keep publish_dir off docs/archive/benchmark_dashboard and files under
-    it, and must not set destination_dir to dashboard or
-    dashboard/benchmark_dashboard (or a path under that directory). A quoted
-    literal expression is reduced before those path checks.
+    A step whose uses contains gh-pages or github-pages is checked. When that
+    uses also contains github-pages-deploy-action, folder and target-folder are
+    the inputs that are read, with the same normalization as publish_dir,
+    including a dropped leading slash. folder must stay off
+    docs/archive/benchmark_dashboard and files under it. target-folder must not
+    be dashboard or dashboard/benchmark_dashboard, or a path under that
+    directory. A missing folder or target-folder does not raise. Other inputs
+    on that step are not read.
+
+    Otherwise the step is read as peaceiris. force_orphan must stay unset or a
+    known false. Known false is YAML false, or a string that is false after
+    surrounding space is removed and the letters are uppercased. publish_dir
+    must stay off the archive directory and files under it. Ancestors such as
+    docs and docs/archive are not that check. destination_dir must not be
+    dashboard or dashboard/benchmark_dashboard, or a path under that directory.
+    A quoted literal expression is reduced before those path checks. Another
+    destination stays allowed while keep_files is true. keep_files must stay
+    true.
 
     working-directory is read from the step, then the job defaults, then the
     workflow defaults. A github.workspace expression and the GITHUB_WORKSPACE
-    prefixes are stripped before that directory is used. cd, pushd, and popd in
-    the same step update it. cp and mv contribute a --target-directory= value.
-    echo of one literal path is reduced.
+    prefixes are stripped before that directory is used. cd, pushd, and popd
+    use the second word. An option in that word is not a directory. A directory
+    change before &&, a newline, or ; applies to later commands in the step. A
+    directory change before |, ||, or a single & does not. The copy command is
+    cp, mv, or rsync, matched by basename. A backslash in that word is a
+    separator. A leading command word is skipped, and so is a leading
+    NAME=value. An assignment-only command stores a value with no
+    $ or backtick when the separator keeps shell state, and a later copy word
+    that is $name or ${name} uses it. cp and mv contribute a
+    --target-directory= or --target= value. echo, or echo -n, of one literal
+    path is reduced. A trailing /* is removed. The check reads one step at a
+    time.
 
     Untested classes: a copy split across multiple steps; a copy performed by a
-    uses: action; a command word other than cp, mv, or rsync; brace expansion;
-    variable command words; escape splitting; actions/deploy-pages;
-    actions/upload-pages-artifact; a destination_dir or publish_dir expression
-    that is not a quoted literal; a command substitution other than echo of one
-    literal path; a pushd or popd directory that is not the second word; a
-    working-directory expression other than github.workspace;
-    github-pages-deploy-action inputs in the documentation workflow.
+    uses: action; a command word other than cp, mv, or rsync; the word command
+    followed by an option; brace expansion; variable command words; escape
+    splitting; a |, &, or ; inside a command substitution;
+    actions/deploy-pages; actions/upload-pages-artifact; a destination_dir,
+    publish_dir, folder, or target-folder expression that is not a quoted
+    literal; a command substitution other than echo or echo -n of one literal
+    path; a cd whose directory is not the second word, including cd -- and
+    cd -P; a pushd or popd directory that is not the second word; a glued -t
+    destination; a copy word containing *, ?, or [ other than a trailing /*;
+    a working-directory expression other than github.workspace; any input other
+    than folder and target-folder on a documentation step whose uses contains
+    github-pages-deploy-action; a folder or target-folder that begins with a
+    backslash.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
@@ -2109,6 +2291,113 @@ class WorkflowPolicyTest(unittest.TestCase):
                 return "docs/benchmark_data"
 
         self.assertFalse(_same_repo_path(_SamePath(), "docs/benchmark_data"))
+        self.assertFalse(_same_repo_path("/docs/benchmark_data", "docs/benchmark_data"))
+        self.assertFalse(_same_repo_path(" /docs/benchmark_data", "docs/benchmark_data"))
+        self.assertTrue(_same_repo_path(" docs/benchmark_data", "docs/benchmark_data"))
+        self.assertTrue(_same_repo_path("docs/benchmark_data ", "docs/benchmark_data"))
+        self.assertEqual(_normalize_cwd("   "), "")
+        self.assertEqual(_normalize_cwd(1), "")
+        self.assertEqual(_normalize_cwd(None), "")
+        self.assertFalse(_explicit_false(None))
+        self.assertTrue(_explicit_false(False))
+        self.assertTrue(_explicit_false("false"))
+        self.assertTrue(_explicit_false(" FALSE "))
+        self.assertFalse(_explicit_false(True))
+        self.assertFalse(_explicit_false("true"))
+        self.assertFalse(_explicit_false("${{ false }}"))
+        self.assertFalse(_explicit_false(0))
+        self.assertTrue(_jamesives_branch_ok(None))
+        self.assertTrue(_jamesives_branch_ok(""))
+        self.assertTrue(_jamesives_branch_ok("  "))
+        self.assertTrue(_jamesives_branch_ok("gh-pages"))
+        self.assertFalse(_jamesives_branch_ok("main"))
+        self.assertFalse(_jamesives_branch_ok("GH-pages"))
+        self.assertFalse(_jamesives_branch_ok(False))
+        self.assertTrue(_repository_name_unset(None))
+        self.assertTrue(_repository_name_unset(""))
+        self.assertFalse(_repository_name_unset("other/repo"))
+        self.assertFalse(_repository_name_unset(" "))
+        piped_cd = _run_paths(
+            "cd docs | cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("archive/benchmark_dashboard", piped_cd)
+        self.assertIn("book/dashboard/benchmark_dashboard", piped_cd)
+        self.assertNotIn("docs/archive/benchmark_dashboard", piped_cd)
+        background_cd = _run_paths(
+            "cd docs & cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("archive/benchmark_dashboard", background_cd)
+        self.assertNotIn("docs/archive/benchmark_dashboard", background_cd)
+        self.assertEqual(_split_shell_commands("  cp a b  "), [("cp a b", True)])
+        self.assertEqual(
+            _split_shell_commands("cp a b;   ; cp c d"),
+            [("cp a b", True), ("cp c d", True)],
+        )
+        self.assertEqual(_run_paths("command", ""), [])
+        self.assertEqual(_run_paths("true &", ""), [])
+        joined = _run_paths(
+            "cd docs|& cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("archive/benchmark_dashboard", joined)
+        self.assertNotIn("docs/archive/benchmark_dashboard", joined)
+        self.assertEqual(_expand_assigned_word("${dest", {"des": "BOOK"}), "${dest")
+        self.assertEqual(_expand_assigned_word("xxdest}", {"dest": "BOOK"}), "xxdest}")
+        self.assertEqual(_expand_assigned_word("xdest", {"dest": "BOOK"}), "xdest")
+        self.assertEqual(
+            _expand_assigned_word("$dest-x", {"dest-x": "BOOK"}),
+            "$dest-x",
+        )
+        self.assertEqual(_expand_assigned_word("dest", {"dest": "BOOK"}), "dest")
+        assigned = _run_paths(
+            "dest=docs/book/dashboard/benchmark_dashboard; "
+            "cp docs/archive/benchmark_dashboard ${dest}",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", assigned)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", assigned)
+        unassigned = _run_paths(
+            "dest=$other; cp docs/archive/benchmark_dashboard $dest",
+            "",
+        )
+        self.assertIn("$dest", unassigned)
+        self.assertNotIn("docs/book/dashboard/benchmark_dashboard", unassigned)
+        backtick_assign = _run_paths(
+            "dest=`other`; cp docs/archive/benchmark_dashboard $dest",
+            "",
+        )
+        self.assertIn("$dest", backtick_assign)
+        self.assertIn(
+            "docs/archive/benchmark_dashboard",
+            _run_paths(
+                "C:\\bin\\cp docs/archive/benchmark_dashboard "
+                "docs/book/dashboard/benchmark_dashboard",
+                "",
+            ),
+        )
+        background_assign = _run_paths(
+            "dest=docs/book/dashboard/benchmark_dashboard & "
+            "cp docs/archive/benchmark_dashboard $dest",
+            "",
+        )
+        self.assertIn("$dest", background_assign)
+        self.assertNotIn("docs/book/dashboard/benchmark_dashboard", background_assign)
+        self.assertEqual(
+            _unwrap_echo_literal("$(echo -n docs/archive/benchmark_dashboard/index.html)"),
+            "docs/archive/benchmark_dashboard/index.html",
+        )
+        self.assertEqual(
+            _unwrap_echo_literal("$(echo Zdocs/archive/benchmark_dashboardZ)"),
+            "Zdocs/archive/benchmark_dashboardZ",
+        )
+        self.assertIsNone(_quoted_literal("ZdashboardZ"))
+        self.assertIsNone(_pages_input_path("${{ ZdashboardZ }}"))
+        self.assertEqual(
+            _pages_input_path("docs/archive/benchmark_dashboard"),
+            "docs/archive/benchmark_dashboard",
+        )
 
     def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
         alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
@@ -2140,6 +2429,31 @@ class WorkflowPolicyTest(unittest.TestCase):
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "benchmark_alert.yml")
             _call_checker(assert_benchmark_alert_gh_pages_publish, fixture, path=directory)
+        allowed = _call_checker(
+            _read_policy_fixture, "benchmark_alert_jamesives_allowed", "benchmark_alert.yml"
+        )
+        for force_value in ("false", "'false'", "' FALSE '"):
+            explicit = allowed.replace("force: false\n", f"force: {force_value}\n", 1)
+            self.assertIn("force:", explicit)
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish, explicit, path="jamesives-force"
+            )
+        folded_force = allowed.replace("force: false\n", "Force: false\n", 1)
+        _call_checker(
+            assert_benchmark_alert_gh_pages_publish, folded_force, path="jamesives-force-case"
+        )
+        for addition in (
+            "          single-commit: false\n",
+            "          single-commit: ' false '\n",
+            "          branch: gh-pages\n",
+            "          branch: ''\n",
+            "          repository-name: ''\n",
+        ):
+            varied = allowed.replace("force: false\n", "force: false\n" + addition, 1)
+            self.assertIn(addition.strip(), varied)
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish, varied, path="jamesives-allowed-variant"
+            )
         snippets = {
             "benchmark_alert_bad_pages_publish": "publish_dir",
             "benchmark_alert_second_publisher": "publish_dir",
@@ -2164,6 +2478,12 @@ class WorkflowPolicyTest(unittest.TestCase):
             "benchmark_alert_publish_branch_main": "publish_branch",
             "benchmark_alert_external_repository": "external_repository",
             "benchmark_alert_spaced_publish_dir": "publish_dir",
+            "benchmark_alert_jamesives_single_commit": "single-commit",
+            "benchmark_alert_jamesives_branch_main": "branch",
+            "benchmark_alert_jamesives_repository_name": "repository-name",
+            "benchmark_alert_jamesives_force_true": "force",
+            "benchmark_alert_jamesives_force_omitted": "force",
+            "benchmark_alert_jamesives_leading_slash": "folder",
         }
         for directory, snippet in snippets.items():
             fixture = _call_checker(_read_policy_fixture, directory, "benchmark_alert.yml")
@@ -2204,11 +2524,39 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_pages_publish_near_miss",
             "docs_cwd_not_workspace",
             "docs_copy_near_miss",
+            "docs_other_quote_delimiter",
+            "docs_jamesives_book",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
                 assert_docs_no_archive_benchmark_dashboard_copy, fixture, path=directory
             )
+        omitted_folder = """
+name: Documentation
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          target-folder: api
+"""
+        _call_checker(
+            assert_docs_no_archive_benchmark_dashboard_copy,
+            omitted_folder,
+            path="jamesives-omitted-folder",
+        )
+        omitted_target = omitted_folder.replace(
+            "          target-folder: api\n",
+            "          folder: docs/book\n",
+        )
+        _call_checker(
+            assert_docs_no_archive_benchmark_dashboard_copy,
+            omitted_target,
+            path="jamesives-omitted-target",
+        )
         copy_dirs = (
             "docs_bad_benchmark_dashboard_copy",
             "docs_parent_directory_copy",
@@ -2253,6 +2601,15 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_pushd_popd_copy",
             "docs_pushd_option",
             "docs_mv_target_directory",
+            "docs_pipe_copy",
+            "docs_or_copy",
+            "docs_background_copy",
+            "docs_bin_cp",
+            "docs_command_cp",
+            "docs_env_cp",
+            "docs_echo_n_copy",
+            "docs_target_short_copy",
+            "docs_assigned_dest_copy",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
@@ -2274,6 +2631,8 @@ class WorkflowPolicyTest(unittest.TestCase):
             ("docs_live_dashboard_child", "destination_dir"),
             ("docs_destination_expression", "destination_dir"),
             ("docs_destination_concat", "destination_dir"),
+            ("docs_jamesives_archive_folder", "folder"),
+            ("docs_jamesives_dashboard_target", "target-folder"),
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             with self.assertRaises(AssertionError) as caught:
