@@ -68,10 +68,12 @@ fn test_ollama_batch_execution() {
     );
 }
 
-/// Bound on one read while draining a request or waiting for the client to close.
+/// Cap on each blocking `read` while draining a request or the post-close socket.
 ///
-/// This is not a pause inserted to win a race. A client that never sends the
-/// body, or never closes, must not leave the mock thread blocked.
+/// This is not a pause inserted to win a race. A `read` that receives nothing
+/// returns after 2s, which unblocks that call. Bytes that keep arriving inside
+/// the cap keep the read loop running; there is no separate deadline for the
+/// whole loop.
 const MOCK_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 fn read_once(sock: &mut std::net::TcpStream, buf: &mut [u8]) -> std::io::Result<usize> {
@@ -100,7 +102,14 @@ fn field_value<'a>(line: &'a [u8], name: &[u8]) -> Option<&'a [u8]> {
 
 fn content_length(headers: &[u8]) -> Option<usize> {
     let mut start = 0;
+    let mut steps = 0usize;
     while start < headers.len() {
+        // A normal pass advances `start` every iteration. Cap the steps at the
+        // byte length so a loop that stops advancing returns instead of spinning.
+        steps += 1;
+        if steps > headers.len() {
+            return None;
+        }
         let rest = &headers[start..];
         let line_len = rest
             .windows(2)
@@ -136,13 +145,14 @@ fn discard(sock: &mut std::net::TcpStream, mut remaining: usize) {
     }
 }
 
-/// Read the request headers and the `Content-Length` body.
+/// Read the request headers and, when `Content-Length` is present, that many body bytes.
 ///
-/// Closing, or answering, while the POST body is still in the receive buffer
-/// makes Windows abort the connection (`WSAECONNRESET`) instead of delivering
-/// the response. Every mock drains that body here before it writes a status
-/// line. reqwest's `.json()` sets `Content-Length`, so a request without that
-/// field has no body to drain.
+/// Closing while unread request bytes are still in the receive buffer makes
+/// Windows abort the connection (`WSAECONNRESET`) instead of delivering the
+/// response. Mocks call this before writing a status line. POST bodies from
+/// this harness are sent with reqwest `.json()`, which sets `Content-Length`.
+/// Health-check modes send GET and no body. A request with no `Content-Length`
+/// returns here; this function does not keep reading to find a body.
 fn read_http_request(sock: &mut std::net::TcpStream) {
     let _ = sock.set_read_timeout(Some(MOCK_READ_TIMEOUT));
     let mut buf = Vec::new();
@@ -168,14 +178,14 @@ fn read_http_request(sock: &mut std::net::TcpStream) {
     }
 }
 
-/// Half-close a finished response and keep the socket until the client closes.
+/// Half-close a finished response, then read until the client closes or one read stays silent.
 ///
 /// `shutdown(Write)` sends FIN after the bytes already written. A background
-/// read then drains whatever the client still sends, so the socket is not
-/// dropped with unread received bytes (Windows turns that drop into
-/// `WSAECONNRESET`). The read runs off the accept loop: a 404 has to be able
-/// to accept `/api/generate` while the first client is still closing.
-/// `MOCK_READ_TIMEOUT` only stops a client that never closes.
+/// read then takes bytes the client still sends, so the socket is not dropped
+/// at the end of the response while those bytes are unread. Windows turns a
+/// drop with unread received data into `WSAECONNRESET`. The read runs off the
+/// accept loop: a 404 has to be able to accept `/api/generate` while the first
+/// client is still closing. Each of those reads uses `MOCK_READ_TIMEOUT`.
 fn finish_response(mut sock: std::net::TcpStream) {
     let _ = sock.shutdown(std::net::Shutdown::Write);
     std::thread::spawn(move || {
@@ -192,12 +202,21 @@ fn finish_response(mut sock: std::net::TcpStream) {
 
 #[test]
 fn content_length_reads_the_decimal_field() {
+    // A parser loop that never advances must fail this test, not hang the suite.
+    let finished = |headers: &'static [u8]| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(content_length(headers));
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(1))
+            .expect("content_length did not return within 1s")
+    };
     let headers = b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 15\r\n\r\n";
-    assert_eq!(content_length(headers), Some(15));
+    assert_eq!(finished(headers), Some(15));
     let lower = b"POST /api/chat HTTP/1.1\r\ncontent-length: 0\r\n\r\n";
-    assert_eq!(content_length(lower), Some(0));
+    assert_eq!(finished(lower), Some(0));
     let absent = b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
-    assert_eq!(content_length(absent), None);
+    assert_eq!(finished(absent), None);
 }
 
 #[test]
@@ -225,6 +244,302 @@ fn read_http_request_drains_the_post_body() {
     client
         .shutdown(std::net::Shutdown::Write)
         .expect("shutdown");
+    server.join().expect("server");
+}
+
+#[test]
+fn read_http_request_without_content_length_returns_before_the_read_cap() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        let wait_started = std::time::Instant::now();
+        loop {
+            let mut peek = [0u8; 1024];
+            let n = match sock.peek(&mut peek) {
+                Ok(n) => n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => panic!("peek headers: {err}"),
+            };
+            if header_block_end(&peek[..n]).is_some() {
+                break;
+            }
+            if wait_started.elapsed() > MOCK_READ_TIMEOUT {
+                panic!("header block was not buffered");
+            }
+        }
+        let started = std::time::Instant::now();
+        read_http_request(&mut sock);
+        ready_tx.send(started.elapsed()).expect("send elapsed");
+        // Hold the socket so a drain of a missing length cannot treat EOF as the end.
+        let _ = release_rx.recv();
+    });
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    use std::io::Write;
+    client
+        .write_all(
+            b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+        )
+        .expect("headers");
+    client.flush().expect("flush");
+    let elapsed = ready_rx
+        .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1))
+        .expect("read_http_request returned");
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT / 2,
+        "missing Content-Length took {elapsed:?}; per-read cap is {MOCK_READ_TIMEOUT:?}"
+    );
+    release_tx.send(()).expect("release");
+    server.join().expect("server");
+}
+
+#[test]
+fn read_http_request_returns_when_the_declared_body_stalls() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        let wait_started = std::time::Instant::now();
+        loop {
+            let mut peek = [0u8; 1024];
+            let n = match sock.peek(&mut peek) {
+                Ok(n) => n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => panic!("peek headers: {err}"),
+            };
+            if header_block_end(&peek[..n]).is_some() {
+                break;
+            }
+            if wait_started.elapsed() > MOCK_READ_TIMEOUT {
+                panic!("header block was not buffered");
+            }
+        }
+        let started = std::time::Instant::now();
+        read_http_request(&mut sock);
+        ready_tx.send(started.elapsed()).expect("send elapsed");
+        let _ = release_rx.recv();
+    });
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    use std::io::Write;
+    client
+        .write_all(b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 32\r\n\r\n")
+        .expect("headers");
+    client.flush().expect("flush");
+    let elapsed = ready_rx
+        .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(2))
+        .expect("read_http_request returned");
+    assert!(
+        elapsed + std::time::Duration::from_millis(250) >= MOCK_READ_TIMEOUT,
+        "stalled body returned in {elapsed:?}, under the {MOCK_READ_TIMEOUT:?} read cap"
+    );
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT + std::time::Duration::from_secs(2),
+        "stalled body took {elapsed:?}; per-read cap is {MOCK_READ_TIMEOUT:?}"
+    );
+    release_tx.send(()).expect("release");
+    server.join().expect("server");
+}
+
+#[test]
+fn read_http_request_stops_at_the_header_cap() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        let wait_started = std::time::Instant::now();
+        loop {
+            let mut peek = [0u8; 8192];
+            let n = match sock.peek(&mut peek) {
+                Ok(n) => n,
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) => panic!("peek headers: {err}"),
+            };
+            if n >= 8192 {
+                break;
+            }
+            if wait_started.elapsed() > MOCK_READ_TIMEOUT {
+                panic!("header bytes were not buffered: {n}");
+            }
+        }
+        let started = std::time::Instant::now();
+        read_http_request(&mut sock);
+        let elapsed = started.elapsed();
+        sock.set_nonblocking(true).expect("nonblocking");
+        let mut one = [0u8; 1];
+        let still_buffered = !matches!(
+            read_once(&mut sock, &mut one),
+            Err(err)
+                if err.kind() == std::io::ErrorKind::WouldBlock
+                    || err.kind() == std::io::ErrorKind::TimedOut
+        );
+        ready_tx.send((elapsed, still_buffered)).expect("send");
+        let _ = release_rx.recv();
+    });
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    use std::io::Write;
+    client.write_all(&vec![b'h'; 8192]).expect("headers");
+    client.flush().expect("flush");
+    let (elapsed, still_buffered) = ready_rx
+        .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1))
+        .expect("read_http_request returned");
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT / 2,
+        "header cap took {elapsed:?}; per-read cap is {MOCK_READ_TIMEOUT:?}"
+    );
+    assert!(
+        !still_buffered,
+        "bytes were still in the socket after the 8192 cap"
+    );
+    release_tx.send(()).expect("release");
+    server.join().expect("server");
+}
+
+fn request_with_body(body_len: usize, sent: usize) -> Vec<u8> {
+    let mut bytes =
+        format!("POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {body_len}\r\n\r\n")
+            .into_bytes();
+    bytes.extend(std::iter::repeat_n(b'x', sent));
+    bytes
+}
+
+/// Time `read_http_request` after `bytes` are written. The connection stays open.
+/// The bool is true when a further socket read would still return a byte.
+fn time_open_request(bytes: &[u8]) -> (std::time::Duration, bool) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (go_tx, go_rx) = std::sync::mpsc::channel::<()>();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        go_rx.recv().expect("request is written");
+        let started = std::time::Instant::now();
+        read_http_request(&mut sock);
+        let elapsed = started.elapsed();
+        sock.set_nonblocking(true).expect("nonblocking");
+        let mut one = [0u8; 1];
+        let still_buffered = !matches!(
+            read_once(&mut sock, &mut one),
+            Err(err)
+                if err.kind() == std::io::ErrorKind::WouldBlock
+                    || err.kind() == std::io::ErrorKind::TimedOut
+        );
+        done_tx.send((elapsed, still_buffered)).expect("send");
+        let _ = release_rx.recv();
+    });
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    use std::io::Write;
+    client.write_all(bytes).expect("request");
+    client.flush().expect("flush");
+    go_tx.send(()).expect("go");
+    let result = done_rx
+        .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(2))
+        .expect("read_http_request returned");
+    release_tx.send(()).expect("release");
+    server.join().expect("server");
+    drop(client);
+    result
+}
+
+#[test]
+fn read_http_request_stops_at_content_length_while_the_socket_stays_open() {
+    let (elapsed, still_buffered) = time_open_request(&request_with_body(3000, 3000));
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT / 2,
+        "exact body took {elapsed:?}; per-read cap is {MOCK_READ_TIMEOUT:?}"
+    );
+    assert!(
+        !still_buffered,
+        "bytes were still in the socket after an exact Content-Length"
+    );
+
+    let (elapsed, still_buffered) = time_open_request(&request_with_body(4, 4000));
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT / 2,
+        "bytes already past Content-Length took {elapsed:?}"
+    );
+    assert!(
+        still_buffered,
+        "a length check consumed bytes that were not part of Content-Length"
+    );
+}
+
+#[test]
+fn finish_response_half_close_delivers_with_trailing_bytes() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (drained_tx, drained_rx) = std::sync::mpsc::channel::<()>();
+    let (extra_tx, extra_rx) = std::sync::mpsc::channel::<()>();
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let server = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        read_http_request(&mut sock);
+        drained_tx.send(()).expect("drained");
+        extra_rx.recv().expect("extra");
+        let _ = sock.set_read_timeout(Some(MOCK_READ_TIMEOUT));
+        let mut peek = [0u8; 1];
+        let n = sock.peek(&mut peek).expect("trailing byte is buffered");
+        assert!(n >= 1, "trailing byte was not buffered");
+        use std::io::Write;
+        let response = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 4\r\nConnection: close\r\n\r\nnope";
+        sock.write_all(response).expect("write response");
+        sock.flush().expect("flush response");
+        finish_response(sock);
+        done_tx.send(()).expect("done");
+    });
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    client.set_nodelay(true).expect("nodelay");
+    let body = b"ping";
+    let header = format!(
+        "POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n",
+        body.len()
+    );
+    use std::io::{Read, Write};
+    client.write_all(header.as_bytes()).expect("headers");
+    client.write_all(body).expect("body");
+    client.flush().expect("flush body");
+    drained_rx.recv().expect("server drained the declared body");
+    client.write_all(b"trailing").expect("trailing");
+    client.flush().expect("flush trailing");
+    extra_tx.send(()).expect("extra sent");
+    done_rx
+        .recv_timeout(MOCK_READ_TIMEOUT)
+        .expect("server finished the response");
+    client
+        .set_read_timeout(Some(MOCK_READ_TIMEOUT / 2))
+        .expect("client timeout");
+    let started = std::time::Instant::now();
+    let mut got = Vec::new();
+    let mut tmp = [0u8; 256];
+    loop {
+        match client.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => got.extend_from_slice(&tmp[..n]),
+            Err(err) => panic!(
+                "response read ended with {err} after {} bytes: {}",
+                got.len(),
+                String::from_utf8_lossy(&got)
+            ),
+        }
+    }
+    assert!(
+        started.elapsed() < MOCK_READ_TIMEOUT / 2,
+        "clean EOF took {:?}",
+        started.elapsed()
+    );
+    let text = String::from_utf8(got).expect("response utf-8");
+    assert!(text.contains("500") && text.contains("nope"), "{text}");
+    // `shutdown(Write)` already delivered FIN. A later write succeeds only while
+    // the background read still holds the socket.
+    client
+        .write_all(b"MORE")
+        .expect("write while the mock still holds the socket");
     server.join().expect("server");
 }
 
