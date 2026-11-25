@@ -129,6 +129,9 @@
     "backtick_substitution.yml: jobs.check.steps[0]: literal sccache",
     "backtick_substitution.yml: jobs.check.steps[1]: literal sccache"
   ],
+  "fail/bare_then_path.yml": [
+    "bare_then_path.yml: jobs.check.steps[0]: script was not loaded: tools/hook.sh"
+  ],
   "fail/bash_c_install.yml": [
     "bash_c_install.yml: jobs.check.steps[0]: literal sccache"
   ],
@@ -356,6 +359,14 @@
     "dir_change_path.yml: jobs.check.steps[3]: script was not loaded: ./install.sh",
     "dir_change_path.yml: jobs.check.steps[4]: script was not loaded: tools/install.sh",
     "dir_change_path.yml: jobs.check.steps[5]: script was not loaded: ./install.sh"
+  ],
+  "fail/dir_change_push_location.yml": [
+    "dir_change_push_location.yml: jobs.check.steps[0]: script was not loaded: ./install.ps1",
+    "dir_change_push_location.yml: jobs.check.steps[1]: script was not loaded: ./install.ps1"
+  ],
+  "fail/dir_change_set_location.yml": [
+    "dir_change_set_location.yml: jobs.check.steps[0]: script was not loaded: ./install.ps1",
+    "dir_change_set_location.yml: jobs.check.steps[1]: script was not loaded: ./install.ps1"
   ],
   "fail/dispatch_input.yml": [
     "dispatch_input.yml: on.workflow_dispatch.inputs.cmd.default: literal sccache"

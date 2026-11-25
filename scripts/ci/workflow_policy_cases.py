@@ -111,7 +111,46 @@ _NODE_JS = re.compile(r"(?i)(?<![A-Za-z0-9_])node(?:js)?(?![A-Za-z0-9_])")
 _NODE_JS_ARG = re.compile(
     r"(?i)(?:--[A-Za-z0-9][A-Za-z0-9-]*=)?(?P<path>[^\s\"'`;&|<>()$]*\.js)(?![A-Za-z0-9_])"
 )
-_DIR_CHANGE = re.compile(r"(?i)(?<![A-Za-z0-9_])(?:cd|pushd)(?![A-Za-z0-9_])")
+_DIR_CHANGE_WORDS = ("cd", "pushd", "set-location", "push-location")
+_DIR_CHANGE = re.compile(
+    "(?i)(?<![A-Za-z0-9_])(?:" + "|".join(_DIR_CHANGE_WORDS) + ")(?![A-Za-z0-9_])"
+)
+
+
+class _Seen(set[Path]):
+    """Paths already opened. dir_changed holds those with a directory-change word."""
+
+    def __new__(cls) -> _Seen:
+        seen = set.__new__(cls)
+        seen.dir_changed = set()
+        return seen
+
+
+def _note_dir_change(seen: _Seen, candidate: Path, body: str) -> bool:
+    """Remember that candidate's text has a directory-change word."""
+    if _DIR_CHANGE.search(body) is None:
+        return False
+    seen.dir_changed.add(candidate)
+    return True
+
+
+def _bare_entry_outside(root: Path, name: str) -> bool:
+    """True when one bare directory entry resolves outside root."""
+    folded = name.casefold()
+    children = list(root.iterdir())
+    exact = [child for child in children if child.name == name]
+    if exact:
+        chosen = exact[0]
+    else:
+        folded_matches = [child for child in children if child.name.casefold() == folded]
+        if len(folded_matches) != 1:
+            return False
+        chosen = folded_matches[0]
+    try:
+        chosen.resolve().relative_to(root.resolve())
+    except ValueError:
+        return True
+    return False
 
 
 def _literal_left(text: object) -> bool:
@@ -192,7 +231,7 @@ def _take_casefold(root: Path, rel: str) -> Path | None:
     raise TypeError(type(found).__name__)
 
 
-def _script_tokens(text: object, bare: bool, root: Path | None = None) -> list[str]:
+def _script_tokens(text: object) -> list[str]:
     if not isinstance(text, str):
         return []
     found: list[str] = []
@@ -201,23 +240,8 @@ def _script_tokens(text: object, bare: bool, root: Path | None = None) -> list[s
             continue
         lowered = raw.replace("\\", "/").casefold()
         if lowered.endswith(_SCRIPT_EXTS):
-            token = raw.replace("\\", "/")
-            if bare or "/" in lowered or lowered.startswith("."):
-                found.append(token)
-            elif root is not None:
-                candidate = _take_casefold(root, token)
-                body = _read_text(candidate)
-                if isinstance(body, str):
-                    found.append(token)
-    for token in _node_js_paths(text):
-        lowered = token.casefold()
-        if bare or "/" in lowered or lowered.startswith("."):
-            found.append(token)
-        elif root is not None:
-            candidate = _take_casefold(root, token)
-            body = _read_text(candidate)
-            if isinstance(body, str):
-                found.append(token)
+            found.append(raw.replace("\\", "/"))
+    found.extend(_node_js_paths(text))
     return found
 
 
@@ -528,6 +552,7 @@ def _open_script(
         rel = str(candidate.relative_to(root.resolve())).replace("\\", "/")
         if _literal_left(body):
             violations.append(f"{rel}: script: literal sccache")
+        _note_dir_change(seen, candidate, body)
         parent = candidate.parent
         try:
             opened_dir = str(parent.relative_to(root.resolve())).replace("\\", "/")
@@ -593,8 +618,7 @@ def _follow_scripts(
     while pending:
         current, cur_path, cur_step = pending.pop()
         dir_changed = _DIR_CHANGE.search(current) is not None
-        include_bare = workdir != "" or unresolved or dir_changed
-        for token in _script_tokens(current, include_bare, root):
+        for token in _script_tokens(current):
             if steps_left <= 0:
                 _note(violations, path, where, "script follow stopped before every script was read")
                 return
@@ -607,6 +631,8 @@ def _follow_scripts(
             if workdir != "":
                 load_as = posixpath.normpath(posixpath.join(workdir, token))
             if root is None:
+                if bare_name and workdir == "":
+                    continue
                 _note(violations, cur_path, cur_step, f"script was not loaded: {token}")
                 continue
             if bare_name:
@@ -617,14 +643,19 @@ def _follow_scripts(
             if isinstance(body, str):
                 if isinstance(candidate, Path):
                     if candidate in seen:
+                        if candidate in seen.dir_changed:
+                            dir_changed = True
                         continue
                     seen.add(candidate)
                     rel = str(candidate.relative_to(root.resolve())).replace("\\", "/")
                     if _literal_left(body):
                         violations.append(f"{rel}: script: literal sccache")
-                    if _DIR_CHANGE.search(body):
+                    if _note_dir_change(seen, candidate, body) is True:
                         dir_changed = True
                     pending.append((body, rel, "script"))
+                    continue
+            if bare_name and workdir == "":
+                if _bare_entry_outside(root, load_as) is not True:
                     continue
             _note(violations, cur_path, cur_step, f"script was not loaded: {load_as}")
 
@@ -978,14 +1009,16 @@ def sccache_pin_violations(
     case-insensitively when the directory it is loaded from has exactly one
     file whose name casefolds to the token and the exact name is absent. An
     expression working-directory is not a directory prefix, and a script
-    token on that step is reported as a script that was not loaded. A cd or
-    pushd command word in a run script or a followed script reports every
-    script token in that text as a script that was not loaded. A cd or pushd
-    command word in a followed script reports every later script token in the
-    caller as a script that was not loaded. The directory named by the command
-    is not read. A missing invoked file is reported for a path, a dot prefix,
-    or a bare name under a working-directory. A bare name with no
-    working-directory and no file is left unread. The pinned
+    token on that step is reported as a script that was not loaded. A cd,
+    pushd, Set-Location, or Push-Location command word in a run script or a
+    followed script reports every script token in that text as a script that
+    was not loaded. A cd, pushd, Set-Location, or Push-Location command word
+    in a followed script reports every later script token in the caller as a
+    script that was not loaded. The directory named by the command is not
+    read. A missing invoked file is reported for a path, a dot prefix, or a
+    bare name under a working-directory. A bare name with no working-directory
+    and no file is left unread. A bare directory entry that resolves outside
+    the root is reported as a script that was not loaded. The pinned
     mozilla-actions/sccache-action sites and the reviewed benign env names are
     the allowlist. One exact version key must be the pin. Untested classes:
     computed strings, downloaded scripts, base64, ANSI-C quotes,
@@ -994,9 +1027,10 @@ def sccache_pin_violations(
     glob-shaped package names, module invocations, extensionless scripts,
     make, just, and cargo xtask recipes, shell startup files named by an env
     value, a node path after the first quote or $, a Dockerfile WORKDIR, a
-    caller with value that names a script, Set-Location and Push-Location,
-    and a directory change that appears only in a script reached through
-    another followed script.
+    caller with value that names a script, a directory change by a command
+    other than cd, pushd, Set-Location, or Push-Location, including the
+    PowerShell alias sl and a Python os.chdir call, and a directory change
+    that appears only in a script reached through another followed script.
     """
     result: list[str] = []
     try:
@@ -1026,7 +1060,7 @@ def _sccache_pin_violations(
         return [f"{path}: script follow stopped before every script was read"]
     violations: list[str] = []
     if seen is None:
-        seen = set()
+        seen = _Seen()
     if root is not None:
         marker = (root / path).resolve()
         if marker in seen:
@@ -1067,7 +1101,7 @@ def _policy_documents(root: Path) -> list[tuple[str, str]]:
 
 def _scan_policy(root: Path, sites: list[str] | None) -> list[str]:
     violations: list[str] = []
-    seen: set[Path] = set()
+    seen: set[Path] = _Seen()
     documents = _policy_documents(root)
     if isinstance(documents, list):
         for item in documents:
@@ -1894,6 +1928,225 @@ def sccache_mutation_checks() -> None:
         )
         if source_cd != ["sourcecd.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"]:
             raise AssertionError(source_cd)
+
+        def _call_is(label: str, fn: object, expected: object) -> None:
+            try:
+                got = fn()  # type: ignore[operator]
+            except Exception as exc:
+                raise AssertionError((label, exc.__class__.__name__))
+            if got is not expected:
+                raise AssertionError((label, got))
+
+        note_seen = _Seen()
+        note_path = (tools / "setup.sh").resolve()
+        _call_is(
+            "dir-change not at start",
+            lambda: _note_dir_change(note_seen, note_path, "echo ok\ncd tools\n"),
+            True,
+        )
+        _call_is(
+            "no dir-change",
+            lambda: _note_dir_change(note_seen, note_path, "echo ok\n"),
+            False,
+        )
+        _call_is(
+            "set-location not at start",
+            lambda: _note_dir_change(note_seen, note_path, "echo ok\nSet-Location tools\n"),
+            True,
+        )
+        _call_is(
+            "push-location not at start",
+            lambda: _note_dir_change(note_seen, note_path, "echo ok\nPush-Location tools\n"),
+            True,
+        )
+        _call_is(
+            "set-location glued",
+            lambda: _note_dir_change(note_seen, note_path, "Set-LocationX\n"),
+            False,
+        )
+        _call_is(
+            "set-location prefixed",
+            lambda: _note_dir_change(note_seen, note_path, "myset-location\n"),
+            False,
+        )
+        (tools / "late.sh").write_text("echo ok\ncd tools\n", encoding="utf-8")
+        late_cd = sccache_pin_violations(
+            "name: late\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash tools/late.sh && bash ./install.sh\n",
+            path="late.yml",
+            root=root,
+        )
+        if late_cd != ["late.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"]:
+            raise AssertionError(late_cd)
+        payload = root / "payload.sh"
+        if payload.exists():
+            payload.unlink()
+        (tools / "payload.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        (tools / "outer.sh").write_text("cd tools\n", encoding="utf-8")
+        bare_after = sccache_pin_violations(
+            "name: bareafter\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash tools/outer.sh && bash payload.sh\n",
+            path="bareafter.yml",
+            root=root,
+        )
+        if bare_after != ["bareafter.yml: jobs.check.steps[0]: script was not loaded: payload.sh"]:
+            raise AssertionError(bare_after)
+        (tools / "late.sh").write_text("echo ok\ncd tools\n", encoding="utf-8")
+        bare_late = sccache_pin_violations(
+            "name: barelate\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash tools/late.sh && bash payload.sh\n",
+            path="barelate.yml",
+            root=root,
+        )
+        if bare_late != ["barelate.yml: jobs.check.steps[0]: script was not loaded: payload.sh"]:
+            raise AssertionError(bare_late)
+        (tools / "setup.sh").write_text("cd tools\n", encoding="utf-8")
+        seen_again = sccache_pin_violations(
+            "name: again\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash tools/setup.sh\n"
+            "      - run: source tools/setup.sh && bash ./install.sh\n",
+            path="again.yml",
+            root=root,
+        )
+        if seen_again != ["again.yml: jobs.check.steps[1]: script was not loaded: ./install.sh"]:
+            raise AssertionError(seen_again)
+        shared = _Seen()
+        opened = sccache_pin_violations(
+            "name: opened\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash tools/setup.sh\n",
+            path="opened.yml",
+            root=root,
+            seen=shared,
+        )
+        if opened != []:
+            raise AssertionError(opened)
+        reopened = sccache_pin_violations(
+            "name: reopened\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: source tools/setup.sh && bash ./install.sh\n",
+            path="reopened.yml",
+            root=root,
+            seen=shared,
+        )
+        if reopened != ["reopened.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"]:
+            raise AssertionError(reopened)
+        (tools / "ok.sh").write_text("echo ok\n", encoding="utf-8")
+        seen_clean = sccache_pin_violations(
+            "name: cleantwice\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash tools/ok.sh\n"
+            "      - run: source tools/ok.sh && bash ./install.sh\n",
+            path="cleantwice.yml",
+            root=root,
+        )
+        if seen_clean != []:
+            raise AssertionError(seen_clean)
+        (tools / "loop.sh").write_text("bash tools/loop.sh\n", encoding="utf-8")
+        loop_hits = sccache_pin_violations(
+            "name: loop\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: bash tools/loop.sh\n",
+            path="loop.yml",
+            root=root,
+        )
+        if loop_hits != []:
+            raise AssertionError(loop_hits)
+        (root / "install.ps1").write_text("echo clean\n", encoding="utf-8")
+        (tools / "install.ps1").write_text("cargo install sccache\n", encoding="utf-8")
+        (tools / "move.ps1").write_text("echo ok\nSet-Location tools\n", encoding="utf-8")
+        set_loc = sccache_pin_violations(
+            "name: setloc\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: pwsh tools/move.ps1; ./install.ps1\n",
+            path="setloc.yml",
+            root=root,
+        )
+        if set_loc != ["setloc.yml: jobs.check.steps[0]: script was not loaded: ./install.ps1"]:
+            raise AssertionError(set_loc)
+        (tools / "push.ps1").write_text("echo ok\nPush-Location tools\n", encoding="utf-8")
+        push_loc = sccache_pin_violations(
+            "name: pushloc\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: pwsh tools/push.ps1; ./install.ps1\n",
+            path="pushloc.yml",
+            root=root,
+        )
+        if push_loc != ["pushloc.yml: jobs.check.steps[0]: script was not loaded: ./install.ps1"]:
+            raise AssertionError(push_loc)
+        with tempfile.TemporaryDirectory(prefix="sccache-outside-") as outside_raw:
+            outside_file = Path(outside_raw) / "secret.sh"
+            outside_file.write_text("cargo install sccache\n", encoding="utf-8")
+            link = root / "link.sh"
+            link.symlink_to(outside_file)
+            link_hits = sccache_pin_violations(
+                "name: linkout\non: workflow_dispatch\njobs:\n  check:\n"
+                "    runs-on: ubuntu-latest\n    steps:\n"
+                "      - run: bash link.sh\n"
+                "      - run: bash ./link.sh\n",
+                path="linkout.yml",
+                root=root,
+            )
+            if link_hits != [
+                "linkout.yml: jobs.check.steps[0]: script was not loaded: link.sh",
+                "linkout.yml: jobs.check.steps[1]: script was not loaded: ./link.sh",
+            ]:
+                raise AssertionError(link_hits)
+            _call_is("bare outside", lambda: _bare_entry_outside(root, "link.sh"), True)
+            outer_name = root / "Outer.sh"
+            outer_name.symlink_to(outside_file)
+            (root / "outer.sh").write_text("echo ok\n", encoding="utf-8")
+            _call_is("exact outside", lambda: _bare_entry_outside(root, "Outer.sh"), True)
+            _call_is("exact inside", lambda: _bare_entry_outside(root, "outer.sh"), False)
+            only = root / "Only.sh"
+            only.symlink_to(outside_file)
+            _call_is("casefold outside", lambda: _bare_entry_outside(root, "only.sh"), True)
+            (root / "inside.sh").write_text("echo ok\n", encoding="utf-8")
+            _call_is("inside file", lambda: _bare_entry_outside(root, "inside.sh"), False)
+            _call_is("missing bare", lambda: _bare_entry_outside(root, "notes.sh"), False)
+            real_entry = root / "real-entry"
+            real_entry.mkdir()
+            (real_entry / "inside.sh").write_text("echo ok\n", encoding="utf-8")
+            alias_entry = root / "alias-entry"
+            alias_entry.symlink_to(real_entry, target_is_directory=True)
+            _call_is(
+                "symlink root",
+                lambda: _bare_entry_outside(alias_entry, "inside.sh"),
+                False,
+            )
+            link.unlink()
+            outer_name.unlink()
+            only.unlink()
+        dock_bit = root / "dockbit"
+        dock_bit.mkdir()
+        (dock_bit / "entry.sh").write_text("echo ok\ncd tools\n", encoding="utf-8")
+        (dock_bit / "action.yml").write_text(
+            "name: d\nruns:\n  using: docker\n  image: entry.sh\n",
+            encoding="utf-8",
+        )
+        dock_seen = _Seen()
+        dock_first = sccache_pin_violations(
+            "name: dockbit\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - uses: ./dockbit\n",
+            path="dockbit.yml",
+            root=root,
+            seen=dock_seen,
+        )
+        if dock_first != []:
+            raise AssertionError(dock_first)
+        dock_second = sccache_pin_violations(
+            "name: dockbit2\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: bash dockbit/entry.sh && bash ./install.sh\n",
+            path="dockbit2.yml",
+            root=root,
+            seen=dock_seen,
+        )
+        if dock_second != ["dockbit2.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"]:
+            raise AssertionError(dock_second)
         dock_cd = root / "dockcd"
         dock_cd.mkdir()
         (dock_cd / "install.sh").write_text("echo ok\n", encoding="utf-8")
@@ -2119,7 +2372,8 @@ def sccache_mutation_checks() -> None:
             )
         finally:
             outside.unlink(missing_ok=True)
-        if outside_link != []:
+            (root / "link.sh").unlink(missing_ok=True)
+        if outside_link != ["outlink.yml: jobs.check.steps[0]: script was not loaded: LINK.sh"]:
             raise AssertionError(outside_link)
         (real / "Only.sh").write_text("cargo install sccache\n", encoding="utf-8")
         alias_case = sccache_pin_violations(
@@ -2154,7 +2408,7 @@ def sccache_mutation_checks() -> None:
         raise AssertionError("non-string")
     if _literal_left("SCCACHE") is not True:
         raise AssertionError("upper literal")
-    if _script_tokens(None, False) != []:
+    if _script_tokens(None) != []:
         raise AssertionError("non-string tokens")
     if _is_local("./custom/tool") is not True:
         raise AssertionError("dot local")
