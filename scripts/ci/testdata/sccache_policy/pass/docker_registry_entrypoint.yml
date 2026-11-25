@@ -1,0 +1,6 @@
+# sites: 0
+name: fixture
+runs:
+  using: docker
+  image: docker://ubuntu:24.04
+  entrypoint: docker://ubuntu:24.04

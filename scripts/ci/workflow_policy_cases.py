@@ -107,6 +107,10 @@ _WRAPPER_ASSIGN = re.compile(
 )
 _LITERAL = re.compile(r"(?i)sccache")
 _SCRIPT_EXTS = (".sh", ".ps1", ".py")
+_NODE_JS = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])node(?:js)?\s+(?:-[^\s\"'`;&|<>()$]+\s+)*"
+    r"([^\s\"'`;&|<>()$]*\.js)(?![A-Za-z0-9_])"
+)
 
 
 def _literal_left(text: object) -> bool:
@@ -133,7 +137,7 @@ def _literal_left(text: object) -> bool:
     return _LITERAL.search(masked) is not None
 
 
-def _script_tokens(text: object, bare: bool) -> list[str]:
+def _script_tokens(text: object, bare: bool, root: Path | None = None) -> list[str]:
     if not isinstance(text, str):
         return []
     found: list[str] = []
@@ -142,8 +146,24 @@ def _script_tokens(text: object, bare: bool) -> list[str]:
             continue
         lowered = raw.replace("\\", "/").casefold()
         if lowered.endswith(_SCRIPT_EXTS):
+            token = raw.replace("\\", "/")
             if bare or "/" in lowered or lowered.startswith("."):
-                found.append(raw.replace("\\", "/"))
+                found.append(token)
+            elif root is not None:
+                candidate = _sccache_inside(root, token)
+                body = _read_text(candidate)
+                if isinstance(body, str):
+                    found.append(token)
+    for match in _NODE_JS.finditer(text):
+        token = match.group(1).replace("\\", "/")
+        lowered = token.casefold()
+        if bare or "/" in lowered or lowered.startswith("."):
+            found.append(token)
+        elif root is not None:
+            candidate = _sccache_inside(root, token)
+            body = _read_text(candidate)
+            if isinstance(body, str):
+                found.append(token)
     return found
 
 
@@ -256,8 +276,6 @@ def _with_problems(step: dict, path: str, where: str) -> list[str]:
         if not isinstance(key, str):
             problems.append(f"{path}: {where}: with key is not a string")
             continue
-        if key == "version":
-            continue
         if _literal_left(key):
             problems.append(f"{path}: {where}: literal sccache")
         _collect_literals(value, path, where, problems)
@@ -279,22 +297,24 @@ def _is_local(text: str) -> bool:
     return text.startswith("../")
 
 
-def _relative_dir(value: object) -> str:
+def _dir_spec(value: object) -> tuple[str, bool]:
+    """Relative directory, and whether an expression left it unresolved."""
     if not isinstance(value, str):
-        return ""
+        return "", False
     text = value.replace("\\", "/")
     if "${{" in text:
-        return ""
-    return text
+        return "", True
+    return text, False
 
 
-def _run_defaults(node: dict) -> tuple[str, object]:
+def _run_defaults(node: dict) -> tuple[str, bool, object]:
     defaults = node.get("defaults")
     if isinstance(defaults, dict):
         run = defaults.get("run")
         if isinstance(run, dict):
-            return _relative_dir(run.get("working-directory")), run.get("shell")
-    return "", None
+            directory, unresolved = _dir_spec(run.get("working-directory"))
+            return directory, unresolved, run.get("shell")
+    return "", False, None
 
 
 def _note_literal(value: object, path: str, where: str, violations: list[str]) -> None:
@@ -308,15 +328,21 @@ def _scan_dispatch_inputs(doc: dict, path: str, violations: list[str]) -> None:
         event = doc.get(True)
     if not isinstance(event, dict):
         return
-    dispatch = event.get("workflow_dispatch")
-    if not isinstance(dispatch, dict):
-        return
-    inputs = dispatch.get("inputs")
-    if not isinstance(inputs, dict):
-        return
-    for name, spec in inputs.items():
-        if isinstance(spec, dict):
-            _note_literal(spec.get("default"), path, f"on.workflow_dispatch.inputs.{name}.default", violations)
+    for event_name in ("workflow_dispatch", "workflow_call"):
+        block = event.get(event_name)
+        if not isinstance(block, dict):
+            continue
+        inputs = block.get("inputs")
+        if not isinstance(inputs, dict):
+            continue
+        for name, spec in inputs.items():
+            if isinstance(spec, dict):
+                _note_literal(
+                    spec.get("default"),
+                    path,
+                    f"on.{event_name}.inputs.{name}.default",
+                    violations,
+                )
 
 
 def _scan_action_inputs(doc: dict, path: str, violations: list[str]) -> None:
@@ -340,19 +366,36 @@ def _scan_matrix(job: dict, path: str, where: str, violations: list[str]) -> Non
     violations.extend(problems)
 
 
-def _scan_container(value: object, path: str, where: str, violations: list[str]) -> None:
+def _scan_container(
+    value: object,
+    path: str,
+    where: str,
+    violations: list[str],
+    root: Path | None,
+    seen: set[Path],
+) -> None:
     if isinstance(value, str):
         _note_literal(value, path, where, violations)
         return
     if not isinstance(value, dict):
         return
     _note_literal(value.get("image"), path, f"{where}.image", violations)
-    _note_literal(value.get("options"), path, f"{where}.options", violations)
+    options = value.get("options")
+    _note_literal(options, path, f"{where}.options", violations)
+    if isinstance(options, str):
+        _follow_scripts(options, path, f"{where}.options", root, seen, violations, "")
     if "env" in value:
         violations.extend(_env_problems(value.get("env"), path, f"{where}.env"))
 
 
-def _scan_services(job: dict, path: str, where: str, violations: list[str]) -> None:
+def _scan_services(
+    job: dict,
+    path: str,
+    where: str,
+    violations: list[str],
+    root: Path | None,
+    seen: set[Path],
+) -> None:
     services = job.get("services")
     if not isinstance(services, dict):
         return
@@ -360,7 +403,7 @@ def _scan_services(job: dict, path: str, where: str, violations: list[str]) -> N
         service_where = f"{where}.services.{name}"
         if isinstance(name, str):
             _note_literal(name, path, service_where, violations)
-        _scan_container(spec, path, service_where, violations)
+        _scan_container(spec, path, service_where, violations, root, seen)
 
 
 def _action_base(path: str) -> str:
@@ -368,6 +411,13 @@ def _action_base(path: str) -> str:
     if name.casefold() == "action.yml" or name.casefold() == "action.yaml":
         return prefix
     return ""
+
+
+def _join_action(base: str, rel: str) -> str:
+    token = rel.replace("\\", "/")
+    if base != "":
+        token = base + "/" + token
+    return posixpath.normpath(token)
 
 
 def _open_script(
@@ -411,6 +461,25 @@ def _follow_node(runs: dict, path: str, root: Path | None, seen: set[Path], viol
         _open_script(token, path, f"runs.{key}", root, seen, violations)
 
 
+def _follow_docker(runs: dict, path: str, root: Path | None, seen: set[Path], violations: list[str]) -> None:
+    using = runs.get("using")
+    if not isinstance(using, str):
+        return
+    if using.casefold() != "docker":
+        return
+    base = _action_base(path)
+    image = runs.get("image")
+    if isinstance(image, str) and "://" not in image:
+        _open_script(_join_action(base, image), path, "runs.image", root, seen, violations)
+    for key in ("entrypoint", "pre-entrypoint", "post-entrypoint"):
+        rel = runs.get(key)
+        if not isinstance(rel, str) or "://" in rel:
+            continue
+        lowered = rel.replace("\\", "/").casefold()
+        if lowered.endswith(_SCRIPT_EXTS) or "/" in lowered or lowered.startswith("."):
+            _open_script(_join_action(base, rel), path, f"runs.{key}", root, seen, violations)
+
+
 def _follow_scripts(
     script: str,
     path: str,
@@ -419,16 +488,23 @@ def _follow_scripts(
     seen: set[Path],
     violations: list[str],
     workdir: str,
+    unresolved: bool = False,
 ) -> None:
+    if not isinstance(script, str):
+        raise TypeError(type(script).__name__)
     pending: list[tuple[str, str, str]] = [(script, path, where)]
     steps_left = _SCRIPT_STEPS
     while pending:
         current, cur_path, cur_step = pending.pop()
-        for token in _script_tokens(current, workdir != ""):
+        include_bare = workdir != "" or unresolved
+        for token in _script_tokens(current, include_bare, root):
             if steps_left <= 0:
                 _note(violations, path, where, "script follow stopped before every script was read")
                 return
             steps_left -= 1
+            if unresolved and "/" not in token and not token.startswith("."):
+                _note(violations, cur_path, cur_step, f"script was not loaded: {token}")
+                continue
             load_as = token
             if workdir != "":
                 load_as = posixpath.normpath(posixpath.join(workdir, token))
@@ -514,6 +590,7 @@ def _check_uses(
     text = uses.strip()
     if _is_local(text):
         _follow_local(text, path, where, root, seen, violations, sites, depth)
+        violations.extend(_with_problems(step, path, where))
         return
     parsed = _split_action(text)
     repo = ""
@@ -552,6 +629,7 @@ def _check_step(
     sites: list[str] | None,
     depth: int,
     workdir: str,
+    unresolved: bool,
 ) -> None:
     if not isinstance(step, dict):
         if isinstance(step, str):
@@ -559,10 +637,20 @@ def _check_step(
                 _note(violations, path, where, "literal sccache")
         return
     step_dir = workdir
-    local = _relative_dir(step.get("working-directory"))
-    if local != "":
+    step_unresolved = unresolved
+    local, local_unresolved = _dir_spec(step.get("working-directory"))
+    if local_unresolved:
+        step_dir = ""
+        step_unresolved = True
+    elif local != "":
         step_dir = local
-    _note_literal(step.get("shell"), path, f"{where}.shell", violations)
+        step_unresolved = False
+    shell = step.get("shell")
+    _note_literal(shell, path, f"{where}.shell", violations)
+    if isinstance(shell, str):
+        _follow_scripts(
+            shell, path, f"{where}.shell", root, seen, violations, step_dir, step_unresolved
+        )
     if "env" in step:
         violations.extend(_env_problems(step.get("env"), path, f"{where}.env"))
     if "uses" in step:
@@ -584,7 +672,12 @@ def _check_step(
         else:
             if _literal_left(run):
                 _note(violations, path, where, "literal sccache")
-            _follow_scripts(run, path, where, root, seen, violations, step_dir)
+            _follow_scripts(run, path, where, root, seen, violations, step_dir, step_unresolved)
+    data = step.get("with")
+    if isinstance(data, dict):
+        entry = data.get("entrypoint")
+        if isinstance(entry, str):
+            _follow_scripts(entry, path, f"{where}.with.entrypoint", root, seen, violations, "")
     if "uses" not in step:
         violations.extend(_with_problems(step, path, where))
 
@@ -599,6 +692,7 @@ def _check_steps(
     sites: list[str] | None,
     depth: int,
     workdir: str,
+    unresolved: bool,
 ) -> None:
     if not isinstance(steps, list):
         _note(violations, path, prefix, "steps value is not a list")
@@ -614,6 +708,7 @@ def _check_steps(
             sites,
             depth,
             workdir,
+            unresolved,
         )
 
 
@@ -633,8 +728,19 @@ def _walk(
     if not isinstance(doc, dict):
         violations.append(f"{path}: unparseable document")
         return
-    doc_dir, doc_shell = _run_defaults(doc)
+    doc_dir, doc_unresolved, doc_shell = _run_defaults(doc)
     _note_literal(doc_shell, path, "defaults.run.shell", violations)
+    if isinstance(doc_shell, str):
+        _follow_scripts(
+            doc_shell,
+            path,
+            "defaults.run.shell",
+            root,
+            seen,
+            violations,
+            doc_dir,
+            doc_unresolved,
+        )
     _scan_dispatch_inputs(doc, path, violations)
     _scan_action_inputs(doc, path, violations)
     if "env" in doc:
@@ -649,16 +755,35 @@ def _walk(
                 if not isinstance(job, dict):
                     _note(violations, path, job_where, "job value is not a mapping")
                     continue
-                job_dir, job_shell = _run_defaults(job)
-                if job_dir == "":
+                job_dir, job_unresolved, job_shell = _run_defaults(job)
+                if job_dir == "" and not job_unresolved:
                     job_dir = doc_dir
+                    job_unresolved = doc_unresolved
                 _note_literal(job_shell, path, f"{job_where}.defaults.run.shell", violations)
+                if isinstance(job_shell, str):
+                    _follow_scripts(
+                        job_shell,
+                        path,
+                        f"{job_where}.defaults.run.shell",
+                        root,
+                        seen,
+                        violations,
+                        job_dir,
+                        job_unresolved,
+                    )
                 if "env" in job:
                     violations.extend(_env_problems(job.get("env"), path, f"{job_where}.env"))
                 if "container" in job:
-                    _scan_container(job.get("container"), path, f"{job_where}.container", violations)
+                    _scan_container(
+                        job.get("container"),
+                        path,
+                        f"{job_where}.container",
+                        violations,
+                        root,
+                        seen,
+                    )
                 if "services" in job:
-                    _scan_services(job, path, job_where, violations)
+                    _scan_services(job, path, job_where, violations, root, seen)
                 _scan_matrix(job, path, job_where, violations)
                 if "uses" in job:
                     _check_uses(
@@ -683,6 +808,7 @@ def _walk(
                         sites,
                         depth,
                         job_dir,
+                        job_unresolved,
                     )
     runs = doc.get("runs")
     if isinstance(runs, dict):
@@ -705,8 +831,10 @@ def _walk(
                     sites,
                     depth,
                     doc_dir,
+                    doc_unresolved,
                 )
         _follow_node(runs, path, root, seen, violations)
+        _follow_docker(runs, path, root, seen, violations)
 
 
 def sccache_pin_violations(
@@ -718,20 +846,36 @@ def sccache_pin_violations(
     sites: list[str] | None = None,
     depth: int = 0,
 ) -> list[str]:
-    """Lint literal sccache mentions outside the allowlist.
+    """Lint literal sccache mentions in the fields the fixtures cover.
 
-    Fail-closed for a literal in a run script, env value, with input, uses
-    string, step shell, defaults.run.shell, strategy.matrix value, workflow
-    or composite input default, job container, job service, or an invoked
-    script. Invoked scripts include shell, PowerShell, and Python files, a
-    bare script name under a working-directory, and the main, pre, and post
-    files of a local JavaScript action. The pinned mozilla-actions/sccache-action
-    sites and the reviewed benign env names are the allowlist. One exact
-    version key must be the pin. Untested classes: computed strings,
-    downloaded scripts, base64, ANSI-C quotes, percent-encoded text,
-    quote-split names, variable-built command words, eval command words,
-    shell quoting or escaping that splits a literal, and glob-shaped
-    package names.
+    The scanned fields are a workflow run script, a step, job, or workflow
+    env value, a with input including version, a step shell, workflow and job
+    defaults.run.shell, a script named by those shell strings, strategy.matrix
+    values, workflow_dispatch and workflow_call input defaults, composite
+    action input defaults, a job container (string, image, options, env, and
+    a script named by options), a job services entry (name, image, options,
+    env, and a script named by options), a with key entrypoint, and a script
+    those workflows invoke. Invoked scripts are shell, PowerShell, and Python
+    files written with a path or a dot prefix, a .js argument of a node or
+    nodejs command, a bare script name under a working-directory, a bare
+    script name at the repo root when that file exists, main, pre, and post
+    of a local JavaScript action, a local Docker action's image file when the
+    image value is a string that does not contain ://, and that action's
+    entrypoint, pre-entrypoint, or post-entrypoint when the value is a string
+    that does not contain :// and it has a slash, starts with a dot, or ends
+    in .sh, .ps1, or .py. An expression working-directory
+    is not a directory prefix, and a bare script token on that step is
+    reported as a script that was not loaded. A missing invoked file is
+    reported for a path, a dot prefix, or a bare name under a
+    working-directory. A bare name with no working-directory and no file is
+    left unread. The pinned mozilla-actions/sccache-action sites and the
+    reviewed benign env names are the allowlist. One exact version key must
+    be the pin. Untested classes: computed strings, downloaded scripts,
+    base64, ANSI-C quotes, percent-encoded text, quote-split names,
+    variable-built command words, eval command words, shell quoting or
+    escaping that splits a literal, glob-shaped package names, module
+    invocations, extensionless scripts, make, just, and cargo xtask recipes,
+    and shell startup files named by an env value.
     """
     result: list[str] = []
     try:
@@ -1272,6 +1416,201 @@ def sccache_mutation_checks() -> None:
         )
         if comp_hits != []:
             raise AssertionError(comp_hits)
+        (root / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        bare_root = sccache_pin_violations(
+            "name: bare\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: bash install.sh\n",
+            path="bare.yml",
+            root=root,
+        )
+        if bare_root != ["install.sh: script: literal sccache"]:
+            raise AssertionError(bare_root)
+        bare_missing = sccache_pin_violations(
+            "name: missing-bare\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: echo notes.sh\n",
+            path="missing-bare.yml",
+            root=root,
+        )
+        if bare_missing != []:
+            raise AssertionError(bare_missing)
+        (root / "a.sh").write_text("bash b.sh\n", encoding="utf-8")
+        (root / "b.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        sibling = sccache_pin_violations(
+            "name: sibling\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: bash a.sh\n",
+            path="sibling.yml",
+            root=root,
+        )
+        if sibling != ["b.sh: script: literal sccache"]:
+            raise AssertionError(sibling)
+        clean = root / "clean"
+        clean.mkdir()
+        (clean / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        expr_step = sccache_pin_violations(
+            "name: exprstep\non: workflow_dispatch\n"
+            "defaults:\n  run:\n    working-directory: clean\n"
+            "jobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: ${{ github.workspace }}/tools\n"
+            "        run: bash install.sh\n",
+            path="exprstep.yml",
+            root=root,
+        )
+        if expr_step != ["exprstep.yml: jobs.check.steps[0]: script was not loaded: install.sh"]:
+            raise AssertionError(expr_step)
+        expr_only = sccache_pin_violations(
+            "name: expronly\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: ${{ github.workspace }}/tools\n"
+            "        run: bash install.sh\n",
+            path="expronly.yml",
+            root=root,
+        )
+        if expr_only != ["expronly.yml: jobs.check.steps[0]: script was not loaded: install.sh"]:
+            raise AssertionError(expr_only)
+        (root / ".bad.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        dot_expr = sccache_pin_violations(
+            "name: dotexpr\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: ${{ github.workspace }}/tools\n"
+            "        run: bash .bad.sh\n",
+            path="dotexpr.yml",
+            root=root,
+        )
+        if dot_expr != [".bad.sh: script: literal sccache"]:
+            raise AssertionError(dot_expr)
+        (root / "tools" / "bad.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        two_tokens = sccache_pin_violations(
+            "name: twotokens\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: ${{ github.workspace }}/tools\n"
+            "        run: bash install.sh tools/bad.sh\n",
+            path="twotokens.yml",
+            root=root,
+        )
+        if "tools/bad.sh: script: literal sccache" not in two_tokens:
+            raise AssertionError(two_tokens)
+        job_expr = sccache_pin_violations(
+            "name: jobexpr\non: workflow_dispatch\n"
+            "defaults:\n  run:\n    working-directory: clean\n"
+            "jobs:\n  check:\n    runs-on: ubuntu-latest\n"
+            "    defaults:\n      run:\n        working-directory: ${{ github.workspace }}\n"
+            "    steps:\n      - run: bash install.sh\n",
+            path="jobexpr.yml",
+            root=root,
+        )
+        if job_expr != ["jobexpr.yml: jobs.check.steps[0]: script was not loaded: install.sh"]:
+            raise AssertionError(job_expr)
+        (root / "tools" / "hook.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        shell_hit = sccache_pin_violations(
+            "name: shell\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - shell: bash tools/hook.sh {0}\n        run: echo ok\n",
+            path="shell.yml",
+            root=root,
+        )
+        if shell_hit != ["tools/hook.sh: script: literal sccache"]:
+            raise AssertionError(shell_hit)
+        shell_wd = sccache_pin_violations(
+            "name: shellwd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: tools\n        shell: bash hook.sh {0}\n"
+            "        run: echo ok\n",
+            path="shellwd.yml",
+            root=root,
+        )
+        if shell_wd != ["tools/hook.sh: script: literal sccache"]:
+            raise AssertionError(shell_wd)
+        (root / "tools" / "install.js").write_text("cargo install sccache\n", encoding="utf-8")
+        node_run = sccache_pin_violations(
+            "name: noderun\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: node tools/install.js\n",
+            path="noderun.yml",
+            root=root,
+        )
+        if node_run != ["tools/install.js: script: literal sccache"]:
+            raise AssertionError(node_run)
+        node_wd = sccache_pin_violations(
+            "name: nodewd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: tools\n        run: node install.js\n",
+            path="nodewd.yml",
+            root=root,
+        )
+        if node_wd != ["tools/install.js: script: literal sccache"]:
+            raise AssertionError(node_wd)
+        (root / "install.js").write_text("cargo install sccache\n", encoding="utf-8")
+        node_bare = sccache_pin_violations(
+            "name: nodebare\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: node install.js\n",
+            path="nodebare.yml",
+            root=root,
+        )
+        if node_bare != ["install.js: script: literal sccache"]:
+            raise AssertionError(node_bare)
+        veract = root / "veract"
+        veract.mkdir()
+        (veract / "action.yml").write_text(
+            "name: act\nruns:\n  using: composite\n  steps:\n    - run: echo ok\n",
+            encoding="utf-8",
+        )
+        local_version = sccache_pin_violations(
+            "name: ver\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - uses: ./veract\n        with:\n"
+            "          version: cargo install sccache --locked\n",
+            path="ver.yml",
+            root=root,
+        )
+        if local_version != ["ver.yml: jobs.check.steps[0]: literal sccache"]:
+            raise AssertionError(local_version)
+        called = root / "called"
+        called.mkdir()
+        (called / "called.yml").write_text(
+            "name: called\non:\n  workflow_call:\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n",
+            encoding="utf-8",
+        )
+        reused = sccache_pin_violations(
+            "name: reuse\non: workflow_dispatch\njobs:\n  call:\n"
+            "    uses: ./called/called.yml\n    with:\n"
+            "      version: cargo install sccache --locked\n",
+            path="reuse.yml",
+            root=root,
+        )
+        if reused != ["reuse.yml: jobs.call: literal sccache"]:
+            raise AssertionError(reused)
+        dock = root / "dock"
+        dock.mkdir()
+        (dock / "Dockerfile").write_text("RUN cargo install sccache --locked\n", encoding="utf-8")
+        (dock / "action.yml").write_text(
+            "name: d\nruns:\n  using: docker\n  image: Dockerfile\n",
+            encoding="utf-8",
+        )
+        dock_hits = sccache_pin_violations(
+            "name: dock\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - uses: ./dock\n",
+            path="call-dock.yml",
+            root=root,
+        )
+        if dock_hits != ["dock/Dockerfile: script: literal sccache"]:
+            raise AssertionError(dock_hits)
+        dock_entry = root / "dockentry"
+        dock_entry.mkdir()
+        (dock_entry / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        (dock_entry / "action.yml").write_text(
+            "name: d\nruns:\n  using: docker\n  image: docker://ubuntu:24.04\n"
+            "  entrypoint: install.sh\n",
+            encoding="utf-8",
+        )
+        entry_hits = sccache_pin_violations(
+            "name: entry\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - uses: ./dockentry\n",
+            path="call-entry.yml",
+            root=root,
+        )
+        if entry_hits != ["dockentry/install.sh: script: literal sccache"]:
+            raise AssertionError(entry_hits)
     if _literal_left("echo ok") is not False:
         raise AssertionError("clean text")
     if _literal_left("") is not False:

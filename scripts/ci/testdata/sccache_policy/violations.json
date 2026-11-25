@@ -2,6 +2,7 @@
   "pass/action_case_pinned.yml": [],
   "pass/alias_other_install.yml": [],
   "pass/anchor_alias.yml": [],
+  "pass/bare_missing.yml": [],
   "pass/benign_env.yml": [],
   "pass/benign_name_lower.yml": [],
   "pass/canonical_pin.yml": [],
@@ -12,8 +13,11 @@
   "pass/composite_action.yml": [],
   "pass/composite_node.yml": [],
   "pass/composite_using_int.yml": [],
+  "pass/container_options_bare.yml": [],
   "pass/container_wrapper.yml": [],
+  "pass/docker_image_int.yml": [],
   "pass/docker_not_sccache.yml": [],
+  "pass/docker_registry_entrypoint.yml": [],
   "pass/docker_upper.yml": [],
   "pass/double_quoted.yml": [],
   "pass/extra_with_key.yml": [],
@@ -289,8 +293,14 @@
   "fail/composite_input.yml": [
     "composite_input.yml: inputs.cmd.default: literal sccache"
   ],
+  "fail/composite_shell_script.yml": [
+    "composite_shell_script.yml: runs.steps[0].shell: script was not loaded: tools/hook.sh"
+  ],
   "fail/composite_using_case.yml": [
     "composite_using_case.yml: runs.steps[0]: unpinned sccache action"
+  ],
+  "fail/container_entrypoint.yml": [
+    "container_entrypoint.yml: jobs.check.container.options: script was not loaded: tools/install.sh"
   ],
   "fail/container_env.yml": [
     "container_env.yml: jobs.check.container.env: literal sccache"
@@ -310,14 +320,44 @@
   "fail/defaults_shell.yml": [
     "defaults_shell.yml: defaults.run.shell: literal sccache"
   ],
+  "fail/defaults_shell_script.yml": [
+    "defaults_shell_script.yml: defaults.run.shell: script was not loaded: tools/hook.sh"
+  ],
   "fail/defaults_workdir.yml": [
     "defaults_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
   ],
   "fail/dispatch_input.yml": [
     "dispatch_input.yml: on.workflow_dispatch.inputs.cmd.default: literal sccache"
   ],
+  "fail/dispatch_inputs_shape.yml": [
+    "dispatch_inputs_shape.yml: on.workflow_call.inputs.cmd.default: literal sccache"
+  ],
+  "fail/docker_entrypoint.yml": [
+    "docker_entrypoint.yml: runs.entrypoint: script was not loaded: install.sh"
+  ],
+  "fail/docker_entrypoint_dot.yml": [
+    "docker_entrypoint_dot.yml: runs.entrypoint: script was not loaded: .hook"
+  ],
+  "fail/docker_entrypoint_rel.yml": [
+    "docker_entrypoint_rel.yml: runs.entrypoint: script was not loaded: tools/hook"
+  ],
+  "fail/docker_image.yml": [
+    "docker_image.yml: runs.image: script was not loaded: Dockerfile"
+  ],
+  "fail/docker_post_entrypoint.yml": [
+    "docker_post_entrypoint.yml: runs.post-entrypoint: script was not loaded: install.sh"
+  ],
+  "fail/docker_pre_entrypoint.yml": [
+    "docker_pre_entrypoint.yml: runs.pre-entrypoint: script was not loaded: install.sh"
+  ],
   "fail/docker_sccache_pinned.yml": [
     "docker_sccache_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/dot_node.yml": [
+    "dot_node.yml: jobs.check.steps[0]: script was not loaded: .hook.js"
+  ],
+  "fail/dot_script.yml": [
+    "dot_script.yml: jobs.check.steps[0]: script was not loaded: .hook.sh"
   ],
   "fail/dot_uses.yml": [
     "dot_uses.yml: jobs.check.steps[0]: literal sccache"
@@ -353,10 +393,18 @@
     "env_only.yml: env: literal sccache"
   ],
   "fail/env_var_version.yml": [
-    "env_var_version.yml: jobs.check.steps[0]: unpinned sccache action"
+    "env_var_version.yml: jobs.check.steps[0]: unpinned sccache action",
+    "env_var_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/expr_workdir.yml": [
+    "expr_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/expr_workdir_only.yml": [
+    "expr_workdir_only.yml: jobs.check.steps[0]: script was not loaded: install.sh"
   ],
   "fail/expression_version.yml": [
-    "expression_version.yml: jobs.check.steps[0]: unpinned sccache action"
+    "expression_version.yml: jobs.check.steps[0]: unpinned sccache action",
+    "expression_version.yml: jobs.check.steps[0]: literal sccache"
   ],
   "fail/folded_composite.yml": [
     "folded_composite.yml: runs.steps[0]: literal sccache"
@@ -444,6 +492,9 @@
   "fail/job_env.yml": [
     "job_env.yml: jobs.check.env: literal sccache"
   ],
+  "fail/job_shell_script.yml": [
+    "job_shell_script.yml: jobs.check.defaults.run.shell: script was not loaded: tools/hook.sh"
+  ],
   "fail/job_workdir.yml": [
     "job_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
   ],
@@ -495,6 +546,9 @@
   ],
   "fail/node_pre.yml": [
     "node_pre.yml: runs.pre: script was not loaded: pre.js"
+  ],
+  "fail/node_run.yml": [
+    "node_run.yml: jobs.check.steps[0]: script was not loaded: tools/install.js"
   ],
   "fail/non_mapping_with.yml": [
     "non_mapping_with.yml: jobs.check.steps[0]: unpinned sccache action",
@@ -689,8 +743,19 @@
   "fail/shell_function_wrap.yml": [
     "shell_function_wrap.yml: jobs.check.steps[0]: literal sccache"
   ],
+  "fail/shell_script.yml": [
+    "shell_script.yml: jobs.check.steps[0].shell: script was not loaded: tools/hook.sh"
+  ],
+  "fail/shell_script_ps1.yml": [
+    "shell_script_ps1.yml: jobs.check.steps[0].shell: script was not loaded: tools/hook.ps1"
+  ],
   "fail/stats_embedded.yml": [
     "stats_embedded.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/stats_trailing.yml": [
+    "stats_trailing.yml: jobs.check.steps[0]: literal sccache",
+    "stats_trailing.yml: jobs.check.steps[1]: literal sccache",
+    "stats_trailing.yml: jobs.check.steps[2]: literal sccache"
   ],
   "fail/step_shell.yml": [
     "step_shell.yml: jobs.check.steps[0].shell: literal sccache"
@@ -800,6 +865,9 @@
   "fail/with_after_version.yml": [
     "with_after_version.yml: jobs.check.steps[0]: literal sccache"
   ],
+  "fail/with_entrypoint.yml": [
+    "with_entrypoint.yml: jobs.check.steps[0].with.entrypoint: script was not loaded: tools/install.sh"
+  ],
   "fail/with_int.yml": [
     "with_int.yml: jobs.check.steps[0]: with value is not a mapping"
   ],
@@ -813,6 +881,12 @@
     "with_non_str_key.yml: jobs.check.steps[0]: with key is not a string",
     "with_non_str_key.yml: jobs.check.steps[0]: literal sccache"
   ],
+  "fail/with_version_other.yml": [
+    "with_version_other.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/workflow_call_input.yml": [
+    "workflow_call_input.yml: on.workflow_call.inputs.cmd.default: literal sccache"
+  ],
   "fail/wrapper_flag_operand.yml": [
     "wrapper_flag_operand.yml: jobs.check.steps[0]: literal sccache",
     "wrapper_flag_operand.yml: jobs.check.steps[1]: literal sccache",
@@ -822,6 +896,9 @@
   ],
   "fail/wrapper_glued.yml": [
     "wrapper_glued.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/wrapper_prefixed.yml": [
+    "wrapper_prefixed.yml: jobs.check.steps[0]: literal sccache"
   ],
   "fail/wrapper_then_later.yml": [
     "wrapper_then_later.yml: env: literal sccache",
