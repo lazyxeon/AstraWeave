@@ -1,0 +1,13 @@
+# sites: 0
+name: fixture
+on:
+  workflow_call:
+    inputs:
+      cmd:
+        type: string
+        default: bash tools/install.sh
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ${{ inputs.cmd }}

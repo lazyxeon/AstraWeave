@@ -15,6 +15,7 @@
   "pass/composite_using_int.yml": [],
   "pass/container_options_bare.yml": [],
   "pass/container_wrapper.yml": [],
+  "pass/docker_entrypoint_shape.yml": [],
   "pass/docker_image_int.yml": [],
   "pass/docker_not_sccache.yml": [],
   "pass/docker_registry_entrypoint.yml": [],
@@ -28,6 +29,9 @@
   "pass/gh_other.yml": [],
   "pass/gh_other_repo.yml": [],
   "pass/list_document_pinned.yml": [],
+  "pass/node_argument_boundary.yml": [],
+  "pass/node_bare_token.yml": [],
+  "pass/node_command_boundary.yml": [],
   "pass/not_reusable_github.yml": [],
   "pass/not_reusable_workflows.yml": [],
   "pass/release_url_host_only.yml": [],
@@ -79,6 +83,9 @@
   ],
   "fail/action_double_slash_dot_pinned.yml": [
     "action_double_slash_dot_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_input_script.yml": [
+    "action_input_script.yml: inputs.cmd.default: script was not loaded: tools/install.sh"
   ],
   "fail/action_owner_case.yml": [
     "action_owner_case.yml: jobs.check.steps[0]: unpinned sccache action"
@@ -326,6 +333,11 @@
   "fail/defaults_workdir.yml": [
     "defaults_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
   ],
+  "fail/dir_change_bare.yml": [
+    "dir_change_bare.yml: jobs.check.steps[0]: script was not loaded: install.sh",
+    "dir_change_bare.yml: jobs.check.steps[1]: script was not loaded: install.sh",
+    "dir_change_bare.yml: jobs.check.steps[2]: script was not loaded: install.sh"
+  ],
   "fail/dispatch_input.yml": [
     "dispatch_input.yml: on.workflow_dispatch.inputs.cmd.default: literal sccache"
   ],
@@ -343,6 +355,9 @@
   ],
   "fail/docker_image.yml": [
     "docker_image.yml: runs.image: script was not loaded: Dockerfile"
+  ],
+  "fail/docker_image_entrypoint_shape.yml": [
+    "docker_image_entrypoint_shape.yml: runs.image: script was not loaded: Dockerfile"
   ],
   "fail/docker_post_entrypoint.yml": [
     "docker_post_entrypoint.yml: runs.post-entrypoint: script was not loaded: install.sh"
@@ -396,11 +411,20 @@
     "env_var_version.yml: jobs.check.steps[0]: unpinned sccache action",
     "env_var_version.yml: jobs.check.steps[0]: literal sccache"
   ],
+  "fail/expr_job_dot.yml": [
+    "expr_job_dot.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"
+  ],
   "fail/expr_workdir.yml": [
     "expr_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
   ],
+  "fail/expr_workdir_dot.yml": [
+    "expr_workdir_dot.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"
+  ],
   "fail/expr_workdir_only.yml": [
     "expr_workdir_only.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/expr_workdir_path.yml": [
+    "expr_workdir_path.yml: jobs.check.steps[0]: script was not loaded: tools/install.sh"
   ],
   "fail/expression_version.yml": [
     "expression_version.yml: jobs.check.steps[0]: unpinned sccache action",
@@ -537,6 +561,20 @@
   ],
   "fail/nix_env_install.yml": [
     "nix_env_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/node_command_case.yml": [
+    "node_command_case.yml: jobs.check.steps[0]: script was not loaded: tools/install.js",
+    "node_command_case.yml: jobs.check.steps[1]: script was not loaded: tools/install.js",
+    "node_command_case.yml: jobs.check.steps[2]: script was not loaded: tools/install.js"
+  ],
+  "fail/node_flag_argument.yml": [
+    "node_flag_argument.yml: jobs.check.steps[0]: script was not loaded: tools/install.js"
+  ],
+  "fail/node_later_argument.yml": [
+    "node_later_argument.yml: jobs.check.steps[0]: script was not loaded: tools/clean.js",
+    "node_later_argument.yml: jobs.check.steps[0]: script was not loaded: tools/install.js",
+    "node_later_argument.yml: jobs.check.steps[1]: script was not loaded: tools/install.js",
+    "node_later_argument.yml: jobs.check.steps[1]: script was not loaded: tools/app.js"
   ],
   "fail/node_main.yml": [
     "node_main.yml: runs.main: script was not loaded: index.js"
@@ -886,6 +924,9 @@
   ],
   "fail/workflow_call_input.yml": [
     "workflow_call_input.yml: on.workflow_call.inputs.cmd.default: literal sccache"
+  ],
+  "fail/workflow_call_script.yml": [
+    "workflow_call_script.yml: on.workflow_call.inputs.cmd.default: script was not loaded: tools/install.sh"
   ],
   "fail/wrapper_flag_operand.yml": [
     "wrapper_flag_operand.yml: jobs.check.steps[0]: literal sccache",

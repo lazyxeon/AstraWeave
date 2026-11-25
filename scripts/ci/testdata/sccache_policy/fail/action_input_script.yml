@@ -1,0 +1,9 @@
+# sites: 0
+name: fixture
+inputs:
+  cmd:
+    default: bash tools/install.sh
+runs:
+  using: composite
+  steps:
+    - run: echo ok
