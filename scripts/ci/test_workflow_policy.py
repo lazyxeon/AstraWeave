@@ -698,7 +698,11 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
     word is skipped before cd, pushd, popd, and a copy, and so is a leading
     { group token. A leading if, elif, then, else, or fi is skipped the same
     way, so a copy or directory change in that branch is read, including when
-    it shares the command with then or else. command followed by an option is
+    it shares the command with then or else. A cd, pushd, popd, or
+    assignment-only command inside an if compound is kept together with the
+    state from before that command. A later copy is checked against each of
+    those states. An unconditional cd, pushd, popd, or assignment still
+    replaces the state. command followed by an option is
     left in place. A leading NAME=value is skipped. An assignment-only command
     stores a value with no
     $ or backtick when the separator keeps shell state. A later copy word that
@@ -706,53 +710,163 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
     The assignment scan raises if its index does not advance.
     """
     paths: list[str] = []
-    current = _posix_norm(cwd)
-    stack: list[str] = []
-    env: dict[str, str] = {}
+    for state in _shell_states(run_text, cwd):
+        paths.extend(state.paths)
+    return paths
+
+
+class _ShellState:
+    """Cwd, directory stack, assignments, and copy paths still in play."""
+
+    def __init__(
+        self,
+        cwd: str,
+        stack: tuple[str, ...],
+        env: tuple[tuple[str, str], ...],
+        paths: list[str],
+    ) -> None:
+        self.cwd = cwd
+        self.stack = stack
+        self.env = env
+        self.paths = paths
+
+
+def _opening_depth(words: list[str], body: list[str], depth: int) -> int:
+    """Count if and fi in the prefix _command_body removed.
+
+    A body that is not that prefix's suffix is treated as conditional.
+    """
+    if words[len(words) - len(body) :] == body:
+        prefix = words[: len(words) - len(body)]
+    else:
+        prefix = words
+        depth += 1
+    for word in prefix:
+        if word == "if":
+            depth += 1
+        elif word == "fi" and depth > 0:
+            depth -= 1
+    return depth
+
+
+def _stored_env(
+    env: tuple[tuple[str, str], ...],
+    assignments: list[tuple[str, str]],
+) -> tuple[tuple[str, str], ...]:
+    updated = dict(env)
+    for name, value in assignments:
+        if _recordable_assignment(value):
+            updated[name] = value
+        else:
+            updated.pop(name, None)
+    return tuple(sorted(updated.items()))
+
+
+def _record_copy(state: _ShellState, rest: list[str]) -> None:
+    command_name = _command_basename(rest[0])
+    if command_name not in _COPY_COMMANDS:
+        return
+    env = dict(state.env)
+    for word in rest[1:]:
+        expanded = _expand_assigned_word(word, env)
+        path_word = _path_from_copy_word(command_name, expanded)
+        if path_word is None:
+            continue
+        state.paths.append(_resolve_run_path(path_word, state.cwd))
+
+
+def _dedupe_states(states: list[_ShellState]) -> list[_ShellState]:
+    seen: set[tuple[object, ...]] = set()
+    kept: list[_ShellState] = []
+    for state in states:
+        key = (state.cwd, state.stack, state.env, tuple(state.paths))
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(state)
+    return kept
+
+
+def _shell_states(run_text: str, cwd: str) -> list[_ShellState]:
+    """Shell states after one step. A conditional cd or assignment keeps the earlier state."""
+    states = [_ShellState(_posix_norm(cwd), (), (), [])]
+    depth = 0
     for command, carry in _split_shell_commands(run_text):
-        saved_cwd = current
-        saved_stack = list(stack)
-        words = _command_body(_shell_words(command))
-        if not words:
+        raw = _shell_words(command)
+        body = _command_body(raw)
+        depth = _opening_depth(raw, body, depth)
+        conditional = depth > 0
+        if not body:
             continue
         assignments: list[tuple[str, str]] = []
         index = 0
         previous = -1
-        while index < len(words):
+        while index < len(body):
             if index <= previous:
                 raise AssertionError("assignment scan did not advance")
             previous = index
-            match = _ASSIGNMENT_WORD.match(words[index])
+            match = _ASSIGNMENT_WORD.match(body[index])
             if match is None:
                 break
             assignments.append((match.group(1), match.group(2)))
             index += 1
-        rest = words[index:]
+        rest = body[index:]
         if not rest:
             if carry:
-                for name, value in assignments:
-                    if _recordable_assignment(value):
-                        env[name] = value
-                    else:
-                        env.pop(name, None)
+                if conditional:
+                    forked = list(states)
+                    for state in states:
+                        forked.append(
+                            _ShellState(
+                                state.cwd,
+                                state.stack,
+                                _stored_env(state.env, assignments),
+                                list(state.paths),
+                            )
+                        )
+                    states = _dedupe_states(forked)
+                else:
+                    for state in states:
+                        state.env = _stored_env(state.env, assignments)
             continue
-        updated = _directory_update(rest, current, stack)
-        if updated is not None:
-            current = updated
-        else:
-            copy_words = rest
-            command_name = _command_basename(copy_words[0])
-            if command_name in _COPY_COMMANDS:
-                for word in copy_words[1:]:
-                    expanded = _expand_assigned_word(word, env)
-                    path_word = _path_from_copy_word(command_name, expanded)
-                    if path_word is None:
-                        continue
-                    paths.append(_resolve_run_path(path_word, current))
+        if _directory_update(rest, "", []) is None:
+            for state in states:
+                _record_copy(state, rest)
+            continue
         if not carry:
-            current = saved_cwd
-            stack[:] = saved_stack
-    return paths
+            continue
+        if conditional:
+            forked = list(states)
+            for state in states:
+                stack = list(state.stack)
+                updated = _directory_update(rest, state.cwd, stack)
+                forked.append(
+                    _ShellState(
+                        state.cwd if updated is None else updated,
+                        tuple(stack),
+                        state.env,
+                        list(state.paths),
+                    )
+                )
+            states = _dedupe_states(forked)
+            continue
+        for state in states:
+            stack = list(state.stack)
+            updated = _directory_update(rest, state.cwd, stack)
+            if updated is not None:
+                state.cwd = updated
+                state.stack = tuple(stack)
+    return states
+
+
+def _archive_copied_onto_book(run_text: str, cwd: str) -> bool:
+    """True when one kept shell state copies the archive onto the book dashboard."""
+    for state in _shell_states(run_text, cwd):
+        archive = any(_is_archive_path(item) for item in state.paths)
+        book = any(_is_book_dashboard_target(item) for item in state.paths)
+        if archive and book:
+            return True
+    return False
 
 
 def _is_archive_path(path: str) -> bool:
@@ -1197,7 +1311,11 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     popd, and a copy. A leading { group token is skipped the same way. A
     leading if, elif, then, else, or fi is skipped the same way, so a copy or
     directory change in that branch is read, including when it shares the
-    command with then or else. That scan raises if its index does not advance.
+    command with then or else. A cd, pushd, popd, or assignment-only command
+    inside an if compound is kept together with the state from before that
+    command. A later copy is checked against each of those states. An
+    unconditional cd, pushd, popd, or assignment still replaces the state.
+    That scan raises if its index does not advance.
     command
     followed by an option is left in place. A leading NAME=value is skipped.
     An assignment-only command stores a value with no $ or backtick when the
@@ -1227,7 +1345,9 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     of a directory change; an assignment prefix in front of command cd; a cd
     on the right side of ||, which bash may skip; a $name or ${name} with more
     text in the same word; an export or declare assignment; a directory change
-    in an if, elif, or else branch that bash may skip.
+    or assignment in an elif branch; an assignment in an else branch; cd $TMP,
+    cd ${TMP}, or pushd $TMP after a stored assignment; an absolute cd /tmp;
+    a cd of $RUNNER_TEMP; a typeset or readonly assignment.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
@@ -1248,10 +1368,7 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
                 raise AssertionError(f"{path}: step run text is not a string")
             if not run_text.strip():
                 continue
-            paths = _run_paths(run_text, _step_cwd(step, job_cwd))
-            if any(_is_archive_path(item) for item in paths) and any(
-                _is_book_dashboard_target(item) for item in paths
-            ):
+            if _archive_copied_onto_book(run_text, _step_cwd(step, job_cwd)):
                 step_name = step.get("name", "<unnamed>")
                 raise AssertionError(
                     f"{path}: step {step_name!r} copies {ARCHIVE_BENCHMARK_DASHBOARD} "
@@ -2535,6 +2652,30 @@ class WorkflowPolicyTest(unittest.TestCase):
             _pages_input_path("docs/archive/benchmark_dashboard"),
             "docs/archive/benchmark_dashboard",
         )
+        masked_cd = _run_paths(
+            "if [ -d nope ]; then cd nope; fi\n"
+            "cp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", masked_cd)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", masked_cd)
+        masked_assign = _run_paths(
+            "SRC=docs/archive/benchmark_dashboard\n"
+            "if false; then SRC=nope; fi\n"
+            'cp -r "$SRC" docs/book/dashboard/benchmark_dashboard',
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", masked_assign)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", masked_assign)
+        unconditional_cd = _run_paths(
+            "cd nope\n"
+            "cp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertNotIn("docs/archive/benchmark_dashboard", unconditional_cd)
+        self.assertIn("nope/docs/archive/benchmark_dashboard", unconditional_cd)
 
     def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
         alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
@@ -2655,10 +2796,10 @@ class WorkflowPolicyTest(unittest.TestCase):
                 if not isinstance(run_text, str) or not run_text.strip():
                     continue
                 paths = _run_paths(run_text, _step_cwd(step, job_cwd))
-                collided = any(_is_archive_path(item) for item in paths) and any(
-                    _is_book_dashboard_target(item) for item in paths
+                self.assertFalse(
+                    _archive_copied_onto_book(run_text, _step_cwd(step, job_cwd)),
+                    step.get("name"),
                 )
-                self.assertFalse(collided, step.get("name"))
                 if step.get("name") != "Prepare Dashboard Assets":
                     continue
                 self.assertIn("tools/benchmark-dashboard/static-data", paths)
@@ -2710,6 +2851,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_command_popd",
             "docs_assign_plain",
             "docs_if_elif_dashboard_safe",
+            "docs_unconditional_cd_safe",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
@@ -2866,6 +3008,12 @@ jobs:
             "docs_if_condition_copy",
             "docs_elif_condition_copy",
             "docs_fi_glued_copy",
+            "docs_if_same_line_cd_mask",
+            "docs_if_same_line_assign_mask",
+            "docs_if_else_cd_mask",
+            "docs_if_condition_cd_mask",
+            "docs_if_multiline_assign_mask",
+            "docs_if_multiline_cd_mask",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")

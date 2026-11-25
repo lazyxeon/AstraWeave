@@ -1,0 +1,16 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Prepare Dashboard Assets
+        run: |
+          if [ -d nope ]; then cd nope; fi
+          cp -r docs/archive/benchmark_dashboard docs/book/dashboard/benchmark_dashboard
