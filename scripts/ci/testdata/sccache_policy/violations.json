@@ -15,6 +15,8 @@
   "pass/composite_using_int.yml": [],
   "pass/container_options_bare.yml": [],
   "pass/container_wrapper.yml": [],
+  "pass/dir_change_ident.yml": [],
+  "pass/dir_change_word.yml": [],
   "pass/docker_entrypoint_shape.yml": [],
   "pass/docker_image_int.yml": [],
   "pass/docker_not_sccache.yml": [],
@@ -32,6 +34,7 @@
   "pass/node_argument_boundary.yml": [],
   "pass/node_bare_token.yml": [],
   "pass/node_command_boundary.yml": [],
+  "pass/node_command_prefix.yml": [],
   "pass/not_reusable_github.yml": [],
   "pass/not_reusable_workflows.yml": [],
   "pass/release_url_host_only.yml": [],
@@ -338,6 +341,22 @@
     "dir_change_bare.yml: jobs.check.steps[1]: script was not loaded: install.sh",
     "dir_change_bare.yml: jobs.check.steps[2]: script was not loaded: install.sh"
   ],
+  "fail/dir_change_case.yml": [
+    "dir_change_case.yml: jobs.check.steps[0]: script was not loaded: install.sh",
+    "dir_change_case.yml: jobs.check.steps[1]: script was not loaded: install.sh"
+  ],
+  "fail/dir_change_not_first.yml": [
+    "dir_change_not_first.yml: jobs.check.steps[0]: script was not loaded: install.sh",
+    "dir_change_not_first.yml: jobs.check.steps[1]: script was not loaded: install.sh"
+  ],
+  "fail/dir_change_path.yml": [
+    "dir_change_path.yml: jobs.check.steps[0]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[1]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[2]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[3]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[4]: script was not loaded: tools/install.sh",
+    "dir_change_path.yml: jobs.check.steps[5]: script was not loaded: ./install.sh"
+  ],
   "fail/dispatch_input.yml": [
     "dispatch_input.yml: on.workflow_dispatch.inputs.cmd.default: literal sccache"
   ],
@@ -562,6 +581,9 @@
   "fail/nix_env_install.yml": [
     "nix_env_install.yml: jobs.check.steps[0]: literal sccache"
   ],
+  "fail/node_arg_case.yml": [
+    "node_arg_case.yml: jobs.check.steps[0]: script was not loaded: tools/install.JS"
+  ],
   "fail/node_command_case.yml": [
     "node_command_case.yml: jobs.check.steps[0]: script was not loaded: tools/install.js",
     "node_command_case.yml: jobs.check.steps[1]: script was not loaded: tools/install.js",
@@ -578,6 +600,9 @@
   ],
   "fail/node_main.yml": [
     "node_main.yml: runs.main: script was not loaded: index.js"
+  ],
+  "fail/node_not_first.yml": [
+    "node_not_first.yml: jobs.check.steps[0]: script was not loaded: tools/install.js"
   ],
   "fail/node_post.yml": [
     "node_post.yml: runs.post: script was not loaded: post.js"

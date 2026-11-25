@@ -600,7 +600,7 @@ def _follow_scripts(
                 return
             steps_left -= 1
             bare_name = "/" not in token and not token.startswith(".")
-            if unresolved or (dir_changed and bare_name):
+            if unresolved or dir_changed:
                 _note(violations, cur_path, cur_step, f"script was not loaded: {token}")
                 continue
             load_as = token
@@ -622,6 +622,8 @@ def _follow_scripts(
                     rel = str(candidate.relative_to(root.resolve())).replace("\\", "/")
                     if _literal_left(body):
                         violations.append(f"{rel}: script: literal sccache")
+                    if _DIR_CHANGE.search(body):
+                        dir_changed = True
                     pending.append((body, rel, "script"))
                     continue
             _note(violations, cur_path, cur_step, f"script was not loaded: {load_as}")
@@ -957,9 +959,10 @@ def sccache_pin_violations(
     a script named by options), a job services entry (name, image, options,
     env, and a script named by options), a with key entrypoint, and a script
     those workflows invoke. Invoked scripts are shell, PowerShell, and Python
-    files written with a path or a dot prefix, every .js argument of a
-    whole-word node or nodejs command matched case-insensitively, including
-    a later argument and the value of a long option written as --name=path,
+    files written with a path or a dot prefix, .js arguments of a
+    whole-word node or nodejs command matched case-insensitively, read until
+    the first quote or $, including a later argument and the value of a long
+    option written as --name=path before that stop,
     a bare script name under a step, workflow, or job working-directory, a
     bare script name at the repo root when that file exists, main, pre, and
     post of a local JavaScript action, a local Docker action's image file
@@ -968,26 +971,32 @@ def sccache_pin_violations(
     is a string that does not contain :// and it has a slash, starts with a
     dot, or ends in .sh, .ps1, or .py. Script tokens in an opened action
     image, entrypoint, pre-entrypoint, post-entrypoint, or JavaScript main,
-    pre, or post file are followed from that file's directory. A
+    pre, or post file are followed from that file's directory. A Dockerfile
+    WORKDIR is not applied to later RUN tokens. A
     workflow_dispatch, workflow_call, or composite action input default that
     names a script is followed. A bare script name is matched
     case-insensitively when the directory it is loaded from has exactly one
     file whose name casefolds to the token and the exact name is absent. An
     expression working-directory is not a directory prefix, and a script
     token on that step is reported as a script that was not loaded. A cd or
-    pushd command word in a run script or a followed script reports a bare
-    script name in that text as a script that was not loaded; the directory
-    named by the command is not read. A missing invoked file is reported
-    for a path, a dot prefix, or a bare name under a working-directory. A
-    bare name with no working-directory and no file is left unread. The
-    pinned mozilla-actions/sccache-action sites and the
-    reviewed benign env names are the allowlist. One exact version key must
-    be the pin. Untested classes: computed strings, downloaded scripts,
-    base64, ANSI-C quotes, percent-encoded text, quote-split names,
-    variable-built command words, eval command words, shell quoting or
-    escaping that splits a literal, glob-shaped package names, module
-    invocations, extensionless scripts, make, just, and cargo xtask recipes,
-    and shell startup files named by an env value.
+    pushd command word in a run script or a followed script reports every
+    script token in that text as a script that was not loaded. A cd or pushd
+    command word in a followed script reports every later script token in the
+    caller as a script that was not loaded. The directory named by the command
+    is not read. A missing invoked file is reported for a path, a dot prefix,
+    or a bare name under a working-directory. A bare name with no
+    working-directory and no file is left unread. The pinned
+    mozilla-actions/sccache-action sites and the reviewed benign env names are
+    the allowlist. One exact version key must be the pin. Untested classes:
+    computed strings, downloaded scripts, base64, ANSI-C quotes,
+    percent-encoded text, quote-split names, variable-built command words,
+    eval command words, shell quoting or escaping that splits a literal,
+    glob-shaped package names, module invocations, extensionless scripts,
+    make, just, and cargo xtask recipes, shell startup files named by an env
+    value, a node path after the first quote or $, a Dockerfile WORKDIR, a
+    caller with value that names a script, Set-Location and Push-Location,
+    and a directory change that appears only in a script reached through
+    another followed script.
     """
     result: list[str] = []
     try:
@@ -1822,6 +1831,88 @@ def sccache_mutation_checks() -> None:
         )
         if cd_followed != ["tools/a.sh: script: script was not loaded: install.sh"]:
             raise AssertionError(cd_followed)
+        (root / "install.sh").write_text("echo clean\n", encoding="utf-8")
+        (tools / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        dot_cd = sccache_pin_violations(
+            "name: dotcd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: cd tools && bash ./install.sh\n"
+            "      - run: pushd tools && bash ./install.sh\n"
+            "      - run: (cd tools && bash ./install.sh)\n"
+            '      - run: cd "$DIR" && bash ./install.sh\n',
+            path="dotcd.yml",
+            root=root,
+        )
+        if dot_cd != [
+            "dotcd.yml: jobs.check.steps[0]: script was not loaded: ./install.sh",
+            "dotcd.yml: jobs.check.steps[1]: script was not loaded: ./install.sh",
+            "dotcd.yml: jobs.check.steps[2]: script was not loaded: ./install.sh",
+            "dotcd.yml: jobs.check.steps[3]: script was not loaded: ./install.sh",
+        ]:
+            raise AssertionError(dot_cd)
+        (tools / "install.sh").write_text("echo clean\n", encoding="utf-8")
+        other = root / "other" / "tools"
+        other.mkdir(parents=True)
+        (other / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        other_cd = sccache_pin_violations(
+            "name: othercd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: cd other && bash tools/install.sh\n",
+            path="othercd.yml",
+            root=root,
+        )
+        if other_cd != ["othercd.yml: jobs.check.steps[0]: script was not loaded: tools/install.sh"]:
+            raise AssertionError(other_cd)
+        (root / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        wd_cd = sccache_pin_violations(
+            "name: wdcd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - working-directory: tools\n        run: cd .. && bash ./install.sh\n",
+            path="wdcd.yml",
+            root=root,
+        )
+        if wd_cd != ["wdcd.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"]:
+            raise AssertionError(wd_cd)
+        (root / "install.sh").write_text("echo clean\n", encoding="utf-8")
+        (tools / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        (tools / "outer.sh").write_text("cd tools && bash ./install.sh\n", encoding="utf-8")
+        outer_cd = sccache_pin_violations(
+            "name: outercd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: bash tools/outer.sh\n",
+            path="outercd.yml",
+            root=root,
+        )
+        if outer_cd != ["tools/outer.sh: script: script was not loaded: ./install.sh"]:
+            raise AssertionError(outer_cd)
+        (tools / "setup.sh").write_text("cd tools\n", encoding="utf-8")
+        source_cd = sccache_pin_violations(
+            "name: sourcecd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n"
+            "      - run: source tools/setup.sh && bash ./install.sh\n",
+            path="sourcecd.yml",
+            root=root,
+        )
+        if source_cd != ["sourcecd.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"]:
+            raise AssertionError(source_cd)
+        dock_cd = root / "dockcd"
+        dock_cd.mkdir()
+        (dock_cd / "install.sh").write_text("echo ok\n", encoding="utf-8")
+        (dock_cd / "tools").mkdir()
+        (dock_cd / "tools" / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
+        (dock_cd / "Dockerfile").write_text("RUN cd tools && bash ./install.sh\n", encoding="utf-8")
+        (dock_cd / "action.yml").write_text(
+            "name: d\nruns:\n  using: docker\n  image: Dockerfile\n",
+            encoding="utf-8",
+        )
+        docker_cd = sccache_pin_violations(
+            "name: dockcd\non: workflow_dispatch\njobs:\n  check:\n"
+            "    runs-on: ubuntu-latest\n    steps:\n      - uses: ./dockcd\n",
+            path="call-dockcd.yml",
+            root=root,
+        )
+        if docker_cd != ["dockcd/Dockerfile: script: script was not loaded: ./install.sh"]:
+            raise AssertionError(docker_cd)
+        (tools / "install.sh").write_text("cargo install sccache\n", encoding="utf-8")
         (root / "Setup.ps1").write_text("cargo install sccache\n", encoding="utf-8")
         case_ps1 = sccache_pin_violations(
             "name: caseps\non: workflow_dispatch\njobs:\n  check:\n"

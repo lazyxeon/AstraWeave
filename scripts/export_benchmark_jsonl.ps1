@@ -496,7 +496,7 @@ if ($count -gt 0) {
     Write-Log ""
     Write-Log "Next steps:"
     Write-Log "  1. View JSONL: Get-Content $OutputFile | Select -Last 5 | ConvertFrom-Json | Format-Table"
-    Write-Log "  2. Build dashboard: cd tools/benchmark-dashboard && python -m http.server 8000"
+    Write-Log "  2. Build dashboard: python -m http.server 8000, from tools/benchmark-dashboard"
     Write-Log "  3. Open dashboard: http://localhost:8000"
 }
 else {
