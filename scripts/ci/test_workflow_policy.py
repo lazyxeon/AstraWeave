@@ -420,6 +420,17 @@ _WORKSPACE_PREFIXES = (
     "$GITHUB_WORKSPACE/",
     "GITHUB_WORKSPACE/",
 )
+_GITHUB_WORKSPACE_EXPR = re.compile(
+    r"\$\{\{\s*github\.workspace\s*\}\}",
+    re.IGNORECASE,
+)
+_ECHO_LITERAL = re.compile(r"\$\(\s*echo\s+(.+?)\s*\)\Z")
+_ECHO_METACHARACTERS = frozenset("$`;&|<>(){}\\")
+_TARGET_DIRECTORY_PREFIX = "--target-directory="
+_JAMESIVES_DEPLOY = "github-pages-deploy-action"
+_JAMESIVES_FOLDER = "docs/benchmark_data"
+_JAMESIVES_TARGET = "dashboard/benchmark_data"
+_LIVE_DASHBOARD_DEST = "dashboard/benchmark_dashboard"
 
 
 def _workflow_document(text: str, *, path: str) -> dict:
@@ -476,14 +487,32 @@ def _posix_norm(path: str) -> str:
 
 
 def _strip_workspace(token: str) -> str:
+    """Drop a workspace root prefix so the remainder is workspace-relative."""
+    stripped = _GITHUB_WORKSPACE_EXPR.sub("", token)
     for prefix in _WORKSPACE_PREFIXES:
-        if token.startswith(prefix):
-            return token[len(prefix) :]
-    return token
+        if stripped.startswith(prefix):
+            return stripped[len(prefix) :]
+    return stripped
+
+
+def _unwrap_echo_literal(word: str) -> str:
+    """Reduce echo of one literal path. Leave every other substitution unchanged."""
+    match = _ECHO_LITERAL.fullmatch(word)
+    if match is None:
+        return word
+    inner = match.group(1).strip()
+    if len(inner) >= 2 and inner[0] in "'\"" and inner[-1] == inner[0]:
+        inner = inner[1:-1]
+    if inner == "" or any(char.isspace() for char in inner):
+        return word
+    if any(char in _ECHO_METACHARACTERS for char in inner):
+        return word
+    return inner
 
 
 def _resolve_run_path(token: str, cwd: str) -> str:
     """Resolve one shell word against cwd the way a workspace-relative shell would."""
+    token = _unwrap_echo_literal(token.strip())
     token = _strip_workspace(token.strip())
     if token.endswith("/*"):
         token = token[:-2]
@@ -548,24 +577,54 @@ def _split_shell_commands(run_text: str) -> list[str]:
     return [command.strip() for command in commands if command.strip()]
 
 
+def _directory_update(words: list[str], current: str, stack: list[str]) -> str | None:
+    """Return the cwd after cd, pushd, or popd. None when the command is not one of those."""
+    command = words[0]
+    if command == "popd":
+        if stack:
+            return stack.pop()
+        return current
+    if command == "cd":
+        if len(words) > 1:
+            return _resolve_run_path(words[1], current)
+        return current
+    if command == "pushd":
+        if len(words) > 1 and not words[1].startswith("-"):
+            stack.append(current)
+            return _resolve_run_path(words[1], current)
+        return current
+    return None
+
+
+def _path_from_copy_word(command: str, word: str) -> str | None:
+    """Path argument of a copy command, including cp/mv --target-directory=."""
+    if command in ("cp", "mv") and word.startswith(_TARGET_DIRECTORY_PREFIX):
+        return word[len(_TARGET_DIRECTORY_PREFIX) :]
+    if word.startswith("-"):
+        return None
+    return word
+
+
 def _run_paths(run_text: str, cwd: str) -> list[str]:
-    """Paths copied by cp, mv, or rsync, after cd and working-directory."""
+    """Paths copied by cp, mv, or rsync, after cd, pushd, popd, and working-directory."""
     paths: list[str] = []
     current = _posix_norm(cwd)
+    stack: list[str] = []
     for command in _split_shell_commands(run_text):
         words = _shell_words(command)
         if not words:
             continue
-        if words[0] == "cd":
-            if len(words) > 1:
-                current = _resolve_run_path(words[1], current)
+        updated = _directory_update(words, current, stack)
+        if updated is not None:
+            current = updated
             continue
         if words[0] not in _COPY_COMMANDS:
             continue
         for word in words[1:]:
-            if word.startswith("-"):
+            path_word = _path_from_copy_word(words[0], word)
+            if path_word is None:
                 continue
-            paths.append(_resolve_run_path(word, current))
+            paths.append(_resolve_run_path(path_word, current))
     return paths
 
 
@@ -624,16 +683,19 @@ def _is_pages_publisher(step: dict) -> bool:
     return any(marker in uses for marker in _PAGES_USE_MARKERS)
 
 
+def _normalize_cwd(raw: object) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    return _posix_norm(_strip_workspace(raw.strip()))
+
+
 def _defaults_cwd(defaults: object) -> str:
     if not isinstance(defaults, dict):
         return ""
     run = defaults.get("run")
     if not isinstance(run, dict):
         return ""
-    raw = run.get("working-directory")
-    if not isinstance(raw, str) or not raw.strip():
-        return ""
-    return _posix_norm(raw.strip())
+    return _normalize_cwd(run.get("working-directory"))
 
 
 def _job_cwd(data: dict, job: dict) -> str:
@@ -648,7 +710,77 @@ def _step_cwd(step: dict, job_cwd: str) -> str:
     raw = step.get("working-directory")
     if not isinstance(raw, str) or not raw.strip():
         return job_cwd
-    return _posix_norm(raw.strip())
+    return _normalize_cwd(raw)
+
+
+def _quoted_literal(inner: str) -> str | None:
+    text = inner.strip()
+    if len(text) < 2:
+        return None
+    quote = text[0]
+    if quote not in "'\"" or text[-1] != quote:
+        return None
+    body = text[1:-1]
+    if "\\" in body or quote in body:
+        return None
+    return body
+
+
+def _reduce_literal_expressions(value: str) -> str | None:
+    """Concatenate literal text and quoted-literal expressions.
+
+    Returns None when an expression is not a quoted literal, or is unclosed.
+    """
+    if "${{" not in value:
+        return value
+    parts: list[str] = []
+    index = 0
+    while True:
+        start = value.find("${{", index)
+        if start < 0:
+            parts.append(value[index:])
+            return "".join(parts)
+        parts.append(value[index:start])
+        end = value.find("}}", start + 3)
+        if end < 0:
+            return None
+        literal = _quoted_literal(value[start + 3 : end])
+        if literal is None:
+            return None
+        parts.append(literal)
+        index = end + 2
+
+
+def _pages_input_path(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    reduced = _reduce_literal_expressions(value)
+    if reduced is None:
+        return None
+    return _posix_norm(reduced.strip())
+
+
+def _docs_destination_forbidden(norm: str) -> bool:
+    if norm == "dashboard":
+        return True
+    return norm == _LIVE_DASHBOARD_DEST or norm.startswith(_LIVE_DASHBOARD_DEST + "/")
+
+
+def _publish_dir_hits_archive(norm: str) -> bool:
+    return norm == ARCHIVE_BENCHMARK_DASHBOARD or norm.startswith(
+        ARCHIVE_BENCHMARK_DASHBOARD + "/"
+    )
+
+
+def _same_repo_path(value: object, expected: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    return _posix_norm(value) == _posix_norm(expected)
+
+
+def _is_jamesives_deploy(step: dict) -> bool:
+    uses = str(step.get("uses") or "").lower()
+    return _JAMESIVES_DEPLOY in uses
 
 
 def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
@@ -657,19 +789,52 @@ def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
     if not isinstance(with_block, dict):
         raise AssertionError(f"{path}: {step_name} missing with:")
     inputs = _folded_action_inputs(with_block)
-    destination = inputs.get("destination_dir")
-    if destination is not None and _posix_norm(str(destination)) == "dashboard":
+    if not _known_false(inputs.get("force_orphan")):
         raise AssertionError(
-            f"{path}: {step_name} destination_dir must not be the bare dashboard directory"
+            f"{path}: {step_name} force_orphan must stay unset or false"
+        )
+    destination = inputs.get("destination_dir")
+    if destination is not None:
+        reduced = _pages_input_path(destination)
+        if reduced is not None and _docs_destination_forbidden(reduced):
+            raise AssertionError(
+                f"{path}: {step_name} destination_dir must not replace the published dashboard"
+            )
+    publish_dir = _pages_input_path(inputs.get("publish_dir"))
+    if publish_dir is not None and _publish_dir_hits_archive(publish_dir):
+        raise AssertionError(
+            f"{path}: {step_name} publish_dir must stay off {ARCHIVE_BENCHMARK_DASHBOARD}"
         )
     if not _known_true(inputs.get("keep_files")):
         raise AssertionError(f"{path}: {step_name} keep_files must stay true")
 
 
+def _assert_jamesives_alert_publish(
+    inputs: dict[str, object], *, path: str, step_name: str
+) -> None:
+    """folder and target-folder are the paths github-pages-deploy-action deploys."""
+    folder = inputs.get("folder")
+    target = inputs.get("target-folder")
+    if not _same_repo_path(folder, _JAMESIVES_FOLDER):
+        raise AssertionError(
+            f"{path}: {step_name} folder must be {_JAMESIVES_FOLDER}, got {folder!r}"
+        )
+    if not _same_repo_path(target, _JAMESIVES_TARGET):
+        raise AssertionError(
+            f"{path}: {step_name} target-folder must be {_JAMESIVES_TARGET}, "
+            f"got {target!r}"
+        )
+
+
 def assert_benchmark_alert_gh_pages_publish(
     text: str, *, path: str = "benchmark_alert.yml"
 ) -> None:
-    """Every pages publisher step publishes benchmark_data, and the force-push input stays off."""
+    """Every pages publisher step publishes benchmark_data, and the force-push input stays off.
+
+    A step whose uses contains github-pages-deploy-action is held to folder and
+    target-folder. Those are the paths that action deploys. The peaceiris input
+    names on that step are not the deploy target.
+    """
     jobs = _workflow_jobs(text, path=path)
     gh_pages_steps: list[dict] = []
     for job_name, job in jobs.items():
@@ -699,6 +864,9 @@ def assert_benchmark_alert_gh_pages_publish(
         if not isinstance(with_block, dict):
             raise AssertionError(f"{path}: {step_name} missing with:")
         inputs = _folded_action_inputs(with_block)
+        if _is_jamesives_deploy(step):
+            _assert_jamesives_alert_publish(inputs, path=path, step_name=step_name)
+            continue
         publish_dir = inputs.get("publish_dir")
         destination_dir = inputs.get("destination_dir")
         if publish_dir in ("./docs", "./docs/"):
@@ -737,10 +905,26 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
 ) -> None:
     """Documentation must not copy the archived dashboard onto the book dashboard directory.
 
+    Every peaceiris pages step must leave force_orphan unset or a known false,
+    must keep publish_dir off docs/archive/benchmark_dashboard and files under
+    it, and must not set destination_dir to dashboard or
+    dashboard/benchmark_dashboard (or a path under that directory). A quoted
+    literal expression is reduced before those path checks.
+
+    working-directory is read from the step, then the job defaults, then the
+    workflow defaults. A github.workspace expression and the GITHUB_WORKSPACE
+    prefixes are stripped before that directory is used. cd, pushd, and popd in
+    the same step update it. cp and mv contribute a --target-directory= value.
+    echo of one literal path is reduced.
+
     Untested classes: a copy split across multiple steps; a copy performed by a
     uses: action; a command word other than cp, mv, or rsync; brace expansion;
     variable command words; escape splitting; actions/deploy-pages;
-    actions/upload-pages-artifact.
+    actions/upload-pages-artifact; a destination_dir or publish_dir expression
+    that is not a quoted literal; a command substitution other than echo of one
+    literal path; a pushd or popd directory that is not the second word; a
+    working-directory expression other than github.workspace;
+    github-pages-deploy-action inputs in the documentation workflow.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
@@ -1704,6 +1888,227 @@ class WorkflowPolicyTest(unittest.TestCase):
             _folded_action_inputs({"Keep_Files": True})["keep_files"],
             True,
         )
+        self.assertEqual(
+            _step_cwd({"working-directory": "${{ github.workspace }}/docs"}, ""),
+            "docs",
+        )
+        self.assertEqual(
+            _step_cwd({"working-directory": "${{github.workspace}}/docs"}, "other"),
+            "docs",
+        )
+        self.assertEqual(
+            _step_cwd({"working-directory": "${{ GitHub.Workspace }}/docs"}, ""),
+            "docs",
+        )
+        self.assertEqual(
+            _step_cwd({"working-directory": "$GITHUB_WORKSPACE/docs"}, "other"),
+            "docs",
+        )
+        self.assertEqual(
+            _step_cwd({"working-directory": "$github_workspace/docs"}, ""),
+            "$github_workspace/docs",
+        )
+        self.assertEqual(
+            _step_cwd({"working-directory": "$GITHUB_WORKSPACE_EXTRA/docs"}, ""),
+            "$GITHUB_WORKSPACE_EXTRA/docs",
+        )
+        self.assertEqual(
+            _defaults_cwd(
+                {"run": {"working-directory": "${{ github.workspace }}/docs"}}
+            ),
+            "docs",
+        )
+        self.assertEqual(
+            _resolve_run_path("${{ github.workspace }}/docs/archive/benchmark_dashboard", ""),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("$(echo docs/archive/benchmark_dashboard)", ""),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("$(echo 'docs/archive/benchmark_dashboardEXTRA')", ""),
+            "docs/archive/benchmark_dashboardEXTRA",
+        )
+        self.assertEqual(
+            _resolve_run_path("$(echo docs/archive/benchmark_dashboard; true)", ""),
+            "$(echo docs/archive/benchmark_dashboard; true)",
+        )
+        targeted = _run_paths(
+            "cp --target-directory=docs/book/dashboard/benchmark_dashboard "
+            "docs/archive/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", targeted)
+        self.assertIn("docs/archive/benchmark_dashboard", targeted)
+        self.assertNotIn(
+            "docs/book/dashboard/benchmark_dashboard",
+            _run_paths(
+                "cp --target-directory=/tmp/out docs/archive/benchmark_dashboard",
+                "",
+            ),
+        )
+        echoed = _run_paths(
+            'cp "$(echo docs/archive/benchmark_dashboard)" '
+            "docs/book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", echoed)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", echoed)
+        extra_echo = _run_paths(
+            'cp "$(echo docs/archive/benchmark_dashboardEXTRA)" '
+            "docs/book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboardEXTRA", extra_echo)
+        self.assertNotIn("docs/archive/benchmark_dashboard", extra_echo)
+        pushed = _run_paths(
+            "pushd docs\ncp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", pushed)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", pushed)
+        popped = _run_paths(
+            "pushd /tmp\npopd\ncp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", popped)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", popped)
+        stayed = _run_paths(
+            "popd\ncp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+            "docs",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", stayed)
+        self.assertIn("docs/book/dashboard/benchmark_dashboard", stayed)
+        self.assertEqual(_pages_input_path("${{ 'dashboard' }}"), "dashboard")
+        self.assertEqual(_pages_input_path("${{ 'dashboard/' }}"), "dashboard")
+        self.assertEqual(_pages_input_path('  ${{ "dashboard" }}  '), "dashboard")
+        self.assertEqual(_pages_input_path("${{ 'dash' }}${{ 'board' }}"), "dashboard")
+        self.assertEqual(
+            _pages_input_path("./docs/archive/benchmark_dashboard"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertIsNone(_pages_input_path("${{ github.ref_name }}"))
+        self.assertIsNone(_pages_input_path("${{ 'dash"))
+        self.assertIsNone(_pages_input_path(None))
+        self.assertIsNone(_pages_input_path(True))
+        self.assertTrue(_docs_destination_forbidden("dashboard"))
+        self.assertTrue(_docs_destination_forbidden("dashboard/benchmark_dashboard"))
+        self.assertTrue(
+            _docs_destination_forbidden("dashboard/benchmark_dashboard/index.html")
+        )
+        self.assertFalse(_docs_destination_forbidden("dashboard/benchmark_dashboardEXTRA"))
+        self.assertFalse(_docs_destination_forbidden("dashboard-notes"))
+        self.assertFalse(_docs_destination_forbidden("dashboard/benchmark_data"))
+        self.assertFalse(_docs_destination_forbidden("api"))
+        self.assertTrue(_publish_dir_hits_archive("docs/archive/benchmark_dashboard"))
+        self.assertTrue(
+            _publish_dir_hits_archive("docs/archive/benchmark_dashboard/index.html")
+        )
+        self.assertFalse(
+            _publish_dir_hits_archive("docs/archive/benchmark_dashboardEXTRA")
+        )
+        self.assertFalse(_publish_dir_hits_archive("docs"))
+        self.assertFalse(_publish_dir_hits_archive("docs/archive"))
+        self.assertFalse(_publish_dir_hits_archive("docs/book"))
+        self.assertTrue(_same_repo_path("docs/benchmark_data/", "docs/benchmark_data"))
+        self.assertTrue(_same_repo_path("./docs/benchmark_data", "docs/benchmark_data"))
+        self.assertFalse(_same_repo_path("docs/benchmark_dataEXTRA", "docs/benchmark_data"))
+        self.assertFalse(
+            _same_repo_path("docs/benchmark_data/extra", "docs/benchmark_data")
+        )
+        self.assertFalse(_same_repo_path("docs", "docs/benchmark_data"))
+        self.assertFalse(_same_repo_path(None, "docs/benchmark_data"))
+        self.assertFalse(_same_repo_path(True, "docs/benchmark_data"))
+        self.assertTrue(
+            _is_jamesives_deploy(
+                {"uses": "JamesIves/GitHub-Pages-Deploy-Action@v4"}
+            )
+        )
+        self.assertTrue(
+            _is_jamesives_deploy({"uses": "JamesIves/github-pages-deploy-action@v4"})
+        )
+        self.assertFalse(_is_jamesives_deploy({"uses": "peaceiris/actions-gh-pages@v4"}))
+        self.assertFalse(_is_jamesives_deploy({}))
+        self.assertEqual(_reduce_literal_expressions("plain"), "plain")
+        self.assertEqual(
+            _reduce_literal_expressions("${{ 'a' }}${{ 'b' }}"),
+            "ab",
+        )
+        self.assertEqual(_pages_input_path("${{'dashboard'}}"), "dashboard")
+        self.assertIsNone(_reduce_literal_expressions("${{ github.workspace }}"))
+        self.assertIsNone(_reduce_literal_expressions("${{ 'dashboard'"))
+        self.assertIsNone(_reduce_literal_expressions("${{ 'docs\\\\archive\\\\benchmark_dashboard' }}"))
+        self.assertIsNone(_quoted_literal(""))
+        self.assertIsNone(_quoted_literal(" "))
+        self.assertIsNone(_quoted_literal("'"))
+        self.assertIsNone(_quoted_literal('"'))
+        self.assertEqual(_quoted_literal("''"), "")
+        self.assertEqual(_quoted_literal("'dashboard'"), "dashboard")
+        self.assertIsNone(_quoted_literal("'dashboard\""))
+        self.assertIsNone(_quoted_literal("XdashboardX"))
+        self.assertIsNone(_quoted_literal("'da'shboard'"))
+        self.assertIsNone(_quoted_literal("'a\\b'"))
+        self.assertEqual(
+            _resolve_run_path("  $(echo docs/archive/benchmark_dashboard)  ", ""),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _unwrap_echo_literal("$(echo '')"),
+            "$(echo '')",
+        )
+        self.assertEqual(
+            _unwrap_echo_literal("$(echo 'a b')"),
+            "$(echo 'a b')",
+        )
+        self.assertEqual(
+            _unwrap_echo_literal("$(echo 'docs/archive/benchmark_dashboard\")"),
+            "'docs/archive/benchmark_dashboard\"",
+        )
+        self.assertEqual(_unwrap_echo_literal("$(echo ')"), "'")
+        self.assertEqual(_unwrap_echo_literal("$(echo a;b)"), "$(echo a;b)")
+        self.assertIsNone(_reduce_literal_expressions("${{ 'x' y"))
+        self.assertEqual(_run_paths('""', ""), [])
+        self.assertEqual(
+            _run_paths(
+                "pushd\ncp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+                "",
+            ),
+            [
+                "archive/benchmark_dashboard",
+                "book/dashboard/benchmark_dashboard",
+            ],
+        )
+        self.assertIn(
+            "docs/archive/benchmark_dashboard",
+            _run_paths(
+                "pushd -n\ncp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+                "docs",
+            ),
+        )
+        self.assertIn(
+            "docs/book/dashboard/benchmark_dashboard",
+            _run_paths(
+                "mv --target-directory=docs/book/dashboard/benchmark_dashboard "
+                "docs/archive/benchmark_dashboard",
+                "",
+            ),
+        )
+        self.assertNotIn(
+            "docs/book/dashboard/benchmark_dashboard",
+            _run_paths(
+                "rsync --target-directory=docs/book/dashboard/benchmark_dashboard "
+                "docs/archive/benchmark_dashboard /tmp/out",
+                "",
+            ),
+        )
+
+        class _SamePath:
+            def __str__(self) -> str:
+                return "docs/benchmark_data"
+
+        self.assertFalse(_same_repo_path(_SamePath(), "docs/benchmark_data"))
 
     def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
         alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
@@ -1730,6 +2135,8 @@ class WorkflowPolicyTest(unittest.TestCase):
         for directory in (
             "benchmark_alert_scalar_step",
             "benchmark_alert_two_publishers_one_name",
+            "benchmark_alert_jamesives_allowed",
+            "benchmark_alert_peaceiris_unused_folder",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "benchmark_alert.yml")
             _call_checker(assert_benchmark_alert_gh_pages_publish, fixture, path=directory)
@@ -1748,7 +2155,12 @@ class WorkflowPolicyTest(unittest.TestCase):
             "benchmark_alert_force_lowercase_true": "force-push",
             "benchmark_alert_empty_jobs": "missing jobs",
             "benchmark_alert_jobs_scalar": "missing jobs",
-            "benchmark_alert_jamesives_publisher": "publish_dir",
+            "benchmark_alert_jamesives_publisher": "folder",
+            "benchmark_alert_jamesives_decoy_paths": "folder",
+            "benchmark_alert_jamesives_second_step": "folder",
+            "benchmark_alert_jamesives_folder_suffix": "folder",
+            "benchmark_alert_jamesives_nested_folder": "folder",
+            "benchmark_alert_jamesives_target_suffix": "target-folder",
             "benchmark_alert_publish_branch_main": "publish_branch",
             "benchmark_alert_external_repository": "external_repository",
             "benchmark_alert_spaced_publish_dir": "publish_dir",
@@ -1772,6 +2184,14 @@ class WorkflowPolicyTest(unittest.TestCase):
         for replacement in ('keep_files: "true"', 'keep_files: " TRUE "'):
             kept = docs.replace("keep_files: true", replacement, 1)
             _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, kept)
+        for force_value in ("false", "'false'", "' false '"):
+            safe_force = docs.replace(
+                "keep_files: true\n",
+                "keep_files: true\n          force_orphan: " + force_value + "\n",
+                1,
+            )
+            self.assertIn("force_orphan", safe_force)
+            _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, safe_force)
         for directory in (
             "docs_book_path_only",
             "docs_archive_to_other",
@@ -1781,6 +2201,9 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_other_destination",
             "docs_echo_both_paths",
             "docs_quoted_separator",
+            "docs_pages_publish_near_miss",
+            "docs_cwd_not_workspace",
+            "docs_copy_near_miss",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
@@ -1819,6 +2242,17 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_defaults_shell_only",
             "docs_quote_then_copy",
             "docs_single_quoted_paths",
+            "docs_cwd_expr_workspace",
+            "docs_cwd_env_workspace",
+            "docs_cwd_expr_nospace",
+            "docs_cwd_expr_case",
+            "docs_job_cwd_expr_workspace",
+            "docs_target_directory_copy",
+            "docs_echo_literal_copy",
+            "docs_pushd_copy",
+            "docs_pushd_popd_copy",
+            "docs_pushd_option",
+            "docs_mv_target_directory",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
@@ -1832,6 +2266,14 @@ class WorkflowPolicyTest(unittest.TestCase):
         for directory, snippet in (
             ("docs_dashboard_destination", "destination_dir"),
             ("docs_keep_files_false", "keep_files"),
+            ("docs_force_orphan_true", "force_orphan"),
+            ("docs_force_orphan_expression", "force_orphan"),
+            ("docs_archive_publish_dir", "publish_dir"),
+            ("docs_archive_publish_file", "publish_dir"),
+            ("docs_live_dashboard_destination", "destination_dir"),
+            ("docs_live_dashboard_child", "destination_dir"),
+            ("docs_destination_expression", "destination_dir"),
+            ("docs_destination_concat", "destination_dir"),
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             with self.assertRaises(AssertionError) as caught:
@@ -1849,6 +2291,24 @@ class WorkflowPolicyTest(unittest.TestCase):
         with self.assertRaises(AssertionError) as caught:
             _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, string_false)
         self.assertIn("keep_files", str(caught.exception))
+        listed_with = """
+name: Documentation
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with: []
+"""
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy,
+                listed_with,
+                path="with-list",
+            )
+        self.assertIn("missing with", str(caught.exception))
 
 
 if __name__ == "__main__":
