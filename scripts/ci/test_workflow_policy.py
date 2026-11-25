@@ -729,9 +729,10 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
 ) -> None:
     """Documentation must not copy the archived dashboard onto the book dashboard directory.
 
-    Untested classes: a copy split across multiple steps; a command word other than
-    cp, mv, or rsync; brace expansion; variable command words; escape splitting;
-    actions/deploy-pages; actions/upload-pages-artifact.
+    Untested classes: a copy split across multiple steps; a copy performed by a
+    uses: action; a command word other than cp, mv, or rsync; brace expansion;
+    variable command words; escape splitting; actions/deploy-pages;
+    actions/upload-pages-artifact.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
