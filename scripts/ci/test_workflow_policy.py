@@ -632,7 +632,7 @@ def _command_body(words: list[str]) -> list[str]:
 def _directory_update(words: list[str], current: str, stack: list[str]) -> str | None:
     """Return the cwd after cd, pushd, or popd. None when the command is not one of those.
 
-    The directory is the second word. An option in that word is not a directory.
+    The directory is the second word. An option in the pushd word is not a directory.
     """
     command = words[0]
     if command == "popd":
@@ -954,12 +954,13 @@ def _jamesives_alert_data(norm: str) -> bool:
 def _assert_docs_jamesives_publish(
     inputs: dict[str, object], *, path: str, step_name: str
 ) -> None:
-    """folder, target-folder, branch, and force are what this action deploys.
+    """folder, target-folder, single-commit, branch, and force are what this action deploys.
 
     target-folder must name a directory other than the worktree root, the
-    published dashboard, and the alert data directory. branch must be unset,
-    blank, or gh-pages. force must be an explicit false. Other inputs on a
-    documentation step are not read.
+    published dashboard, and the alert data directory. single-commit must be
+    unset or a known false. branch must be unset, blank, or gh-pages. force
+    must be an explicit false. Other inputs on a documentation step are not
+    read.
     """
     folder = _pages_input_path(inputs.get("folder"))
     if folder is not None and _publish_dir_hits_archive(folder):
@@ -985,6 +986,10 @@ def _assert_docs_jamesives_publish(
         raise AssertionError(
             f"{path}: {step_name} branch must stay unset or "
             f"{BENCHMARK_ALERT_PUBLISH_BRANCH!r}, got {inputs.get('branch')!r}"
+        )
+    if not _known_false(inputs.get("single-commit")):
+        raise AssertionError(
+            f"{path}: {step_name} single-commit must stay unset or false"
         )
     if not _explicit_false(inputs.get("force")):
         raise AssertionError(f"{path}: {step_name} force must be false")
@@ -1148,7 +1153,7 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
 
     A step whose uses contains gh-pages or github-pages is checked. When that
     uses also contains github-pages-deploy-action, the step is held to folder,
-    target-folder, branch, and force. folder and target-folder use the same
+    target-folder, single-commit, branch, and force. folder and target-folder use the same
     normalization as publish_dir, including a dropped leading slash. folder
     must stay off docs/archive/benchmark_dashboard and files under it.
     Ancestors are not that check. A missing folder does not raise.
@@ -1157,9 +1162,9 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     ".", "/", and dashboard/benchmark_dashboard/../.. are that root.
     target-folder must not be dashboard or dashboard/benchmark_dashboard, or a
     path under that directory, and must not be dashboard/benchmark_data or a
-    path under it. branch must be unset, blank, or gh-pages. force must be
-    YAML false or the false string. Unset force is not false. Other inputs on
-    that step are not read.
+    path under it. single-commit must be unset or a known false. branch must
+    be unset, blank, or gh-pages. force must be YAML false or the false
+    string. Unset force is not false. Other inputs on that step are not read.
 
     Otherwise the step is read as peaceiris. force_orphan must stay unset or a
     known false. Known false is YAML false, or a string that is false after
@@ -1174,7 +1179,7 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     working-directory is read from the step, then the job defaults, then the
     workflow defaults. A github.workspace expression and the GITHUB_WORKSPACE
     prefixes are stripped before that directory is used. cd, pushd, and popd
-    use the second word. An option in that word is not a directory. A directory
+    use the second word. An option in the pushd word is not a directory. A directory
     change before &&, ||, a newline, or ; applies to later commands in the
     step, including when the next command is flush against && or ||. A
     directory change before a single | or a single & does not. The scan
@@ -1202,7 +1207,7 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     cd -P; a pushd or popd directory that is not the second word; a glued -t
     destination; a copy word containing *, ?, or [ other than a trailing /*;
     a working-directory expression other than github.workspace; any input other
-    than folder, target-folder, branch, and force on a documentation step
+    than folder, target-folder, single-commit, branch, and force on a documentation step
     whose uses contains github-pages-deploy-action; a folder or target-folder
     that begins with a backslash; a parenthesized subshell.
     """
@@ -2645,6 +2650,9 @@ class WorkflowPolicyTest(unittest.TestCase):
             "          branch: gh-pages\n",
             "          branch: ''\n",
             "          branch: ' gh-pages '\n",
+            "          single-commit: false\n",
+            "          single-commit: 'false'\n",
+            "          single-commit: ' FALSE '\n",
         ):
             varied = book.replace("force: false\n", "force: false\n" + addition, 1)
             self.assertIn(addition.strip(), varied)
@@ -2653,6 +2661,19 @@ class WorkflowPolicyTest(unittest.TestCase):
                 varied,
                 path="jamesives-docs-branch",
             )
+        for bad_commit in ("true", "'true'", "' TRUE '"):
+            varied = book.replace(
+                "force: false\n",
+                f"force: false\n          single-commit: {bad_commit}\n",
+                1,
+            )
+            with self.assertRaises(AssertionError) as caught:
+                _call_checker(
+                    assert_docs_no_archive_benchmark_dashboard_copy,
+                    varied,
+                    path="jamesives-docs-single-commit",
+                )
+            self.assertIn("single-commit", str(caught.exception))
         for force_value in ("false", "'false'", "' FALSE '"):
             varied = book.replace("force: false\n", f"force: {force_value}\n", 1)
             self.assertIn("force:", varied)
@@ -2804,6 +2825,7 @@ jobs:
             ("docs_jamesives_branch_main", "branch"),
             ("docs_jamesives_force_omitted", "force"),
             ("docs_jamesives_force_true", "force"),
+            ("docs_jamesives_single_commit", "single-commit"),
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             with self.assertRaises(AssertionError) as caught:
