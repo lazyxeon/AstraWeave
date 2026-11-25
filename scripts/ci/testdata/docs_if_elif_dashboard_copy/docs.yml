@@ -1,0 +1,26 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Prepare Dashboard Assets
+        run: |
+          mkdir -p gh-pages
+          cp tools/benchmark-dashboard/index.html gh-pages/
+          cp tools/benchmark-dashboard/dashboard.js gh-pages/
+          mkdir -p gh-pages/static-data
+          if [ -d tools/benchmark-dashboard/static-data ]; then
+            cp -r tools/benchmark-dashboard/static-data/* gh-pages/static-data/ 2>/dev/null || true
+          fi
+          mkdir -p gh-pages/benchmark-data
+          if [ -f target/benchmark-data/history.jsonl ]; then
+            cp target/benchmark-data/history.jsonl gh-pages/benchmark-data/
+          elif [ -f tools/benchmark-dashboard/benchmark-data/history.jsonl ]; then cp docs/archive/benchmark_dashboard/index.html docs/book/dashboard/benchmark_dashboard/index.html
+          fi

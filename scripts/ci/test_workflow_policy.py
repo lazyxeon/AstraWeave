@@ -415,6 +415,7 @@ BOOK_DASHBOARD_DIR = "docs/book/dashboard"
 BOOK_BENCHMARK_DASHBOARD = "docs/book/dashboard/benchmark_dashboard"
 _PAGES_USE_MARKERS = ("gh-pages", "github-pages")
 _COPY_COMMANDS = ("cp", "mv", "rsync")
+_BRANCH_WORDS = ("if", "elif", "then", "else", "fi")
 _WORKSPACE_PREFIXES = (
     "${GITHUB_WORKSPACE}/",
     "$GITHUB_WORKSPACE/",
@@ -602,11 +603,13 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
 
 
 def _command_body(words: list[str]) -> list[str]:
-    """Drop leading `{` group tokens and a leading `command` word.
+    """Drop leading branch words, `{` group tokens, and a leading `command` word.
 
-    `command` followed by an option stays in place. Brace expansion is one
-    word and stays in place. A parenthesized subshell is not removed. The
-    scan raises if the index does not advance.
+    `if`, `elif`, `then`, `else`, and `fi` are skipped, so a copy or directory
+    change in that branch is read, including when it shares the command with
+    `then` or `else`. `command` followed by an option stays in place. Brace
+    expansion is one word and stays in place. A parenthesized subshell is not
+    removed. The scan raises if the index does not advance.
     """
     index = 0
     limit = len(words)
@@ -615,7 +618,7 @@ def _command_body(words: list[str]) -> list[str]:
         if index <= previous:
             raise AssertionError("command scan did not advance")
         previous = index
-        if words[index] == "{":
+        if words[index] in _BRANCH_WORDS or words[index] == "{":
             index += 1
             continue
         if (
@@ -693,8 +696,11 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
 
     The copy command is the basename of the command word. A leading command
     word is skipped before cd, pushd, popd, and a copy, and so is a leading
-    { group token. command followed by an option is left in place. A leading
-    NAME=value is skipped. An assignment-only command stores a value with no
+    { group token. A leading if, elif, then, else, or fi is skipped the same
+    way, so a copy or directory change in that branch is read, including when
+    it shares the command with then or else. command followed by an option is
+    left in place. A leading NAME=value is skipped. An assignment-only command
+    stores a value with no
     $ or backtick when the separator keeps shell state. A later copy word that
     is $name or ${name} uses that value, including a one-character name.
     The assignment scan raises if its index does not advance.
@@ -782,7 +788,7 @@ def _folded_action_inputs(with_block: dict) -> dict[str, object]:
 
 
 def _known_false(value: object) -> bool:
-    """Unset and false are the only allowed force_orphan values."""
+    """Unset and false are the only allowed force_orphan and single-commit values."""
     if value is None or value is False:
         return True
     if isinstance(value, str):
@@ -1188,8 +1194,11 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     raises if its index does not advance. The
     copy command is cp, mv, or rsync, matched by basename. A backslash in that
     word is a separator. A leading command word is skipped before cd, pushd,
-    popd, and a copy. A leading { group token is skipped the same way. That
-    scan raises if its index does not advance. command
+    popd, and a copy. A leading { group token is skipped the same way. A
+    leading if, elif, then, else, or fi is skipped the same way, so a copy or
+    directory change in that branch is read, including when it shares the
+    command with then or else. That scan raises if its index does not advance.
+    command
     followed by an option is left in place. A leading NAME=value is skipped.
     An assignment-only command stores a value with no $ or backtick when the
     separator keeps shell state, and a later copy word that is $name or
@@ -1212,9 +1221,13 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     expression other than github.workspace; any input other than folder,
     target-folder, single-commit, branch, and force on a documentation step
     whose uses contains github-pages-deploy-action; a folder or target-folder
-    that begins with a backslash; a ( ... ) subshell; if, for, while, until,
-    case compound commands and a leading !; a copy run through sudo, exec,
-    time, env, xargs, nohup, or another wrapper command.
+    that begins with a backslash; a ( ... ) subshell; for, while, until, case
+    compound commands and a leading !; a copy run through sudo, exec, time,
+    env, xargs, nohup, or another wrapper command; a builtin prefix in front
+    of a directory change; an assignment prefix in front of command cd; a cd
+    on the right side of ||, which bash may skip; a $name or ${name} with more
+    text in the same word; an export or declare assignment; a directory change
+    in an if, elif, or else branch that bash may skip.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
@@ -2444,6 +2457,22 @@ class WorkflowPolicyTest(unittest.TestCase):
             [("cp a b", True), ("cp c d", True)],
         )
         self.assertEqual(_run_paths("command", ""), [])
+        self.assertEqual(
+            _command_body(["command", "-v", "cp"]),
+            ["command", "-v", "cp"],
+        )
+        self.assertEqual(_command_body(["fi"]), [])
+        self.assertEqual(_command_body(["{"]), [])
+        self.assertEqual(
+            _command_body(["if", "elif", "then", "else", "fi"]),
+            [],
+        )
+        self.assertEqual(_command_body(["then", "cd"]), ["cd"])
+        self.assertEqual(_command_body(["else", "cp"]), ["cp"])
+        self.assertEqual(_command_body(["builtin", "cd"]), ["builtin", "cd"])
+        self.assertEqual(_command_body(["command", "cd"]), ["cd"])
+        self.assertEqual(_command_body(["command", "command", "cd"]), ["cd"])
+        self.assertEqual(_command_body(["command", "then", "cp"]), ["cp"])
         self.assertEqual(_run_paths("true &", ""), [])
         joined = _run_paths(
             "cd docs|& cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
@@ -2609,6 +2638,43 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_docs_no_archive_benchmark_dashboard_copy(self) -> None:
         docs = (WORKFLOWS / "docs.yml").read_text(encoding="utf-8")
         _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, docs)
+        dashboard = (WORKFLOWS / "benchmark-dashboard.yml").read_text(encoding="utf-8")
+        dashboard_data = _workflow_document(dashboard, path="benchmark-dashboard.yml")
+        seen_prepare = False
+        for job in _require_jobs(dashboard_data, path="benchmark-dashboard.yml").values():
+            if not isinstance(job, dict):
+                continue
+            job_cwd = _job_cwd(dashboard_data, job)
+            steps = job.get("steps")
+            if not isinstance(steps, list):
+                continue
+            for step in steps:
+                if not isinstance(step, dict):
+                    continue
+                run_text = _step_run_text(step)
+                if not isinstance(run_text, str) or not run_text.strip():
+                    continue
+                paths = _run_paths(run_text, _step_cwd(step, job_cwd))
+                collided = any(_is_archive_path(item) for item in paths) and any(
+                    _is_book_dashboard_target(item) for item in paths
+                )
+                self.assertFalse(collided, step.get("name"))
+                if step.get("name") != "Prepare Dashboard Assets":
+                    continue
+                self.assertIn("tools/benchmark-dashboard/static-data", paths)
+                self.assertIn("gh-pages/static-data", paths)
+                self.assertIn("tools/benchmark-dashboard/graphs", paths)
+                self.assertIn("gh-pages/graphs", paths)
+                self.assertIn("target/benchmark-data/history.jsonl", paths)
+                self.assertIn("gh-pages/benchmark-data", paths)
+                self.assertIn(
+                    "tools/benchmark-dashboard/benchmark-data/history.jsonl", paths
+                )
+                self.assertIn(
+                    "tools/benchmark-dashboard/benchmark-data/metadata.json", paths
+                )
+                seen_prepare = True
+        self.assertTrue(seen_prepare)
         for replacement in ('keep_files: "true"', 'keep_files: " TRUE "'):
             kept = docs.replace("keep_files: true", replacement, 1)
             _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, kept)
@@ -2643,6 +2709,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_single_quoted_separator",
             "docs_command_popd",
             "docs_assign_plain",
+            "docs_if_elif_dashboard_safe",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
@@ -2793,6 +2860,12 @@ jobs:
             "docs_and_tight",
             "docs_assign_one",
             "docs_assign_one_brace",
+            "docs_if_elif_dashboard_copy",
+            "docs_if_else_dashboard_copy",
+            "docs_if_then_cd_copy",
+            "docs_if_condition_copy",
+            "docs_elif_condition_copy",
+            "docs_fi_glued_copy",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")

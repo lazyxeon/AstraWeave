@@ -1,0 +1,17 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Prepare Dashboard Assets
+        run: |
+          if cp docs/archive/benchmark_dashboard/index.html docs/book/dashboard/benchmark_dashboard/index.html; then
+            echo kept
+          fi
