@@ -1206,7 +1206,7 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     publish_dir, folder, or target-folder expression that is not a quoted
     literal; a command substitution other than echo or echo -n of one literal
     path; a cd whose directory is not the second word, including cd -- and
-    cd -P; a pushd or popd directory that is not the second word; a glued -t
+    cd -P; a pushd directory that is not the second word; a glued -t
     destination; a copy word containing *, ?, or [ other than a trailing /*;
     a working-directory expression other than github.workspace; any input other
     than folder, target-folder, single-commit, branch, and force on a documentation step
