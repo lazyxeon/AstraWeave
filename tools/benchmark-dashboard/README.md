@@ -217,7 +217,7 @@ Top 8 benchmarks by current value, showing:
 - **Multi-Series**: Compare multiple benchmarks on same chart
 - **Legend**: Click to highlight specific series
 - **Auto-Scaling**: Y-axis adjusts to data range
-- **Series markers** (`SYSTEM_MARK` in `dashboard.js`): each `detectSystem` category is encoded as a *(shape index 0–6, solid vs hollow)* pair on the trend line and in the legend—seven D3 `symbolsFill` shapes, two categories per index (one solid fill in the category color, one hollow with `fill: var(--panel)` and a colored stroke). Partners are different categories with distinct hues (for example ecs solid circle and tools hollow circle on shape 0), not secondary crates within one category. Summary cards only set `--series` from `COLOR_SCHEME`; markers are not drawn on the cards.
+- **Series markers** (`SYSTEM_MARK` in `dashboard.js`): each `detectSystem` category is encoded as a *(shape index 0–6, solid vs hollow)* pair on the trend line and in the trend-mode legend; single-snapshot view uses plain color swatches—seven D3 `symbolsFill` shapes, two categories per index (one solid fill in the category color, one hollow with `fill: var(--panel)` and a colored stroke). Partners are different categories with distinct hues (for example ecs solid circle and tools hollow circle on shape 0), not secondary crates within one category. Summary cards only set `--series` from `COLOR_SCHEME`; markers are not drawn on the cards.
 
 ---
 
