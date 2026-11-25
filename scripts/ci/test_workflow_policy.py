@@ -408,45 +408,63 @@ def without_status_guard(expr: str) -> str:
 BENCHMARK_ALERT_PUBLISH_DIR = "./docs/benchmark_data"
 BENCHMARK_ALERT_DESTINATION_DIR = "dashboard/benchmark_data"
 BENCHMARK_ALERT_GH_PAGES_STEP = "Deploy dashboard to GitHub Pages"
+BENCHMARK_ALERT_PUBLISH_BRANCH = "gh-pages"
 PEACEIRIS_GH_PAGES = "peaceiris/actions-gh-pages"
 ARCHIVE_BENCHMARK_DASHBOARD = "docs/archive/benchmark_dashboard"
 BOOK_DASHBOARD_DIR = "docs/book/dashboard"
 BOOK_BENCHMARK_DASHBOARD = "docs/book/dashboard/benchmark_dashboard"
-_RUN_PATH_TOKEN = re.compile(
-    r"(?<![\w./-])(?:\./)?(?:[\w.-]+/)+[\w.-]+/?\*?(?![\w./-])"
+_PAGES_USE_MARKERS = ("gh-pages", "github-pages")
+_COPY_COMMANDS = ("cp", "mv", "rsync")
+_WORKSPACE_PREFIXES = (
+    "${GITHUB_WORKSPACE}/",
+    "$GITHUB_WORKSPACE/",
+    "GITHUB_WORKSPACE/",
 )
 
 
-def _workflow_jobs(text: str, *, path: str) -> dict:
-    data = yaml.safe_load(text)
+def _workflow_document(text: str, *, path: str) -> dict:
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise AssertionError(f"{path}: workflow YAML is invalid: {exc}") from exc
     if not isinstance(data, dict):
         raise AssertionError(f"{path}: workflow root is not a mapping")
+    return data
+
+
+def _require_jobs(data: dict, *, path: str) -> dict:
     jobs = data.get("jobs")
     if not isinstance(jobs, dict) or not jobs:
         raise AssertionError(f"{path}: missing jobs")
     return jobs
 
 
+def _workflow_jobs(text: str, *, path: str) -> dict:
+    return _require_jobs(_workflow_document(text, path=path), path=path)
+
+
 def _step_run_text(step: dict) -> str:
     run = step.get("run", "")
-    if isinstance(run, str):
-        return run
     if isinstance(run, list):
         return "\n".join(str(line) for line in run)
+    if isinstance(run, str):
+        return run
     if run is None:
         return ""
     return str(run)
 
 
 def _read_policy_fixture(directory: str, filename: str) -> str:
-    return (
-        ROOT / "scripts" / "ci" / "testdata" / directory / filename
-    ).read_text(encoding="utf-8")
+    fixture = ROOT / "scripts" / "ci" / "testdata" / directory / filename
+    try:
+        return fixture.read_text(encoding="utf-8")
+    except (LookupError, UnicodeError, OSError) as exc:
+        raise AssertionError(f"could not read policy fixture {fixture}: {exc}") from exc
 
 
 def _posix_norm(path: str) -> str:
     parts: list[str] = []
-    for part in path.replace("\\", "/").split("/"):
+    for part in str(path).replace("\\", "/").split("/"):
         if part in ("", "."):
             continue
         if part == "..":
@@ -457,27 +475,106 @@ def _posix_norm(path: str) -> str:
     return "/".join(parts)
 
 
+def _strip_workspace(token: str) -> str:
+    for prefix in _WORKSPACE_PREFIXES:
+        if token.startswith(prefix):
+            return token[len(prefix) :]
+    return token
+
+
 def _resolve_run_path(token: str, cwd: str) -> str:
-    token = token[2:] if token.startswith("./") else token
+    """Resolve one shell word against cwd the way a workspace-relative shell would."""
+    token = _strip_workspace(token.strip())
     if token.endswith("/*"):
         token = token[:-2]
-    norm = _posix_norm(token.strip("/"))
-    if not cwd or norm == cwd or norm.startswith(cwd + "/"):
-        return norm
-    return _posix_norm(f"{cwd}/{norm}")
+    slash_token = token.replace("\\", "/").strip("/")
+    cwd_norm = _posix_norm(cwd)
+    alone = _posix_norm(slash_token)
+    if not cwd_norm or alone == cwd_norm or alone.startswith(cwd_norm + "/"):
+        return alone
+    return _posix_norm(f"{cwd_norm}/{slash_token}")
+
+
+def _shell_words(command: str) -> list[str]:
+    words: list[str] = []
+    buf: list[str] = []
+    quote: str | None = None
+    for char in command:
+        if quote is not None:
+            if char == quote:
+                quote = None
+            else:
+                buf.append(char)
+            continue
+        if char in ("'", '"'):
+            quote = char
+            continue
+        if char.isspace():
+            if buf:
+                words.append("".join(buf))
+                buf = []
+            continue
+        buf.append(char)
+    if buf:
+        words.append("".join(buf))
+    return words
+
+
+def _split_shell_commands(run_text: str) -> list[str]:
+    commands: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    for char in run_text:
+        if quote is not None:
+            current.append(char)
+            if char == quote:
+                quote = None
+            continue
+        if char in ("'", '"'):
+            quote = char
+            current.append(char)
+            continue
+        if char in ("\n", ";"):
+            commands.append("".join(current))
+            current = []
+            continue
+        if char == "&" and current and current[-1] == "&":
+            current.pop()
+            commands.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    commands.append("".join(current))
+    return [command.strip() for command in commands if command.strip()]
 
 
 def _run_paths(run_text: str, cwd: str) -> list[str]:
-    return [
-        _resolve_run_path(match.group(0), cwd)
-        for match in _RUN_PATH_TOKEN.finditer(run_text)
-    ]
+    """Paths copied by cp, mv, or rsync, after cd and working-directory."""
+    paths: list[str] = []
+    current = _posix_norm(cwd)
+    for command in _split_shell_commands(run_text):
+        words = _shell_words(command)
+        if not words:
+            continue
+        if words[0] == "cd":
+            if len(words) > 1:
+                current = _resolve_run_path(words[1], current)
+            continue
+        if words[0] not in _COPY_COMMANDS:
+            continue
+        for word in words[1:]:
+            if word.startswith("-"):
+                continue
+            paths.append(_resolve_run_path(word, current))
+    return paths
 
 
 def _is_archive_path(path: str) -> bool:
-    return path == ARCHIVE_BENCHMARK_DASHBOARD or path.startswith(
+    if path == ARCHIVE_BENCHMARK_DASHBOARD or path.startswith(
         ARCHIVE_BENCHMARK_DASHBOARD + "/"
-    )
+    ):
+        return True
+    return ARCHIVE_BENCHMARK_DASHBOARD.startswith(path + "/")
 
 
 def _is_book_dashboard_target(path: str) -> bool:
@@ -496,21 +593,75 @@ def _folded_action_inputs(with_block: dict) -> dict[str, object]:
     return folded
 
 
-def _actions_input_is_true(value: object) -> bool:
-    """Match peaceiris isBoolean: uppercase string TRUE, including a YAML boolean."""
-    if isinstance(value, bool):
-        return value
+def _known_false(value: object) -> bool:
+    """Unset and false are the only allowed force_orphan values."""
+    if value is None or value is False:
+        return True
+    if isinstance(value, str):
+        return value.strip().upper() == "FALSE"
+    return False
+
+
+def _known_true(value: object) -> bool:
+    """True when an Actions boolean input is the YAML bool or the string TRUE."""
+    if value is True:
+        return True
     if isinstance(value, str):
         return value.strip().upper() == "TRUE"
     return False
 
 
-def _is_peaceiris_publisher(step: dict) -> bool:
-    return PEACEIRIS_GH_PAGES in str(step.get("uses", "")).lower()
+def _is_pages_publisher(step: dict) -> bool:
+    uses = str(step.get("uses") or "").lower()
+    return any(marker in uses for marker in _PAGES_USE_MARKERS)
 
 
-def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark_alert.yml") -> None:
-    """Every publisher step publishes benchmark_data, and the force-push input stays off."""
+def _defaults_cwd(defaults: object) -> str:
+    if not isinstance(defaults, dict):
+        return ""
+    run = defaults.get("run")
+    if not isinstance(run, dict):
+        return ""
+    raw = run.get("working-directory")
+    if not isinstance(raw, str) or not raw.strip():
+        return ""
+    return _posix_norm(raw.strip())
+
+
+def _job_cwd(data: dict, job: dict) -> str:
+    workflow_cwd = _defaults_cwd(data.get("defaults"))
+    job_cwd = _defaults_cwd(job.get("defaults"))
+    if job_cwd:
+        return job_cwd
+    return workflow_cwd
+
+
+def _step_cwd(step: dict, job_cwd: str) -> str:
+    raw = step.get("working-directory")
+    if not isinstance(raw, str) or not raw.strip():
+        return job_cwd
+    return _posix_norm(raw.strip())
+
+
+def _assert_docs_pages_publish(step: dict, *, path: str) -> None:
+    step_name = str(step.get("name") or "<unnamed>")
+    with_block = step.get("with")
+    if not isinstance(with_block, dict):
+        raise AssertionError(f"{path}: {step_name} missing with:")
+    inputs = _folded_action_inputs(with_block)
+    destination = inputs.get("destination_dir")
+    if destination is not None and _posix_norm(str(destination)) == "dashboard":
+        raise AssertionError(
+            f"{path}: {step_name} destination_dir must not be the bare dashboard directory"
+        )
+    if not _known_true(inputs.get("keep_files")):
+        raise AssertionError(f"{path}: {step_name} keep_files must stay true")
+
+
+def assert_benchmark_alert_gh_pages_publish(
+    text: str, *, path: str = "benchmark_alert.yml"
+) -> None:
+    """Every pages publisher step publishes benchmark_data, and the force-push input stays off."""
     jobs = _workflow_jobs(text, path=path)
     gh_pages_steps: list[dict] = []
     for job_name, job in jobs.items():
@@ -520,20 +671,22 @@ def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark
         if not isinstance(steps, list):
             raise AssertionError(f"{path}: job {job_name!r} missing steps")
         for step in steps:
-            if isinstance(step, dict) and _is_peaceiris_publisher(step):
+            if isinstance(step, dict) and _is_pages_publisher(step):
                 gh_pages_steps.append(step)
     if not gh_pages_steps:
         raise AssertionError(
-            f"{path}: missing peaceiris/actions-gh-pages publish step "
+            f"{path}: missing {PEACEIRIS_GH_PAGES} publish step "
             f"({BENCHMARK_ALERT_GH_PAGES_STEP!r})"
         )
     if not any(
-        BENCHMARK_ALERT_GH_PAGES_STEP in str(step.get("name", ""))
+        BENCHMARK_ALERT_GH_PAGES_STEP in str(step.get("name") or "")
         for step in gh_pages_steps
     ):
-        raise AssertionError(f"{path}: missing step named {BENCHMARK_ALERT_GH_PAGES_STEP!r}")
+        raise AssertionError(
+            f"{path}: missing step named {BENCHMARK_ALERT_GH_PAGES_STEP!r}"
+        )
     for step in gh_pages_steps:
-        step_name = str(step.get("name", "<unnamed>"))
+        step_name = str(step.get("name") or "<unnamed>")
         with_block = step.get("with")
         if not isinstance(with_block, dict):
             raise AssertionError(f"{path}: {step_name} missing with:")
@@ -546,40 +699,60 @@ def assert_benchmark_alert_gh_pages_publish(text: str, *, path: str = "benchmark
             )
         if destination_dir in ("dashboard",):
             raise AssertionError(
-                f"{path}: destination_dir must not be bare dashboard (overwrites doc subtree)"
+                f"{path}: destination_dir must not be bare dashboard "
+                "(overwrites doc subtree)"
             )
         if publish_dir != BENCHMARK_ALERT_PUBLISH_DIR:
             raise AssertionError(
-                f"{path}: expected publish_dir {BENCHMARK_ALERT_PUBLISH_DIR!r}, got {publish_dir!r}"
+                f"{path}: expected publish_dir {BENCHMARK_ALERT_PUBLISH_DIR!r}, "
+                f"got {publish_dir!r}"
             )
         if destination_dir != BENCHMARK_ALERT_DESTINATION_DIR:
             raise AssertionError(
                 f"{path}: expected destination_dir {BENCHMARK_ALERT_DESTINATION_DIR!r}, "
                 f"got {destination_dir!r}"
             )
-        if _actions_input_is_true(inputs.get("force_orphan")):
+        if inputs.get("publish_branch") != BENCHMARK_ALERT_PUBLISH_BRANCH:
+            raise AssertionError(
+                f"{path}: publish_branch must be {BENCHMARK_ALERT_PUBLISH_BRANCH!r}, "
+                f"got {inputs.get('publish_branch')!r}"
+            )
+        external = inputs.get("external_repository")
+        if external not in (None, ""):
+            raise AssertionError(f"{path}: external_repository must stay unset")
+        if not _known_false(inputs.get("force_orphan")):
             raise AssertionError(f"{path}: force-push input must stay unset or false")
 
 
-def assert_docs_no_archive_benchmark_dashboard_copy(text: str, *, path: str = "docs.yml") -> None:
-    """Documentation must not copy the archived dashboard onto the book dashboard directory."""
-    # Untested: a copy split across multiple steps (cross-step dataflow is out of scope for
-    # this per-step regression lock).
-    jobs = _workflow_jobs(text, path=path)
+def assert_docs_no_archive_benchmark_dashboard_copy(
+    text: str, *, path: str = "docs.yml"
+) -> None:
+    """Documentation must not copy the archived dashboard onto the book dashboard directory.
+
+    Untested classes: a copy split across multiple steps; a command word other than
+    cp, mv, or rsync; brace expansion; variable command words; escape splitting;
+    actions/deploy-pages; actions/upload-pages-artifact.
+    """
+    data = _workflow_document(text, path=path)
+    jobs = _require_jobs(data, path=path)
     for job_name, job in jobs.items():
         if not isinstance(job, dict):
             raise AssertionError(f"{path}: job {job_name!r} is not a mapping")
         steps = job.get("steps")
         if not isinstance(steps, list):
             raise AssertionError(f"{path}: job {job_name!r} missing steps")
+        job_cwd = _job_cwd(data, job)
         for step in steps:
             if not isinstance(step, dict):
                 continue
+            if _is_pages_publisher(step):
+                _assert_docs_pages_publish(step, path=path)
             run_text = _step_run_text(step)
-            if not run_text:
+            if not isinstance(run_text, str):
+                raise AssertionError(f"{path}: step run text is not a string")
+            if not run_text.strip():
                 continue
-            cwd = str(step.get("working-directory") or "").strip("/")
-            paths = _run_paths(run_text, cwd)
+            paths = _run_paths(run_text, _step_cwd(step, job_cwd))
             if any(_is_archive_path(item) for item in paths) and any(
                 _is_book_dashboard_target(item) for item in paths
             ):
@@ -588,7 +761,6 @@ def assert_docs_no_archive_benchmark_dashboard_copy(text: str, *, path: str = "d
                     f"{path}: step {step_name!r} copies {ARCHIVE_BENCHMARK_DASHBOARD} "
                     f"onto {BOOK_DASHBOARD_DIR}"
                 )
-
 
 def assert_alert_followup_runs(text: str) -> None:
     """Issue and upload steps run after a failed check that set has_regressions."""
@@ -742,6 +914,18 @@ def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
         raise AssertionError("summary must capture python output before eval")
     if ': "${DECIDED:?}"' not in run or '"${SCORE:?}"' not in run:
         raise AssertionError("summary must require DECIDED and SCORE")
+
+
+def _call_checker(fn, *args, **kwargs):
+    """Turn a non-assertion exception from the checker into AssertionError."""
+    try:
+        return fn(*args, **kwargs)
+    except AssertionError:
+        raise
+    except Exception as exc:
+        raise AssertionError(
+            f"{getattr(fn, '__name__', fn)} raised {type(exc).__name__}: {exc}"
+        ) from exc
 
 
 class WorkflowPolicyTest(unittest.TestCase):
@@ -1336,42 +1520,322 @@ class WorkflowPolicyTest(unittest.TestCase):
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
 
+    def test_pages_publish_path_helpers(self) -> None:
+        try:
+            self._check_pages_publish_path_helpers()
+        except AssertionError:
+            raise
+        except Exception as exc:
+            raise AssertionError(
+                f"path helper raised {type(exc).__name__}: {exc}"
+            ) from exc
+
+    def _check_pages_publish_path_helpers(self) -> None:
+        self.assertEqual(
+            _posix_norm("docs//archive/./benchmark_dashboard"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _posix_norm("docs/archive/../archive/benchmark_dashboard"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _posix_norm("docs\\archive\\benchmark_dashboard"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(_posix_norm("./docs/archive/benchmark_dashboard"), "docs/archive/benchmark_dashboard")
+        self.assertEqual(_posix_norm("docs/../archive"), "archive")
+        self.assertEqual(_posix_norm(".."), "")
+        self.assertEqual(_posix_norm(""), "")
+        self.assertEqual(
+            _resolve_run_path("  docs/archive/benchmark_dashboard  ", ""),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("Zdocs/archive/benchmark_dashboard", ""),
+            "Zdocs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("../benchmark_dashboard", "docs/archive/extra"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("docs/archive/benchmark_dashboard", "docs/"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("archive/benchmark_dashboard", "docs"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("docsEXTRA/file", "docs"),
+            "docs/docsEXTRA/file",
+        )
+        self.assertEqual(
+            _resolve_run_path("./docs/book/dashboard/*", ""),
+            "docs/book/dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("$GITHUB_WORKSPACE/docs/archive/benchmark_dashboard", ""),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("${GITHUB_WORKSPACE}/docs/book/dashboard/", ""),
+            "docs/book/dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("GITHUB_WORKSPACE/docs/archive/benchmark_dashboard", ""),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(_step_cwd({"working-directory": " docs/ "}, ""), "docs")
+        self.assertEqual(_step_cwd({"working-directory": "   "}, "docs"), "docs")
+        self.assertEqual(_step_cwd({"working-directory": 1}, "docs"), "docs")
+        self.assertEqual(
+            _defaults_cwd({"run": {"working-directory": " docs "}}),
+            "docs",
+        )
+        self.assertEqual(_defaults_cwd({"run": "bash"}), "")
+        self.assertEqual(_defaults_cwd({"shell": "bash"}), "")
+        self.assertEqual(
+            _resolve_run_path("..\\benchmark_dashboard", "docs/archive/extra"),
+            "docs/archive/benchmark_dashboard",
+        )
+        quoted = (
+            'cp -r docs/archive/benchmark_dashboard /tmp/out '
+            '"&& cp -r docs/archive/benchmark_dashboard docs/book/dashboard/"'
+        )
+        quoted_paths = _run_paths(quoted, "")
+        self.assertIn("docs/archive/benchmark_dashboard", quoted_paths)
+        self.assertNotIn("docs/book/dashboard", quoted_paths)
+        single_quoted = (
+            "cp -r docs/archive/benchmark_dashboard /tmp/out "
+            "'&& cp -r docs/archive/benchmark_dashboard docs/book/dashboard/'"
+        )
+        single_paths = _run_paths(single_quoted, "")
+        self.assertNotIn("docs/book/dashboard", single_paths)
+        ampersand_paths = _run_paths(
+            "cd docs&extra\ncp -r archive/benchmark_dashboard book/dashboard/",
+            "",
+        )
+        self.assertNotIn("docs/archive/benchmark_dashboard", ampersand_paths)
+        self.assertNotIn("docs/book/dashboard", ampersand_paths)
+        self.assertEqual(_run_paths("echo ok\n& echo still\n", ""), [])
+        bare_cd = _run_paths(
+            "cd\ncp -r docs/archive/benchmark_dashboard docs/book/dashboard/",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", bare_cd)
+        self.assertIn("docs/book/dashboard", bare_cd)
+        self.assertEqual(
+            _run_paths(
+                "echo docs/archive/benchmark_dashboard docs/book/dashboard/benchmark_dashboard",
+                "",
+            ),
+            [],
+        )
+        semicolon_paths = _run_paths(
+            "echo ok; cp -r docs/archive/benchmark_dashboard docs/book/dashboard/",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", semicolon_paths)
+        self.assertIn("docs/book/dashboard", semicolon_paths)
+        cd_paths = _run_paths(
+            "cd docs && cp -r archive/benchmark_dashboard book/dashboard/",
+            "",
+        )
+        self.assertIn("docs/archive/benchmark_dashboard", cd_paths)
+        self.assertIn("docs/book/dashboard", cd_paths)
+        self.assertEqual(
+            _step_run_text({"run": ["cp -r docs/archive/benchmark_dashboard", "docs/book/dashboard/"]}),
+            "cp -r docs/archive/benchmark_dashboard\ndocs/book/dashboard/",
+        )
+        self.assertEqual(_step_run_text({"run": True}), "True")
+        self.assertEqual(_step_run_text({}), "")
+        self.assertTrue(_is_archive_path("docs/archive/benchmark_dashboard"))
+        self.assertTrue(_is_archive_path("docs/archive/benchmark_dashboard/index.html"))
+        self.assertTrue(_is_archive_path("docs/archive"))
+        self.assertTrue(_is_archive_path("docs"))
+        self.assertFalse(_is_archive_path("docs/archive/benchmark_dashboardEXTRA"))
+        self.assertFalse(_is_archive_path("docs/archive/benchmark"))
+        self.assertFalse(_is_archive_path("docs/src"))
+        self.assertFalse(_is_archive_path(""))
+        self.assertTrue(_is_book_dashboard_target("docs/book/dashboard"))
+        self.assertTrue(_is_book_dashboard_target("docs/book/dashboard/benchmark_dashboard"))
+        self.assertTrue(
+            _is_book_dashboard_target("docs/book/dashboard/benchmark_dashboard/index.html")
+        )
+        self.assertFalse(_is_book_dashboard_target("docs/book/dashboard/other"))
+        self.assertFalse(_is_book_dashboard_target("docs/book/dashboard/benchmark_dashboardEXTRA"))
+        self.assertFalse(_is_book_dashboard_target("docs/book"))
+        self.assertTrue(_known_false(None))
+        self.assertTrue(_known_false(False))
+        self.assertTrue(_known_false("false"))
+        self.assertTrue(_known_false(" FALSE "))
+        self.assertFalse(_known_false(True))
+        self.assertFalse(_known_false("true"))
+        self.assertFalse(_known_false(" TRUE "))
+        self.assertFalse(_known_false("${{ true }}"))
+        self.assertFalse(_known_false(1))
+        self.assertTrue(_known_true(True))
+        self.assertTrue(_known_true("true"))
+        self.assertTrue(_known_true(" TRUE "))
+        self.assertFalse(_known_true(False))
+        self.assertFalse(_known_true(None))
+        self.assertFalse(_known_true("false"))
+        self.assertFalse(_known_true("${{ true }}"))
+        folded = _folded_action_inputs(
+            {"publish_dir": "./docs/benchmark_data", "Publish Dir": "./docs"}
+        )
+        self.assertEqual(folded["publish_dir"], "./docs")
+        self.assertEqual(
+            _folded_action_inputs({"Keep_Files": True})["keep_files"],
+            True,
+        )
+
     def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
         alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
-        assert_benchmark_alert_gh_pages_publish(alert)
+        _call_checker(assert_benchmark_alert_gh_pages_publish, alert)
         honoured = alert.replace("publish_dir:", "Publish_Dir:", 1).replace(
             "destination_dir:", "Destination_Dir:", 1
         )
-        assert_benchmark_alert_gh_pages_publish(honoured)
-        safe_force = alert.replace(
+        _call_checker(assert_benchmark_alert_gh_pages_publish, honoured)
+        for force_value in ("false", "'false'", "' false '"):
+            safe_force = alert.replace(
+                "destination_dir: dashboard/benchmark_data\n",
+                "destination_dir: dashboard/benchmark_data\n"
+                f"          force_orphan: {force_value}\n",
+                1,
+            )
+            _call_checker(assert_benchmark_alert_gh_pages_publish, safe_force)
+        empty_external = alert.replace(
             "destination_dir: dashboard/benchmark_data\n",
             "destination_dir: dashboard/benchmark_data\n"
-            "          force_orphan: false\n",
+            "          external_repository: ''\n",
             1,
         )
-        assert_benchmark_alert_gh_pages_publish(safe_force)
+        _call_checker(assert_benchmark_alert_gh_pages_publish, empty_external)
         for directory in (
-            "benchmark_alert_bad_pages_publish",
-            "benchmark_alert_second_publisher",
-            "benchmark_alert_force_push_input",
-            "benchmark_alert_case_variant_keys",
-            "benchmark_alert_case_variant_action",
+            "benchmark_alert_scalar_step",
+            "benchmark_alert_two_publishers_one_name",
         ):
-            fixture = _read_policy_fixture(directory, "benchmark_alert.yml")
-            with self.assertRaises(AssertionError):
-                assert_benchmark_alert_gh_pages_publish(fixture, path=directory)
+            fixture = _call_checker(_read_policy_fixture, directory, "benchmark_alert.yml")
+            _call_checker(assert_benchmark_alert_gh_pages_publish, fixture, path=directory)
+        snippets = {
+            "benchmark_alert_bad_pages_publish": "publish_dir",
+            "benchmark_alert_second_publisher": "publish_dir",
+            "benchmark_alert_force_push_input": "force-push",
+            "benchmark_alert_case_variant_keys": "publish_dir",
+            "benchmark_alert_case_variant_action": "publish_dir",
+            "benchmark_alert_wrong_step_name": "missing step named",
+            "benchmark_alert_missing_destination": "destination_dir",
+            "benchmark_alert_root_destination": "destination_dir",
+            "benchmark_alert_other_publish_dir": "publish_dir",
+            "benchmark_alert_force_expression": "force-push",
+            "benchmark_alert_force_padded_true": "force-push",
+            "benchmark_alert_force_lowercase_true": "force-push",
+            "benchmark_alert_empty_jobs": "missing jobs",
+            "benchmark_alert_jobs_scalar": "missing jobs",
+            "benchmark_alert_jamesives_publisher": "publish_dir",
+            "benchmark_alert_publish_branch_main": "publish_branch",
+            "benchmark_alert_external_repository": "external_repository",
+            "benchmark_alert_spaced_publish_dir": "publish_dir",
+        }
+        for directory, snippet in snippets.items():
+            fixture = _call_checker(_read_policy_fixture, directory, "benchmark_alert.yml")
+            with self.assertRaises(AssertionError) as caught:
+                _call_checker(
+                    assert_benchmark_alert_gh_pages_publish, fixture, path=directory
+                )
+            self.assertIn(snippet, str(caught.exception), directory)
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish, "[]\n", path="list-root"
+            )
+        self.assertIn("not a mapping", str(caught.exception))
 
     def test_docs_no_archive_benchmark_dashboard_copy(self) -> None:
         docs = (WORKFLOWS / "docs.yml").read_text(encoding="utf-8")
-        assert_docs_no_archive_benchmark_dashboard_copy(docs)
+        _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, docs)
+        for replacement in ('keep_files: "true"', 'keep_files: " TRUE "'):
+            kept = docs.replace("keep_files: true", replacement, 1)
+            _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, kept)
         for directory in (
+            "docs_book_path_only",
+            "docs_archive_to_other",
+            "docs_list_split_harmless",
+            "docs_bool_run",
+            "docs_dash_flag_not_a_path",
+            "docs_other_destination",
+            "docs_echo_both_paths",
+            "docs_quoted_separator",
+        ):
+            fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy, fixture, path=directory
+            )
+        copy_dirs = (
             "docs_bad_benchmark_dashboard_copy",
             "docs_parent_directory_copy",
             "docs_parent_directory_copy_relative",
+            "docs_cd_in_step",
+            "docs_cd_under_step_cwd",
+            "docs_job_default_cwd",
+            "docs_workflow_default_cwd",
+            "docs_job_cwd_overrides_workflow",
+            "docs_step_overrides_job",
+            "docs_double_slash",
+            "docs_workspace_prefix",
+            "docs_parent_dotdot",
+            "docs_dot_slash_prefix",
+            "docs_trailing_slash_cwd",
+            "docs_glob_destination",
+            "docs_backslash_paths",
+            "docs_archive_parent_star",
+            "docs_archive_parent_dot",
+            "docs_archive_parent_rsync",
+            "docs_mv_archive_copy",
+            "docs_bare_word_from_archive",
+            "docs_bare_word_from_book",
+            "docs_child_file_copy",
+            "docs_list_run",
+            "docs_defaults_without_workdir",
+            "docs_blank_step_cwd",
+            "docs_path_equals_cwd",
+            "docs_semicolon_copy",
+            "docs_numeric_step_cwd",
+            "docs_defaults_shell_only",
+            "docs_quote_then_copy",
+            "docs_single_quoted_paths",
+        )
+        for directory in copy_dirs:
+            fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
+            with self.assertRaises(AssertionError) as caught:
+                _call_checker(
+                    assert_docs_no_archive_benchmark_dashboard_copy,
+                    fixture,
+                    path=directory,
+                )
+            self.assertIn(ARCHIVE_BENCHMARK_DASHBOARD, str(caught.exception), directory)
+        for directory, snippet in (
+            ("docs_dashboard_destination", "destination_dir"),
+            ("docs_keep_files_false", "keep_files"),
         ):
-            fixture = _read_policy_fixture(directory, "docs.yml")
-            with self.assertRaises(AssertionError):
-                assert_docs_no_archive_benchmark_dashboard_copy(fixture, path=directory)
+            fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
+            with self.assertRaises(AssertionError) as caught:
+                _call_checker(
+                    assert_docs_no_archive_benchmark_dashboard_copy,
+                    fixture,
+                    path=directory,
+                )
+            self.assertIn(snippet, str(caught.exception), directory)
+        false_keep = docs.replace("keep_files: true", "keep_files: false", 1)
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, false_keep)
+        self.assertIn("keep_files", str(caught.exception))
+        string_false = docs.replace("keep_files: true", 'keep_files: "false"', 1)
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(assert_docs_no_archive_benchmark_dashboard_copy, string_false)
+        self.assertIn("keep_files", str(caught.exception))
 
 
 if __name__ == "__main__":

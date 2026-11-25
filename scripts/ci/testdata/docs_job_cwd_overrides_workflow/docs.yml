@@ -1,0 +1,21 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: elsewhere
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Copy
+        run: cp -r archive/benchmark_dashboard book/dashboard/
