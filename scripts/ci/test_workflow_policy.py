@@ -632,7 +632,8 @@ def _command_body(words: list[str]) -> list[str]:
 def _directory_update(words: list[str], current: str, stack: list[str]) -> str | None:
     """Return the cwd after cd, pushd, or popd. None when the command is not one of those.
 
-    The directory is the second word. An option in the pushd word is not a directory.
+    cd and pushd use the second word. An option in the pushd word is not a
+    directory. popd pops the directory stack and does not read a directory word.
     """
     command = words[0]
     if command == "popd":
@@ -1030,9 +1031,9 @@ def _assert_jamesives_alert_publish(
     """Keys github-pages-deploy-action reads for the alert publish.
 
     folder and target-folder must be the benchmark_data paths. A leading `/`
-    does not match. single-commit must be a known false. branch must be unset,
-    blank, or gh-pages. repository-name must be unset or the empty string. A
-    value that is only space does not pass. force must be
+    does not match. single-commit must be unset or a known false. branch must
+    be unset, blank, or gh-pages. repository-name must be unset or the empty
+    string. A value that is only space does not pass. force must be
     an explicit false; unset is not false.
     """
     folder = inputs.get("folder")
@@ -1069,9 +1070,9 @@ def assert_benchmark_alert_gh_pages_publish(
     When that uses also contains github-pages-deploy-action, the step is held to folder,
     target-folder, single-commit, branch, repository-name, and force. folder
     and target-folder must be the benchmark_data paths, and a leading slash
-    does not match. single-commit must be a known false. branch must be unset,
-    blank, or gh-pages. repository-name must be unset or the empty string. A
-    value that is only space does not pass. force must be
+    does not match. single-commit must be unset or a known false. branch must
+    be unset, blank, or gh-pages. repository-name must be unset or the empty
+    string. A value that is only space does not pass. force must be
     an explicit false. The peaceiris input names on that step are not read.
 
     Otherwise the step is read as peaceiris. publish_dir must be
@@ -1178,8 +1179,9 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
 
     working-directory is read from the step, then the job defaults, then the
     workflow defaults. A github.workspace expression and the GITHUB_WORKSPACE
-    prefixes are stripped before that directory is used. cd, pushd, and popd
-    use the second word. An option in the pushd word is not a directory. A directory
+    prefixes are stripped before that directory is used. cd and pushd use the
+    second word. An option in the pushd word is not a directory. popd pops the
+    directory stack and does not read a directory word. A directory
     change before &&, ||, a newline, or ; applies to later commands in the
     step, including when the next command is flush against && or ||. A
     directory change before a single | or a single & does not. The scan
@@ -1209,7 +1211,8 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     a working-directory expression other than github.workspace; any input other
     than folder, target-folder, single-commit, branch, and force on a documentation step
     whose uses contains github-pages-deploy-action; a folder or target-folder
-    that begins with a backslash; a parenthesized subshell.
+    that begins with a backslash; a parenthesized subshell; a reserved-word
+    compound command; a wrapper command that runs a copy.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
