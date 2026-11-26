@@ -71,8 +71,6 @@ jobs:
           mkdir -p book/assets
           cp -r src/assets/* book/assets/ 2>/dev/null || true
 
-      # #776 deletes this step. Until that lands, a docs deploy can overwrite
-      # dashboard/benchmark_dashboard with the archived copy. Merge #776 first.
       - name: Copy standalone dashboard
         run: |
           mkdir -p docs/book/dashboard/benchmark_dashboard
@@ -163,6 +161,8 @@ jobs:
           fi
           echo "mdBook output verified: $(find docs/book -name '*.html' | wc -l) HTML files"
 
+      # Until #776 removes the archived dashboard copy above, this deploy can
+      # overwrite dashboard/benchmark_dashboard. Merge #776 before this branch.
       - name: Deploy to GitHub Pages
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         uses: peaceiris/actions-gh-pages@v4
