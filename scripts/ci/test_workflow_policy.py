@@ -403,24 +403,72 @@ def without_status_guard(expr: str) -> str:
     return stripped
 
 
+def _yaml_line_without_comment(line: str) -> str:
+    """Drop an unquoted `#` comment. `#` inside quotes stays."""
+    in_single = False
+    in_double = False
+    escaped = False
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if in_single:
+            if char == "'":
+                if index + 1 < len(line) and line[index + 1] == "'":
+                    index += 2
+                    continue
+                in_single = False
+            index += 1
+            continue
+        if in_double:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_double = False
+            index += 1
+            continue
+        if char == "'":
+            in_single = True
+        elif char == '"':
+            in_double = True
+        elif char == "#":
+            return line[:index].rstrip()
+        index += 1
+    return line.rstrip()
+
+
+# Block scalar header after the `#` comment is removed: `|`, `>`, an optional
+# chomp flag, and an optional one-digit indent, in either order (`|-2`, `|2-`).
+_BLOCK_HEADER_RE = re.compile(r"^[|>](?:[+-][0-9]?|[0-9][+-]?)?$")
+_RUN_KEY_RE = re.compile(r"^(?P<indent>\s*)(?:-\s+)?run:[ \t]*(?P<value>.*)$")
+_KEY_LINE_RE = re.compile(
+    r"^(?P<indent>\s*)(?:-\s+)?(?P<key>[A-Za-z_][\w-]*):[ \t]*(?P<value>.*)$"
+)
+
+
 def workflow_run_bodies(text: str) -> list[str]:
-    """Script text of every `run:` step. The `run:` key line is not part of the body."""
+    """`run:` script text in one workflow file.
+
+    Named `run:` keys and unnamed `- run:` keys. The inline value is the
+    body unless it matches `[|>]([+-][0-9]?|[0-9][+-]?)?` after an unquoted
+    `#` comment is removed, in which case the indented lines are the body.
+    A header outside that pattern is not read as a block. The header line
+    is not part of the body. `#` inside the body stays. This does not read
+    `shell:` or composite action files.
+    """
     bodies: list[str] = []
     lines = text.splitlines()
     index = 0
-    block_markers = {"|", ">", "|-", ">-", "|+", ">+"}
     while index < len(lines):
-        line = lines[index]
-        if line.lstrip().startswith("#"):
-            index += 1
-            continue
-        match = re.match(r"^(\s+)run:(?:\s+(.*))?$", line)
+        code = _yaml_line_without_comment(lines[index])
+        match = _RUN_KEY_RE.match(code)
         if not match:
             index += 1
             continue
-        indent = len(match.group(1))
-        inline = (match.group(2) or "").strip()
-        if inline in block_markers:
+        indent = len(match.group("indent"))
+        inline = match.group("value").strip()
+        if _BLOCK_HEADER_RE.fullmatch(inline):
             index += 1
             chunk: list[str] = []
             while index < len(lines):
@@ -436,6 +484,107 @@ def workflow_run_bodies(text: str) -> list[str]:
     return bodies
 
 
+def _top_level_sections(text: str, key: str) -> list[tuple[str, list[str]]]:
+    """Each column-0 `key:` block. A `#` line does not start or end a block."""
+    lines = text.splitlines()
+    sections: list[tuple[str, list[str]]] = []
+    index = 0
+    while index < len(lines):
+        code = _yaml_line_without_comment(lines[index])
+        match = re.match(rf"^{re.escape(key)}:(.*)$", code)
+        if lines[index][:1].isspace() or not match:
+            index += 1
+            continue
+        inline = match.group(1).strip()
+        body: list[str] = []
+        index += 1
+        while index < len(lines):
+            line = lines[index]
+            if not line.strip():
+                body.append(line)
+                index += 1
+                continue
+            body_code = _yaml_line_without_comment(line)
+            if body_code and not line[:1].isspace():
+                break
+            body.append(line)
+            index += 1
+        sections.append((inline, body))
+    return sections
+
+
+def _flow_names(inline: str) -> list[str]:
+    value = inline.strip()
+    if not value:
+        return []
+    if value.startswith("[") and value.endswith("]"):
+        names: list[str] = []
+        for part in value[1:-1].split(","):
+            item = part.strip().strip("'\"")
+            if item:
+                names.append(item)
+        return names
+    if value[:1] in "{|>":
+        raise AssertionError("on: must stay workflow_dispatch only")
+    return [value.strip("'\"")]
+
+
+def _on_trigger_names(text: str) -> list[str]:
+    sections = _top_level_sections(text, "on")
+    if not sections:
+        raise AssertionError("on: must stay workflow_dispatch only")
+    names: list[str] = []
+    for inline, body in sections:
+        names.extend(_flow_names(inline))
+        for line in body:
+            code = _yaml_line_without_comment(line)
+            match = re.match(r"^  ([A-Za-z_][\w-]*):", code)
+            if match:
+                names.append(match.group(1))
+    return names
+
+
+def _permission_map(text: str) -> dict[str, str]:
+    sections = _top_level_sections(text, "permissions")
+    if not sections:
+        raise AssertionError("permissions must stay contents: read")
+    found: dict[str, str] = {}
+    for inline, body in sections:
+        if inline:
+            raise AssertionError("permissions must stay contents: read")
+        for line in body:
+            code = _yaml_line_without_comment(line)
+            match = re.match(r"^  ([A-Za-z_][\w-]*):[ \t]*(.*)$", code)
+            if match:
+                found[match.group(1)] = match.group(2).strip()
+    return found
+
+
+def _mapping_value(block: str, parent: str, child: str) -> str | None:
+    """Last uncommented `child` nested under an uncommented `parent:`."""
+    parent_indent: int | None = None
+    value: str | None = None
+    for line in block.splitlines():
+        code = _yaml_line_without_comment(line)
+        if not code.strip():
+            continue
+        if _RUN_KEY_RE.match(code):
+            break
+        match = _KEY_LINE_RE.match(code)
+        if not match:
+            continue
+        indent = len(match.group("indent"))
+        key = match.group("key")
+        raw = match.group("value").strip()
+        if key == parent and raw == "":
+            parent_indent = indent
+            value = None
+            continue
+        if key == child and parent_indent is not None and indent > parent_indent:
+            value = raw
+    return value
+
+
 def checkout_step_block(text: str) -> str:
     marker = "uses: actions/checkout@"
     start = text.find(marker)
@@ -449,18 +598,54 @@ def checkout_step_block(text: str) -> str:
     return rest[:next_step]
 
 
+def _active_scalar(block: str, key: str) -> str | None:
+    """Uncommented `key:` before the first `run:` line in `block`."""
+    for line in block.splitlines():
+        code = _yaml_line_without_comment(line)
+        if not code.strip():
+            continue
+        if _RUN_KEY_RE.match(code):
+            break
+        match = _KEY_LINE_RE.match(code)
+        if match and match.group("key") == key:
+            return match.group("value").strip()
+    return None
+
+
 def assert_gpu_frame_budget_dispatch_input_is_env(text: str) -> None:
-    """`inputs.glb` is a step env value. No expression is interpolated into `run:`."""
-    if "permissions:\n  contents: read\n" not in text:
+    """Policy for the text of `.github/workflows/gpu-frame-budget.yml` only.
+
+    Checks that text. It does not read any other workflow, any composite
+    `action.yml`, or any `shell:` value except the one named below:
+    - every top-level `on:` trigger name is `workflow_dispatch`
+    - every top-level `permissions:` key is `contents: read`
+    - the checkout step's uncommented `with.persist-credentials` is `false`
+    - the `Median draw_into` step has uncommented `shell: pwsh` and an
+      uncommented `env.AW_GLB` value of `${{ inputs.glb }}`
+    - named `run:` and unnamed `- run:` keys have no `${{` in the body.
+      The inline value is the body unless it matches
+      `[|>]([+-][0-9]?|[0-9][+-]?)?` after an unquoted `#` comment is
+      removed, in which case the indented lines are the body. A header
+      outside that pattern is not read as a block. The header line is
+      not part of the body. `#` inside the body stays in the script
+    - that step's script contains `--glb "$env:AW_GLB"`
+    - zero `run:` bodies fail closed
+
+    A YAML `#` comment does not satisfy `persist-credentials` or `AW_GLB`
+    and is not a `run:` body. This is a comment strip plus that header
+    pattern, not a full YAML parse.
+    """
+    if set(_on_trigger_names(text)) != {"workflow_dispatch"}:
+        raise AssertionError("on: must stay workflow_dispatch only")
+    if _permission_map(text) != {"contents": "read"}:
         raise AssertionError("permissions must stay contents: read")
     checkout = checkout_step_block(text)
-    if "persist-credentials: false" not in checkout:
+    if _mapping_value(checkout, "with", "persist-credentials") != "false":
         raise AssertionError("checkout must set persist-credentials: false")
     step = job_step_block(text, "Median draw_into")
-    before_run, _run, _rest = step.partition("run:")
-    if "shell: pwsh" not in before_run:
+    if _active_scalar(step, "shell") != "pwsh":
         raise AssertionError("Median draw_into must stay shell: pwsh")
-    if "AW_GLB: ${{ inputs.glb }}" not in before_run:
+    if _mapping_value(step, "env", "AW_GLB") != "${{ inputs.glb }}":
         raise AssertionError("step env AW_GLB must bind inputs.glb")
     bodies = workflow_run_bodies(text)
     if not bodies:
@@ -471,6 +656,187 @@ def assert_gpu_frame_budget_dispatch_input_is_env(text: str) -> None:
     draw = pwsh_run_body(step)
     if '--glb "$env:AW_GLB"' not in draw:
         raise AssertionError('run script must pass --glb "$env:AW_GLB"')
+
+
+_GPU_RUN_HEADER = "        run: |\n"
+_GPU_EXPRESSION_LINE = '          echo "${{ inputs.glb }}"\n'
+
+
+def _replace_once(text: str, old: str, new: str) -> str:
+    if text.count(old) != 1:
+        raise AssertionError("policy fixture anchor missing")
+    return text.replace(old, new, 1)
+
+
+def _gpu_run_header(text: str, header: str, *, inject: bool) -> str:
+    replacement = header + (_GPU_EXPRESSION_LINE if inject else "")
+    return _replace_once(text, _GPU_RUN_HEADER, replacement)
+
+
+def gpu_frame_budget_policy_cases(text: str) -> list[tuple[str, str, str | None]]:
+    """Mutants of `.github/workflows/gpu-frame-budget.yml`.
+
+    The third item is an AssertionError substring the case must raise, or
+    None when the case must be accepted. A missing anchor fails closed.
+    These strings are the fixtures for this one file. They do not cover
+    other workflows or composite action files.
+    """
+    on_anchor = "on:\n  workflow_dispatch:\n"
+    perm_anchor = "permissions:\n  contents: read\n"
+    cred_anchor = "          persist-credentials: false\n"
+    with_anchor = "        with:\n          persist-credentials: false\n"
+    aw_anchor = "          AW_GLB: ${{ inputs.glb }}\n"
+    median_anchor = "      - name: Median draw_into\n"
+    cargo_anchor = "          cargo run -p astraweave-render"
+    return [
+        (
+            "inlined_expression",
+            _replace_once(text, '--glb "$env:AW_GLB"', '--glb "${{ inputs.glb }}"'),
+            "interpolates an expression",
+        ),
+        (
+            "unquoted_glb",
+            _replace_once(text, '--glb "$env:AW_GLB"', "--glb $env:AW_GLB"),
+            '"$env:AW_GLB"',
+        ),
+        (
+            "dropped_credentials",
+            _replace_once(text, cred_anchor, ""),
+            "persist-credentials: false",
+        ),
+        (
+            "unnamed_run",
+            _replace_once(
+                text,
+                median_anchor,
+                '      - run: echo "${{ inputs.glb }}"\n' + median_anchor,
+            ),
+            "interpolates an expression",
+        ),
+        (
+            "unnamed_run_block",
+            _replace_once(
+                text,
+                median_anchor,
+                "      - run: |\n" + _GPU_EXPRESSION_LINE + median_anchor,
+            ),
+            "interpolates an expression",
+        ),
+        (
+            "block_header_2",
+            _gpu_run_header(text, "        run: |2\n", inject=True),
+            "interpolates an expression",
+        ),
+        (
+            "block_header_strip_2",
+            _gpu_run_header(text, "        run: |-2\n", inject=True),
+            "interpolates an expression",
+        ),
+        (
+            "block_header_2_strip",
+            _gpu_run_header(text, "        run: |2-\n", inject=True),
+            "interpolates an expression",
+        ),
+        (
+            "block_header_comment",
+            _gpu_run_header(text, "        run: | # c\n", inject=True),
+            "interpolates an expression",
+        ),
+        (
+            "comment_expression",
+            _replace_once(
+                _gpu_run_header(
+                    text, "        run: | # ${{ inputs.glb }}\n", inject=False
+                ),
+                "permissions:\n",
+                "# ${{ inputs.glb }}\npermissions:\n",
+            ),
+            None,
+        ),
+        (
+            "comment_credentials",
+            _replace_once(
+                text,
+                cred_anchor,
+                "          persist-credentials: true\n"
+                "          # persist-credentials: false\n",
+            ),
+            "persist-credentials: false",
+        ),
+        (
+            "commented_out_with",
+            _replace_once(
+                text,
+                with_anchor,
+                "        # with:\n        #   persist-credentials: false\n",
+            ),
+            "persist-credentials: false",
+        ),
+        (
+            "comment_aw_glb",
+            _replace_once(
+                text,
+                aw_anchor,
+                "          # AW_GLB: ${{ inputs.glb }}\n"
+                "          AW_GLB: ${{ github.event.pull_request.title }}\n",
+            ),
+            "step env AW_GLB must bind inputs.glb",
+        ),
+        (
+            "pull_request_target",
+            _replace_once(
+                text,
+                on_anchor,
+                "on:\n  pull_request_target:\n  workflow_dispatch:\n",
+            ),
+            "on: must stay workflow_dispatch only",
+        ),
+        (
+            "pull_request",
+            _replace_once(
+                text,
+                on_anchor,
+                "on:\n  pull_request:\n  workflow_dispatch:\n",
+            ),
+            "on: must stay workflow_dispatch only",
+        ),
+        (
+            "comment_trigger",
+            _replace_once(
+                text,
+                on_anchor,
+                "on:\n  workflow_dispatch:\n  # pull_request_target:\n",
+            ),
+            None,
+        ),
+        (
+            "id_token_write",
+            _replace_once(
+                text,
+                perm_anchor,
+                "permissions:\n  contents: read\n  id-token: write\n",
+            ),
+            "permissions must stay contents: read",
+        ),
+        (
+            "comment_permission",
+            _replace_once(
+                text,
+                perm_anchor,
+                "permissions:\n  contents: read\n  # id-token: write\n",
+            ),
+            None,
+        ),
+        (
+            "script_line_hash",
+            _replace_once(
+                text,
+                cargo_anchor,
+                "          # ${{ inputs.glb }}\n" + cargo_anchor,
+            ),
+            "interpolates an expression",
+        ),
+    ]
 
 
 def assert_alert_followup_runs(text: str) -> None:
@@ -1220,20 +1586,44 @@ class WorkflowPolicyTest(unittest.TestCase):
             assert_alert_followup_runs(mutant)
 
     def test_gpu_frame_budget_dispatch_input_is_env(self) -> None:
+        """Scope is `.github/workflows/gpu-frame-budget.yml` only.
+
+        The leading comment's local command includes `--scene heavy`.
+        `assert_gpu_frame_budget_dispatch_input_is_env` then checks that
+        file's text: `on:` trigger names are only `workflow_dispatch`,
+        `permissions` is only `contents: read`, the checkout `with`
+        mapping sets `persist-credentials: false`, and `Median draw_into`
+        has `shell: pwsh` plus `env.AW_GLB` set to `${{ inputs.glb }}`.
+        Named `run:` and unnamed `- run:` keys in this file are scanned.
+        The inline value is the body unless it matches
+        `[|>]([+-][0-9]?|[0-9][+-]?)?` after an unquoted `#` comment is
+        removed, in which case the indented lines are the body. `|2`,
+        `|-2`, `|2-`, and `| # c` match. A header outside that pattern
+        is not read as a block. A `${{` token in a body fails the check.
+        A `${{` token, `persist-credentials: false`, or an `AW_GLB` binding
+        that appears only in a YAML `#` comment does not fail or satisfy
+        the check. Zero `run:` bodies fail
+        closed. The Median script must contain `--glb "$env:AW_GLB"`.
+
+        Not in scope: other workflow files, composite `action.yml` files,
+        `shell:` on any other step, and the process that launches the
+        binary. The check is a comment strip plus the header pattern, not
+        a PyYAML parse. `#` inside a block scalar stays part of the script.
+        """
         text = (WORKFLOWS / "gpu-frame-budget.yml").read_text(encoding="utf-8")
+        example, _name, _rest = text.partition("name: GPU frame budget")
+        self.assertIn("--scene heavy --glb", example)
         assert_gpu_frame_budget_dispatch_input_is_env(text)
-        inlined = text.replace('--glb "$env:AW_GLB"', '--glb "${{ inputs.glb }}"', 1)
-        with self.assertRaises(AssertionError) as inlined_err:
-            assert_gpu_frame_budget_dispatch_input_is_env(inlined)
-        self.assertIn("interpolates an expression", str(inlined_err.exception))
-        unquoted = text.replace('--glb "$env:AW_GLB"', "--glb $env:AW_GLB", 1)
-        with self.assertRaises(AssertionError) as unquoted_err:
-            assert_gpu_frame_budget_dispatch_input_is_env(unquoted)
-        self.assertIn('"$env:AW_GLB"', str(unquoted_err.exception))
-        dropped_credentials = text.replace("          persist-credentials: false\n", "", 1)
-        with self.assertRaises(AssertionError) as credentials_err:
-            assert_gpu_frame_budget_dispatch_input_is_env(dropped_credentials)
-        self.assertIn("persist-credentials: false", str(credentials_err.exception))
+        for name, mutant, expected in gpu_frame_budget_policy_cases(text):
+            if expected is None:
+                try:
+                    assert_gpu_frame_budget_dispatch_input_is_env(mutant)
+                except AssertionError as exc:
+                    raise AssertionError(f"{name} was rejected: {exc}") from exc
+                continue
+            with self.assertRaises(AssertionError, msg=name) as caught:
+                assert_gpu_frame_budget_dispatch_input_is_env(mutant)
+            self.assertIn(expected, str(caught.exception), name)
 
 
 if __name__ == "__main__":
