@@ -32,13 +32,35 @@ fn probe_exe(compiled: &str) -> std::path::PathBuf {
 fn ollama_chat_probe(mode: &str) -> std::process::Output {
     // The default client is low-latency, so `complete` skips the non-stream
     // attempts and reads `OLLAMA_TIMEOUT_SECS`. `Command::env` does not call `set_var`.
+    // A closed port returns immediately. The 4s bound is the same kill the
+    // header waits use, so a probe that never exits cannot hold the suite.
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
-    std::process::Command::new(&exe)
-        .arg(mode)
-        .env("OLLAMA_LOW_LATENCY", "1")
-        .env("OLLAMA_TIMEOUT_SECS", "1")
-        .output()
-        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()))
+    let mut child = ReapedChild::spawn(
+        std::process::Command::new(&exe)
+            .arg(mode)
+            .env("OLLAMA_LOW_LATENCY", "1")
+            .env("OLLAMA_TIMEOUT_SECS", "1")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped()),
+    );
+    let mut stdout = child.stdout();
+    let mut stderr = child.stderr();
+    let stdout_task = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut stdout, &mut buf).expect("read stdout");
+        buf
+    });
+    let stderr_task = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut stderr, &mut buf).expect("read stderr");
+        buf
+    });
+    let status = wait_for_exit(&mut child, std::time::Duration::from_secs(4), mode);
+    std::process::Output {
+        status,
+        stdout: stdout_task.join().expect("stdout thread"),
+        stderr: stderr_task.join().expect("stderr thread"),
+    }
 }
 
 #[test]
@@ -84,6 +106,58 @@ const READ_CHUNK: usize = 1024;
 /// request read already inside `MOCK_READ_TIMEOUT` and the half-close read
 /// after it. It is not a client timeout.
 const MOCK_JOIN_BOUND: std::time::Duration = std::time::Duration::from_secs(6);
+
+/// Gap between NDJSON chunks in `serve_slow_chunks`. The shutdown receiver is
+/// polled for this long; a queued shutdown returns immediately.
+const CHUNK_GAP: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// `wait_until_socket_peek` applies this to each `peek`.
+const PEEK_WAIT: std::time::Duration = std::time::Duration::from_millis(50);
+
+const PHASE_NOT_FOUND: u8 = 1;
+const PHASE_WITHHOLD: u8 = 2;
+const PHASE_STATUS: u8 = 3;
+
+/// `time_buffered_request` waits this long for the server to finish the read.
+///
+/// The value is `MOCK_READ_TIMEOUT` plus one second (3s). One second is that
+/// cap minus a second, and it is not this wait.
+fn buffered_result_wait() -> std::time::Duration {
+    MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1)
+}
+
+/// True only when `elapsed` is past `limit`.
+///
+/// `elapsed == limit` is not past the limit. `>=` would treat that single
+/// tick as a breach. `>` does not.
+fn deadline_exceeded(elapsed: std::time::Duration, limit: std::time::Duration) -> bool {
+    elapsed > limit
+}
+
+fn peek_again(kind: std::io::ErrorKind) -> bool {
+    matches!(
+        kind,
+        std::io::ErrorKind::Interrupted
+            | std::io::ErrorKind::TimedOut
+            | std::io::ErrorKind::WouldBlock
+    )
+}
+
+/// A child that `try_wait` has already reaped is not signalled again.
+fn should_signal_child(exited: bool) -> bool {
+    !exited
+}
+
+/// The first accepted request is a 404 only when the test asked for the fallback.
+fn not_found_on_first(first: bool, first_not_found: bool) -> bool {
+    first && first_not_found
+}
+
+fn notify(phase: &Option<std::sync::mpsc::Sender<u8>>, value: u8) {
+    if let Some(tx) = phase {
+        let _ = tx.send(value);
+    }
+}
 
 fn read_once<R: std::io::Read + ?Sized>(reader: &mut R, buf: &mut [u8]) -> std::io::Result<usize> {
     loop {
@@ -212,13 +286,13 @@ fn finish_response(mut sock: std::net::TcpStream) -> std::thread::JoinHandle<()>
     })
 }
 
-fn join_bounded(handle: std::thread::JoinHandle<()>) {
+fn join_bounded(handle: std::thread::JoinHandle<()>, bound: std::time::Duration) {
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let outcome = handle.join();
         let _ = done_tx.send(outcome);
     });
-    match done_rx.recv_timeout(MOCK_JOIN_BOUND) {
+    match done_rx.recv_timeout(bound) {
         Ok(Ok(())) => {}
         Ok(Err(payload)) => {
             if !std::thread::panicking() {
@@ -227,7 +301,7 @@ fn join_bounded(handle: std::thread::JoinHandle<()>) {
         }
         Err(_) => {
             if !std::thread::panicking() {
-                panic!("mock server thread did not exit within {MOCK_JOIN_BOUND:?}");
+                panic!("mock server thread did not exit within {bound:?}");
             }
         }
     }
@@ -266,7 +340,7 @@ impl Drop for MockServer {
         // shutdown signal, including when the test fails before the client connects.
         let _ = std::net::TcpStream::connect(self.addr);
         if let Some(handle) = self.handle.take() {
-            join_bounded(handle);
+            join_bounded(handle, MOCK_JOIN_BOUND);
         }
     }
 }
@@ -304,7 +378,20 @@ fn accept_client(
 
 fn join_drains(drains: Vec<std::thread::JoinHandle<()>>) {
     for drain in drains {
-        join_bounded(drain);
+        join_bounded(drain, MOCK_JOIN_BOUND);
+    }
+}
+
+/// Kill a live child, then wait. A child `try_wait` already reaped is not
+/// signalled and is not waited on: `wait` would block if the flag were wrong
+/// and the process were still running.
+fn reap_child(child: &mut std::process::Child, exited: bool) {
+    if should_signal_child(exited) {
+        // `wait` runs only after `kill`. One statement keeps a deleted call
+        // from blocking on a child that is still running.
+        let _ = child.kill().and_then(|()| child.wait());
+    } else {
+        let _ = child.try_wait();
     }
 }
 
@@ -318,10 +405,7 @@ struct ReapedChild {
 impl Drop for ReapedChild {
     fn drop(&mut self) {
         if let Some(mut child) = self.child.take() {
-            if !self.exited {
-                let _ = child.kill();
-            }
-            let _ = child.wait();
+            reap_child(&mut child, self.exited);
         }
     }
 }
@@ -352,10 +436,7 @@ impl ReapedChild {
 
     fn kill_and_reap(&mut self) {
         if let Some(mut child) = self.child.take() {
-            if !self.exited {
-                let _ = child.kill();
-            }
-            let _ = child.wait();
+            reap_child(&mut child, self.exited);
         }
     }
 
@@ -378,10 +459,30 @@ impl ReapedChild {
     }
 }
 
-fn gap_elapsed(shutdown: &std::sync::mpsc::Receiver<()>) -> bool {
-    match shutdown.recv_timeout(std::time::Duration::from_millis(50)) {
+fn gap_elapsed(shutdown: &std::sync::mpsc::Receiver<()>, wait: std::time::Duration) -> bool {
+    match shutdown.recv_timeout(wait) {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => true,
         Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => false,
+    }
+}
+
+/// Kill `child` once `limit` has passed. The 20 ms poll is the interval the
+/// existing probe waits already used. It is not an assertion.
+fn wait_for_exit(
+    child: &mut ReapedChild,
+    limit: std::time::Duration,
+    what: &str,
+) -> std::process::ExitStatus {
+    let started = std::time::Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().expect("wait") {
+            return status;
+        }
+        if deadline_exceeded(started.elapsed(), limit) {
+            child.kill_and_reap();
+            panic!("{what} still running after {limit:?}");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
 
@@ -405,30 +506,35 @@ fn wait_or_stop<T>(
 }
 
 fn wait_until_peek(
-    sock: &mut std::net::TcpStream,
+    mut peek: impl FnMut(&mut [u8]) -> std::io::Result<usize>,
     shutdown: &std::sync::mpsc::Receiver<()>,
     mut ready: impl FnMut(&[u8]) -> bool,
 ) -> bool {
-    let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(50)));
     let mut buf = [0u8; 8192];
     loop {
         if shutdown_requested(shutdown) {
             return false;
         }
-        match sock.peek(&mut buf) {
+        match peek(&mut buf) {
             Ok(0) => return false,
             Ok(n) if ready(&buf[..n]) => return true,
             Ok(_) => match shutdown.recv_timeout(std::time::Duration::from_millis(10)) {
                 Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return false,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
             },
-            Err(err)
-                if err.kind() == std::io::ErrorKind::Interrupted
-                    || err.kind() == std::io::ErrorKind::TimedOut
-                    || err.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(err) if peek_again(err.kind()) => {}
             Err(_) => return false,
         }
     }
+}
+
+fn wait_until_socket_peek(
+    sock: &mut std::net::TcpStream,
+    shutdown: &std::sync::mpsc::Receiver<()>,
+    ready: impl FnMut(&[u8]) -> bool,
+) -> bool {
+    let _ = sock.set_read_timeout(Some(PEEK_WAIT));
+    wait_until_peek(|buf| sock.peek(buf), shutdown, ready)
 }
 
 /// True only when a non-blocking read returns one or more bytes.
@@ -471,6 +577,7 @@ impl std::io::Read for InterruptOnce {
 struct TimeoutAfterFirst {
     first: Option<Vec<u8>>,
     timeouts: u32,
+    delivered: usize,
 }
 
 impl std::io::Read for TimeoutAfterFirst {
@@ -481,6 +588,7 @@ impl std::io::Read for TimeoutAfterFirst {
             if n < data.len() {
                 self.first = Some(data[n..].to_vec());
             }
+            self.delivered += n;
             return Ok(n);
         }
         self.timeouts += 1;
@@ -575,9 +683,9 @@ fn read_http_request_without_content_length_returns_before_the_read_cap() {
 
 #[test]
 fn read_http_request_returns_when_the_declared_body_stalls() {
-    // The socket cap is `MOCK_READ_TIMEOUT`. This reader reports that timeout
-    // directly, so the test does not wait on the clock and does not compare a
-    // measured sleep with the cap.
+    // This reader returns the header bytes and then `TimedOut`. It never
+    // touches a socket and does not call `set_read_timeout`. The socket cap
+    // is `read_http_request_sets_the_socket_read_timeout`.
     let headers =
         b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 32\r\n\r\n".to_vec();
     let (tx, rx) = std::sync::mpsc::channel();
@@ -585,6 +693,7 @@ fn read_http_request_returns_when_the_declared_body_stalls() {
         let mut reader = TimeoutAfterFirst {
             first: Some(headers),
             timeouts: 0,
+            delivered: 0,
         };
         read_http_request_from(&mut reader);
         let _ = tx.send(reader.timeouts);
@@ -630,34 +739,29 @@ fn time_buffered_request(
     time_buffered_request_split(bytes, ready, None)
 }
 
-/// `split_at` writes that prefix, pauses 50ms, then writes the rest.
-///
-/// The server peeks once before the client writes, so the pause is a gap in
-/// the request rather than a delay inserted to win a race. `None` writes the
-/// bytes in one `write_all`.
+/// `split_at` writes that prefix, waits until the server has seen it, then
+/// writes the rest. `None` writes the bytes in one `write_all`.
 fn time_buffered_request_split(
     bytes: &[u8],
     ready: impl Fn(&[u8]) -> bool + Send + 'static,
     split_at: Option<usize>,
 ) -> (std::time::Duration, bool) {
-    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (seen_tx, seen_rx) = std::sync::mpsc::channel();
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     let split_at_for_server = split_at;
     let server = start_server(move |listener, shutdown| {
         let Some(mut sock) = accept_client(&listener, &shutdown) else {
             return;
         };
-        if split_at_for_server.is_some() {
-            let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(50)));
-            let mut probe = [0u8; 1];
-            if matches!(sock.peek(&mut probe), Ok(0)) {
+        if let Some(split) = split_at_for_server {
+            if !wait_until_socket_peek(&mut sock, &shutdown, move |buf| buf.len() >= split) {
                 return;
             }
-            if entered_tx.send(()).is_err() {
+            if seen_tx.send(()).is_err() {
                 return;
             }
         }
-        if !wait_until_peek(&mut sock, &shutdown, ready) {
+        if !wait_until_socket_peek(&mut sock, &shutdown, ready) {
             return;
         }
         let started = std::time::Instant::now();
@@ -671,13 +775,12 @@ fn time_buffered_request_split(
     use std::io::Write;
     if let Some(split) = split_at {
         client.set_nodelay(true).expect("nodelay");
-        entered_rx
-            .recv_timeout(std::time::Duration::from_secs(2))
-            .expect("server is peeking");
         let n = split.min(bytes.len());
         client.write_all(&bytes[..n]).expect("request head");
         client.flush().expect("flush head");
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        seen_rx
+            .recv_timeout(buffered_result_wait())
+            .expect("server saw the prefix");
         client.write_all(&bytes[n..]).expect("request tail");
         client.flush().expect("flush tail");
     } else {
@@ -685,7 +788,7 @@ fn time_buffered_request_split(
         client.flush().expect("flush");
     }
     let result = done_rx
-        .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1))
+        .recv_timeout(buffered_result_wait())
         .expect("read_http_request returned");
     drop(client);
     drop(server);
@@ -750,9 +853,10 @@ fn read_http_request_drops_the_read_tail_past_content_length() {
 
 #[test]
 fn read_http_request_keeps_the_excess_when_the_write_is_split() {
-    // 1024 bytes, a 50ms gap, then the rest. Waiting for `READ_CHUNK` returns
-    // during that gap, before the excess is written. This waits for the whole
-    // request, so the excess past one header read is still in the socket.
+    // 1024 bytes, then the rest only after the server has seen that prefix.
+    // Waiting for `READ_CHUNK` returns during the gap, before the excess is
+    // written. This waits for the whole request, so the excess past one header
+    // read is still in the socket.
     let large = request_with_body(4, 4000);
     let large_len = large.len();
     assert!(
@@ -849,7 +953,7 @@ fn finish_response_half_close_delivers_with_trailing_bytes() {
         let drain = finish_response(sock);
         let _ = done_tx.send(());
         let _ = shutdown.recv();
-        join_bounded(drain);
+        join_bounded(drain, MOCK_JOIN_BOUND);
     });
     let mut client = std::net::TcpStream::connect(server.addr()).expect("connect");
     client.set_nodelay(true).expect("nodelay");
@@ -862,7 +966,9 @@ fn finish_response_half_close_delivers_with_trailing_bytes() {
     client.write_all(header.as_bytes()).expect("headers");
     client.write_all(body).expect("body");
     client.flush().expect("flush body");
-    drained_rx.recv().expect("server drained the declared body");
+    drained_rx
+        .recv_timeout(buffered_result_wait())
+        .expect("server drained the declared body");
     client.write_all(b"trailing").expect("trailing");
     client.flush().expect("flush trailing");
     extra_tx.send(()).expect("extra sent");
@@ -937,11 +1043,11 @@ fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> MockServer {
                 &mut sock,
                 &format!("{{\"message\":{{\"content\":\"n{i:02}\"}},\"done\":false}}\n"),
             );
-            if gap_elapsed(&shutdown) {
+            if gap_elapsed(&shutdown, CHUNK_GAP) {
                 continue;
             }
             let drain = finish_response(sock);
-            join_bounded(drain);
+            join_bounded(drain, MOCK_JOIN_BOUND);
             return;
         }
         if hang_after.is_none() {
@@ -957,30 +1063,41 @@ fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> MockServer {
             let _ = shutdown.recv();
         }
         let drain = finish_response(sock);
-        join_bounded(drain);
+        join_bounded(drain, MOCK_JOIN_BOUND);
     })
 }
 
 fn run_against(
     mode: &str,
     addr: std::net::SocketAddr,
+    kill_after: std::time::Duration,
 ) -> (std::time::Duration, std::process::Output) {
     let started = std::time::Instant::now();
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
-    let out = std::process::Command::new(&exe)
-        .args([mode, &format!("http://{addr}")])
-        .env("OLLAMA_LOW_LATENCY", "1")
-        .env("OLLAMA_TIMEOUT_SECS", "2")
-        .env("OLLAMA_EARLY_EXIT", "0")
-        .output()
-        .unwrap_or_else(|err| panic!("spawn {}: {err}", exe.display()));
-    (started.elapsed(), out)
+    let mut child = ReapedChild::spawn(
+        std::process::Command::new(&exe)
+            .args([mode, &format!("http://{addr}")])
+            .env("OLLAMA_LOW_LATENCY", "1")
+            .env("OLLAMA_TIMEOUT_SECS", "2")
+            .env("OLLAMA_EARLY_EXIT", "0")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped()),
+    );
+    let status = wait_for_exit(&mut child, kill_after, mode);
+    let elapsed = started.elapsed();
+    let mut output = child.wait_with_output().expect("output");
+    output.status = status;
+    (elapsed, output)
 }
 
 #[test]
 fn slow_chunks_longer_than_the_timeout_are_kept() {
     let server = serve_slow_chunks(60, None);
-    let (elapsed, out) = run_against("complete", server.addr());
+    let (elapsed, out) = run_against(
+        "complete",
+        server.addr(),
+        std::time::Duration::from_secs(15),
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -1010,7 +1127,11 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
     drop(server);
 
     let server = serve_slow_chunks(60, None);
-    let (elapsed, out) = run_against("qwen-stream", server.addr());
+    let (elapsed, out) = run_against(
+        "qwen-stream",
+        server.addr(),
+        std::time::Duration::from_secs(15),
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -1036,10 +1157,20 @@ fn slow_chunks_longer_than_the_timeout_are_kept() {
     drop(server);
 }
 
+const NOT_FOUND_RESPONSE: &[u8] =
+    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
 /// Accept the TCP connection, read the request, and never send headers.
 /// `first_not_found` answers `/api/chat` with 404 so the chat client falls
 /// through to `/api/generate`.
 fn serve_no_headers(first_not_found: bool) -> MockServer {
+    serve_no_headers_watched(first_not_found, None)
+}
+
+fn serve_no_headers_watched(
+    first_not_found: bool,
+    phase: Option<std::sync::mpsc::Sender<u8>>,
+) -> MockServer {
     start_server(move |listener, shutdown| {
         let mut drains = Vec::new();
         let mut first = true;
@@ -1048,18 +1179,18 @@ fn serve_no_headers(first_not_found: bool) -> MockServer {
                 break;
             };
             read_http_request(&mut sock);
-            if first && first_not_found {
+            if not_found_on_first(first, first_not_found) {
                 first = false;
                 use std::io::Write;
-                let _ = sock.write_all(
-                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
+                let _ = sock.write_all(NOT_FOUND_RESPONSE);
                 let _ = sock.flush();
+                notify(&phase, PHASE_NOT_FOUND);
                 drains.push(finish_response(sock));
                 continue;
             }
             // No status line until the client is done. The test drops the
             // server after the probe exits, and that is what releases this wait.
+            notify(&phase, PHASE_WITHHOLD);
             let _ = shutdown.recv();
             drains.push(finish_response(sock));
             break;
@@ -1068,7 +1199,10 @@ fn serve_no_headers(first_not_found: bool) -> MockServer {
     })
 }
 
-fn assert_headers_fail_near_timeout(mode: &str, first_not_found: bool) {
+fn probe_headers_near_timeout(
+    mode: &str,
+    first_not_found: bool,
+) -> (std::time::Duration, std::process::Output) {
     let server = serve_no_headers(first_not_found);
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
@@ -1081,37 +1215,16 @@ fn assert_headers_fail_near_timeout(mode: &str, first_not_found: bool) {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()),
     );
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("wait") {
-            break status;
-        }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
-            child.kill_and_reap();
-            panic!(
-                "{mode} still waiting for headers after {:?}",
-                started.elapsed()
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
+    let status = wait_for_exit(
+        &mut child,
+        std::time::Duration::from_secs(4),
+        &format!("{mode} still waiting for headers"),
+    );
     let elapsed = started.elapsed();
-    let output = child.wait_with_output().expect("output");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!status.success(), "{mode} succeeded: {stdout} {stderr}");
-    assert!(
-        elapsed < std::time::Duration::from_secs(3),
-        "{mode} took {elapsed:?}: {stdout} {stderr}"
-    );
-    let msg = format!("{stdout} {stderr}").to_lowercase();
-    assert!(
-        msg.contains("headers")
-            || msg.contains("timeout")
-            || msg.contains("timed out")
-            || msg.contains("error sending request"),
-        "{mode}: {stdout} {stderr}"
-    );
+    let mut output = child.wait_with_output().expect("output");
+    output.status = status;
     drop(server);
+    (elapsed, output)
 }
 
 /// Headers arrive, `Content-Length: 64` is declared, and no body bytes follow.
@@ -1128,17 +1241,15 @@ fn serve_declared_body(status_line: &'static str) -> MockServer {
         let _ = sock.flush();
         let _ = shutdown.recv();
         let drain = finish_response(sock);
-        join_bounded(drain);
+        join_bounded(drain, MOCK_JOIN_BOUND);
     })
 }
 
-fn assert_body_fails_near_timeout(
+fn probe_missing_body(
     mode: &str,
     status_line: &'static str,
     low_latency: &str,
-    needles: &[&str],
-    absent: &[&str],
-) {
+) -> (std::time::Duration, std::process::Output) {
     let server = serve_declared_body(status_line);
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
@@ -1151,75 +1262,79 @@ fn assert_body_fails_near_timeout(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()),
     );
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("wait") {
-            break status;
-        }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
-            child.kill_and_reap();
-            panic!(
-                "{mode} still reading a missing body after {:?}",
-                started.elapsed()
-            );
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
-    let elapsed = started.elapsed();
-    let output = child.wait_with_output().expect("output");
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(!status.success(), "{mode} succeeded: {stdout} {stderr}");
-    assert!(
-        elapsed < std::time::Duration::from_secs(3),
-        "{mode} took {elapsed:?}: {stdout} {stderr}"
+    let status = wait_for_exit(
+        &mut child,
+        std::time::Duration::from_secs(4),
+        &format!("{mode} still reading a missing body"),
     );
-    let msg = format!("{stdout} {stderr}").to_lowercase();
-    for needle in needles {
-        assert!(
-            msg.contains(needle),
-            "{mode} missing {needle}: {stdout} {stderr}"
-        );
-    }
-    for needle in absent {
-        assert!(
-            !msg.contains(needle),
-            "{mode} still contains {needle}: {stdout} {stderr}"
-        );
-    }
+    let elapsed = started.elapsed();
+    let mut output = child.wait_with_output().expect("output");
+    output.status = status;
     drop(server);
+    (elapsed, output)
 }
 
 #[test]
 fn declared_body_that_never_arrives_fails_near_the_read_timeout() {
-    assert_body_fails_near_timeout(
+    let check = |mode: &str,
+                 status_line: &'static str,
+                 low_latency: &str,
+                 needles: &[&str],
+                 absent: &[&str]| {
+        let (elapsed, output) = probe_missing_body(mode, status_line, low_latency);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !output.status.success(),
+            "{mode} succeeded: {stdout} {stderr}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(3),
+            "{mode} took {elapsed:?}: {stdout} {stderr}"
+        );
+        let msg = format!("{stdout} {stderr}").to_lowercase();
+        for needle in needles {
+            assert!(
+                msg.contains(needle),
+                "{mode} missing {needle}: {stdout} {stderr}"
+            );
+        }
+        for needle in absent {
+            assert!(
+                !msg.contains(needle),
+                "{mode} still contains {needle}: {stdout} {stderr}"
+            );
+        }
+    };
+    check(
         "complete",
         "HTTP/1.1 500 Internal Server Error",
         "1",
         &["body read failed", "operation timed out"],
         &[],
     );
-    assert_body_fails_near_timeout(
+    check(
         "complete",
         "HTTP/1.1 500 Internal Server Error",
         "0",
         &["body read failed", "operation timed out"],
         &["initiating streaming post"],
     );
-    assert_body_fails_near_timeout(
+    check(
         "complete",
         "HTTP/1.1 200 OK",
         "1",
         &["operation timed out"],
         &[],
     );
-    assert_body_fails_near_timeout(
+    check(
         "complete",
         "HTTP/1.1 200 OK",
         "0",
         &["body read failed", "operation timed out"],
         &["initiating streaming post"],
     );
-    assert_body_fails_near_timeout(
+    check(
         "warmup",
         "HTTP/1.1 200 OK",
         "1",
@@ -1227,9 +1342,9 @@ fn declared_body_that_never_arrives_fails_near_the_read_timeout() {
         &[],
     );
     for mode in ["qwen-think", "qwen-health", "phi-health", "hermes-health"] {
-        assert_body_fails_near_timeout(mode, "HTTP/1.1 200 OK", "1", &["operation timed out"], &[]);
+        check(mode, "HTTP/1.1 200 OK", "1", &["operation timed out"], &[]);
     }
-    assert_body_fails_near_timeout(
+    check(
         "qwen-preload",
         "HTTP/1.1 200 OK",
         "1",
@@ -1257,7 +1372,7 @@ fn serve_readable_error(body: &'static str) -> MockServer {
         let _ = sock.flush();
         let drain = finish_response(sock);
         let _ = shutdown.recv();
-        join_bounded(drain);
+        join_bounded(drain, MOCK_JOIN_BOUND);
     })
 }
 
@@ -1279,7 +1394,7 @@ fn readable_error_status_does_not_start_streaming() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!(
                 "complete still running after a readable 500: {:?}",
@@ -1349,7 +1464,7 @@ fn run_complete(addr: std::net::SocketAddr, early_exit: &str) -> std::process::O
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             let _ = stdout_task.join();
             let _ = stderr_task.join();
@@ -1387,7 +1502,7 @@ fn write_response(mut sock: std::net::TcpStream, header: &[u8], body: &[u8]) {
     let _ = sock.write_all(body);
     let _ = sock.flush();
     let drain = finish_response(sock);
-    join_bounded(drain);
+    join_bounded(drain, MOCK_JOIN_BOUND);
 }
 
 #[test]
@@ -1408,7 +1523,7 @@ fn oversized_chat_body_stops_at_the_stream_budget() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("complete kept reading past the stream budget");
         }
@@ -1464,7 +1579,7 @@ fn empty_ndjson_lines_stop_at_the_stream_budget() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("empty NDJSON lines were still streaming");
         }
@@ -1541,7 +1656,7 @@ fn a_512_token_reply_is_kept() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(8) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(8)) {
             child.kill_and_reap();
             panic!("512-token reply was still open");
         }
@@ -1687,7 +1802,7 @@ fn invalid_utf8_line_is_an_error() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("invalid utf-8 line was still open");
         }
@@ -1743,7 +1858,7 @@ fn good_line_before_bad_utf8_is_kept() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > std::time::Duration::from_secs(4) {
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("good line then bad utf-8 was still open");
         }
@@ -1765,10 +1880,31 @@ fn good_line_before_bad_utf8_is_kept() {
 
 #[test]
 fn silent_accept_fails_near_the_header_timeout() {
-    assert_headers_fail_near_timeout("complete", false);
-    assert_headers_fail_near_timeout("complete", true);
-    assert_headers_fail_near_timeout("qwen-stream", false);
-    assert_headers_fail_near_timeout("hermes-stream", false);
+    let check = |mode: &str, first_not_found: bool| {
+        let (elapsed, output) = probe_headers_near_timeout(mode, first_not_found);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            !output.status.success(),
+            "{mode} succeeded: {stdout} {stderr}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(3),
+            "{mode} took {elapsed:?}: {stdout} {stderr}"
+        );
+        let msg = format!("{stdout} {stderr}").to_lowercase();
+        assert!(
+            msg.contains("headers")
+                || msg.contains("timeout")
+                || msg.contains("timed out")
+                || msg.contains("error sending request"),
+            "{mode}: {stdout} {stderr}"
+        );
+    };
+    check("complete", false);
+    check("complete", true);
+    check("qwen-stream", false);
+    check("hermes-stream", false);
 }
 
 fn run_until(
@@ -1794,7 +1930,7 @@ fn run_until(
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if started.elapsed() > kill_after {
+        if deadline_exceeded(started.elapsed(), kill_after) {
             child.kill_and_reap();
             panic!("{mode} still running after {kill_after:?}");
         }
@@ -1810,6 +1946,14 @@ fn run_until(
 /// `first_not_found` answers `/api/chat` with an empty 404 so `complete`
 /// reads the withheld body from `/api/generate`.
 fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> MockServer {
+    serve_withheld_body_watched(status_line, first_not_found, None)
+}
+
+fn serve_withheld_body_watched(
+    status_line: &'static str,
+    first_not_found: bool,
+    phase: Option<std::sync::mpsc::Sender<u8>>,
+) -> MockServer {
     start_server(move |listener, shutdown| {
         let mut drains = Vec::new();
         let mut first = true;
@@ -1819,12 +1963,11 @@ fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> Mock
             };
             read_http_request(&mut sock);
             use std::io::Write;
-            if first && first_not_found {
+            if not_found_on_first(first, first_not_found) {
                 first = false;
-                let _ = sock.write_all(
-                    b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-                );
+                let _ = sock.write_all(NOT_FOUND_RESPONSE);
                 let _ = sock.flush();
+                notify(&phase, PHASE_NOT_FOUND);
                 drains.push(finish_response(sock));
                 continue;
             }
@@ -1833,6 +1976,7 @@ fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> Mock
                 "{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n"
             );
             let _ = sock.flush();
+            notify(&phase, PHASE_STATUS);
             let _ = shutdown.recv();
             drains.push(finish_response(sock));
             break;
@@ -1937,7 +2081,7 @@ fn serve_late_headers() -> MockServer {
         );
         let _ = sock.flush();
         let drain = finish_response(sock);
-        join_bounded(drain);
+        join_bounded(drain, MOCK_JOIN_BOUND);
     })
 }
 
@@ -2002,7 +2146,7 @@ fn lifetime_after_a_token_returns_the_token() {
 #[test]
 fn idle_timeout_keeps_partial_chunks() {
     let server = serve_slow_chunks(5, Some(5));
-    let (elapsed, out) = run_against("complete", server.addr());
+    let (elapsed, out) = run_against("complete", server.addr(), std::time::Duration::from_secs(5));
     let stdout = String::from_utf8_lossy(&out.stdout);
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
@@ -2019,5 +2163,581 @@ fn idle_timeout_keeps_partial_chunks() {
             "dropped partial token n{i:02}: {stdout}"
         );
     }
+    drop(server);
+}
+
+fn read_exact_n(sock: &mut std::net::TcpStream, len: usize) -> Vec<u8> {
+    sock.set_read_timeout(Some(MOCK_READ_TIMEOUT))
+        .expect("read timeout");
+    let mut buf = vec![0u8; len];
+    std::io::Read::read_exact(sock, &mut buf).expect("response");
+    buf
+}
+
+fn collect_queued(mut read: impl FnMut(&mut [u8]) -> std::io::Result<usize>) -> (Vec<u8>, u32) {
+    let mut buf = [0u8; 2048];
+    let mut got = Vec::new();
+    let mut spins = 0u32;
+    loop {
+        match read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => got.extend_from_slice(&buf[..n]),
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => {
+                spins += 1;
+                assert!(spins <= 4, "queued read made no progress");
+                continue;
+            }
+            Err(err)
+                if err.kind() == std::io::ErrorKind::WouldBlock
+                    || err.kind() == std::io::ErrorKind::TimedOut =>
+            {
+                break;
+            }
+            Err(err) => panic!("queued read: {err}"),
+        }
+    }
+    (got, spins)
+}
+
+fn queued_bytes(sock: &mut std::net::TcpStream) -> Vec<u8> {
+    sock.set_nonblocking(true).expect("nonblocking");
+    let (got, _) = collect_queued(|buf| std::io::Read::read(sock, buf));
+    let _ = sock.set_nonblocking(false);
+    got
+}
+
+fn hang_command() -> std::process::Command {
+    let mut cmd = if cfg!(windows) {
+        let mut cmd = std::process::Command::new("ping");
+        cmd.args(["-n", "30", "127.0.0.1"]);
+        cmd
+    } else {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        cmd
+    };
+    cmd.stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    cmd
+}
+
+fn process_alive(pid: u32) -> bool {
+    if cfg!(windows) {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+            .output()
+            .expect("tasklist");
+        String::from_utf8_lossy(&output.stdout).contains(&format!("\"{pid}\""))
+    } else {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+}
+
+#[test]
+fn collect_queued_returns_bytes_and_stops_when_the_socket_is_quiet() {
+    let mut steps = vec![
+        Err(std::io::ErrorKind::Interrupted),
+        Ok(&b"ab"[..]),
+        Err(std::io::ErrorKind::WouldBlock),
+        Ok(&b"no"[..]),
+    ];
+    let mut calls = 0;
+    let (got, spins) = collect_queued(|buf| {
+        calls += 1;
+        match steps.remove(0) {
+            Ok(data) => {
+                buf[..data.len()].copy_from_slice(data);
+                Ok(data.len())
+            }
+            Err(kind) => Err(std::io::Error::new(kind, "queued")),
+        }
+    });
+    assert_eq!(got, b"ab");
+    assert_eq!(spins, 1, "the interrupted read was not counted");
+    assert_eq!(calls, 3, "a quiet read was retried");
+
+    let (got, spins) =
+        collect_queued(|_| Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "quiet")));
+    assert!(
+        got.is_empty(),
+        "a timed-out read was treated as queued data"
+    );
+    assert_eq!(spins, 0);
+}
+
+#[test]
+#[should_panic(expected = "queued read")]
+fn collect_queued_panics_when_the_peer_resets() {
+    let (_got, _spins) = collect_queued(|_| {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "reset",
+        ))
+    });
+}
+
+#[test]
+fn queued_bytes_returns_bytes_the_peer_already_wrote() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    let (mut server, _) = listener.accept().expect("accept");
+    use std::io::Write;
+    client.write_all(b"hello").expect("write");
+    client.flush().expect("flush");
+    assert_eq!(queued_bytes(&mut server), b"hello");
+    drop(client);
+}
+
+fn stop_pid(pid: u32) {
+    if cfg!(windows) {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    } else {
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
+#[test]
+fn stop_pid_kills_the_hang_process() {
+    let mut child = hang_command().spawn().expect("spawn");
+    let pid = child.id();
+    assert!(process_alive(pid), "hang child was not alive");
+    stop_pid(pid);
+    let mut reaped = false;
+    for _ in 0..100_000 {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                reaped = true;
+                break;
+            }
+            Ok(None) => std::thread::yield_now(),
+            Err(err) => panic!("wait after stop_pid: {err}"),
+        }
+    }
+    if !reaped {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    assert!(reaped, "stop_pid left the process running");
+}
+
+const EMPTY_POST: &[u8] =
+    b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 0\r\n\r\n";
+
+#[test]
+fn buffered_result_wait_is_three_seconds() {
+    assert_eq!(buffered_result_wait(), std::time::Duration::from_secs(3));
+    assert!(buffered_result_wait() > MOCK_READ_TIMEOUT);
+}
+
+#[test]
+fn deadline_exceeded_is_strictly_after_the_limit() {
+    let limit = std::time::Duration::from_secs(4);
+    assert!(!deadline_exceeded(limit, limit));
+    assert!(!deadline_exceeded(
+        limit.saturating_sub(std::time::Duration::from_nanos(1)),
+        limit
+    ));
+    assert!(deadline_exceeded(
+        limit + std::time::Duration::from_nanos(1),
+        limit
+    ));
+}
+
+#[test]
+fn gap_elapsed_follows_the_shutdown_channel() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    assert!(gap_elapsed(&rx, std::time::Duration::ZERO));
+    tx.send(()).expect("queue shutdown");
+    assert!(!gap_elapsed(&rx, std::time::Duration::ZERO));
+    drop(tx);
+    assert!(!gap_elapsed(&rx, std::time::Duration::from_secs(30)));
+}
+
+#[test]
+fn not_found_on_first_is_only_the_fallback_request() {
+    assert!(!not_found_on_first(true, false));
+    assert!(not_found_on_first(true, true));
+    assert!(!not_found_on_first(false, true));
+    assert!(!not_found_on_first(false, false));
+}
+
+#[test]
+fn should_signal_child_only_when_it_has_not_exited() {
+    assert!(should_signal_child(false));
+    assert!(!should_signal_child(true));
+}
+
+#[test]
+fn shutdown_requested_tracks_the_channel() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    assert!(!shutdown_requested(&rx));
+    tx.send(()).expect("shutdown");
+    assert!(shutdown_requested(&rx));
+    drop(tx);
+    assert!(shutdown_requested(&rx));
+}
+
+#[test]
+fn peek_again_retries_only_the_three_transient_errors() {
+    assert!(peek_again(std::io::ErrorKind::Interrupted));
+    assert!(peek_again(std::io::ErrorKind::TimedOut));
+    assert!(peek_again(std::io::ErrorKind::WouldBlock));
+    assert!(!peek_again(std::io::ErrorKind::ConnectionReset));
+}
+
+#[test]
+fn wait_until_peek_retries_transient_errors_and_stops_otherwise() {
+    let retry = |kind: std::io::ErrorKind| {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut calls = 0;
+        let saw = wait_until_peek(
+            |_| {
+                calls += 1;
+                if calls == 1 {
+                    Err(std::io::Error::new(kind, "again"))
+                } else {
+                    // Queued before the not-ready arm waits, so a `ready` guard
+                    // that never matches returns instead of polling.
+                    let _ = tx.send(());
+                    Ok(3)
+                }
+            },
+            &rx,
+            |_| true,
+        );
+        (saw, calls)
+    };
+    for kind in [
+        std::io::ErrorKind::Interrupted,
+        std::io::ErrorKind::TimedOut,
+        std::io::ErrorKind::WouldBlock,
+    ] {
+        let (saw, calls) = retry(kind);
+        assert!(saw, "{kind:?} was not retried");
+        assert_eq!(calls, 2, "{kind:?}");
+    }
+
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut calls = 0;
+    let saw = wait_until_peek(
+        |_| {
+            calls += 1;
+            if calls == 1 {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    "reset",
+                ))
+            } else {
+                Ok(3)
+            }
+        },
+        &rx,
+        |_| true,
+    );
+    assert!(!saw, "a reset was retried");
+    assert_eq!(calls, 1);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    tx.send(()).expect("shutdown");
+    let mut calls = 0;
+    let saw = wait_until_peek(
+        |_| {
+            calls += 1;
+            Ok(4)
+        },
+        &rx,
+        |_| true,
+    );
+    assert!(!saw);
+    assert_eq!(calls, 0, "peek ran after shutdown");
+
+    let (_tx, rx) = std::sync::mpsc::channel();
+    let mut calls = 0;
+    let saw = wait_until_peek(
+        |_| {
+            calls += 1;
+            if calls == 1 {
+                Ok(0)
+            } else {
+                Ok(4)
+            }
+        },
+        &rx,
+        |_| true,
+    );
+    assert!(!saw, "a closed peer was treated as ready");
+    assert_eq!(calls, 1);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut calls = 0;
+    let saw = wait_until_peek(
+        |buf| {
+            calls += 1;
+            if calls == 1 {
+                let _ = tx.send(());
+                buf[..2].copy_from_slice(b"xx");
+                Ok(2)
+            } else {
+                buf[..5].copy_from_slice(b"ready");
+                Ok(5)
+            }
+        },
+        &rx,
+        |buf| buf == b"ready",
+    );
+    assert!(!saw, "an unready buffer ignored shutdown");
+    assert_eq!(calls, 1);
+}
+
+#[test]
+fn read_http_request_sets_the_socket_read_timeout() {
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let server = start_server(move |listener, shutdown| {
+        let Some(mut sock) = accept_client(&listener, &shutdown) else {
+            return;
+        };
+        read_http_request(&mut sock);
+        let timeout = sock.read_timeout().expect("read timeout");
+        let _ = done_tx.send(timeout);
+        let _ = shutdown.recv();
+    });
+    let mut client = std::net::TcpStream::connect(server.addr()).expect("connect");
+    use std::io::Write;
+    client.write_all(EMPTY_POST).expect("request");
+    let timeout = done_rx
+        .recv_timeout(buffered_result_wait())
+        .expect("server read the request");
+    assert_eq!(timeout, Some(MOCK_READ_TIMEOUT));
+    drop(client);
+    drop(server);
+}
+
+#[test]
+fn wait_until_socket_peek_sets_the_read_timeout() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    tx.send(()).expect("shutdown");
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let client = std::net::TcpStream::connect(addr).expect("connect");
+    let (mut sock, _) = listener.accept().expect("accept");
+    // The peer has shut its write side, so a peek is `Ok(0)` even when the
+    // shutdown flag is ignored. The timeout is set before that peek.
+    client
+        .shutdown(std::net::Shutdown::Write)
+        .expect("shut client write");
+    assert!(!wait_until_socket_peek(&mut sock, &rx, |_| true));
+    let timeout = sock.read_timeout().expect("timeout");
+    // SO_RCVTIMEO rounds a 50 ms value up by a few milliseconds. A deleted
+    // `set_read_timeout` leaves `None`. Another cap is outside this range.
+    assert!(
+        timeout.is_some_and(|value| {
+            value >= PEEK_WAIT && value < PEEK_WAIT + std::time::Duration::from_millis(20)
+        }),
+        "peek read timeout was {timeout:?}"
+    );
+}
+
+#[test]
+fn timeout_after_first_keeps_bytes_past_the_callers_buffer() {
+    use std::io::Read;
+    let mut reader = TimeoutAfterFirst {
+        first: Some(b"abcdefghij".to_vec()),
+        timeouts: 0,
+        delivered: 0,
+    };
+    let mut buf = [0u8; 4];
+    assert_eq!(reader.read(&mut buf).expect("first"), 4);
+    assert_eq!(&buf, b"abcd");
+    assert_eq!(reader.read(&mut buf).expect("second"), 4);
+    assert_eq!(&buf, b"efgh");
+    assert_eq!(reader.read(&mut buf).expect("tail"), 2);
+    assert_eq!(&buf[..2], b"ij");
+    assert_eq!(reader.delivered, 10);
+    assert_eq!(reader.timeouts, 0);
+    assert_eq!(
+        reader.read(&mut buf).expect_err("stalled").kind(),
+        std::io::ErrorKind::TimedOut
+    );
+    assert_eq!(reader.timeouts, 1);
+}
+
+#[test]
+#[should_panic(expected = "mock server thread did not exit")]
+fn join_bounded_panics_when_the_worker_is_still_blocked() {
+    let (abandon_tx, abandon_rx) = std::sync::mpsc::channel::<()>();
+    let handle = std::thread::spawn(move || {
+        let _ = abandon_rx.recv();
+    });
+    let _abandon = abandon_tx;
+    join_bounded(handle, std::time::Duration::ZERO);
+}
+
+#[test]
+#[should_panic(expected = "worker blew up")]
+fn join_bounded_propagates_a_worker_panic() {
+    let handle = std::thread::spawn(|| panic!("worker blew up"));
+    join_bounded(handle, MOCK_JOIN_BOUND);
+}
+
+#[test]
+#[should_panic(expected = "drain blew up")]
+fn join_drains_propagates_a_drain_panic() {
+    let handle = std::thread::spawn(|| panic!("drain blew up"));
+    join_drains(vec![handle]);
+}
+
+#[test]
+fn mock_server_drop_signals_shutdown_and_joins_the_thread() {
+    let (abandon_tx, abandon_rx) = std::sync::mpsc::channel();
+    let saw = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = std::sync::Arc::clone(&saw);
+    let server = start_server(move |_listener, shutdown| loop {
+        match shutdown.try_recv() {
+            Ok(()) => {
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                return;
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+        match abandon_rx.try_recv() {
+            Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
+            Err(std::sync::mpsc::TryRecvError::Empty) => std::thread::yield_now(),
+        }
+    });
+    drop(server);
+    let signaled = saw.load(std::sync::atomic::Ordering::SeqCst);
+    drop(abandon_tx);
+    assert!(
+        signaled,
+        "drop did not join the server thread after shutdown"
+    );
+}
+
+#[test]
+fn dropping_a_live_child_kills_and_reaps_it() {
+    let wrapped = ReapedChild::spawn(&mut hang_command());
+    let pid = wrapped.child.as_ref().expect("child").id();
+    assert!(process_alive(pid), "hang child was not alive");
+    drop(wrapped);
+    let alive = process_alive(pid);
+    if alive {
+        stop_pid(pid);
+    }
+    assert!(!alive, "drop left the child running");
+}
+
+#[test]
+fn kill_and_reap_kills_a_live_child() {
+    let mut wrapped = ReapedChild::spawn(&mut hang_command());
+    let pid = wrapped.child.as_ref().expect("child").id();
+    assert!(process_alive(pid), "hang child was not alive");
+    wrapped.kill_and_reap();
+    let alive = process_alive(pid);
+    if alive {
+        stop_pid(pid);
+    }
+    assert!(!alive, "kill_and_reap left the child running");
+}
+
+#[test]
+fn serve_no_headers_answers_404_only_for_the_fallback() {
+    let request = EMPTY_POST;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let server = serve_no_headers_watched(true, Some(tx));
+    let mut first = std::net::TcpStream::connect(server.addr()).expect("connect");
+    use std::io::Write;
+    first.write_all(request).expect("first request");
+    assert_eq!(
+        rx.recv_timeout(MOCK_READ_TIMEOUT).expect("first phase"),
+        PHASE_NOT_FOUND
+    );
+    assert_eq!(
+        read_exact_n(&mut first, NOT_FOUND_RESPONSE.len()),
+        NOT_FOUND_RESPONSE
+    );
+    let mut second = std::net::TcpStream::connect(server.addr()).expect("second");
+    second.write_all(request).expect("second request");
+    assert_eq!(
+        rx.recv_timeout(MOCK_READ_TIMEOUT).expect("second phase"),
+        PHASE_WITHHOLD
+    );
+    assert!(
+        queued_bytes(&mut second).is_empty(),
+        "the withheld request got a status line"
+    );
+    drop(first);
+    drop(second);
+    drop(server);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let server = serve_no_headers_watched(false, Some(tx));
+    let mut client = std::net::TcpStream::connect(server.addr()).expect("connect");
+    client.write_all(request).expect("request");
+    assert_eq!(
+        rx.recv_timeout(MOCK_READ_TIMEOUT).expect("phase"),
+        PHASE_WITHHOLD
+    );
+    assert!(
+        queued_bytes(&mut client).is_empty(),
+        "a non-fallback request was answered"
+    );
+    drop(client);
+    drop(server);
+}
+
+#[test]
+fn serve_withheld_body_keeps_the_status_line_for_the_generate_fallback() {
+    let status_line = "HTTP/1.1 500 Internal Server Error";
+    let header = format!("{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n");
+    let (tx, rx) = std::sync::mpsc::channel();
+    let server = serve_withheld_body_watched(status_line, true, Some(tx));
+    let mut first = std::net::TcpStream::connect(server.addr()).expect("connect");
+    use std::io::Write;
+    first.write_all(EMPTY_POST).expect("first request");
+    assert_eq!(
+        rx.recv_timeout(MOCK_READ_TIMEOUT).expect("first phase"),
+        PHASE_NOT_FOUND
+    );
+    assert_eq!(
+        read_exact_n(&mut first, NOT_FOUND_RESPONSE.len()),
+        NOT_FOUND_RESPONSE
+    );
+    let mut second = std::net::TcpStream::connect(server.addr()).expect("second");
+    second.write_all(EMPTY_POST).expect("second request");
+    assert_eq!(
+        rx.recv_timeout(MOCK_READ_TIMEOUT).expect("second phase"),
+        PHASE_STATUS
+    );
+    assert_eq!(read_exact_n(&mut second, header.len()), header.as_bytes());
+    drop(first);
+    drop(second);
+    drop(server);
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let server = serve_withheld_body_watched(status_line, false, Some(tx));
+    let mut client = std::net::TcpStream::connect(server.addr()).expect("connect");
+    client.write_all(EMPTY_POST).expect("request");
+    assert_eq!(
+        rx.recv_timeout(MOCK_READ_TIMEOUT).expect("phase"),
+        PHASE_STATUS
+    );
+    assert_eq!(read_exact_n(&mut client, header.len()), header.as_bytes());
+    drop(client);
     drop(server);
 }
