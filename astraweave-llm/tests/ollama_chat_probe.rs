@@ -431,15 +431,15 @@ fn wait_until_peek(
     }
 }
 
+/// True only when a non-blocking read returns one or more bytes.
+///
+/// `Ok(0)` and any error, including `WouldBlock` and `TimedOut`, are not a
+/// queued byte. A peer that has shut its write side with nothing buffered
+/// reads as `Ok(0)`.
 fn unread_byte(sock: &mut std::net::TcpStream) -> bool {
     sock.set_nonblocking(true).expect("nonblocking");
     let mut one = [0u8; 1];
-    let pending = !matches!(
-        read_once(sock, &mut one),
-        Err(err)
-            if err.kind() == std::io::ErrorKind::WouldBlock
-                || err.kind() == std::io::ErrorKind::TimedOut
-    );
+    let pending = matches!(read_once(sock, &mut one), Ok(n) if n > 0);
     let _ = sock.set_nonblocking(false);
     pending
 }
@@ -622,16 +622,41 @@ fn request_with_body(body_len: usize, sent: usize) -> Vec<u8> {
 
 /// Time `read_http_request` once `ready` is true of the bytes already buffered.
 /// The connection stays open until the function returns. The bool is true when
-/// a further socket read would still return a byte.
+/// a further socket read returns `Ok(n)` with `n > 0`.
 fn time_buffered_request(
     bytes: &[u8],
     ready: impl Fn(&[u8]) -> bool + Send + 'static,
 ) -> (std::time::Duration, bool) {
+    time_buffered_request_split(bytes, ready, None)
+}
+
+/// `split_at` writes that prefix, pauses 50ms, then writes the rest.
+///
+/// The server peeks once before the client writes, so the pause is a gap in
+/// the request rather than a delay inserted to win a race. `None` writes the
+/// bytes in one `write_all`.
+fn time_buffered_request_split(
+    bytes: &[u8],
+    ready: impl Fn(&[u8]) -> bool + Send + 'static,
+    split_at: Option<usize>,
+) -> (std::time::Duration, bool) {
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
     let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let split_at_for_server = split_at;
     let server = start_server(move |listener, shutdown| {
         let Some(mut sock) = accept_client(&listener, &shutdown) else {
             return;
         };
+        if split_at_for_server.is_some() {
+            let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(50)));
+            let mut probe = [0u8; 1];
+            if matches!(sock.peek(&mut probe), Ok(0)) {
+                return;
+            }
+            if entered_tx.send(()).is_err() {
+                return;
+            }
+        }
         if !wait_until_peek(&mut sock, &shutdown, ready) {
             return;
         }
@@ -644,8 +669,21 @@ fn time_buffered_request(
     });
     let mut client = std::net::TcpStream::connect(server.addr()).expect("connect");
     use std::io::Write;
-    client.write_all(bytes).expect("request");
-    client.flush().expect("flush");
+    if let Some(split) = split_at {
+        client.set_nodelay(true).expect("nodelay");
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("server is peeking");
+        let n = split.min(bytes.len());
+        client.write_all(&bytes[..n]).expect("request head");
+        client.flush().expect("flush head");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        client.write_all(&bytes[n..]).expect("request tail");
+        client.flush().expect("flush tail");
+    } else {
+        client.write_all(bytes).expect("request");
+        client.flush().expect("flush");
+    }
     let result = done_rx
         .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1))
         .expect("read_http_request returned");
@@ -658,7 +696,9 @@ fn time_buffered_request(
 fn read_http_request_drops_the_read_tail_past_content_length() {
     // The header read fills `READ_CHUNK` and drops whatever in that buffer is
     // past `Content-Length`. A short excess disappears with the buffer. An
-    // excess that does not fit in the same read stays in the socket.
+    // excess that does not fit in the same read stays in the socket. The
+    // 4000-byte case waits until the whole request is buffered, the same way
+    // the 200-byte case waits until its excess is visible.
     let (elapsed, still_buffered) = time_buffered_request(&request_with_body(3000, 3000), |buf| {
         header_block_end(buf).is_some_and(|end| buf.len() - end >= 3000)
     });
@@ -691,11 +731,13 @@ fn read_http_request_drops_the_read_tail_past_content_length() {
 
     let large = request_with_body(4, 4000);
     let large_end = header_block_end(&large).expect("large header");
+    let large_len = large.len();
     assert!(
         large_end + 4000 > READ_CHUNK,
         "the 4000-byte excess must spill past one header read"
     );
-    let (elapsed, still_buffered) = time_buffered_request(&large, |buf| buf.len() >= READ_CHUNK);
+    let (elapsed, still_buffered) =
+        time_buffered_request(&large, move |buf| buf.len() >= large_len);
     assert!(
         elapsed < MOCK_READ_TIMEOUT / 2,
         "bytes already past Content-Length took {elapsed:?}"
@@ -704,6 +746,80 @@ fn read_http_request_drops_the_read_tail_past_content_length() {
         still_buffered,
         "an excess past the {READ_CHUNK}-byte header read stays in the socket"
     );
+}
+
+#[test]
+fn read_http_request_keeps_the_excess_when_the_write_is_split() {
+    // 1024 bytes, a 50ms gap, then the rest. Waiting for `READ_CHUNK` returns
+    // during that gap, before the excess is written. This waits for the whole
+    // request, so the excess past one header read is still in the socket.
+    let large = request_with_body(4, 4000);
+    let large_len = large.len();
+    assert!(
+        large_len > READ_CHUNK,
+        "the split request must be longer than one header read"
+    );
+    let (elapsed, still_buffered) =
+        time_buffered_request_split(&large, move |buf| buf.len() >= large_len, Some(READ_CHUNK));
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT / 2,
+        "split excess took {elapsed:?}"
+    );
+    assert!(
+        still_buffered,
+        "an excess past the {READ_CHUNK}-byte header read stays in the socket after a split write"
+    );
+}
+
+#[test]
+fn unread_byte_is_false_when_the_peer_shuts_write_with_nothing_queued() {
+    let (accepted_tx, accepted_rx) = std::sync::mpsc::channel();
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let server = start_server(move |listener, shutdown| {
+        let Some(mut sock) = accept_client(&listener, &shutdown) else {
+            return;
+        };
+        if accepted_tx.send(()).is_err() {
+            return;
+        }
+        let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(50)));
+        let mut buf = [0u8; 1];
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let saw_eof = loop {
+            if shutdown_requested(&shutdown) || std::time::Instant::now() >= deadline {
+                break false;
+            }
+            match sock.peek(&mut buf) {
+                Ok(0) => break true,
+                Ok(_) => break false,
+                Err(err)
+                    if err.kind() == std::io::ErrorKind::Interrupted
+                        || err.kind() == std::io::ErrorKind::TimedOut
+                        || err.kind() == std::io::ErrorKind::WouldBlock => {}
+                Err(_) => break false,
+            }
+        };
+        let pending = unread_byte(&mut sock);
+        let _ = done_tx.send((saw_eof, pending));
+        let _ = shutdown.recv();
+    });
+    let client = std::net::TcpStream::connect(server.addr()).expect("connect");
+    accepted_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("accepted");
+    client
+        .shutdown(std::net::Shutdown::Write)
+        .expect("shutdown write");
+    let (saw_eof, pending) = done_rx
+        .recv_timeout(std::time::Duration::from_secs(2))
+        .expect("unread_byte returned");
+    assert!(saw_eof, "peer shutdown was not visible");
+    assert!(
+        !pending,
+        "a shut write with nothing queued is not a buffered byte"
+    );
+    drop(client);
+    drop(server);
 }
 
 #[test]
