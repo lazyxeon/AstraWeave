@@ -5,6 +5,8 @@
 //! including NPCs, directors, dialogue systems, and quest generators. It handles
 //! coordination, resource sharing, and emergent group behaviors.
 
+mod utc_stamp;
+
 pub mod agent;
 pub use agent::*;
 

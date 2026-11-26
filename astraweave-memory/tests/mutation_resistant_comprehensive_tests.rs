@@ -89,7 +89,6 @@ use astraweave_memory::{
     TimeWindow,
     ValidationResult,
 };
-use chrono::Utc;
 use std::collections::HashMap;
 
 // =============================================================================
@@ -372,7 +371,7 @@ mod memory_type_tests {
             memory_id: "mem_123".to_string(),
             association_type: AssociationType::Temporal,
             strength: 0.75,
-            formed_at: Utc::now(),
+            formed_at: time::OffsetDateTime::now_utc(),
         };
         assert_eq!(assoc.memory_id, "mem_123");
         assert_eq!(assoc.strength, 0.75);
@@ -390,8 +389,8 @@ mod memory_type_tests {
             memory_ids: vec!["m1".to_string(), "m2".to_string()],
             central_concept: "office".to_string(),
             importance: 0.8,
-            created_at: Utc::now(),
-            last_updated: Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
+            last_updated: time::OffsetDateTime::now_utc(),
         };
         assert_eq!(cluster.name, "Work memories");
         assert_eq!(cluster.memory_ids.len(), 2);
@@ -405,7 +404,7 @@ mod memory_type_tests {
         let state = ConsolidationState {
             consolidation_level: 0.5,
             passes: 2,
-            last_consolidation: Utc::now(),
+            last_consolidation: time::OffsetDateTime::now_utc(),
             needs_consolidation: false,
             priority: 0.7,
         };
@@ -467,8 +466,8 @@ mod memory_type_tests {
 
     #[test]
     fn time_window_fields() {
-        let start = Utc::now();
-        let end = Utc::now();
+        let start = time::OffsetDateTime::now_utc();
+        let end = time::OffsetDateTime::now_utc();
         let window = TimeWindow { start, end };
         assert!(window.end >= window.start);
     }
@@ -822,7 +821,7 @@ mod retrieval_tests {
             source_memory_id: "m1".to_string(),
         };
         let temporal = RetrievalPath::Temporal {
-            reference_time: Utc::now(),
+            reference_time: time::OffsetDateTime::now_utc(),
         };
         let cluster = RetrievalPath::Cluster {
             cluster_id: "c1".to_string(),
@@ -2486,8 +2485,8 @@ mod edge_case_tests {
             recent_memory_ids: vec!["r1".to_string()],
             preferred_types: vec![MemoryType::Episodic, MemoryType::Semantic],
             time_window: Some(TimeWindow {
-                start: Utc::now(),
-                end: Utc::now(),
+                start: time::OffsetDateTime::now_utc(),
+                end: time::OffsetDateTime::now_utc(),
             }),
             limit: 5,
         };

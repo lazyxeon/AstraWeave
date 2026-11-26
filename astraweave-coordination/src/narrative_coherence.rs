@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -79,8 +78,10 @@ pub struct PlotPoint {
     pub related_characters: Vec<String>,
     pub prerequisites: Vec<String>,
     pub consequences: Vec<String>,
-    pub introduced_at: DateTime<Utc>,
-    pub deadline: Option<DateTime<Utc>>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub introduced_at: time::OffsetDateTime,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub deadline: Option<time::OffsetDateTime>,
 }
 
 /// Types of plot points
@@ -137,7 +138,8 @@ pub struct EmotionalChange {
     pub from_emotion: String,
     pub to_emotion: String,
     pub cause: String,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
 }
 
 /// Relationship between characters
@@ -175,7 +177,8 @@ pub struct NarrativeEvent {
     pub participants: Vec<String>,
     pub consequences: Vec<String>,
     pub narrative_impact: f32,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub location: Option<String>,
     pub related_plot_points: Vec<String>,
 }
@@ -183,8 +186,10 @@ pub struct NarrativeEvent {
 /// Game timeline for temporal consistency
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Timeline {
-    pub current_time: DateTime<Utc>,
-    pub game_start_time: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub current_time: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub game_start_time: time::OffsetDateTime,
     pub significant_dates: Vec<TimelineEvent>,
     pub temporal_anchors: Vec<TemporalAnchor>,
 }
@@ -192,7 +197,8 @@ pub struct Timeline {
 /// Significant event in the timeline
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimelineEvent {
-    pub date: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub date: time::OffsetDateTime,
     pub title: String,
     pub description: String,
     pub importance: f32,
@@ -204,7 +210,8 @@ pub struct TimelineEvent {
 pub struct TemporalAnchor {
     pub id: String,
     pub description: String,
-    pub fixed_date: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub fixed_date: time::OffsetDateTime,
     pub cannot_change: bool,
     pub related_events: Vec<String>,
 }
@@ -270,7 +277,8 @@ pub struct RuleViolation {
     pub violation_id: String,
     pub description: String,
     pub severity: ViolationSeverity,
-    pub detected_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub detected_at: time::OffsetDateTime,
     pub resolved: bool,
     pub resolution_notes: Option<String>,
 }
@@ -295,7 +303,8 @@ pub struct StoryThread {
     pub characters_involved: Vec<String>,
     pub current_status: ThreadStatus,
     pub importance: f32,
-    pub estimated_resolution_time: Option<DateTime<Utc>>,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub estimated_resolution_time: Option<time::OffsetDateTime>,
     pub branching_possibilities: Vec<String>,
 }
 
@@ -329,7 +338,8 @@ pub struct CharacterArc {
 pub struct ArcMilestone {
     pub description: String,
     pub achieved: bool,
-    pub achievement_date: Option<DateTime<Utc>>,
+    #[serde(default, with = "crate::utc_stamp::serde_rfc3339::option")]
+    pub achievement_date: Option<time::OffsetDateTime>,
     pub impact_on_character: String,
 }
 
@@ -349,7 +359,8 @@ pub struct EstablishedFact {
     pub id: String,
     pub description: String,
     pub category: String,
-    pub established_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub established_at: time::OffsetDateTime,
     pub immutable: bool,
     pub supporting_evidence: Vec<String>,
     pub contradictions: Vec<String>,
@@ -372,7 +383,8 @@ pub struct LocationChange {
     pub change_type: String,
     pub description: String,
     pub cause: String,
-    pub timestamp: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub timestamp: time::OffsetDateTime,
     pub reversible: bool,
 }
 
@@ -573,8 +585,8 @@ Ensure character development feels natural and earned.
             character_states: HashMap::new(),
             world_events: Vec::new(),
             timeline: Timeline {
-                current_time: Utc::now(),
-                game_start_time: Utc::now(),
+                current_time: time::OffsetDateTime::now_utc(),
+                game_start_time: time::OffsetDateTime::now_utc(),
                 significant_dates: Vec::new(),
                 temporal_anchors: Vec::new(),
             },
@@ -1080,7 +1092,7 @@ Ensure character development feels natural and earned.
                         .contains(&milestone.description)
                 {
                     milestone.achieved = true;
-                    milestone.achievement_date = Some(Utc::now());
+                    milestone.achievement_date = Some(time::OffsetDateTime::now_utc());
                 }
             }
         }
@@ -1289,10 +1301,98 @@ mod tests {
             related_characters: vec!["character1".to_string()],
             prerequisites: Vec::new(),
             consequences: Vec::new(),
-            introduced_at: Utc::now(),
+            introduced_at: time::OffsetDateTime::now_utc(),
             deadline: None,
         };
 
         assert_eq!(plot_point.plot_type, PlotType::MainQuest);
+    }
+
+    fn engine() -> NarrativeCoherenceEngine {
+        let embeddings = Arc::new(astraweave_embeddings::MockEmbeddingClient::new());
+        let store = Arc::new(astraweave_rag::VectorStoreWrapper::new(
+            astraweave_embeddings::VectorStore::new(384),
+        ));
+        let rag = Arc::new(RagPipeline::new(
+            embeddings,
+            store,
+            None,
+            astraweave_rag::RagConfig::default(),
+        ));
+        NarrativeCoherenceEngine::new(
+            Arc::new(astraweave_llm::MockLlm),
+            rag,
+            CoherenceConfig::default(),
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn character_arc_records_guidance_progress_and_milestone() {
+        let engine = engine();
+        {
+            let mut arcs = engine.character_arcs.write().await;
+            arcs.insert(
+                "hero".into(),
+                CharacterArc {
+                    character_id: "hero".into(),
+                    arc_type: "growth".into(),
+                    starting_state: "lost".into(),
+                    desired_end_state: "found".into(),
+                    current_progress: 0.0,
+                    milestones: vec![
+                        ArcMilestone {
+                            description: "met the mentor".into(),
+                            achieved: false,
+                            achievement_date: None,
+                            impact_on_character: "hope".into(),
+                        },
+                        ArcMilestone {
+                            description: "met the mentor".into(),
+                            achieved: true,
+                            achievement_date: Some(time::OffsetDateTime::UNIX_EPOCH),
+                            impact_on_character: "already".into(),
+                        },
+                        ArcMilestone {
+                            description: "left home".into(),
+                            achieved: false,
+                            achievement_date: None,
+                            impact_on_character: "later".into(),
+                        },
+                    ],
+                    obstacles: Vec::new(),
+                    growth_catalysts: Vec::new(),
+                },
+            );
+        }
+        let guidance = CharacterGuidance {
+            arc_progress_assessment: ArcProgressAssessment {
+                current_milestone: "met the mentor".into(),
+                progress_percentage: 0.4,
+                next_development_needed: "leave home".into(),
+                timeline_appropriateness: 0.5,
+            },
+            suggested_developments: Vec::new(),
+            consistency_concerns: Vec::new(),
+            relationship_dynamics: RelationshipDynamics {
+                strongest_bond: String::new(),
+                most_tension: String::new(),
+                development_opportunities: Vec::new(),
+            },
+        };
+        engine
+            .update_character_arc("hero", &guidance)
+            .await
+            .unwrap();
+        let arcs = engine.character_arcs.read().await;
+        let arc = arcs.get("hero").unwrap();
+        assert!((arc.current_progress - 0.4).abs() < f32::EPSILON);
+        assert!(arc.milestones[0].achieved);
+        assert!(arc.milestones[0].achievement_date.is_some());
+        assert_eq!(
+            arc.milestones[1].achievement_date,
+            Some(time::OffsetDateTime::UNIX_EPOCH)
+        );
+        assert!(!arc.milestones[2].achieved);
     }
 }

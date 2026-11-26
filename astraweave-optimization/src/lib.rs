@@ -8,6 +8,8 @@
 //! - Adaptive load balancing
 //! - Token usage optimization
 
+mod utc_stamp;
+
 pub mod batch_inference;
 pub use batch_inference::*;
 

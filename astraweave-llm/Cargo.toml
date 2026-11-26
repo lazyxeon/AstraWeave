@@ -16,7 +16,7 @@ async-trait = "0.1"
 tokio = { workspace = true }
 futures-util = { workspace = true }
 uuid = { version = "1.0", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["parsing"] }
 tracing = "0.1"
 dashmap = "6.1"
 rand = "0.9"

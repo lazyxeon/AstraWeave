@@ -24,7 +24,7 @@ astraweave-security = { workspace = true }
 notify = "8"
 flate2 = "1"  # for compression
 base64 = "0.22"
-chrono = "0.4"
+time = "0.3"
 asset_signing = { path = "../asset_signing" }
 ktx2 = "0.4"  # for KTX2 texture container format
 # ktx2-rw = "0.2"  # for writing true KTX2 files (requires cmake, temporarily disabled)

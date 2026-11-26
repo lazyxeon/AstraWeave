@@ -523,7 +523,7 @@ fn sign_manifest(manifest: &[ManifestEntry]) -> Result<SignedManifest> {
         entries: manifest.to_vec(),
         signature,
         public_key: Some(public_key_pem),
-        signed_at: Some(chrono::Utc::now().to_rfc3339()),
+        signed_at: Some(format_utc_rfc3339(time::OffsetDateTime::now_utc())),
     })
 }
 
@@ -706,5 +706,97 @@ mod gltf_jail_tests {
             "{msg}"
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+/// Four digits for years `0..=9999`. Any other year keeps a sign and at least
+/// four digits of magnitude.
+fn year_text(year: i32) -> String {
+    if !(0..=9999).contains(&year) {
+        format!("{year:+05}")
+    } else {
+        format!("{year:04}")
+    }
+}
+
+fn format_utc_rfc3339(dt: time::OffsetDateTime) -> String {
+    let utc = dt.to_offset(time::UtcOffset::UTC);
+    let mut out = format!(
+        "{}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        year_text(utc.year()),
+        u8::from(utc.month()),
+        utc.day(),
+        utc.hour(),
+        utc.minute(),
+        utc.second()
+    );
+    let nano = utc.nanosecond();
+    if nano != 0 {
+        if nano % 1_000_000 == 0 {
+            out.push_str(&format!(".{:03}", nano / 1_000_000));
+        } else if nano % 1_000 == 0 {
+            out.push_str(&format!(".{:06}", nano / 1_000));
+        } else {
+            out.push_str(&format!(".{nano:09}"));
+        }
+    }
+    out.push_str("+00:00");
+    out
+}
+
+#[cfg(test)]
+mod utc_rfc3339_pins {
+    use super::{format_utc_rfc3339, year_text};
+
+    fn at(nanos: i128) -> time::OffsetDateTime {
+        time::OffsetDateTime::from_unix_timestamp_nanos(1_577_934_245_000_000_000 + nanos).unwrap()
+    }
+
+    #[test]
+    fn rfc3339_matches_pinned_strings() {
+        assert_eq!(format_utc_rfc3339(at(0)), "2020-01-02T03:04:05+00:00");
+        assert_eq!(
+            format_utc_rfc3339(at(100_000_000)),
+            "2020-01-02T03:04:05.100+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(100_000)),
+            "2020-01-02T03:04:05.000100+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(1_000_000)),
+            "2020-01-02T03:04:05.001+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(1)),
+            "2020-01-02T03:04:05.000000001+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(123_456_789)),
+            "2020-01-02T03:04:05.123456789+00:00"
+        );
+        assert_eq!(
+            format_utc_rfc3339(at(123_400_000)),
+            "2020-01-02T03:04:05.123400+00:00"
+        );
+    }
+
+    fn civil(year: i32) -> time::OffsetDateTime {
+        let date = time::Date::from_calendar_date(year, time::Month::January, 2).unwrap();
+        let clock = time::Time::from_hms(3, 4, 5).unwrap();
+        time::PrimitiveDateTime::new(date, clock).assume_utc()
+    }
+
+    #[test]
+    fn year_width_keeps_a_sign_and_four_digit_magnitude() {
+        assert_eq!(format_utc_rfc3339(civil(-1)), "-0001-01-02T03:04:05+00:00");
+        assert_eq!(format_utc_rfc3339(civil(0)), "0000-01-02T03:04:05+00:00");
+        assert_eq!(format_utc_rfc3339(civil(9999)), "9999-01-02T03:04:05+00:00");
+        assert_eq!(
+            format_utc_rfc3339(civil(-9999)),
+            "-9999-01-02T03:04:05+00:00"
+        );
+        assert_eq!(year_text(10_000), "+10000");
+        assert_eq!(year_text(-10_000), "-10000");
     }
 }

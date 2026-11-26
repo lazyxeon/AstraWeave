@@ -261,7 +261,10 @@ impl AssetProvider for KenneyProvider {
         output.push_str(
             "However, attribution is appreciated: 'Assets by Kenney.nl (www.kenney.nl)'\n",
         );
-        output.push_str(&format!("Generated: {}\n", chrono::Utc::now().to_rfc3339()));
+        output.push_str(&format!(
+            "Generated: {}\n",
+            crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc())
+        ));
 
         output
     }

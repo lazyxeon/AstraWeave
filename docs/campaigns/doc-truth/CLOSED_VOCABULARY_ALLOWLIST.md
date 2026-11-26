@@ -338,6 +338,10 @@ Every KEEP occurrence from the closed-vocabulary triage (D.1.C), **updated by D.
 | `docs/audits/CI_WORKSHOP_2026-07.md` | `clippy-all` | quoted-defect-alias | permanent |
 <!-- 2026-10-28 (#533) — covers only the verbatim edac4e651 commit-subject quote at CHANGELOG.md:656; any other `59 library crates` in CHANGELOG.md must be corrected, not allowlisted. -->
 | `CHANGELOG.md` | `59 library crates` | dated-record | permanent |
+<!-- #758 — the locked crate `quinn-udp` in the supply-chain sentences. Not a QUIC transport claim. -->
+| `docs/current/ARAVATH_DISTRIBUTION.md` | `quinn` | supply-chain-pin | permanent |
+| `docs/current/ENGINE_STATUS.md` | `quinn` | supply-chain-pin | permanent |
+| `docs/current/SECURITY_AUDIT.md` | `quinn` | supply-chain-pin | permanent |
 
 <!-- ALLOWLIST-END -->
 

@@ -17,7 +17,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 futures = "0.3"
 uuid = { version = "1.0", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["parsing"] }
 dashmap = "6.0"
 async-trait = "0.1"
 lru = "0.18"
@@ -26,4 +26,3 @@ tokio-util = "0.7"
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 serde_json = { workspace = true }
-chrono = { version = "0.4", features = ["serde"] }

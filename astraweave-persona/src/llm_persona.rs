@@ -845,7 +845,7 @@ Respond as {{persona.name}} would, staying true to your personality, current sta
             let influence = PersonalityInfluence {
                 event: trigger.to_string(),
                 factor_changes,
-                timestamp: chrono::Utc::now().timestamp() as u64,
+                timestamp: time::OffsetDateTime::now_utc().unix_timestamp() as u64,
                 importance: 0.5,
                 decay_rate: 0.1,
             };

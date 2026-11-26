@@ -52,6 +52,7 @@ dependencies = [
  "cipher",
  "cpubits",
  "cpufeatures 0.3.1",
+ "zeroize",
 ]
 
 [[package]]
@@ -572,7 +573,6 @@ dependencies = [
  "anyhow",
  "assert_fs",
  "async-trait",
- "chrono",
  "clap",
  "futures-util",
  "hex",
@@ -587,6 +587,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.17",
+ "time",
  "tokio",
  "toml 0.8.23",
  "wiremock",
@@ -746,11 +747,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "astraweave-context",
+ "astraweave-embeddings",
  "astraweave-llm",
  "astraweave-prompts",
  "astraweave-rag",
  "async-trait",
- "chrono",
  "criterion 0.5.1",
  "dashmap",
  "futures",
@@ -758,6 +759,7 @@ dependencies = [
  "rand 0.9.5",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tracing",
  "uuid",
@@ -969,7 +971,6 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "candle-transformers",
- "chrono",
  "criterion 0.7.0",
  "dashmap",
  "env_logger",
@@ -982,6 +983,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "time",
  "tokenizers",
  "tokio",
  "tracing",
@@ -1050,13 +1052,13 @@ dependencies = [
  "astraweave-rag",
  "async-trait",
  "bevy_ecs",
- "chrono",
  "criterion 0.7.0",
  "dashmap",
  "futures",
  "rusqlite",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tracing",
  "uuid",
@@ -1138,7 +1140,6 @@ dependencies = [
  "anyhow",
  "astraweave-ecs",
  "async-trait",
- "chrono",
  "criterion 0.5.1",
  "dashmap",
  "hdrhistogram",
@@ -1150,6 +1151,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.17",
+ "time",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1163,13 +1165,13 @@ dependencies = [
  "anyhow",
  "astraweave-llm",
  "async-trait",
- "chrono",
  "criterion 0.5.1",
  "dashmap",
  "futures",
  "lru",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tokio-util",
  "tracing",
@@ -1215,13 +1217,13 @@ name = "astraweave-persistence-player"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "criterion 0.5.1",
  "postcard",
  "serde",
  "serde_bytes",
  "serde_json",
  "tempfile",
+ "time",
  "toml 0.8.23",
 ]
 
@@ -1238,12 +1240,12 @@ dependencies = [
  "astraweave-prompts",
  "astraweave-rag",
  "async-trait",
- "chrono",
  "criterion 0.7.0",
  "rand 0.9.5",
  "serde",
  "serde_json",
  "tempfile",
+ "time",
  "tokio",
  "toml 0.9.8",
  "uuid",
@@ -1291,7 +1293,6 @@ dependencies = [
  "anyhow",
  "astraweave-core",
  "astraweave-llm",
- "chrono",
  "criterion 0.7.0",
  "handlebars",
  "jsonschema",
@@ -1302,6 +1303,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.17",
+ "time",
  "tokio-test",
  "toml 0.9.8",
  "uuid",
@@ -1318,7 +1320,6 @@ dependencies = [
  "astraweave-llm",
  "astraweave-prompts",
  "astraweave-rag",
- "chrono",
  "criterion 0.5.1",
  "futures",
  "rand 0.9.5",
@@ -1340,7 +1341,6 @@ dependencies = [
  "astraweave-llm",
  "astraweave-prompts",
  "async-trait",
- "chrono",
  "criterion 0.7.0",
  "dashmap",
  "fuzzy-matcher",
@@ -1349,6 +1349,7 @@ dependencies = [
  "rand 0.9.5",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tokio-test",
  "uuid",
@@ -1842,7 +1843,6 @@ dependencies = [
  "astraweave-asset",
  "astraweave-security",
  "base64 0.22.1",
- "chrono",
  "clap",
  "flate2",
  "glob",
@@ -1855,6 +1855,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.17",
+ "time",
  "toml 0.9.8",
  "uuid",
  "walkdir",
@@ -1958,7 +1959,6 @@ dependencies = [
  "astraweave-security",
  "astraweave-terrain",
  "bytemuck",
- "chrono",
  "clap",
  "crc32fast",
  "criterion 0.5.1",
@@ -1989,6 +1989,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "thiserror 2.0.17",
+ "time",
  "tokio",
  "toml 0.9.8",
  "tracing",
@@ -2821,20 +2822,6 @@ dependencies = [
  "cfg-if",
  "cpufeatures 0.3.1",
  "rand_core 0.10.1",
-]
-
-[[package]]
-name = "chrono"
-version = "0.4.42"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "145052bdd345b87320e369255277e3fb5152762ad123a901ef5c262dd38fe8d2"
-dependencies = [
- "iana-time-zone",
- "js-sys",
- "num-traits",
- "serde",
- "wasm-bindgen",
- "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -4629,9 +4616,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -5550,16 +5537,17 @@ dependencies = [
  "astraweave-terrain",
  "astraweave-ui",
  "bytemuck",
- "chrono",
  "egui",
  "egui-wgpu",
  "egui-winit",
  "glam 0.30.8",
+ "mutants",
  "pollster",
  "rand 0.9.5",
  "reqwest",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "wgpu",
  "winit",
@@ -5780,30 +5768,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "windows-registry",
-]
-
-[[package]]
-name = "iana-time-zone"
-version = "0.1.64"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33e57f83510bb73707521ebaffa789ec8caf86f9657cad665b092b581d40e9fb"
-dependencies = [
- "android_system_properties",
- "core-foundation-sys",
- "iana-time-zone-haiku",
- "js-sys",
- "log",
- "wasm-bindgen",
- "windows-core 0.62.2",
-]
-
-[[package]]
-name = "iana-time-zone-haiku"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -6656,9 +6620,9 @@ dependencies = [
 
 [[package]]
 name = "lzma-rust2"
-version = "0.21.0"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fde178a3caf126c440fa15628147772d8ee590a39477d711353fbe2e58a73a5b"
+checksum = "ef1d73c59a56771343712b22ea5615092c612c16ba291c0979e3105dfeec4890"
 dependencies = [
  "sha2 0.11.1",
 ]
@@ -6922,6 +6886,12 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
 ]
+
+[[package]]
+name = "mutants"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "add0ac067452ff1aca8c5002111bd6b1c895baee6e45fcbc44e0193aea17be56"
 
 [[package]]
 name = "naga"
@@ -7366,6 +7336,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.106",
+]
+
+[[package]]
+name = "num_threads"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cabcc654086861f9e1bc5115258de62ef92c79b20f4615a1b0cc57c4e82027d4"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -8564,9 +8543,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.14"
+version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "addec6a0dcad8a8d96a771f815f0eaf55f9d1805756410b39f5fa81332574cbd"
+checksum = "af66907df18639dcf4db56ca65490cabc4b27a97dbadd96f2926cca73298f016"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -10387,7 +10366,9 @@ checksum = "cdb87b95ec50ddfa440816d227a17b2ccbdda963a316a727fda0fc4334f7d134"
 dependencies = [
  "deranged",
  "js-sys",
+ "libc",
  "num-conv",
+ "num_threads",
  "powerfmt",
  "serde_core",
  "time-core",
@@ -10930,9 +10911,9 @@ dependencies = [
 
 [[package]]
 name = "typed-path"
-version = "0.12.3"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+checksum = "9ce898823d8cd0f028662d2f349694b1af0a5cc9be83f1d213a00d3147445e1e"
 
 [[package]]
 name = "typeid"
@@ -11085,9 +11066,9 @@ checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
 name = "url"
-version = "2.5.7"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08bc136a29a3d1758e07a9cca267be308aeebf5cfd5a10f3f67ab2097683ef5b"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
@@ -11964,19 +11945,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "windows-core"
-version = "0.62.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
-dependencies = [
- "windows-implement 0.60.2",
- "windows-interface 0.59.3",
- "windows-link 0.2.1",
- "windows-result 0.4.1",
- "windows-strings 0.5.1",
-]
-
-[[package]]
 name = "windows-future"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12092,15 +12060,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "windows-result"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
-dependencies = [
- "windows-link 0.2.1",
-]
-
-[[package]]
 name = "windows-strings"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12117,15 +12076,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56e6c93f3a0c3b36176cb1327a4958a0353d5d166c2a35cb268ace15e91d3b57"
 dependencies = [
  "windows-link 0.1.3",
-]
-
-[[package]]
-name = "windows-strings"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7837d08f69c77cf6b07689544538e017c1bfcf57e34b4c0ff58e6c2cd3b37091"
-dependencies = [
- "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -12782,9 +12732,23 @@ dependencies = [
 
 [[package]]
 name = "zeroize"
-version = "1.8.2"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
+checksum = "85ccff8a4805aba1eaa4cd4afcd49f7557dd2cf5fd79ffc37f8959466effc5aa"
+dependencies = [
+ "zeroize_derive",
+]
+
+[[package]]
+name = "zeroize_derive"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
+]
 
 [[package]]
 name = "zerotrie"
@@ -12821,9 +12785,9 @@ dependencies = [
 
 [[package]]
 name = "zip"
-version = "9.0.3"
+version = "9.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2d98561b612a84ae525331a7a094429ef8a5772514ed507ff6db5f54badc971"
+checksum = "08687262e7c0f1284b259686f322805a8adaa8ef4d7210e76448950b3f083bf7"
 dependencies = [
  "aes",
  "bzip2",
@@ -12834,6 +12798,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hmac 0.13.0",
  "indexmap",
+ "libc",
  "lzma-rust2",
  "memchr",
  "nix 0.31.3",
@@ -12842,6 +12807,7 @@ dependencies = [
  "sha1 0.11.0",
  "time",
  "typed-path",
+ "windows-sys 0.61.2",
  "zeroize",
  "zopfli",
  "zstd",
