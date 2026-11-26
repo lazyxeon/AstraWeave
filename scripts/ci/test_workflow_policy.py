@@ -403,6 +403,76 @@ def without_status_guard(expr: str) -> str:
     return stripped
 
 
+def workflow_run_bodies(text: str) -> list[str]:
+    """Script text of every `run:` step. The `run:` key line is not part of the body."""
+    bodies: list[str] = []
+    lines = text.splitlines()
+    index = 0
+    block_markers = {"|", ">", "|-", ">-", "|+", ">+"}
+    while index < len(lines):
+        line = lines[index]
+        if line.lstrip().startswith("#"):
+            index += 1
+            continue
+        match = re.match(r"^(\s+)run:(?:\s+(.*))?$", line)
+        if not match:
+            index += 1
+            continue
+        indent = len(match.group(1))
+        inline = (match.group(2) or "").strip()
+        if inline in block_markers:
+            index += 1
+            chunk: list[str] = []
+            while index < len(lines):
+                nxt = lines[index]
+                if nxt.strip() and (len(nxt) - len(nxt.lstrip(" "))) <= indent:
+                    break
+                chunk.append(nxt)
+                index += 1
+            bodies.append("\n".join(chunk))
+            continue
+        bodies.append(inline)
+        index += 1
+    return bodies
+
+
+def checkout_step_block(text: str) -> str:
+    marker = "uses: actions/checkout@"
+    start = text.find(marker)
+    if start < 0:
+        raise AssertionError("missing actions/checkout")
+    line_start = text.rfind("\n", 0, start)
+    rest = text[line_start + 1 :]
+    next_step = rest.find("\n      - ")
+    if next_step < 0:
+        return rest
+    return rest[:next_step]
+
+
+def assert_gpu_frame_budget_dispatch_input_is_env(text: str) -> None:
+    """`inputs.glb` is a step env value. No expression is interpolated into `run:`."""
+    if "permissions:\n  contents: read\n" not in text:
+        raise AssertionError("permissions must stay contents: read")
+    checkout = checkout_step_block(text)
+    if "persist-credentials: false" not in checkout:
+        raise AssertionError("checkout must set persist-credentials: false")
+    step = job_step_block(text, "Median draw_into")
+    before_run, _run, _rest = step.partition("run:")
+    if "shell: pwsh" not in before_run:
+        raise AssertionError("Median draw_into must stay shell: pwsh")
+    if "AW_GLB: ${{ inputs.glb }}" not in before_run:
+        raise AssertionError("step env AW_GLB must bind inputs.glb")
+    bodies = workflow_run_bodies(text)
+    if not bodies:
+        raise AssertionError("gpu-frame-budget has no run block")
+    for body in bodies:
+        if "${{" in body:
+            raise AssertionError("run block interpolates an expression")
+    draw = pwsh_run_body(step)
+    if '--glb "$env:AW_GLB"' not in draw:
+        raise AssertionError('run script must pass --glb "$env:AW_GLB"')
+
+
 def assert_alert_followup_runs(text: str) -> None:
     """Issue and upload steps run after a failed check that set has_regressions."""
     outputs = {("regression_check", "has_regressions"): "true"}
@@ -1148,6 +1218,22 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_gpu_frame_budget_dispatch_input_is_env(self) -> None:
+        text = (WORKFLOWS / "gpu-frame-budget.yml").read_text(encoding="utf-8")
+        assert_gpu_frame_budget_dispatch_input_is_env(text)
+        inlined = text.replace('--glb "$env:AW_GLB"', '--glb "${{ inputs.glb }}"', 1)
+        with self.assertRaises(AssertionError) as inlined_err:
+            assert_gpu_frame_budget_dispatch_input_is_env(inlined)
+        self.assertIn("interpolates an expression", str(inlined_err.exception))
+        unquoted = text.replace('--glb "$env:AW_GLB"', "--glb $env:AW_GLB", 1)
+        with self.assertRaises(AssertionError) as unquoted_err:
+            assert_gpu_frame_budget_dispatch_input_is_env(unquoted)
+        self.assertIn('"$env:AW_GLB"', str(unquoted_err.exception))
+        dropped_credentials = text.replace("          persist-credentials: false\n", "", 1)
+        with self.assertRaises(AssertionError) as credentials_err:
+            assert_gpu_frame_budget_dispatch_input_is_env(dropped_credentials)
+        self.assertIn("persist-credentials: false", str(credentials_err.exception))
 
 
 if __name__ == "__main__":
