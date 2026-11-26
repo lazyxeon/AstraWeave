@@ -1,7 +1,8 @@
 /* AstraWeave parchment theme B — Candlelit grimoire (#781 variant 2)
  * Shared stylesheet for the architecture trace map and the benchmark dashboard.
  * One file. Both pages link it. Fonts are the sibling fonts/ directory (SIL OFL,
- * vendored, no CDN). Andrew approved OFL for these families on 2026-11-25.
+ * vendored, no CDN). Owner exception:
+ * https://github.com/lazyxeon/AstraWeave/pull/782#issuecomment-7180199236
  *
  * Astrid's contrast fix (issue comment 7177936736): --warn #e0a050 and
  * --wax-seal #b0404a. Wax-seal is fill-only. Text on it is --paper-white

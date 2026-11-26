@@ -368,7 +368,7 @@ Acquired via `tools/astraweave-assets fetch` (provider flow, session manifest mi
 
 ## 16. Candlelit grimoire display faces (2026-11-25)
 
-Owner exception, 2026-11-25: these three families are SIL Open Font License 1.1, not CC0. They are display faces for the architecture map and the benchmark dashboard. They are not engine assets. `@font-face` loads only the files under `docs/theme/parchment/fonts/`. No remote font fetch.
+Owner exception, 2026-11-25, recorded by @lazyxeon at <https://github.com/lazyxeon/AstraWeave/pull/782#issuecomment-7180199236>: these three families are SIL Open Font License 1.1, not CC0. They are display faces for the architecture map and the benchmark dashboard. They are not engine assets. `@font-face` loads only the files under `docs/theme/parchment/fonts/`. No remote font fetch.
 
 | paths | upstream | license | attribution | evidence | date |
 |---|---|---|---|---|---|
