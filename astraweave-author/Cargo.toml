@@ -13,7 +13,7 @@ astraweave-core = { path = "../astraweave-core" }
 astraweave-security = { path = "../astraweave-security" }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.7"
 tempfile = "3"
 astraweave-core = { path = "../astraweave-core" }
 serde_json = { workspace = true }
