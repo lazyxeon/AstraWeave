@@ -245,10 +245,11 @@
             .stat-card, .chart-container, .sparkline-cell, .legend-item, header, .version-badge, .chart-title { box-shadow: none; break-inside: avoid; }
         }
     </style>
-    <!-- Palette B. Local file and the docs book both resolve the first href.
-         The published dashboard (gh-pages/parchment, next to this file) resolves the second. -->
-    <link rel="stylesheet" href="../../docs/theme/parchment/candlelit-grimoire.css">
+    <!-- Palette B. The snapshot next to this file loads first. The book copy
+         (/docs/theme/parchment, refreshed by docs.yml) loads second and wins
+         when both exist. A 404 on that path leaves the snapshot in effect. -->
     <link rel="stylesheet" href="parchment/candlelit-grimoire.css">
+    <link rel="stylesheet" href="../../docs/theme/parchment/candlelit-grimoire.css">
 </head>
 <body>
     <div class="container">
