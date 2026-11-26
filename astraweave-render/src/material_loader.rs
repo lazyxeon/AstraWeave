@@ -300,6 +300,22 @@ struct VsOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
         Ok(img.to_luma8())
     }
 
+    pub(crate) fn reject_oversized_ktx2(width: u32, height: u32) -> Result<()> {
+        let edge = astraweave_asset::image_limits::MAX_IMAGE_EDGE;
+        let cap = astraweave_asset::image_limits::MAX_IMAGE_ALLOC;
+        if width > edge || height > edge {
+            return Err(anyhow!("ktx2 edge {width}x{height} exceeds {edge}"));
+        }
+        let pixels = u64::from(width)
+            .checked_mul(u64::from(height))
+            .context("ktx2 pixel count")?;
+        let rgba = pixels.checked_mul(4).context("ktx2 rgba bytes")?;
+        if rgba > cap {
+            return Err(anyhow!("ktx2 rgba is {rgba} bytes, cap is {cap}"));
+        }
+        Ok(())
+    }
+
     /// Load a KTX2 file and decompress to RGBA8 using basis_universal transcoder
     pub(crate) fn load_ktx2_to_rgba(path: &Path) -> Result<image::RgbaImage> {
         use basis_universal::*;
@@ -316,6 +332,7 @@ struct VsOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
 
         let width = reader.header().pixel_width;
         let height = reader.header().pixel_height;
+        reject_oversized_ktx2(width, height)?;
 
         // Check if this is a Basis Universal compressed texture
         // In ktx2 0.4+, check supercompression_scheme instead of data_format_descriptors
@@ -1105,5 +1122,17 @@ struct VsOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
         };
 
         Ok((gpu, stats, alb_tex, nrm_tex, mra_tex))
+    }
+}
+
+#[cfg(test)]
+mod ktx2_limit_tests {
+    use super::material_loader_impl::reject_oversized_ktx2;
+
+    #[test]
+    fn ktx2_edge_above_4096_is_rejected() {
+        let err = reject_oversized_ktx2(8192, 8).expect_err("edge");
+        assert!(format!("{err:#}").contains("8192"), "{err:#}");
+        reject_oversized_ktx2(4096, 4096).expect("4096 square is the cap");
     }
 }

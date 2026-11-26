@@ -25,7 +25,7 @@ terrain-splat-arrays = []  # Phase 2.2: 8-layer splat-array terrain pipeline (Is
 impostor-bake = []  # Phase 5.3: offline/lazy impostor atlas bake pipeline (Issue #8 fix)
 impostor-bake-cli = ["impostor-bake", "gltf-assets", "textures", "dep:clap", "dep:pollster"]  # Phase 5.3 T2: CLI binary for baking atlases from glTF
 gpu-frame-budget = ["gltf-assets", "textures", "dep:pollster", "dep:env_logger"]
-gltf-assets = ["gltf", "assets", "dep:astraweave-security"]
+gltf-assets = ["gltf", "assets", "image", "textures", "dep:astraweave-security"]
 obj-assets = ["tobj", "assets"]
 profiling = ["astraweave-profiling/profiling", "tracy-client", "tracy-client/enable"]
 # Pull in astraweave-profiling's alloc-counter for bench assertions. Optional dep
