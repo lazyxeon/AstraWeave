@@ -1146,7 +1146,9 @@ pub async fn send_headers_for_call(
     }
 }
 use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
-use tracing::{debug, info};
+#[cfg(any(feature = "ollama", feature = "llm_cache"))]
+use tracing::debug;
+use tracing::info;
 
 // --- Core modules (always available) ---
 mod utc_stamp;
@@ -2938,6 +2940,7 @@ pub async fn plan_from_llm(
 }
 
 /// Estimate token count from prompt (rough approximation: 4 chars per token)
+#[cfg(feature = "llm_cache")]
 fn estimate_tokens(prompt: &str) -> u32 {
     (prompt.len() / 4) as u32
 }
@@ -2993,11 +2996,6 @@ pub fn fallback_heuristic_plan(snap: &WorldSnapshot, reg: &ToolRegistry) -> Plan
 #[cfg(feature = "llm_cache")]
 pub fn get_cache_stats() -> cache::CacheStats {
     GLOBAL_CACHE.stats()
-}
-
-#[cfg(not(feature = "llm_cache"))]
-pub fn get_cache_stats() -> () {
-    ()
 }
 
 #[cfg(test)]
@@ -4042,6 +4040,7 @@ Done!"#;
         assert!(result.is_none());
     }
 
+    #[cfg(feature = "llm_cache")]
     #[test]
     fn test_estimate_tokens() {
         // 4 chars per token estimate
@@ -4453,13 +4452,5 @@ Done!"#;
         let prompt = build_prompt(&snap, &reg);
         // Should include position and state info
         assert!(prompt.contains("pos"));
-    }
-
-    #[cfg(not(feature = "llm_cache"))]
-    #[test]
-    fn test_get_cache_stats_without_feature() {
-        let stats = get_cache_stats();
-        // Returns () when cache feature disabled
-        assert_eq!(stats, ());
     }
 }
