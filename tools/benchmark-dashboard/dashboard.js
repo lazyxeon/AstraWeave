@@ -337,6 +337,8 @@ async function loadBenchmarkData() {
         });
 
         console.log(`Loaded: ${benchmarkData.length} entries, ${hardwareProfiles.size} hardware(s) from ${sourceUsed}`);
+        const bundled = !sourceUsed || sourceUsed === 'inline-fallback' || sourceUsed.includes('static-data/');
+        document.body.classList.toggle('bundled-data', bundled);
         updateFilters();
         restoreFiltersFromURL();
         autoAdjustTimeRange();

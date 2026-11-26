@@ -145,8 +145,8 @@ body {
   background-blend-mode: normal, normal, normal, normal, multiply;
 }
 
-/* Tidewire FX canvas is mint/teal; hide it so the parchment grain is still. */
-#tidewire-bg { display: none !important; }
+/* Tidewire stays on the map. The map script recolors its streaks to ochre,
+   gold-ink, and verdigris. body.fx-off in the page sheet is what hides it. */
 
 #cy {
   background-color: var(--bg-0) !important;
@@ -431,8 +431,9 @@ body::after {
     inset 0 0 110px 16px color-mix(in srgb, var(--header-bg) 28%, transparent);
 }
 
-/* Bundled-data stamp on the dashboard only. */
-body:has(#benchmark-table) .version-badge::after {
+/* Bundled-data stamp. The loader adds .bundled-data only for static-data
+   and the inline fallback. A load from benchmark-data/history.jsonl does not. */
+body.bundled-data:has(#benchmark-table) .version-badge::after {
   content: " · sample / bundled data";
   font-family: var(--font-body);
   font-weight: 600;
@@ -459,7 +460,6 @@ header :focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #tidewire-bg { display: none !important; }
   *, *::before, *::after {
     animation: none !important;
     transition: none !important;

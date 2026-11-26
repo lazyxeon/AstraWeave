@@ -2688,8 +2688,8 @@ if (!REDUCED_MOTION) {
 // v2.4: generated background ("tidewire"). Drawn in code on a canvas that
 // sits under the graph, so there is no image asset to license or ship.
 //   - Currents: a hundred or so particles drift on a slowly changing flow
-//     field and leave faint teal-graphite streaks (`COLORS`). The
-//     pointer stirs them gently.
+//     field and leave faint candlelit streaks (`COLORS`: ochre, gold-ink,
+//     verdigris). The pointer stirs them gently.
 //   - Traces: muted pulses run along the 200px grid lines like dim signals.
 //   - Ripples: now and then a thin ring spreads out and fades.
 // It is decoration only, and it is tuned to stay out of the way: slow, dim,
@@ -2712,7 +2712,15 @@ if (!REDUCED_MOTION) {
   const ctx = cv.getContext('2d');
   if (!ctx) return;
 
-  const COLORS = ['37,144,117', '42,102,104', '67,94,90'];
+  function rgbTriplet(hex) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    return m ? [1, 2, 3].map(i => parseInt(m[i], 16)).join(',') : null;
+  }
+  const COLORS = [
+    rgbTriplet(cssToken('--ochre', '#e08a3a')),
+    rgbTriplet(cssToken('--gold-ink', '#d9b45a')),
+    rgbTriplet(cssToken('--verdigris', '#6fbfa6')),
+  ].filter(Boolean);
   const GRID = 200;
   let W = 0, H = 0, scale = 1;
   let particles = [], pulses = [], ripples = [];
@@ -2821,7 +2829,7 @@ if (!REDUCED_MOTION) {
     for (let i = ripples.length - 1; i >= 0; i--) {
       const r = ripples[i];
       const k = 1 - r.r / r.max;
-      ctx.strokeStyle = 'rgba(37,144,117,' + (k * 0.10).toFixed(3) + ')';
+      ctx.strokeStyle = 'rgba(' + COLORS[0] + ',' + (k * 0.10).toFixed(3) + ')';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
       // Step wider than the stroke so the rings stay separate, like sonar,
@@ -2832,9 +2840,23 @@ if (!REDUCED_MOTION) {
     ctx.globalCompositeOperation = 'source-over';
   }
 
-  resize();
-  if (window.ResizeObserver) new ResizeObserver(resize).observe(host);
-  else window.addEventListener('resize', resize);
+  const still = !!(window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function paintStill() {
+    // One composed frame: run the field forward with a very light fade.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, W, H);
+    for (let i = 0; i < 160; i++) step(i * 0.033, 0.012);
+  }
+  // Setting the canvas width clears the bitmap. Under reduced motion there
+  // is no animation loop to refill it, so a resize paints the still frame again.
+  function onResize() {
+    resize();
+    if (still && fxOn) paintStill();
+  }
+  onResize();
+  if (window.ResizeObserver) new ResizeObserver(onResize).observe(host);
+  else window.addEventListener('resize', onResize);
 
   // Step back while the user is reading the graph.
   host.addEventListener('pointerenter', () => host.classList.add('bg-quiet'));
@@ -2856,19 +2878,14 @@ if (!REDUCED_MOTION) {
       fxBtn.setAttribute('aria-pressed', fxOn ? 'true' : 'false');
     }
     try { localStorage.setItem('aw-map-fx', fxOn ? '1' : '0'); } catch (_) {}
+    if (still && fxOn) paintStill();
   }
   let savedFx = null;
   try { savedFx = localStorage.getItem('aw-map-fx'); } catch (_) {}
   setFx(savedFx !== '0');
   if (fxBtn) fxBtn.addEventListener('click', () => setFx(!fxOn));
 
-  const still = !!(window.matchMedia &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  if (still) {
-    // One composed frame: run the field forward with a very light fade.
-    for (let i = 0; i < 160; i++) step(i * 0.033, 0.012);
-    return;
-  }
+  if (still) return;
   host.addEventListener('pointermove', (e) => {
     const r = host.getBoundingClientRect();
     pointer.x = e.clientX - r.left; pointer.y = e.clientY - r.top; pointer.active = true;
