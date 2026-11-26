@@ -3207,6 +3207,9 @@ class WorkflowPolicyTest(unittest.TestCase):
             _next_errexit(["command", "set", "+e"], [False, False, False], True)
         )
         self.assertFalse(
+            _next_errexit(["eval", "set", "+e"], [False, False, False], True)
+        )
+        self.assertFalse(
             _next_errexit(["FOO=1", "builtin", "set", "+e"], [False, False, False, False], True)
         )
         self.assertTrue(
