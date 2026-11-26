@@ -128,7 +128,7 @@ jobs:
         run: python3 scripts/ci/test_workflow_policy.py
 
       - name: Rust CI setup
-        if: needs.changes.outputs.docs_only != 'true'
+        id: rust_ci
         uses: ./.github/actions/rust-ci-setup
 
       - name: Fmt, clippy, check
@@ -140,8 +140,8 @@ jobs:
         run: bash scripts/ci/run-gate.sh
 
       - name: sccache stats
-        if: always() && needs.changes.outputs.docs_only != 'true'
-        run: sccache --show-stats || true
+        if: always() && needs.changes.outputs.docs_only != 'true' && steps.rust_ci.outputs.sccache-available == 'true'
+        run: sccache --show-stats
 
   test-linux-build:
     name: Test (ubuntu, build archive)
@@ -195,8 +195,8 @@ jobs:
           cargo build --locked --profile test -p astraweave-audio --bin aw_audio_probe
           stage="${RUNNER_TEMP}/linux-nextest"
           mkdir -p "$stage"
-          cp target/nextest-archive.tar.zst "$stage/"
-          cp target/debug/aw_audio_probe "$stage/aw_audio_probe"
+          cp target/nextest-archive.tar.zst "${RUNNER_TEMP}/linux-nextest/"
+          cp target/debug/aw_audio_probe "${RUNNER_TEMP}/linux-nextest/aw_audio_probe"
 
       - name: Upload the archive
         uses: actions/upload-artifact@v7
