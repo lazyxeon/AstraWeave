@@ -294,7 +294,7 @@ Edit `tools/benchmark-dashboard/dashboard.js` to:
 
 ### Dependencies
 
-- **D3.js 7.9.0**: Pinned at `https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js` via `index.html` (Subresource Integrity hash on that script tag; no local install needed)
+- **D3.js 7.9.0**: Vendored as `tools/benchmark-dashboard/d3.min.js`. `index.html` loads `d3.min.js`.
 - **Criterion**: Rust benchmarking framework
 - **PowerShell**: Export script (cross-platform with pwsh)
 - **GitHub Pages**: Free static site hosting
@@ -357,17 +357,11 @@ cargo bench
 
 ### Issue: "D3.js library failed to load"
 
-**Root Cause**: CDN blocked by ad blocker, firewall, or network issues.
+**Root Cause**: `d3.min.js` failed to load beside `index.html`.
 
 **Solutions**:
-1. Disable ad blocker for localhost
-2. Check browser console for specific error
-3. Mirror the pinned build locally (optional):
-   ```bash
-   cd tools/benchmark-dashboard
-   curl -o d3.min.js https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js
-   # Point index.html at the local file; the integrity attribute on index.html:10 must match the file you serve (recompute SRI if you swap builds)
-   ```
+1. Check the browser console for the script error
+2. Confirm `tools/benchmark-dashboard/d3.min.js` is the file `index.html` loads
 
 **Note**: Stats cards will still display correctly even if D3.js fails to load - only the chart will be unavailable.
 

@@ -108,10 +108,7 @@ jobs:
           mkdir -p gh-pages
           cp tools/benchmark-dashboard/index.html gh-pages/
           cp tools/benchmark-dashboard/dashboard.js gh-pages/
-          # Canonical theme, not the tools/benchmark-dashboard/parchment symlink.
-          mkdir -p gh-pages/parchment
-          cp -a docs/theme/parchment/. gh-pages/parchment/
-          
+          cp tools/benchmark-dashboard/d3.min.js gh-pages/
           # Copy static-data snapshot (inline fallback for first deploy)
           mkdir -p gh-pages/static-data
           if [ -d tools/benchmark-dashboard/static-data ]; then
