@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -433,6 +435,11 @@ _JAMESIVES_DEPLOY = "github-pages-deploy-action"
 _JAMESIVES_FOLDER = "docs/benchmark_data"
 _JAMESIVES_TARGET = "dashboard/benchmark_data"
 _LIVE_DASHBOARD_DEST = "dashboard/benchmark_dashboard"
+_SHELL_STATE_CAP = 32
+_REDIRECT_WORDS = frozenset({">", ">>", "<", "<<", "<>", ">&", "<&", ">|", "&>", "&>>"})
+_REDIRECT_COMBINED = re.compile(
+    r"^(?:&>>|&>|\d*>>|\d*>&|\d*<&|\d*>\||\d*<>|\d*>|\d*<)\S+"
+)
 
 
 def _workflow_document(text: str, *, path: str) -> dict:
@@ -526,9 +533,14 @@ def _resolve_run_path(token: str, cwd: str) -> str:
     return _posix_norm(f"{cwd_norm}/{slash_token}")
 
 
-def _shell_words(command: str) -> list[str]:
-    words: list[str] = []
+def _shell_words(command: str) -> list[tuple[str, bool]]:
+    """Words of one command. The bool is true when any character was quoted.
+
+    A quoted `if`, `elif`, `then`, `else`, or `fi` is not a reserved word.
+    """
+    words: list[tuple[str, bool]] = []
     buf: list[str] = []
+    quoted_any = False
     quote: str | None = None
     for char in command:
         if quote is not None:
@@ -536,30 +548,36 @@ def _shell_words(command: str) -> list[str]:
                 quote = None
             else:
                 buf.append(char)
+                quoted_any = True
             continue
         if char in ("'", '"'):
             quote = char
             continue
         if char.isspace():
             if buf:
-                words.append("".join(buf))
+                words.append(("".join(buf), quoted_any))
                 buf = []
+                quoted_any = False
             continue
         buf.append(char)
     if buf:
-        words.append("".join(buf))
+        words.append(("".join(buf), quoted_any))
     return words
 
 
-def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
+def _split_shell_commands(run_text: str) -> list[tuple[str, bool, bool]]:
     """Split on newline, `;`, `&&`, `||`, `|`, and a single `&`.
 
-    The bool is true when a directory change in that command stays in effect
-    for the next command. Newline, `;`, `&&`, and `||` carry it. A single `|`
-    and a single `&` do not. `&&` and `||` are one operator even when the next
-    command is flush against them. The scan raises if the index does not advance.
+    The second bool is true when a directory change in that command stays in
+    effect for the next command. Newline, `;`, `&&`, and `||` carry it. A
+    single `|` and a single `&` do not. `&&` and `||` are one operator even
+    when the next command is flush against them. The third bool is true when
+    this command sits before `||`, or before `&&` and another command follows,
+    so a `cd` or `pushd` in it may leave the earlier directory in place. A
+    backslash immediately before a newline continues the command. The scan
+    raises if the index does not advance.
     """
-    commands: list[tuple[str, bool]] = []
+    pieces: list[tuple[str, bool, str]] = []
     current: list[str] = []
     quote: str | None = None
     index = 0
@@ -570,6 +588,14 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
         previous = index
         char = run_text[index]
         if quote is not None:
+            if (
+                quote == '"'
+                and char == "\\"
+                and index + 1 < len(run_text)
+                and run_text[index + 1] == "\n"
+            ):
+                index += 2
+                continue
             current.append(char)
             if char == quote:
                 quote = None
@@ -580,6 +606,9 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
             current.append(char)
             index += 1
             continue
+        if char == "\\" and index + 1 < len(run_text) and run_text[index + 1] == "\n":
+            index += 2
+            continue
         if char in ("|", "&"):
             doubled = index + 1 < len(run_text) and run_text[index + 1] == char
             # && and || run in the current shell. A single | is a pipeline
@@ -587,30 +616,55 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool]]:
             # operator, so the next character stays in the following command
             # when there is no space.
             carry = doubled
+            separator = "or" if char == "|" and doubled else "and" if doubled else "break"
             index += 2 if doubled else 1
-            commands.append(("".join(current), carry))
+            pieces.append(("".join(current), carry, separator))
             current = []
             continue
         if char in ("\n", ";"):
-            commands.append(("".join(current), True))
+            pieces.append(("".join(current), True, "seq"))
             current = []
             index += 1
             continue
         current.append(char)
         index += 1
-    commands.append(("".join(current), True))
-    return [(command.strip(), carry) for command, carry in commands if command.strip()]
+    pieces.append(("".join(current), True, "end"))
+    kept = [
+        (command.strip(), carry, separator)
+        for command, carry, separator in pieces
+        if command.strip()
+    ]
+    commands: list[tuple[str, bool, bool]] = []
+    for position, (command, carry, separator) in enumerate(kept):
+        later = position + 1 < len(kept)
+        may_fail = separator == "or" or (separator == "and" and later)
+        commands.append((command, carry, may_fail))
+    return commands
 
 
-def _command_body(words: list[str]) -> list[str]:
-    """Drop leading branch words, `{` group tokens, and a leading `command` word.
+def _leading_redirect_span(words: list[str], index: int) -> int:
+    """Words used by a leading redirection at index. Zero when there is none."""
+    word = words[index]
+    if word in _REDIRECT_WORDS:
+        return 2 if index + 1 < len(words) else 1
+    if _REDIRECT_COMBINED.fullmatch(word):
+        return 1
+    return 0
 
-    `if`, `elif`, `then`, `else`, and `fi` are skipped, so a copy or directory
-    change in that branch is read, including when it shares the command with
-    `then` or `else`. `command` followed by an option stays in place. Brace
+
+def _command_body(words: list[str], quoted: list[bool] | None = None) -> list[str]:
+    """Drop leading branch words, `{` group tokens, redirections, and `command`.
+
+    `if`, `elif`, `then`, `else`, and `fi` are skipped when the word is
+    unquoted, so a copy or directory change in that branch is read, including
+    when it shares the command with `then` or `else`. A quoted reserved word
+    stays in place. A leading redirection is skipped before `cd`, `pushd`,
+    `popd`, and a copy. `command` followed by an option stays in place. Brace
     expansion is one word and stays in place. A parenthesized subshell is not
     removed. The scan raises if the index does not advance.
     """
+    if quoted is None:
+        quoted = [False] * len(words)
     index = 0
     limit = len(words)
     previous = -1
@@ -618,11 +672,17 @@ def _command_body(words: list[str]) -> list[str]:
         if index <= previous:
             raise AssertionError("command scan did not advance")
         previous = index
-        if words[index] in _BRANCH_WORDS or words[index] == "{":
+        if not quoted[index] and (words[index] in _BRANCH_WORDS or words[index] == "{"):
             index += 1
             continue
+        if not quoted[index]:
+            span = _leading_redirect_span(words, index)
+            if span:
+                index += span
+                continue
         if (
-            words[index] == "command"
+            not quoted[index]
+            and words[index] == "command"
             and index + 1 < limit
             and not words[index + 1].startswith("-")
         ):
@@ -653,6 +713,82 @@ def _directory_update(words: list[str], current: str, stack: list[str]) -> str |
             return _resolve_run_path(words[1], current)
         return current
     return None
+
+
+def _has_glob(word: str) -> bool:
+    return any(char in word for char in "*?[")
+
+
+def _glob_directories(word: str, current: str) -> list[str]:
+    """Directories under the repo that match one cd or pushd word."""
+    logical = _resolve_run_path(word, current)
+    if not logical or logical.startswith("/"):
+        return []
+    found: list[str] = []
+    for path in sorted(ROOT.glob(logical)):
+        if path.is_dir():
+            found.append(path.relative_to(ROOT).as_posix())
+    return found
+
+
+def _directory_outcomes(
+    rest: list[str],
+    quoted: list[bool],
+    state: _ShellState,
+) -> list[tuple[str, tuple[str, ...]]]:
+    """Directories one cd, pushd, or popd can leave in place.
+
+    An unquoted directory word that contains `*`, `?`, or `[` and matches one
+    or more directories uses each match.
+    """
+    word = rest[1] if len(rest) > 1 else ""
+    word_quoted = quoted[1] if len(quoted) > 1 else False
+    command = rest[0]
+    if (
+        command in ("cd", "pushd")
+        and word
+        and not word_quoted
+        and not (command == "pushd" and word.startswith("-"))
+        and _has_glob(word)
+    ):
+        matches = _glob_directories(word, state.cwd)
+        if matches:
+            outcomes: list[tuple[str, tuple[str, ...]]] = []
+            for match in matches:
+                stack = list(state.stack)
+                if command == "pushd":
+                    stack.append(state.cwd)
+                outcomes.append((match, tuple(stack)))
+            return outcomes
+    stack = list(state.stack)
+    updated = _directory_update(rest, state.cwd, stack)
+    cwd = state.cwd if updated is None else updated
+    return [(cwd, tuple(stack))]
+
+
+def _next_errexit(words: list[str], quoted: list[bool], enabled: bool) -> bool:
+    """Errexit after a set command. Other commands leave it unchanged."""
+    if not words or quoted[0] or words[0] != "set":
+        return enabled
+    index = 1
+    previous = 0
+    while index < len(words):
+        if index <= previous:
+            raise AssertionError("errexit scan did not advance")
+        previous = index
+        if quoted[index]:
+            index += 1
+            continue
+        arg = words[index]
+        if arg in ("+o", "-o") and index + 1 < len(words) and not quoted[index + 1]:
+            if words[index + 1] == "errexit":
+                enabled = arg == "-o"
+            index += 2
+            continue
+        if len(arg) >= 2 and arg[0] in "+-" and arg[1:].isalpha() and "e" in arg[1:]:
+            enabled = arg[0] == "-"
+        index += 1
+    return enabled
 
 
 def _command_basename(word: str) -> str:
@@ -696,13 +832,19 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
 
     The copy command is the basename of the command word. A leading command
     word is skipped before cd, pushd, popd, and a copy, and so is a leading
-    { group token. A leading if, elif, then, else, or fi is skipped the same
-    way, so a copy or directory change in that branch is read, including when
-    it shares the command with then or else. A cd, pushd, popd, or
-    assignment-only command inside an if compound is kept together with the
-    state from before that command. A later copy is checked against each of
-    those states. An unconditional cd, pushd, popd, or assignment still
-    replaces the state. command followed by an option is
+    { group token. A leading redirection is skipped the same way. A leading
+    if, elif, then, else, or fi is skipped when the word is unquoted, so a
+    copy or directory change in that branch is read, including when it shares
+    the command with then or else. A quoted reserved word stays in place. A
+    cd, pushd, popd, or assignment-only command inside an if compound is kept
+    together with the state from before that command. A cd or pushd before ||,
+    or before && when another command follows, keeps the earlier directory
+    beside the new one. set +e does the same for a later cd or pushd until
+    set -e. A later copy is checked against each of those states. An
+    unconditional cd, pushd, popd, or assignment still replaces the state. A
+    cd or pushd directory word that contains *, ?, or [ and matches one or
+    more directories uses each match. Distinct states are capped at 32, and
+    passing that cap raises. command followed by an option is
     left in place. A leading NAME=value is skipped. An assignment-only command
     stores a value with no
     $ or backtick when the separator keeps shell state. A later copy word that
@@ -731,17 +873,30 @@ class _ShellState:
         self.paths = paths
 
 
-def _opening_depth(words: list[str], body: list[str], depth: int) -> int:
-    """Count if and fi in the prefix _command_body removed.
+def _opening_depth(
+    words: list[str],
+    body: list[str],
+    depth: int,
+    quoted: list[bool] | None = None,
+) -> int:
+    """Count unquoted if and fi in the prefix _command_body removed.
 
-    A body that is not that prefix's suffix is treated as conditional.
+    A quoted if or fi is not counted. A body that is not that prefix's suffix
+    is treated as conditional.
     """
+    if quoted is None:
+        quoted = [False] * len(words)
     if words[len(words) - len(body) :] == body:
-        prefix = words[: len(words) - len(body)]
+        cut = len(words) - len(body)
+        prefix = words[:cut]
+        prefix_quoted = quoted[:cut]
     else:
         prefix = words
+        prefix_quoted = quoted
         depth += 1
-    for word in prefix:
+    for word, is_quoted in zip(prefix, prefix_quoted):
+        if is_quoted:
+            continue
         if word == "if":
             depth += 1
         elif word == "fi" and depth > 0:
@@ -784,20 +939,32 @@ def _dedupe_states(states: list[_ShellState]) -> list[_ShellState]:
             continue
         seen.add(key)
         kept.append(state)
+    if len(kept) > _SHELL_STATE_CAP:
+        raise AssertionError(f"shell state cap exceeded: {len(kept)}")
     return kept
 
 
 def _shell_states(run_text: str, cwd: str) -> list[_ShellState]:
-    """Shell states after one step. A conditional cd or assignment keeps the earlier state."""
+    """Shell states after one step.
+
+    A conditional cd or assignment keeps the earlier state. A cd or pushd
+    before ||, before && when another command follows, or while errexit is
+    off, keeps the earlier directory beside the new one. Distinct states are
+    capped at 32.
+    """
     states = [_ShellState(_posix_norm(cwd), (), (), [])]
     depth = 0
-    for command, carry in _split_shell_commands(run_text):
-        raw = _shell_words(command)
-        body = _command_body(raw)
-        depth = _opening_depth(raw, body, depth)
+    errexit = True
+    for command, carry, may_fail in _split_shell_commands(run_text):
+        pairs = _shell_words(command)
+        raw = [text for text, _quoted in pairs]
+        raw_quoted = [is_quoted for _text, is_quoted in pairs]
+        body = _command_body(raw, raw_quoted)
+        depth = _opening_depth(raw, body, depth, raw_quoted)
         conditional = depth > 0
         if not body:
             continue
+        body_quoted = raw_quoted[len(raw) - len(body) :]
         assignments: list[tuple[str, str]] = []
         index = 0
         previous = -1
@@ -811,6 +978,7 @@ def _shell_states(run_text: str, cwd: str) -> list[_ShellState]:
             assignments.append((match.group(1), match.group(2)))
             index += 1
         rest = body[index:]
+        rest_quoted = body_quoted[index:]
         if not rest:
             if carry:
                 if conditional:
@@ -828,34 +996,32 @@ def _shell_states(run_text: str, cwd: str) -> list[_ShellState]:
                 else:
                     for state in states:
                         state.env = _stored_env(state.env, assignments)
+            errexit = _next_errexit(body, body_quoted, errexit)
             continue
         if _directory_update(rest, "", []) is None:
             for state in states:
                 _record_copy(state, rest)
+            errexit = _next_errexit(body, body_quoted, errexit)
             continue
         if not carry:
+            errexit = _next_errexit(body, body_quoted, errexit)
             continue
-        if conditional:
-            forked = list(states)
-            for state in states:
-                stack = list(state.stack)
-                updated = _directory_update(rest, state.cwd, stack)
-                forked.append(
+        dir_conditional = conditional or may_fail or not errexit
+        produced: list[_ShellState] = []
+        if dir_conditional:
+            produced.extend(states)
+        for state in states:
+            for updated_cwd, stack in _directory_outcomes(rest, rest_quoted, state):
+                produced.append(
                     _ShellState(
-                        state.cwd if updated is None else updated,
-                        tuple(stack),
+                        updated_cwd,
+                        stack,
                         state.env,
                         list(state.paths),
                     )
                 )
-            states = _dedupe_states(forked)
-            continue
-        for state in states:
-            stack = list(state.stack)
-            updated = _directory_update(rest, state.cwd, stack)
-            if updated is not None:
-                state.cwd = updated
-                state.stack = tuple(stack)
+        states = _dedupe_states(produced)
+        errexit = _next_errexit(body, body_quoted, errexit)
     return states
 
 
@@ -971,12 +1137,17 @@ def _reduce_literal_expressions(value: str) -> str | None:
     """Concatenate literal text and quoted-literal expressions.
 
     Returns None when an expression is not a quoted literal, or is unclosed.
+    The scan raises if its index does not advance.
     """
     if "${{" not in value:
         return value
     parts: list[str] = []
     index = 0
+    previous = -1
     while True:
+        if index <= previous:
+            raise AssertionError("expression scan did not advance")
+        previous = index
         start = value.find("${{", index)
         if start < 0:
             parts.append(value[index:])
@@ -989,7 +1160,10 @@ def _reduce_literal_expressions(value: str) -> str | None:
         if literal is None:
             return None
         parts.append(literal)
-        index = end + 2
+        next_index = end + 2
+        if next_index <= index:
+            raise AssertionError("expression scan did not advance")
+        index = next_index
 
 
 def _pages_input_path(value: object) -> str | None:
@@ -1301,21 +1475,31 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     workflow defaults. A github.workspace expression and the GITHUB_WORKSPACE
     prefixes are stripped before that directory is used. cd and pushd use the
     second word. An option in the pushd word is not a directory. popd pops the
-    directory stack and does not read a directory word. A directory
-    change before &&, ||, a newline, or ; applies to later commands in the
-    step, including when the next command is flush against && or ||. A
-    directory change before a single | or a single & does not. The scan
-    raises if its index does not advance. The
+    directory stack and does not read a directory word. A directory change
+    before a newline or ; replaces the directory for later commands. A
+    directory change before ||, or before && when another command follows,
+    keeps the earlier directory beside the new one, including when the next
+    command is flush against && or ||. A directory change before a single |
+    or a single & does not apply. set +e keeps the earlier directory beside a
+    later cd or pushd until set -e. The errexit scan raises if its index does
+    not advance. The shell scan raises if its index does not
+    advance. A backslash immediately before a newline continues the command.
+    A quoted if, elif, then, else, or fi is not a reserved word. A cd or pushd
+    directory word that contains *, ?, or [ and matches one or more directories
+    uses each match. Distinct shell states are capped at 32, and passing that
+    cap raises. A quoted literal expression scan raises if its index does not
+    advance. The
     copy command is cp, mv, or rsync, matched by basename. A backslash in that
     word is a separator. A leading command word is skipped before cd, pushd,
     popd, and a copy. A leading { group token is skipped the same way. A
-    leading if, elif, then, else, or fi is skipped the same way, so a copy or
-    directory change in that branch is read, including when it shares the
-    command with then or else. A cd, pushd, popd, or assignment-only command
-    inside an if compound is kept together with the state from before that
-    command. A later copy is checked against each of those states. An
-    unconditional cd, pushd, popd, or assignment still replaces the state.
-    That scan raises if its index does not advance.
+    leading redirection is skipped the same way. A
+    leading if, elif, then, else, or fi is skipped when the word is unquoted,
+    so a copy or directory change in that branch is read, including when it
+    shares the command with then or else. A cd, pushd, popd, or
+    assignment-only command inside an if compound is kept together with the
+    state from before that command. A later copy is checked against each of
+    those states. An unconditional cd, pushd, popd, or assignment still
+    replaces the state. That scan raises if its index does not advance.
     command
     followed by an option is left in place. A leading NAME=value is skipped.
     An assignment-only command stores a value with no $ or backtick when the
@@ -1344,8 +1528,7 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     env, xargs, nohup, or another wrapper command; a builtin prefix in front
     of a directory change; an assignment prefix in front of command cd; a cd
     on the right side of ||, which bash may skip; a $name or ${name} with more
-    text in the same word; an export or declare assignment; a directory change
-    or assignment in an elif branch; an assignment in an else branch; cd $TMP,
+    text in the same word; an export or declare assignment; cd $TMP,
     cd ${TMP}, or pushd $TMP after a stored assignment; an absolute cd /tmp;
     a cd of $RUNNER_TEMP; a typeset or readonly assignment.
     """
@@ -2456,6 +2639,15 @@ class WorkflowPolicyTest(unittest.TestCase):
             _reduce_literal_expressions("${{ 'a' }}${{ 'b' }}"),
             "ab",
         )
+        self.assertEqual(_reduce_literal_expressions("${{ 'lit' }}"), "lit")
+        self.assertEqual(
+            _reduce_literal_expressions("pre${{ 'mid' }}post"),
+            "premidpost",
+        )
+        self.assertEqual(
+            _reduce_literal_expressions("${{ 'a' }}-${{ 'b' }}"),
+            "a-b",
+        )
         self.assertEqual(_pages_input_path("${{'dashboard'}}"), "dashboard")
         self.assertIsNone(_reduce_literal_expressions("${{ github.workspace }}"))
         self.assertIsNone(_reduce_literal_expressions("${{ 'dashboard'"))
@@ -2568,10 +2760,159 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertIn("archive/benchmark_dashboard", background_cd)
         self.assertNotIn("docs/archive/benchmark_dashboard", background_cd)
-        self.assertEqual(_split_shell_commands("  cp a b  "), [("cp a b", True)])
+        self.assertEqual(_split_shell_commands("  cp a b  "), [("cp a b", True, False)])
         self.assertEqual(
             _split_shell_commands("cp a b;   ; cp c d"),
-            [("cp a b", True), ("cp c d", True)],
+            [("cp a b", True, False), ("cp c d", True, False)],
+        )
+        self.assertEqual(
+            _split_shell_commands("cd nope || true"),
+            [("cd nope", True, True), ("true", True, False)],
+        )
+        self.assertEqual(
+            _split_shell_commands("cd nope && true"),
+            [("cd nope", True, True), ("true", True, False)],
+        )
+        self.assertEqual(_split_shell_commands("cd nope &&"), [("cd nope", True, False)])
+        self.assertEqual(_split_shell_commands("cd nope ||"), [("cd nope", True, True)])
+        self.assertEqual(
+            _split_shell_commands("cp a\\\nb"),
+            [("cp ab", True, False)],
+        )
+        self.assertEqual(_split_shell_commands("cp a\\\n"), [("cp a", True, False)])
+        self.assertEqual(_split_shell_commands("cp a\\"), [("cp a\\", True, False)])
+        self.assertEqual(
+            _split_shell_commands('"a\\\nb"'),
+            [('"ab"', True, False)],
+        )
+        self.assertEqual(_split_shell_commands('"a\\\n"'), [('"a"', True, False)])
+        self.assertEqual(_split_shell_commands('"a\\\n'), [('"a', True, False)])
+        self.assertEqual(_split_shell_commands('"a\\'), [('"a\\', True, False)])
+        self.assertFalse(_next_errexit(["set", "+e"], [False, False], True))
+        self.assertTrue(_next_errexit(["set", "-e"], [False, False], False))
+        self.assertTrue(_next_errexit(["set", "+x"], [False, False], True))
+        self.assertFalse(
+            _next_errexit(["set", "+o", "errexit"], [False, False, False], True)
+        )
+        self.assertTrue(
+            _next_errexit(["set", "-o", "errexit"], [False, False, False], False)
+        )
+        self.assertTrue(_next_errexit(["set", "+e"], [True, False], True))
+        self.assertTrue(_next_errexit(["set", "+o"], [False, False], True))
+        self.assertTrue(
+            _next_errexit(["set", "+o", "errexit"], [False, False, True], True)
+        )
+        self.assertTrue(
+            _next_errexit(["set", "+e", "-e"], [False, True, False], False)
+        )
+        self.assertTrue(
+            _next_errexit(["set", "+x", "-e"], [False, False, False], False)
+        )
+        self.assertFalse(_next_errexit(["set", "+ex"], [False, False], True))
+        self.assertTrue(
+            _next_errexit(
+                ["set", "+o", "errexit", "-e"],
+                [False, False, False, False],
+                False,
+            )
+        )
+        self.assertEqual(_leading_redirect_span([">", "/dev/null", "cp"], 0), 2)
+        self.assertEqual(_leading_redirect_span([">", "/dev/null"], 0), 2)
+        self.assertEqual(_leading_redirect_span([">"], 0), 1)
+        self.assertEqual(_leading_redirect_span(["cp"], 0), 0)
+        self.assertEqual(_leading_redirect_span([">/dev/null", "cp"], 0), 1)
+        self.assertEqual(
+            _command_body([">", "/dev/null", "cp", "-r", "a", "b"]),
+            ["cp", "-r", "a", "b"],
+        )
+        self.assertEqual(
+            _command_body([">", "/dev/null", "command", "cp"]),
+            ["cp"],
+        )
+        for word in (">", ">>", "<", "<<", "<>", ">&", "<&", ">|", "&>", "&>>"):
+            self.assertEqual(
+                _command_body([word, "/dev/null", "cp", "a", "b"]),
+                ["cp", "a", "b"],
+                word,
+            )
+        self.assertTrue(
+            _archive_copied_onto_book(
+                "pushd docs/arch*\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertTrue(
+            _archive_copied_onto_book(
+                "> /dev/null cp -r docs/archive/benchmark_dashboard "
+                "docs/book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertFalse(
+            _archive_copied_onto_book(
+                "cp docs/arch* /tmp/out\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertFalse(
+            _archive_copied_onto_book(
+                "pushd docs/arch*\n"
+                "popd\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertFalse(
+            _archive_copied_onto_book(
+                "cd 'docs/arch*'\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertTrue(
+            _archive_copied_onto_book(
+                "cd\n"
+                "cp -r docs/archive/benchmark_dashboard "
+                "docs/book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertFalse(
+            _archive_copied_onto_book(
+                "cd /tmp/no-such*\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertTrue(
+            _archive_copied_onto_book(
+                "cd docs/a[r]chiv?*\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertFalse(
+            _archive_copied_onto_book(
+                "cd /*\n"
+                "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard",
+                "",
+            )
+        )
+        self.assertRaises(
+            AssertionError,
+            assert_docs_no_archive_benchmark_dashboard_copy,
+            "name: Documentation\n"
+            "on: [push]\n"
+            "jobs:\n"
+            "  build:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - echo only\n"
+            "      - name: Copy\n"
+            "        run: cp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard\n",
         )
         self.assertEqual(_run_paths("command", ""), [])
         self.assertEqual(
@@ -2852,6 +3193,11 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_assign_plain",
             "docs_if_elif_dashboard_safe",
             "docs_unconditional_cd_safe",
+            "docs_if_closed_assign_safe",
+            "docs_reassign_unrecordable_safe",
+            "docs_jamesives_alert_data_sibling",
+            "docs_jamesives_target_expr",
+            "docs_null_run",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
@@ -3014,6 +3360,20 @@ jobs:
             "docs_if_condition_cd_mask",
             "docs_if_multiline_assign_mask",
             "docs_if_multiline_cd_mask",
+            "docs_quoted_fi_mask",
+            "docs_quoted_fi_single_mask",
+            "docs_cd_or_true_mask",
+            "docs_cd_or_copy_mask",
+            "docs_pushd_or_true_mask",
+            "docs_cd_and_true_mask",
+            "docs_errexit_off_cd_mask",
+            "docs_line_continue_copy",
+            "docs_cd_glob_copy",
+            "docs_leading_redirect_copy",
+            "docs_if_assign_archive",
+            "docs_if_keeps_archive",
+            "docs_extra_fi_copy",
+            "docs_nested_fi_assign",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
@@ -3035,6 +3395,9 @@ jobs:
             ("docs_live_dashboard_child", "destination_dir"),
             ("docs_destination_expression", "destination_dir"),
             ("docs_destination_concat", "destination_dir"),
+            ("docs_destination_prefix", "destination_dir"),
+            ("docs_destination_suffix", "destination_dir"),
+            ("docs_destination_between", "destination_dir"),
             ("docs_jamesives_archive_folder", "folder"),
             ("docs_jamesives_dashboard_target", "target-folder"),
             ("docs_jamesives_omitted_target", "worktree root"),
@@ -3087,6 +3450,80 @@ jobs:
                 path="with-list",
             )
         self.assertIn("missing with", str(caught.exception))
+
+    def test_shell_state_cap_bounds_conditional_directories(self) -> None:
+        lines = [f"if false; then cd d{index}; fi" for index in range(20)]
+        lines.append(
+            "cp -r docs/archive/benchmark_dashboard docs/book/dashboard/benchmark_dashboard"
+        )
+        script = "\n".join(lines)
+        probe = (
+            "import importlib.util\n"
+            f"spec = importlib.util.spec_from_file_location('policy_under_test', {__file__!r})\n"
+            "module = importlib.util.module_from_spec(spec)\n"
+            "spec.loader.exec_module(module)\n"
+            f"script = {script!r}\n"
+            "try:\n"
+            "    module._shell_states(script, '')\n"
+            "except AssertionError as exc:\n"
+            "    print(exc)\n"
+            "else:\n"
+            "    raise SystemExit('no raise')\n"
+        )
+        started = time.perf_counter()
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-c", probe],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=1,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            self.fail("shell state scan did not finish within 1s")
+        elapsed = time.perf_counter() - started
+        self.assertLess(elapsed, 1.0, proc.stderr)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        message = proc.stdout.strip()
+        self.assertIn("shell state cap exceeded:", message)
+        count = int(message.rsplit(":", 1)[-1])
+        self.assertEqual(count, 64)
+
+    def test_identical_conditional_directories_stay_deduped(self) -> None:
+        lines = ["if false; then cd same; fi" for _ in range(12)]
+        lines.append("cp other dest")
+        script = "\n".join(lines)
+        started = time.perf_counter()
+        states = _shell_states(script, "")
+        elapsed = time.perf_counter() - started
+        self.assertLess(elapsed, 1.0)
+        self.assertLessEqual(len(states), 2)
+        self.assertFalse(_archive_copied_onto_book(script, ""))
+
+    def test_literal_expression_scan_terminates(self) -> None:
+        holder: dict[str, object] = {}
+
+        def run() -> None:
+            holder["value"] = _reduce_literal_expressions("${{ 'lit' }}")
+            holder["wrapped"] = _reduce_literal_expressions("pre${{ 'mid' }}post")
+            holder["between"] = _reduce_literal_expressions("${{ 'a' }}-${{ 'b' }}")
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(holder.get("value"), "lit")
+        self.assertEqual(holder.get("wrapped"), "premidpost")
+        self.assertEqual(holder.get("between"), "a-b")
+
+    def test_call_checker_reports_a_crash(self) -> None:
+        def crash() -> None:
+            raise RuntimeError("crash")
+
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(crash)
+        self.assertIn("RuntimeError", str(caught.exception))
 
 
 if __name__ == "__main__":
