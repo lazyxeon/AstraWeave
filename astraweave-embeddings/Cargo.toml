@@ -18,7 +18,7 @@ serde_json = "1.0"
 uuid = { version = "1.0", features = ["v4", "serde"] }
 
 # Vector operations and indexing
-nalgebra = "0.33"
+nalgebra = "0.35"
 rand = { version = "0.9", features = ["small_rng"] }
 
 # ONNX Runtime for sentence transformers
@@ -28,8 +28,8 @@ ort = { version = "2.0.0-rc.10", default-features = false, features = ["std", "n
 
 # Alternative: candle for pure Rust inference
 candle-core = { version = "0.8", optional = true }
-candle-nn = { version = "0.8", optional = true }
-candle-transformers = { version = "0.8", optional = true }
+candle-nn = { version = "0.9", optional = true }
+candle-transformers = { version = "0.10", optional = true }
 
 # HNSW for approximate nearest neighbor search (optional)
 hnsw_rs = { version = "0.3", optional = true }
@@ -40,7 +40,7 @@ astraweave-llm = { path = "../astraweave-llm", optional = true }
 
 # Concurrent data structures
 dashmap = "6.1"
-parking_lot = "0.12"
+parking_lot = "0.13"
 
 [features]
 default = ["hnsw"]

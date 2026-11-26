@@ -24,8 +24,8 @@ optional = true
 
 [dev-dependencies]
 hound = "3"
-criterion = "0.5"
-serial_test = "3.0"
+criterion = "0.7"
+serial_test = "4.0"
 tempfile = "3.0"
 
 [[bin]]

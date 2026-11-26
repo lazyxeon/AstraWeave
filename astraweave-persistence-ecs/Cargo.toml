@@ -11,7 +11,7 @@ serde_json = { workspace = true }
 bincode = "2.0"
 postcard = { version = "1.0", default-features = false, features = ["alloc"] }
 crc32fast = "1.4"
-lz4_flex = "0.11"
+lz4_flex = "0.14"
 time = { version = "0.3", features = ["serde"] }
 uuid = { version = "1.0", features = ["v4", "serde"] }
 aw-save = { path = "../persistence/aw-save" }
@@ -22,7 +22,7 @@ astraweave-memory = { workspace = true }
 [dev-dependencies]
 sha2 = { workspace = true }
 tempfile = "3"
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.7", features = ["html_reports"] }
 
 [[bench]]
 name = "persistence_ecs_benchmarks"

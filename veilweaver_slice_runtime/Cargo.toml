@@ -21,7 +21,7 @@ astraweave-scene = { path = "../astraweave-scene" }
 astraweave-gameplay = { path = "../astraweave-gameplay" }
 astraweave-dialogue = { path = "../astraweave-dialogue" }
 astraweave-cinematics = { path = "../astraweave-cinematics" }
-ron = "0.8"
+ron = "0.12"
 
 [features]
 default = []
