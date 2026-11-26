@@ -8,6 +8,9 @@ on:
   push:
     branches:
       - main
+    # A push to main that touches these paths deploys to
+    # dashboard/benchmark_dashboard. docs.yml still copies the archived
+    # dashboard onto that path until #776 removes the copy. Land #776 first.
     paths:
       - '.github/workflows/benchmark-dashboard.yml'
       - 'scripts/export_benchmark_jsonl.ps1'

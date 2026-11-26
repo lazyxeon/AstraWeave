@@ -71,6 +71,8 @@ jobs:
           mkdir -p book/assets
           cp -r src/assets/* book/assets/ 2>/dev/null || true
 
+      # #776 deletes this step. Until that lands, a docs deploy can overwrite
+      # dashboard/benchmark_dashboard with the archived copy. Merge #776 first.
       - name: Copy standalone dashboard
         run: |
           mkdir -p docs/book/dashboard/benchmark_dashboard
