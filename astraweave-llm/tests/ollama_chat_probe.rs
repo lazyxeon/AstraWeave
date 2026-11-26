@@ -68,22 +68,164 @@ fn test_ollama_batch_execution() {
     );
 }
 
-fn read_http_headers(sock: &mut std::net::TcpStream) {
+/// Bound on one read while draining a request or waiting for the client to close.
+///
+/// This is not a pause inserted to win a race. A client that never sends the
+/// body, or never closes, must not leave the mock thread blocked.
+const MOCK_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn read_once(sock: &mut std::net::TcpStream, buf: &mut [u8]) -> std::io::Result<usize> {
     use std::io::Read;
-    let _ = sock.set_read_timeout(Some(std::time::Duration::from_secs(2)));
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    while buf.len() < 8192 {
-        match sock.read(&mut byte) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {
-                buf.push(byte[0]);
-                if buf.ends_with(b"\r\n\r\n") {
-                    break;
-                }
-            }
+    loop {
+        match sock.read(buf) {
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+            other => return other,
         }
     }
+}
+
+fn header_block_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| index + 4)
+}
+
+fn field_value<'a>(line: &'a [u8], name: &[u8]) -> Option<&'a [u8]> {
+    let colon = line.iter().position(|byte| *byte == b':')?;
+    if !line[..colon].eq_ignore_ascii_case(name) {
+        return None;
+    }
+    Some(line.get(colon + 1..)?.trim_ascii())
+}
+
+fn content_length(headers: &[u8]) -> Option<usize> {
+    let mut start = 0;
+    while start < headers.len() {
+        let rest = &headers[start..];
+        let line_len = rest
+            .windows(2)
+            .position(|window| window == b"\r\n")
+            .unwrap_or(rest.len());
+        let line = &rest[..line_len];
+        start += line_len;
+        if headers
+            .get(start..)
+            .is_some_and(|rest| rest.starts_with(b"\r\n"))
+        {
+            start += 2;
+        } else {
+            start = headers.len();
+        }
+        let Some(value) = field_value(line, b"content-length") else {
+            continue;
+        };
+        let text = std::str::from_utf8(value).ok()?.trim();
+        return text.parse().ok();
+    }
+    None
+}
+
+fn discard(sock: &mut std::net::TcpStream, mut remaining: usize) {
+    let mut tmp = [0u8; 1024];
+    while remaining > 0 {
+        let want = remaining.min(tmp.len());
+        match read_once(sock, &mut tmp[..want]) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => remaining -= n,
+        }
+    }
+}
+
+/// Read the request headers and the `Content-Length` body.
+///
+/// Closing, or answering, while the POST body is still in the receive buffer
+/// makes Windows abort the connection (`WSAECONNRESET`) instead of delivering
+/// the response. Every mock drains that body here before it writes a status
+/// line. reqwest's `.json()` sets `Content-Length`, so a request without that
+/// field has no body to drain.
+fn read_http_request(sock: &mut std::net::TcpStream) {
+    let _ = sock.set_read_timeout(Some(MOCK_READ_TIMEOUT));
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 1024];
+    let header_end = loop {
+        if let Some(end) = header_block_end(&buf) {
+            break end;
+        }
+        if buf.len() >= 8192 {
+            return;
+        }
+        match read_once(sock, &mut tmp) {
+            Ok(0) | Err(_) => return,
+            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+        }
+    };
+    let Some(len) = content_length(&buf[..header_end]) else {
+        return;
+    };
+    let already = buf.len().saturating_sub(header_end);
+    if already < len {
+        discard(sock, len - already);
+    }
+}
+
+/// Half-close a finished response and keep the socket until the client closes.
+///
+/// `shutdown(Write)` sends FIN after the bytes already written. A background
+/// read then drains whatever the client still sends, so the socket is not
+/// dropped with unread received bytes (Windows turns that drop into
+/// `WSAECONNRESET`). The read runs off the accept loop: a 404 has to be able
+/// to accept `/api/generate` while the first client is still closing.
+/// `MOCK_READ_TIMEOUT` only stops a client that never closes.
+fn finish_response(mut sock: std::net::TcpStream) {
+    let _ = sock.shutdown(std::net::Shutdown::Write);
+    std::thread::spawn(move || {
+        let _ = sock.set_read_timeout(Some(MOCK_READ_TIMEOUT));
+        let mut tmp = [0u8; 1024];
+        loop {
+            match read_once(&mut sock, &mut tmp) {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {}
+            }
+        }
+    });
+}
+
+#[test]
+fn content_length_reads_the_decimal_field() {
+    let headers = b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: 15\r\n\r\n";
+    assert_eq!(content_length(headers), Some(15));
+    let lower = b"POST /api/chat HTTP/1.1\r\ncontent-length: 0\r\n\r\n";
+    assert_eq!(content_length(lower), Some(0));
+    let absent = b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n";
+    assert_eq!(content_length(absent), None);
+}
+
+#[test]
+fn read_http_request_drains_the_post_body() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let server = std::thread::spawn(move || {
+        let (mut sock, _) = listener.accept().expect("accept");
+        read_http_request(&mut sock);
+        use std::io::Read;
+        let mut buf = [0u8; 8];
+        let n = sock.read(&mut buf).expect("read after body");
+        assert_eq!(n, 0, "POST body was still unread: {buf:?}");
+    });
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    let body = vec![b'x'; 3000];
+    let header = format!(
+        "POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\r\n",
+        body.len()
+    );
+    use std::io::Write;
+    client.write_all(header.as_bytes()).expect("headers");
+    client.write_all(&body).expect("body");
+    client.flush().expect("flush");
+    client
+        .shutdown(std::net::Shutdown::Write)
+        .expect("shutdown");
+    server.join().expect("server");
 }
 
 fn write_chunk(sock: &mut std::net::TcpStream, data: &str) {
@@ -107,7 +249,7 @@ fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> std::net::Socke
             return;
         };
         sock.set_nodelay(true).expect("nodelay");
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         use std::io::Write;
         let _ = sock.write_all(
             b"HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
@@ -131,6 +273,7 @@ fn serve_slow_chunks(count: usize, hang_after: Option<usize>) -> std::net::Socke
         } else {
             std::thread::sleep(std::time::Duration::from_secs(30));
         }
+        finish_response(sock);
     });
     addr
 }
@@ -220,7 +363,7 @@ fn serve_no_headers(first_not_found: bool) -> std::net::SocketAddr {
             let Ok((mut sock, _)) = listener.accept() else {
                 return;
             };
-            read_http_headers(&mut sock);
+            read_http_request(&mut sock);
             if first && first_not_found {
                 first = false;
                 use std::io::Write;
@@ -228,9 +371,11 @@ fn serve_no_headers(first_not_found: bool) -> std::net::SocketAddr {
                     b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
                 );
                 let _ = sock.flush();
+                finish_response(sock);
                 continue;
             }
             std::thread::sleep(std::time::Duration::from_secs(30));
+            finish_response(sock);
         }
     });
     addr
@@ -289,13 +434,14 @@ fn serve_declared_body(status_line: &'static str) -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         use std::io::Write;
         let _ = sock.write_all(
             format!("{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n").as_bytes(),
         );
         let _ = sock.flush();
         std::thread::sleep(std::time::Duration::from_secs(30));
+        finish_response(sock);
     });
     addr
 }
@@ -414,7 +560,7 @@ fn serve_readable_error(body: &'static str) -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         use std::io::Write;
         let _ = sock.write_all(
             format!(
@@ -424,6 +570,7 @@ fn serve_readable_error(body: &'static str) -> std::net::SocketAddr {
             .as_bytes(),
         );
         let _ = sock.flush();
+        finish_response(sock);
     });
     addr
 }
@@ -477,12 +624,12 @@ fn serve_body(body: Vec<u8>) -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        write_and_hold(&mut sock, header.as_bytes(), &body);
+        write_response(sock, header.as_bytes(), &body);
     });
     addr
 }
@@ -540,26 +687,24 @@ fn serve_oversized_ok() -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         let body = vec![b'a'; astraweave_llm::MAX_MODEL_STREAM_BYTES + 8];
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        write_and_hold(&mut sock, header.as_bytes(), &body);
+        write_response(sock, header.as_bytes(), &body);
     });
     addr
 }
 
-/// Finish the response without dropping the socket. Windows turns a drop
-/// with unread data into a connection reset before the cap can fire.
-fn write_and_hold(sock: &mut std::net::TcpStream, header: &[u8], body: &[u8]) {
+/// Write a complete response, then half-close until the client finishes.
+fn write_response(mut sock: std::net::TcpStream, header: &[u8], body: &[u8]) {
     use std::io::Write;
     let _ = sock.write_all(header);
     let _ = sock.write_all(body);
     let _ = sock.flush();
-    let _ = sock.shutdown(std::net::Shutdown::Write);
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    finish_response(sock);
 }
 
 #[test]
@@ -606,7 +751,7 @@ fn serve_empty_lines() -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         // Empty NDJSON lines do not grow the kept text. The byte counter must
         // still stop the read.
         let body = vec![b'\n'; astraweave_llm::MAX_MODEL_STREAM_BYTES + 8];
@@ -614,7 +759,7 @@ fn serve_empty_lines() -> std::net::SocketAddr {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        write_and_hold(&mut sock, header.as_bytes(), &body);
+        write_response(sock, header.as_bytes(), &body);
     });
     addr
 }
@@ -669,7 +814,7 @@ fn serve_512_token_reply() -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         let mut body = String::new();
         for i in 0..512 {
             let done = i == 511;
@@ -681,7 +826,7 @@ fn serve_512_token_reply() -> std::net::SocketAddr {
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             bytes.len()
         );
-        write_and_hold(&mut sock, header.as_bytes(), &bytes);
+        write_response(sock, header.as_bytes(), &bytes);
     });
     addr
 }
@@ -829,13 +974,13 @@ fn serve_bad_utf8_line() -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         let body = b"\xff\n";
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        write_and_hold(&mut sock, header.as_bytes(), body);
+        write_response(sock, header.as_bytes(), body);
     });
     addr
 }
@@ -886,13 +1031,13 @@ fn serve_good_line_then_bad_utf8() -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         let body = b"{\"message\":{\"content\":\"hello\"}}\n\xff\n";
         let header = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
         );
-        write_and_hold(&mut sock, header.as_bytes(), body);
+        write_response(sock, header.as_bytes(), body);
     });
     addr
 }
@@ -989,7 +1134,7 @@ fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> std:
             let Ok((mut sock, _)) = listener.accept() else {
                 return;
             };
-            read_http_headers(&mut sock);
+            read_http_request(&mut sock);
             use std::io::Write;
             if first && first_not_found {
                 first = false;
@@ -997,6 +1142,7 @@ fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> std:
                     b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
                 );
                 let _ = sock.flush();
+                finish_response(sock);
                 continue;
             }
             let _ = write!(
@@ -1005,6 +1151,7 @@ fn serve_withheld_body(status_line: &'static str, first_not_found: bool) -> std:
             );
             let _ = sock.flush();
             std::thread::sleep(std::time::Duration::from_secs(30));
+            finish_response(sock);
         }
     });
     addr
@@ -1083,7 +1230,7 @@ fn serve_late_headers() -> std::net::SocketAddr {
         let Ok((mut sock, _)) = listener.accept() else {
             return;
         };
-        read_http_headers(&mut sock);
+        read_http_request(&mut sock);
         std::thread::sleep(std::time::Duration::from_secs(4));
         use std::io::Write;
         let body = "{\"message\":{\"content\":\"late-token\"},\"done\":true}\n";
@@ -1093,6 +1240,7 @@ fn serve_late_headers() -> std::net::SocketAddr {
             body.len()
         );
         let _ = sock.flush();
+        finish_response(sock);
     });
     addr
 }
