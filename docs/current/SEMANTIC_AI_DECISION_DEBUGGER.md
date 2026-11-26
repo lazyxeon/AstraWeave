@@ -93,7 +93,7 @@ The trace copies the buffer the planner received. On `main` that includes the co
 
 On `main`, `astraweave-memory` is a full pipeline (records, episodes, consolidation, forgetting, retrieval, persona) and it is DORMANT for the planning tick. Nothing in `astraweave-ai` calls it.
 
-`MemoryDebugComponent` (`astraweave-memory/src/components.rs`) looks like a debugger and is the wrong one to extend. `recent_operations` is a `Vec<MemoryOperation>`. Each operation stores a `String` id, a `chrono` UTC timestamp, and a `String` detail. That is a wall clock and a heap growth on every operation.
+`MemoryDebugComponent` (`astraweave-memory/src/components.rs`) looks like a debugger and is the wrong one to extend. `recent_operations` is a `Vec<MemoryOperation>`. Each operation stores a `String` id, a UTC timestamp, and a `String` detail. That is a wall clock and a heap growth on every operation.
 
 PR #213 (`cursor/engine-ws-ai2`, draft, tip `61ebe2fa`) owns the wiring. `astraweave-dialogue/src/depth_tick.rs` on that branch defines `AiDepthState` and `sys_ai_depth`. One step calls `MemoryManager`, the embedding store, RAG consolidation, prompts, context, persona, the NPC `RulePlanner`, and coordination. A missing log line becomes `scripted:` plus the rendered prompt. `SimRng` is seeded with `(world_seed, tick, SIM_SYSTEM_LLM_DIALOGUE + entity)` and is not drawn. The branch's own `TickTrace` is a growing `Vec` of `String`s (`memory_ids`, prompt, dialogue, note). That trace allocates, and it is the depth tick's replay payload, so this debugger does not write into it and does not read it from inside `plan_route`.
 
@@ -161,14 +161,14 @@ The hash this design adds is a local equality test (trace on versus trace off). 
 
 `tools/aw_editor` has no AI decision panel. Debug panels today are `Console`, `Profiler`, `Performance`, and `SceneStats` (`tools/aw_editor/src/panel_type.rs`). `PanelType` is `#[non_exhaustive]`. Adding a variant touches every match in that file: `title`, `icon`, `is_closable`, `has_scroll`, `category`, `description`, `shortcut_hint`, `is_debug_panel`, and `all`. The Debug menu already iterates `PanelType::all()` (`tools/aw_editor/src/ui/menu_bar.rs`). `default_left_panels`, `default_right_panels`, `default_bottom_panels`, and `default_center_panel` stay as they are so dock tests keep their current tabs. The new panel opens from the menu and stays out of the default layout.
 
-Editor CI on `main` is partly red, and both failures already have owners:
+The table is the failure record this section was written against. #273 is closed (`aab4c84b`, #340). #265 stays open. Both editor workflows install `libudev-dev`, and the nightlies at `64da1085` passed every step of `editor-ci.yml` ([run 44691005363](https://github.com/lazyxeon/AstraWeave/actions/runs/44691005363)) and `aw-editor-tests.yml` ([run 44689787164](https://github.com/lazyxeon/AstraWeave/actions/runs/44689787164)).
 
 | Issue | Failure | Owner and plan |
 |---|---|---|
 | #273 `deferred-failure` | `editor_engine_render_parity` hashes diverge on llvmpipe. Engine and editor LDR SHA-256 differ; overlay isolation holds. Mean SAD 1.538 over 262144 pixels | Editor render parity. Find the setter that still differs for the 512×512 grassland fixture. Do not widen the assert |
 | #265 `deferred-failure` | Ubuntu and macOS editor jobs fail in `libudev-sys` because `libudev.pc` is missing | CI cleanup, PR #217. Install `pkg-config`, `libudev-dev`, and `libasound2-dev` |
 
-`editor-ci.yml` and `aw-editor-tests.yml` on `main` still do not install `libudev-dev`. Both workflows set `continue-on-error: true` and do not run on pull requests. A decision panel in `aw_editor` would build in those jobs. This design leaves `tools/aw_editor` untouched until #265 and #273 are closed.
+`editor-ci.yml` and `aw-editor-tests.yml` do not run on pull requests. Both install `libudev-dev`: `aw-editor-tests.yml` in its Linux apt step, and `editor-ci.yml` through `rust-ci-setup` (that action installs `libudev-dev`). Neither workflow sets job-level `continue-on-error`. In `aw-editor-tests.yml`, the `test` job still sets step-level `continue-on-error` on `--lib`, integration, fmt, and clippy, and the `coverage` job sets it on `Generate Coverage Report` and `Upload Coverage to Codecov`. The editor bin step is `cargo test --locked -p aw_editor --all-features --bins` in `ci.yml` job `Test (ubuntu, build archive)`, which the `PR Rust checks` job needs. Ruleset enforcement is tracked in [PR #702](https://github.com/lazyxeon/AstraWeave/pull/702). That job is skipped on a docs-only pull request and when no crate is selected (`full` is not set and the package list is empty). The step has no `continue-on-error`. `--bins` builds every bin harness, including `aw_game_runtime`, whose harness has no tests. A decision panel in `aw_editor` would build in those jobs.
 
 ### 2.8 Aravath agents that already exist
 
@@ -192,7 +192,7 @@ Rejected:
 
 | Option | Why it loses |
 |---|---|
-| Extend `MemoryDebugComponent` | `Vec`, `String`, and `chrono::Utc`. Wall clock in a sim debug path |
+| Extend `MemoryDebugComponent` | `Vec`, `String`, and a UTC timestamp. Wall clock in a sim debug path |
 | Extend `goap::TelemetryCollector` | `String`, `VecDeque`, `Instant`, and it lives in the dormant advanced GOAP tree |
 | Send reasons through `message!` or `tracing` | Allocates when the sink is on, and a global subscriber can change timing |
 | Put the ring inside `SpatialTick` or `World` | A new field changes the bytes of a sim struct the moment the feature is on |

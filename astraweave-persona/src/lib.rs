@@ -348,3 +348,6 @@ prefs_json = 'invalid json {'
         assert!(msg.contains("exceeds cap"), "{msg}");
     }
 }
+
+#[cfg(test)]
+mod unix_instant;

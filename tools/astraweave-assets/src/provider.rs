@@ -581,7 +581,10 @@ pub fn generate_attribution_file(
     lines.push(String::new());
     if existing_footer.is_empty() {
         lines.push("For full license texts, see URLs above.".to_string());
-        lines.push(format!("Generated: {}", chrono::Utc::now().to_rfc3339()));
+        lines.push(format!(
+            "Generated: {}",
+            crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc())
+        ));
     } else {
         lines.extend(existing_footer);
     }

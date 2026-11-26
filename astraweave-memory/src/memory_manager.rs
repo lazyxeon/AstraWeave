@@ -4,7 +4,6 @@
 //! including storage, retrieval, and organization of memories.
 
 use anyhow::{anyhow, Result};
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -68,7 +67,8 @@ pub struct MemoryStats {
     /// Number of clusters
     pub total_clusters: usize,
     /// Last update timestamp
-    pub last_updated: chrono::DateTime<chrono::Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
 }
 
 impl Default for MemoryStats {
@@ -78,7 +78,7 @@ impl Default for MemoryStats {
             memories_by_type: HashMap::new(),
             average_importance: 0.0,
             total_clusters: 0,
-            last_updated: Utc::now(),
+            last_updated: time::OffsetDateTime::now_utc(),
         }
     }
 }
@@ -264,7 +264,7 @@ impl MemoryManager {
             memories_by_type,
             average_importance,
             total_clusters: self.clusters.len(),
-            last_updated: Utc::now(),
+            last_updated: time::OffsetDateTime::now_utc(),
         };
     }
 
@@ -664,8 +664,6 @@ mod tests {
 
     #[test]
     fn test_cleanup_actually_removes_weak_memories() {
-        use chrono::Duration;
-
         let config = MemoryManagerConfig {
             importance_threshold: 0.5, // Set a reasonable threshold
             ..Default::default()
@@ -678,8 +676,10 @@ mod tests {
         weak_memory.metadata.strength = 0.1;
         weak_memory.metadata.permanent = false;
         // Set created_at to a month ago to make it "old"
-        weak_memory.metadata.created_at = Utc::now() - Duration::days(30);
-        weak_memory.metadata.last_accessed = Utc::now() - Duration::days(30);
+        weak_memory.metadata.created_at =
+            time::OffsetDateTime::now_utc() - time::Duration::days(30);
+        weak_memory.metadata.last_accessed =
+            time::OffsetDateTime::now_utc() - time::Duration::days(30);
 
         manager.store_memory(weak_memory).unwrap();
         assert_eq!(manager.get_stats().total_memories, 1);

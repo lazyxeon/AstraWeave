@@ -40,9 +40,9 @@ Surveyed on `main` at `f1109340` unless a PR ref is named. "Wired" means a non-t
 
 | Piece | Real or stub | On a tick? |
 |---|---|---|
-| `WorldEvent` in `agent.rs` | Real POD-shaped struct: `String` id, `String` type, `serde_json::Value` payload, `DateTime<Utc>` timestamp, `EventSeverity`. | No. `Agent::handle_world_event` has no impl outside the crate's tests. |
-| `WorldEventGenerator` | Real async generator. `generate_event` calls the LLM, scores coherence as `f32`, and stamps `Utc::now()`. Default interval is 30_000 ms. `EconomicState.trade_routes_status` is a `HashMap<String, String>` inside that generator's private world. It is not a route graph. Fields are `dead_code`. Constructors in this file are the unit tests. | No. |
-| `NarrativeCoherenceEngine` | Real async validator. Same four `Arc` handles (`LlmClient`, `RagPipeline`, conversation history, prompt library). Plot points use `DateTime<Utc>`. | No. |
+| `WorldEvent` in `agent.rs` | Real POD-shaped struct: `String` id, `String` type, `serde_json::Value` payload, `time::OffsetDateTime` timestamp, `EventSeverity`. | No. `Agent::handle_world_event` has no impl outside the crate's tests. |
+| `WorldEventGenerator` | Real async generator. `generate_event` calls the LLM, scores coherence as `f32`, and stamps `OffsetDateTime::now_utc()`. Default interval is 30_000 ms. `EconomicState.trade_routes_status` is a `HashMap<String, String>` inside that generator's private world. It is not a route graph. Fields are `dead_code`. Constructors in this file are the unit tests. | No. |
+| `NarrativeCoherenceEngine` | Real async validator. Same four `Arc` handles (`LlmClient`, `RagPipeline`, conversation history, prompt library). Plot points use `time::OffsetDateTime`. | No. |
 | `AgentCoordinator` | Real tokio router. `Transform` is a placeholder action. | No. |
 | Editor `WorldEvent` in `tools/aw_editor/src/panels/world_panel.rs` | A different struct. `Instant` timestamp and a closed editor enum (terrain generated, weather, time, biome, settings). Presentation history for the world panel. | Editor UI only. Not sim. |
 
@@ -303,7 +303,7 @@ A cast stays a `WeaveCommand` on #252. Structural decay stays a `DestructionComm
 
 Allowed: a recorded line for a template the rules already emitted. Allowed later, still off-tick: a proposed rule row that the baker hashes into the rule table before the session starts. A rule that arrives mid-session is a new session seed, not a live patch.
 
-Forbidden on the tick: `generate_event`, `generate_storyline`, `QuestLlmSystem::update`, `NarrativeCoherenceEngine`, HTTP, `Utc::now`, and any write into stock or stance from parsed model text.
+Forbidden on the tick: `generate_event`, `generate_storyline`, `QuestLlmSystem::update`, `NarrativeCoherenceEngine`, HTTP, `OffsetDateTime::now_utc`, and any write into stock or stance from parsed model text.
 
 ## 7. First vertical slice in the Aravath demo
 

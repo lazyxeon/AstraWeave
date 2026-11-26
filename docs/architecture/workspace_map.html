@@ -1,6 +1,45 @@
 <!DOCTYPE html>
 <!--
-  AstraWeave Workspace Architecture Map — v2.2 (2026-06-25)
+  AstraWeave Workspace Architecture Map — v2.5 (2026-11-23)
+  v2.5: Bootleg Manual — Graphite. Newsprint, stamped graphite chrome and
+    restrained static mint backlights. Domain ink and printed tags make each
+    grouping readable without relying on hue. Graph data and actions unchanged.
+  v2.4: theme pass ("tidewire": fluidpunk water under cyberpunk chrome). Skin only.
+    - Page chrome: abyssal gradient with slow drifting currents, glass panels,
+      pill controls, aqua accent with magenta for pressed and selected states,
+      mono caps for labels, faint scanlines behind the graph.
+    - Graph: nodes take a top-lit gradient, a lit rim and a soft halo in their
+      domain colour. That version used the source Wong palette. Runtime edges and
+      the active path draw as dashes that drift toward the target; that motion
+      and the background drift are off under prefers-reduced-motion.
+    - Selection and highlight are magenta, the path is lime. Replaced the
+      invalid `shadow-*` edge properties with an underlay.
+    - Cyber pass: notched controls in mono caps, signal yellow as a third
+      accent, a neon grid and HUD brackets on the graph, a title that glitches
+      once on load and on hover. Crates are chamfered chips; aspirational docs
+      are the rounded ones again.
+    - Generated background: a canvas under the graph draws slow, faint neon
+      currents on a flow field, a rare signal pulse along a grid line and the
+      odd ripple. It is code, not an image, so there is no asset. It dims
+      when the pointer is on the graph, fades to a trace while a node is
+      hovered or selected, and the FX button turns it off (remembered in
+      localStorage). Nothing on the page loops in a way that pulls the eye:
+      no scan beam, no repeating title glitch. It pauses when the tab is
+      hidden and draws one still frame under prefers-reduced-motion.
+    - System fonts only. No new scripts, assets or dependencies.
+  v2.3 (2026-11-11): readability pass. Viewer only; the workspace-data block is unchanged.
+    - Implied edges (a cargo dependency whose target is already reachable along
+      another path; 100 of 221) are hidden by default. "Edges: essential / all"
+      toggles them, and hover, selection, path, stories and the blast radius
+      reveal the ones they touch. The side panel still lists every edge.
+    - Default layout is the layered dagre view, left to right, ranked on the
+      essential edges. Measured on this data: about 2,100 edge crossings before,
+      about 280 after. fcose and dormancy stay in the dropdown.
+    - Nodes are label-sized rounded rectangles (height = LoC band). Fixed the
+      `node[isExample]` selector, which drew every node as a dotted hexagon.
+    - The first layout is not animated and fits on layoutstop.
+    - A share link with no `layout=` key now opens in the layered view.
+  v2.2 (2026-06-25):
   v2.2: aw_trace_sync v1.1 — node status (status/statusCategory/statusEvidence) now synced
     from the owning trace's front-matter for primary crates; asserted runtime-integration
     edges rendered with a teal `.runtime` highlight (first: astraweave-physics → astraweave-water).
@@ -72,15 +111,6 @@
     --good: #3fb950;
     --link: #58a6ff;
     --code-bg: #1c2128;
-    /* Wong colorblind-safe palette for domains */
-    --d-core:       #0072B2;
-    --d-ai:         #D55E00;
-    --d-rendering:  #CC79A7;
-    --d-physics:    #009E73;
-    --d-gameplay:   #E69F00;
-    --d-networking: #56B4E9;
-    --d-tools:      #F0E442;
-    --d-examples:   #999999;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; padding: 0; }
@@ -194,7 +224,6 @@
     font-family: inherit;
   }
   input[type="text"]:focus, select:focus {
-    outline: none;
     border-color: var(--accent);
   }
   .domain-chip {
@@ -209,19 +238,11 @@
     font-size: 11px;
     user-select: none;
     color: var(--text-1);
-    opacity: 0.6;                /* v2.1: default = NOT in include set */
-    transition: opacity 0.12s ease, border-color 0.12s ease, background 0.12s ease;
-  }
-  .domain-chip.on {              /* v2.1: in include set */
-    opacity: 1;
-    color: var(--text-0);
-    border-color: var(--accent);
-    background: rgba(88,166,255,0.10);
+    transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
   }
   .domain-chip:hover {
     background: var(--bg-0);
   }
-  .domain-chip.on:hover { background: rgba(88,166,255,0.18); }
   .domain-chip:disabled {
     cursor: not-allowed;
     opacity: 0.25 !important;
@@ -265,7 +286,6 @@
   }
   /* Banner */
   .banner {
-    background: linear-gradient(90deg, rgba(88,166,255,0.10), rgba(88,166,255,0.02));
     border-bottom: 1px solid var(--border);
     padding: 10px 16px;
     font-size: 13px;
@@ -301,7 +321,6 @@
     white-space: nowrap;
   }
   .filter-counter.filtered {
-    background: rgba(88,166,255,0.12);
     border-color: var(--accent);
     color: var(--accent);
   }
@@ -385,7 +404,7 @@
   }
   .risk-pill.CRITICAL { background: rgba(248,81,73,0.25); color: var(--danger); }
   .risk-pill.HIGH     { background: rgba(240,136,62,0.25); color: var(--warn); }
-  .risk-pill.MEDIUM   { background: rgba(88,166,255,0.20); color: var(--accent); }
+  .risk-pill.MEDIUM   { background: rgba(39, 92, 84, 0.18); color: var(--accent); }
   .risk-pill.LOW      { background: rgba(110,118,129,0.30); color: var(--text-1); }
   ul.compact {
     list-style: disc;
@@ -530,7 +549,7 @@
     font-size: 10px;
   }
   .panel-content details[open] > summary::after { transform: rotate(90deg); }
-  .panel-content details > summary:hover { background: rgba(88,166,255,0.06); }
+  .panel-content details > summary:hover { background: var(--code-bg); }
   .panel-content details > summary .count {
     color: var(--text-1);
     font-family: ui-monospace, "SF Mono", Consolas, monospace;
@@ -563,7 +582,6 @@
     gap: 4px;
   }
   .panel-actions .btn-sm:hover { background: var(--bg-0); border-color: var(--accent); }
-  .panel-actions .btn-sm.on { background: rgba(88,166,255,0.18); border-color: var(--accent); color: var(--accent); }
   .one-liner {
     font-size: 12px;
     color: var(--text-1);
@@ -759,6 +777,127 @@
     .mobile-toolbar-toggle { display: none; }
     .mobile-sheet-handle { display: none; }
   }
+  /* Bootleg Manual: warm newsprint, graphite ink and a restrained mint
+     backlight. The stipple, stamp and offset shadows are drawn in CSS. */
+  :root {
+    --bg-0: #e6e0d2;
+    --bg-1: #eeeadf;
+    --bg-2: #f6f3ea;
+    --border: #97938a;
+    --text-0: #242629;
+    --text-1: #464844;
+    --text-2: #545650;
+    --accent: #275c54;
+    --warn: #843b10;
+    --danger: #9c283a;
+    --good: #275c43;
+    --link: #245777;
+    --code-bg: #e0ddd3;
+    --ink: #343b42;
+    --paper-white: #f7f2e7;
+    --backlight: 0 0 2px 1px rgba(125, 255, 216, .68), 0 0 9px rgba(30, 182, 139, .32);
+    --box-shadow: 2px 2px 0 var(--ink), var(--backlight);
+    --mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+  }
+  header {
+    color: var(--paper-white);
+    background: #222426;
+    border-bottom: 3px solid var(--ink);
+  }
+  h1 {
+    display: inline-block;
+    position: relative;
+    isolation: isolate;
+    padding: .10em .32em .12em;
+    font-family: Impact, "Arial Narrow", system-ui, sans-serif;
+    font-weight: 700;
+    font-size: clamp(17px, 2.35vw, 34px);
+    line-height: 1.05;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--paper-white);
+  }
+  h1::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: #45494d;
+    transform: skew(-5deg, -.8deg);
+  }
+  .header-meta { color: #e8e6df; font-family: var(--mono); }
+  .header-meta .pill { border-radius: 1px; color: var(--text-0); }
+  .toolbar {
+    box-shadow: inset 0 -2px 0 rgba(52, 59, 66, .42);
+    background-color: #ede9df;
+  }
+  .tb-label { font-family: var(--mono); }
+  .toolbar input[type="text"], .toolbar select,
+  .btn, .htu-toggle, .panel-toggle, .panel-actions .btn-sm,
+  .mobile-toolbar-toggle, .domain-chip, .header-meta .pill,
+  .panel-content details, .htu-body, .toast, .cy-tooltip,
+  .path-display, .tour-narration {
+    border-radius: 1px;
+    box-shadow: var(--box-shadow);
+  }
+  .toolbar input[type="text"], .toolbar select,
+  .btn, .htu-toggle, .panel-toggle, .panel-actions .btn-sm,
+  .mobile-toolbar-toggle, .domain-chip {
+    font-family: var(--mono);
+  }
+  .htu-toggle { background: var(--bg-2); }
+  #repo-link { text-decoration: underline; }
+  .btn[aria-pressed="true"], .panel-actions .btn-sm.on,
+  .domain-chip.on, .domain-chip.on:hover {
+    background: var(--ink);
+    color: var(--paper-white);
+    border-color: var(--ink);
+    box-shadow: 1px 1px 0 #222426, var(--backlight);
+  }
+  .btn.primary:not(:disabled) { background: var(--ink); color: var(--paper-white); }
+  .domain-chip { opacity: 1; }
+  .domain-chip.on .dot { box-shadow: 0 0 0 1px var(--paper-white); }
+  .btn:disabled, .domain-chip:disabled { box-shadow: 1px 1px 0 var(--border); }
+  .filter-counter.filtered {
+    font-weight: 700;
+    background: var(--code-bg);
+  }
+  .banner, .tour-overlay {
+    border-left: 4px solid var(--ink);
+    background: var(--bg-1);
+  }
+  /* Opaque under the stipple so the narrow-screen footer cannot bleed through. */
+  #cy {
+    background-color: var(--bg-0);
+    background-image:
+      radial-gradient(circle, rgba(48, 47, 44, .11) .55px, transparent .85px),
+      radial-gradient(circle, rgba(255, 255, 255, .42) .65px, transparent .9px);
+    background-position: 0 0, 2px 4px;
+    background-size: 7px 7px, 11px 11px;
+  }
+  #tidewire-bg { opacity: .34; transition: opacity .7s ease; }
+  #cy.bg-quiet #tidewire-bg { opacity: .18; }
+  #cy.bg-hush #tidewire-bg { opacity: .07; }
+  body.fx-off #tidewire-bg { display: none; }
+  .path-pick-active { box-shadow: inset 0 0 0 3px var(--accent); }
+  .side-panel { box-shadow: -3px 0 0 rgba(52, 59, 66, .28); }
+  .panel-section h2, .panel-section h3, footer strong { font-family: var(--mono); }
+  .panel-section h2 { font-weight: 800; }
+  .panel-section h3 { letter-spacing: .06em; }
+  .panel-content details { background: var(--bg-2); }
+  .panel-content details > summary:hover { background: var(--code-bg); }
+  .cy-tooltip, .toast { border-left: 3px solid var(--ink); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header :focus-visible { outline-color: #94ffdd; }
+  ::selection { background: var(--ink); color: var(--paper-white); }
+  @media (prefers-reduced-motion: reduce) {
+    #tidewire-bg { transition: none; }
+  }
+  @media (forced-colors: active) {
+    h1::before { display: none; }
+    h1, .header-meta { color: CanvasText; }
+    :focus-visible, header :focus-visible { outline-color: Highlight; }
+  }
 </style>
 </head>
 <body>
@@ -767,13 +906,13 @@
     <div>
       <h1>AstraWeave Workspace Architecture Map</h1>
       <div class="header-meta">
-        <span>v2.2 — viz revision 2026-06-10 · data from ARCHITECTURE_MAP.md v0.7.2 (2026-06-10)</span>
+        <span>v2.5 — Bootleg Manual / Graphite ·data from ARCHITECTURE_MAP.md v0.7.2 (2026-06-10)</span>
         <span class="pill"><span id="node-count">—</span> nodes</span>
         <span class="pill"><span id="edge-count">—</span> edges</span>
         <span class="pill" id="integrity-pill" style="display:none;color:var(--danger);"></span>
         <span class="pill">13 traces</span>
         <a id="repo-link" class="pill" href="https://github.com/lazyxeon/AstraWeave"
-           target="_blank" rel="noopener" style="text-decoration:none;color:var(--link);">View on GitHub ↗</a>
+           target="_blank" rel="noopener" style="color:var(--link);">View on GitHub ↗</a>
       </div>
     </div>
     <button class="htu-toggle" id="htu-toggle" aria-expanded="false" aria-controls="htu-body">How to use ↓</button>
@@ -782,13 +921,16 @@
     <strong>First time here?</strong> Try <strong>Tour → First-time onboarding</strong> for a 10-minute guided walk-through (eight steps, narration + reconfigured graph at each step).
     <br><br>
     <strong>Click any node</strong> for crate detail. The side panel uses progressive disclosure: surface info visible, deeper sections (deps, integration types, open questions, silent failures) behind <code>▸</code> expanders.
-    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — orange = direct, faded = transitive. Honest dependency-graph highlighting, not behavioral simulation.
-    <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. Use when the hairball is too dense.
+    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — a dark rust outline ring (<code>#843b10</code>) marks each hop, thinning and fading with distance. Honest dependency-graph highlighting, not behavioral simulation.
+    <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. Use when the graph is too dense.
+    <strong>Edges: essential / all</strong> (v2.3, default essential): a cargo dependency that a longer path already implies is hidden, which removes most of the crossings. Nothing is lost: hover or select a node to see every edge it has, and the side panel lists them all. Switch to <em>all</em> to draw every edge; implied ones are dashed. Runtime, anomalous, declared-unused and HIGH/CRITICAL-risk edges always show.
+    <strong>Layout</strong> (v2.3): the default is <em>Dependency layers</em>, read left to right from dependents to foundation crates. <em>Domain clusters</em> and <em>Dormancy stratification</em> are still in the dropdown.
     <strong>Stories dropdown</strong> for narrative views (Dual-World Bridge, Editor↔Engine Boundary, Silent-Failure Map, Dormant Surface, AI Pipeline, Networking Coexistence, Aspirational Docs).
-    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain.
+    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain with short graphite dashes.
     <strong>Share ↗</strong> copies a URL that reproduces the exact current view (filters, selection, tour step, layout).
     <strong>Domain chips</strong> (v2.1): click any chip to add that domain to the include set. Nothing checked = no filter (show all). Any subset checked = show only those domains. All checked = same as none. Chips lock during a story or tour — use Reset to clear.
-    <strong>Visual encoding</strong>: node size = LoC band; fill colour = domain (Wong colourblind-safe palette); dashed border = dormant; <code>⚠</code> = silent-failure locus; <code>📄</code> = traced. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
+    <strong>Theme</strong> (v2.5): Bootleg Manual uses graphite on warm paper, with a soft mint backlight. <strong>FX</strong> controls the moving background, not the static backlight. The background dims while reading the map. Long teal dashes mark confirmed runtime wiring. They stay still if your system requests reduced motion.
+    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; printed tag, tinted paper and ink border = domain (matching the toolbar markers); dashed border = dormant; dotted border = partial; <code>!</code> = silent-failure locus; an outer graphite ring = selected. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
     <strong>Keyboard</strong>: <code>Esc</code> to clear; <code>←</code> <code>→</code> to navigate tour steps.
     On mobile, tap <code>☰ Controls</code> for the toolbar; the side panel becomes a bottom sheet.
   </div>
@@ -812,8 +954,8 @@
   <div class="tb-group">
     <span class="tb-label">Layout</span>
     <select id="layout-select" aria-label="Layout selector">
+      <option value="dagre">Dependency layers (dagre)</option>
       <option value="fcose">Domain clusters (fcose)</option>
-      <option value="dagre">Dependency hierarchy (dagre)</option>
       <option value="dormancy">Dormancy stratification</option>
     </select>
   </div>
@@ -840,6 +982,10 @@
             title="Hide all nodes outside 1-hop neighborhood of selected node">Focus: off</button>
     <button class="btn" id="blast-toggle" aria-pressed="true"
             title="Highlight transitive dependents of selected node">Blast radius: on</button>
+    <button class="btn" id="edges-toggle" aria-pressed="false"
+            title="Essential hides cargo dependencies that a longer path already implies. All draws every edge; implied ones are dashed.">Edges: essential</button>
+    <button class="btn" id="fx-toggle" aria-pressed="true"
+            title="Turns the animated background on or off. Remembered in this browser.">FX: on</button>
   </div>
   <div class="tb-group">
     <button class="btn" id="re-explode" title="Re-run the current layout from scratch">Re-explode</button>
@@ -847,7 +993,9 @@
     <button class="btn" id="share-view" title="Copy a URL that reproduces this view">Share ↗</button>
   </div>
   <div class="tb-group" style="border-right:none;">
-    <span class="filter-counter" id="filter-counter" role="status" aria-live="polite">Showing 71 of 71</span>
+    <span class="filter-counter" id="filter-counter" role="status" aria-live="polite">—</span>
+    <span class="filter-counter" id="edge-counter" role="status" aria-live="polite"
+          title="Implied edges are cargo dependencies already reachable through a longer path">—</span>
   </div>
 </div>
 <button class="mobile-toolbar-toggle" id="mobile-toolbar-toggle"
@@ -950,7 +1098,20 @@ const STORIES = workspaceData.stories;
 const RECONCILE = workspaceData.reconciliationNotes;
 const META = workspaceData.metadata;
 
-const domainColor = Object.fromEntries(DOMAINS.map(d => [d.id, d.color]));
+// Render-only ink and compact printed tags. Labels stay identifiable when
+// ink hues look alike or the graph is read in monochrome.
+const DOMAIN_STYLES = {
+  core:            ['CO', '#003f6c'],
+  ai:              ['AI', '#882816'],
+  rendering:       ['RE', '#993d6a'],
+  'physics-world': ['PH', '#006248'],
+  gameplay:        ['GA', '#7e6500'],
+  networking:      ['NE', '#436c90'],
+  tools:           ['TO', '#582ca3'],
+  examples:        ['EX', '#282626'],
+};
+const domainInk = id => DOMAIN_STYLES[id]?.[1] || '#282626';
+const domainTag = id => DOMAIN_STYLES[id]?.[0] || '??';
 
 // ============================================================
 // Trace-link base URL
@@ -1039,7 +1200,8 @@ document.getElementById('htu-toggle').addEventListener('click', (e) => {
 //   * empty enabledDomains set  →  no filter, show all
 //   * partial set               →  include-only, hide non-matching
 //   * full set                  →  no filter, show all (equivalent to empty)
-// Chips default to "off" (dim). Click toggles them "on" (highlighted accent).
+// Chips default to "off" (light paper on warm newsprint). Click toggles "on"
+// (graphite ink fill with mint backlight); see the graphite .domain-chip.on rules.
 const domainFilters = document.getElementById('domain-filters');
 const enabledDomains = new Set();   // v2.1: empty by default = no filter active
 const domLabelSpan = document.createElement('span');
@@ -1051,7 +1213,7 @@ DOMAINS.forEach(d => {
   chip.className = 'domain-chip';
   chip.setAttribute('aria-pressed', 'false');
   chip.setAttribute('data-domain', d.id);
-  chip.innerHTML = `<span class="dot" style="background:${d.color}"></span>${d.label}`;
+  chip.innerHTML = `<span class="dot" style="background:${domainInk(d.id)}"></span><strong>${domainTag(d.id)}</strong> ${d.label}`;
   chip.addEventListener('click', () => {
     if (chip.disabled) return;
     const nowOn = chip.classList.toggle('on');
@@ -1107,25 +1269,106 @@ function sizeForBand(band) {
 }
 function fontForBand(band) {
   switch (band) {
-    case 'extra-large': return 13;
-    case 'large':       return 12;
-    case 'medium':      return 10;
-    default:            return 9;
+    case 'extra-large': return 14;
+    case 'large':       return 13;
+    case 'medium':      return 12;
+    default:            return 11;   // v2.3: was 9, too small inside a node
   }
 }
+// v2.3: nodes are label-sized rounded rectangles, so a label never spills over
+// a neighbour. Width follows the label; height carries the LoC band.
+function heightForBand(band) {
+  switch (band) {
+    case 'extra-large': return 44;
+    case 'large':       return 36;
+    case 'medium':      return 30;
+    default:            return 26;
+  }
+}
+// Domain rim is DOMAIN_STYLES ink as-is; paper is shadeHex of that ink.
+// domains[].color (the Wong set) is not read. Keep labels in dark ink so
+// they're readable even across different tints.
+function shadeHex(hex, amount) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return hex;
+  const to = amount < 0 ? 0 : 255;
+  const k = Math.abs(amount);
+  return '#' + [1, 2, 3].map(i => {
+    const c = Math.round(parseInt(m[i], 16) * (1 - k) + to * k);
+    return c.toString(16).padStart(2, '0');
+  }).join('');
+}
+function widthForLabel(label, band) {
+  // Monospace advance is ~0.62em; 18px covers the horizontal padding.
+  return Math.ceil(String(label).length * fontForBand(band) * 0.62) + 18;
+}
+
+// ============================================================
+// v2.3: essential vs implied edges
+//   An edge is "implied" when it is a plain cargo dependency and its target
+//   is already reachable from its source along another path. Those edges add
+//   no reachability information, and they are most of the crossings, so the
+//   graph hides them by default. Nothing is lost: the side panel still lists
+//   every edge, and selecting, hovering, path-finding, stories and the blast
+//   radius reveal the implied edges they touch.
+//   Runtime, anomalous, declared-unused and HIGH/CRITICAL edges always show.
+// ============================================================
+const DEP_ADJ = new Map(NODES.map(n => [n.id, []]));
+EDGES.forEach(e => { if (!e.runtime) DEP_ADJ.get(e.source).push(e.target); });
+// True when `to` is reachable from `from` over cargo edges. `skipDirect`
+// ignores the direct from -> to edge, which is the edge being tested.
+function depReachable(from, to, skipDirect) {
+  const seen = new Set([from]);
+  const stack = DEP_ADJ.get(from).filter(t => !(skipDirect && t === to));
+  while (stack.length) {
+    const x = stack.pop();
+    if (x === to) return true;
+    if (seen.has(x)) continue;
+    seen.add(x);
+    DEP_ADJ.get(x).forEach(y => stack.push(y));
+  }
+  return false;
+}
+function isAlwaysShownEdge(e) {
+  return e.kind !== 'workspace-dep' || !!e.runtime || !!e.anomaly ||
+         e.risk === 'HIGH' || e.risk === 'CRITICAL';
+}
+const IMPLIED_EDGES = new Set(
+  EDGES.filter(e => !isAlwaysShownEdge(e) && depReachable(e.source, e.target, true)));
+// A runtime edge that points against the cargo direction would close a cycle
+// and flip ranks in the layered layout. It is drawn, but it does not rank.
+const NO_RANK_EDGES = new Set(
+  EDGES.filter(e => e.runtime && depReachable(e.target, e.source, false)));
+// Nodes with no edge at all. The layered layout parks them in a row below.
+const ISOLATED_IDS = new Set(NODES.filter(
+  n => incoming.get(n.id).length + outgoing.get(n.id).length === 0).map(n => n.id));
+
+// v2.3: select crates and domain boxes by data, not by `:child` / `:parent`.
+// The layered and dormancy layouts detach every crate from its domain box, and
+// in that state `:child` matches nothing, which emptied the filter counter,
+// the blast radius and the dormancy rings.
+const LEAF = 'node[!isCompound]';
+const COMPOUND = 'node[?isCompound]';
 
 const cyElements = [];
 
 // Domain compound parents
 DOMAINS.forEach(d => {
   cyElements.push({
-    data: { id: `dom-${d.id}`, label: d.label, isCompound: true, domain: d.id },
+    data: {
+      id: `dom-${d.id}`,
+      label: `${domainTag(d.id)} · ${d.label}`,
+      rim: domainInk(d.id),
+      isCompound: true,
+      domain: d.id,
+    },
     classes: 'compound',
   });
 });
 
 // Nodes
 NODES.forEach(n => {
+  const graphLabel = `${domainTag(n.domain)} · ${n.label}${n.silentFailures.length ? ' !' : ''}`;
   const overlays = [];
   if (n.silentFailures.length > 0) overlays.push('⚠');
   if (n.trace) overlays.push('📄');
@@ -1135,6 +1378,7 @@ NODES.forEach(n => {
     data: {
       id: n.id,
       label: n.label,
+      graphLabel,
       parent: `dom-${n.domain}`,
       domain: n.domain,
       domainLabel: n.domainLabel,
@@ -1154,8 +1398,11 @@ NODES.forEach(n => {
       isExample: n.isExample,
       exampleList: n.exampleList || null,
       size: sizeForBand(n.locBand),
+      w: widthForLabel(graphLabel, n.locBand),
+      h: heightForBand(n.locBand),
       font: fontForBand(n.locBand),
-      _color: domainColor[n.domain] || '#888',
+      paper: shadeHex(domainInk(n.domain), 0.64),
+      rim: domainInk(n.domain),
     },
     classes: `node status-${n.status} band-${n.locBand}`,
   });
@@ -1166,8 +1413,8 @@ NODES.forEach(n => {
 // which regressed initial-render time by ~2.5s in headless tests.
 const NODE_DOMAIN_BY_ID = new Map(NODES.map(n => [n.id, n.domain]));
 function buildEdgeGradient(srcDom, tgtDom) {
-  const sc = domainColor[srcDom] || '#6e7681';
-  const tc = domainColor[tgtDom] || '#6e7681';
+  const sc = domainInk(srcDom);
+  const tc = domainInk(tgtDom);
   return sc + ' ' + tc;
 }
 EDGES.forEach((e, i) => {
@@ -1183,10 +1430,12 @@ EDGES.forEach((e, i) => {
       types: e.types,
       risk: e.risk,
       optional: e.optional,
+      implied: IMPLIED_EDGES.has(e),
       gradStops: buildEdgeGradient(srcDom, tgtDom),
-      arrowColor: domainColor[tgtDom] || '#6e7681',
+      arrowColor: domainInk(tgtDom),
     },
-    classes: `edge kind-${e.kind} risk-${e.risk}${e.runtime ? ' runtime' : ''}`,
+    classes: `edge kind-${e.kind} risk-${e.risk}${e.runtime ? ' runtime' : ''}` +
+             `${IMPLIED_EDGES.has(e) ? ' implied' : ''}${NO_RANK_EDGES.has(e) ? ' no-rank' : ''}`,
   });
 });
 
@@ -1197,31 +1446,36 @@ const cy = cytoscape({
   container: document.getElementById('cy'),
   elements: cyElements,
   wheelSensitivity: 0.2,
-  minZoom: 0.15,
+  minZoom: 0.08,   // v2.3: was 0.15; the dormancy rings need less to fit a laptop
   maxZoom: 3.0,
   style: [
     {
       // Apply to leaf nodes only — compound parents are styled separately
       selector: 'node[size]',
       style: {
-        'background-color': 'data(_color)',
+        'background-color': 'data(paper)',
         'background-opacity': 1.0,
-        'label': 'data(label)',
-        'color': '#c9d1d9',
+        // Static canvas backlight, separate from the domain border and fill.
+        // :selected and dormant rules adjust the underlay; highlighted and
+        // .path-node do not. Dimmed rules still suppress it.
+        'underlay-color': '#5deabd',
+        'underlay-opacity': 0.28,
+        'underlay-padding': 5,
+        'underlay-shape': 'round-rectangle',
+        'label': 'data(graphLabel)',
+        'color': '#242629',
         'font-size': 'data(font)',
         'font-family': 'ui-monospace, "SF Mono", Consolas, monospace',
         'text-valign': 'center',
         'text-halign': 'center',
-        'text-outline-width': 2,
-        'text-outline-color': '#0d1117',
-        'text-outline-opacity': 0.85,
-        'text-wrap': 'wrap',
-        'text-max-width': '120px',
-        'width': 'data(size)',
-        'height': 'data(size)',
+        'text-outline-width': 0,   // v2.3: the outline swamped small glyphs
+        'text-wrap': 'none',
+        'shape': 'cut-rectangle',   // v2.4: chamfered chip
+        'width': 'data(w)',
+        'height': 'data(h)',
         'border-width': 2,
-        'border-color': '#0d1117',
-        'border-opacity': 0.9,
+        'border-color': 'data(rim)',
+        'border-opacity': 1.0,
         'overlay-opacity': 0,
       }
     },
@@ -1231,59 +1485,59 @@ const cy = cytoscape({
       style: {
         'border-style': 'dashed',
         'background-opacity': 0.30,
-        'border-color': '#f85149',
         'border-width': 3,
-        'color': '#8b949e',
+        'underlay-opacity': 0.16,
+        'color': '#454845',
       }
     },
     {
       selector: 'node.status-partial',
       style: {
-        'border-style': 'dashed',
+        'border-style': 'dotted',
         'background-opacity': 0.65,
-        'border-color': '#f0883e',
         'border-width': 3,
       }
     },
     {
-      selector: 'node[?hasSilent]',
-      style: {
-        'border-color': '#f0883e',
-        'border-width': 3,
-      }
-    },
-    {
+      // v2.4: every node is a chamfered chip, so aspirational docs keep the
+      // rounded corners they had in v2.2 to stay distinguishable.
       selector: 'node[?hasAspirational]',
       style: {
         'shape': 'round-rectangle',
       }
     },
     {
-      selector: 'node[isExample]',
+      // v2.3: `[isExample]` matched any node that carries the field, false
+      // included, so all nodes drew as dotted hexagons. `[?x]` tests truthiness.
+      // The hexagon encodes the examples bundle; status owns the border style.
+      selector: 'node[?isExample]',
       style: {
         'shape': 'hexagon',
-        'border-style': 'dotted',
       }
     },
-    // Compound parents — match BOTH the compound flag and presence of domain
-    // so we can drive color off `data(domain)` mapped via a function below.
+    // Labelled domain boxes in the cluster layout.
     {
       selector: 'node:parent',
       style: {
-        'background-color': '#21262d',
-        'background-opacity': 0.18,
-        'border-color': '#30363d',
-        'border-width': 1,
-        'border-style': 'dotted',
+        'background-color': '#ded9cc',
+        'background-opacity': 0.22,
+        'border-color': 'data(rim)',
+        'border-opacity': 0.96,
+        'border-width': 1.5,
+        'border-style': 'dashed',
+        'underlay-color': '#5deabd',
+        'underlay-opacity': 0.12,
+        'underlay-padding': 4,
+        'underlay-shape': 'round-rectangle',
         'label': 'data(label)',
         'text-valign': 'top',
         'text-halign': 'center',
         'font-size': 12,
         'font-weight': 'bold',
-        'color': '#8b949e',
+        'color': '#343b42',
         'padding': 18,
         'text-outline-width': 3,
-        'text-outline-color': '#0d1117',
+        'text-outline-color': '#e6e0d2',
         'shape': 'round-rectangle',
       }
     },
@@ -1299,8 +1553,8 @@ const cy = cytoscape({
         'line-fill': 'linear-gradient',
         'line-gradient-stop-colors': 'data(gradStops)',
         'line-gradient-stop-positions': '0 100',
-        'line-opacity': 0.65,
-        'target-arrow-shape': 'triangle',
+        'line-opacity': 0.94,
+        'target-arrow-shape': 'vee',
         'target-arrow-color': 'data(arrowColor)',
         'arrow-scale': 0.85,
       }
@@ -1312,9 +1566,9 @@ const cy = cytoscape({
       style: {
         'width': 2.2,
         'line-fill': 'solid',
-        'line-color': '#f0883e',
-        'target-arrow-color': '#f0883e',
-        'line-opacity': 0.85,
+        'line-color': '#a44b13',
+        'target-arrow-color': '#a44b13',
+        'line-opacity': 0.94,
       }
     },
     {
@@ -1322,8 +1576,8 @@ const cy = cytoscape({
       style: {
         'width': 2.8,
         'line-fill': 'solid',
-        'line-color': '#f85149',
-        'target-arrow-color': '#f85149',
+        'line-color': '#ad2639',
+        'target-arrow-color': '#ad2639',
         'line-opacity': 0.9,
       }
     },
@@ -1331,8 +1585,8 @@ const cy = cytoscape({
       selector: 'edge.kind-anomalous',
       style: {
         'line-fill': 'solid',
-        'line-color': '#f85149',
-        'target-arrow-color': '#f85149',
+        'line-color': '#ad2639',
+        'target-arrow-color': '#ad2639',
         'width': 2.5,
         'line-opacity': 0.9,
       }
@@ -1342,9 +1596,9 @@ const cy = cytoscape({
       style: {
         'line-fill': 'solid',
         'line-style': 'dashed',
-        'line-color': '#8b949e',
-        'target-arrow-color': '#8b949e',
-        'line-opacity': 0.6,
+        'line-color': '#656c70',
+        'target-arrow-color': '#656c70',
+        'line-opacity': 0.94,
         'width': 1.1,
         'target-arrow-shape': 'tee',
       }
@@ -1355,21 +1609,32 @@ const cy = cytoscape({
       selector: 'edge.runtime',
       style: {
         'line-fill': 'solid',
-        'line-color': '#2dd4bf',
-        'target-arrow-color': '#2dd4bf',
+        'line-color': '#086e68',
+        'target-arrow-color': '#086e68',
         'line-opacity': 0.95,
         'width': 3.0,
+        // v2.4: long dashes that drift toward the target (see the flow ticker).
+        'line-style': 'dashed',
+        'line-dash-pattern': [18, 9],
+        'underlay-color': '#086e68',
+        'underlay-opacity': 0.12,
+        'underlay-padding': 3,
         'target-arrow-shape': 'triangle',
         'z-index': 20,
       }
     },
     // Selected
     {
-      selector: 'node:selected',
+      selector: 'node[size]:selected',
       style: {
-        'border-color': '#58a6ff',
-        'border-width': 4,
-        'border-style': 'solid',
+        'background-opacity': 1,
+        'underlay-color': '#45e5b3',
+        'underlay-opacity': 0.48,
+        'underlay-padding': 8,
+        'outline-color': '#20262b',
+        'outline-width': 2.5,
+        'outline-offset': 4,
+        'outline-style': 'solid',
       }
     },
     // v2.1: selected edge keeps its gradient — distinguish via thicker stroke
@@ -1379,9 +1644,10 @@ const cy = cytoscape({
       style: {
         'width': 3.5,
         'line-opacity': 1.0,
-        'shadow-blur': 10,
-        'shadow-color': '#58a6ff',
-        'shadow-opacity': 0.7,
+        // v2.4: `shadow-*` is not a Cytoscape 3 property; an underlay gives the glow.
+        'underlay-color': '#285a54',
+        'underlay-opacity': 0.30,
+        'underlay-padding': 4,
         'z-index': 90,
       }
     },
@@ -1390,22 +1656,25 @@ const cy = cytoscape({
       selector: '.dimmed',
       style: {
         'opacity': 0.10,
+        'underlay-opacity': 0,
         'text-opacity': 0,
       }
     },
     {
-      selector: '.highlighted',
+      selector: 'node[size].highlighted',
       style: {
         'opacity': 1.0,
-        'border-color': '#58a6ff',
         'border-width': 4,
       }
     },
     {
       selector: 'edge.highlighted',
       style: {
-        'line-color': '#58a6ff',
-        'target-arrow-color': '#58a6ff',
+        'opacity': 1.0,
+        'line-fill': 'solid',
+        'line-style': 'solid',
+        'line-color': '#657477',
+        'target-arrow-color': '#657477',
         'width': 3.5,
         'line-opacity': 1.0,
       }
@@ -1413,19 +1682,22 @@ const cy = cytoscape({
     {
       selector: '.path-edge',
       style: {
-        'line-color': '#3fb950',
-        'target-arrow-color': '#3fb950',
-        'width': 4,
+        'line-fill': 'solid',
+        'line-style': 'dashed',
+        'line-dash-pattern': [8, 5],
+        'line-dash-offset': 0,
+        'line-color': '#20262b',
+        'target-arrow-color': '#20262b',
+        'width': 5,
         'line-opacity': 1.0,
         'z-index': 999,
       }
     },
     {
-      selector: '.path-node',
+      selector: 'node[size].path-node',
       style: {
-        'border-color': '#3fb950',
+        'border-color': 'data(rim)',
         'border-width': 5,
-        'border-style': 'solid',
         'opacity': 1.0,
       }
     },
@@ -1460,6 +1732,7 @@ const LAYOUTS = {
     gravityRangeCompound: 1.5,
     gravityCompound: 1.0,
     numIter: 2500,
+    nodeDimensionsIncludeLabels: true,
     nestingFactor: 0.18,
     tilingPaddingVertical: 14,
     tilingPaddingHorizontal: 14,
@@ -1467,15 +1740,40 @@ const LAYOUTS = {
   },
   dagre: {
     name: 'dagre',
-    rankDir: 'BT',  // leaves at bottom, roots at top — leaf crates have no deps
-    nodeSep: 24,
-    rankSep: 80,
-    edgeSep: 20,
-    animate: true,
-    animationDuration: 800,
+    // v2.3: left to right. Dependents on the left, foundation crates on the
+    // right, so label-wide nodes stack vertically inside a rank.
+    rankDir: 'LR',
+    ranker: 'network-simplex',
+    nodeSep: 24,    // v2.4: was 18; the halo adds 8px a side
+    rankSep: 70,
+    edgeSep: 8,
+    fit: false,     // runLayeredLayout fits after it parks the isolated nodes
+    animate: false, // positions land in one step; no dependence on frame timing
     // dagre cannot handle compound parents; we'll temporarily un-parent
   },
 };
+
+// v2.3: the layered layout ranks on the essential edges only. Implied edges
+// add no rank constraint (a longer path already orders their endpoints), and
+// `no-rank` runtime edges would close a cycle.
+function runLayeredLayout() {
+  const ranked = cy.nodes(LEAF).filter(n => !ISOLATED_IDS.has(n.id()));
+  const eles = ranked.union(cy.edges().not('.implied, .no-rank'));
+  const layout = eles.layout(LAYOUTS.dagre);
+  layout.one('layoutstop', () => {
+    // Park edge-less nodes in a row under the graph, left aligned.
+    const bb = ranked.boundingBox({ includeLabels: false });
+    let x = bb.x1;
+    const y = bb.y2 + 70;
+    cy.nodes(LEAF).filter(n => ISOLATED_IDS.has(n.id())).forEach(n => {
+      const w = n.data('w') || 100;
+      n.position({ x: x + w / 2, y: y });
+      x += w + 28;   // clears the halo on each side
+    });
+    cy.fit(cy.elements(':visible'), 40);
+  });
+  layout.run();
+}
 
 // Track whether compound parents are currently attached. Dagre + custom radial
 // layouts can't sensibly use cytoscape compounds, so we temporarily detach
@@ -1487,8 +1785,8 @@ NODES.forEach(n => childParentMap.set(n.id, `dom-${n.domain}`));
 
 function detachCompounds() {
   if (!compoundsAttached) return;
-  cy.nodes(':child').forEach(n => n.move({ parent: null }));
-  cy.nodes(':parent').style('display', 'none');
+  cy.nodes(LEAF).forEach(n => n.move({ parent: null }));
+  cy.nodes(COMPOUND).style('display', 'none');
   compoundsAttached = false;
 }
 function attachCompounds() {
@@ -1497,7 +1795,7 @@ function attachCompounds() {
     const n = cy.getElementById(id);
     if (n.length) n.move({ parent: p });
   });
-  cy.nodes(':parent').style('display', 'element');
+  cy.nodes(COMPOUND).style('display', 'element');
   compoundsAttached = true;
 }
 
@@ -1510,7 +1808,7 @@ function runLayout(name) {
   }
   if (name === 'dagre') {
     detachCompounds();
-    cy.layout(LAYOUTS.dagre).run();
+    runLayeredLayout();
     return;
   }
   attachCompounds();
@@ -1522,12 +1820,17 @@ function runDormancyStratification() {
   const center = { x: 0, y: 0 };
   const bands = { active: 380, partial: 780, dormant: 1180 };
   const groups = { active: [], partial: [], dormant: [] };
-  cy.nodes(':child').forEach(n => {
+  cy.nodes(LEAF).forEach(n => {
     const s = n.data('status') || 'active';
     if (!groups[s]) groups.active.push(n); else groups[s].push(n);
   });
+  // v2.3: nodes are label-wide, so a ring's circumference is the widest label
+  // on it times its population, and each ring clears the one inside it.
+  let prevR = 0;
   Object.entries(groups).forEach(([k, arr]) => {
-    const r = bands[k];
+    const widest = arr.reduce((mx, n) => Math.max(mx, n.data('w') || 100), 0);
+    const r = Math.max(bands[k], prevR + 320, (arr.length * (widest + 14)) / (2 * Math.PI));
+    prevR = r;
     const N = arr.length || 1;
     arr.forEach((n, i) => {
       const theta = (i / N) * 2 * Math.PI - Math.PI / 2;
@@ -1543,7 +1846,7 @@ document.getElementById('layout-select').addEventListener('change', (e) => {
 
 // --------------------------------------------------------------------
 // Bulletproof initial layout
-//   1) Pick the best available layout: fcose → cose → circle (fallback chain).
+//   1) Pick the best available layout: dagre → fcose → cose → circle (fallback chain).
 //   2) Wait for the cy container to have non-zero dimensions before laying
 //      out, otherwise fcose can produce a degenerate stacked result.
 //   3) Re-run cy.resize() + cy.fit() on every window resize so a toolbar
@@ -1552,6 +1855,12 @@ document.getElementById('layout-select').addEventListener('change', (e) => {
 function pickInitialLayout() {
   // Cytoscape's `cytoscape(opt)` returns the registered layout impl when called
   // with a name, or undefined otherwise. We probe and fall through.
+  // v2.3: the layered layout is the default; fcose is the first fallback.
+  try {
+    if (typeof cytoscape === 'function' && cytoscape('layout', 'dagre')) {
+      return 'dagre';
+    }
+  } catch (_) {}
   try {
     if (typeof cytoscape === 'function' && cytoscape('layout', 'fcose')) {
       return 'fcose';
@@ -1575,14 +1884,20 @@ function waitForContainerSize(el, cb, attempts = 30) {
   requestAnimationFrame(() => waitForContainerSize(el, cb, attempts - 1));
 }
 
-let currentLayoutName = 'fcose';
+const DEFAULT_LAYOUT = 'dagre';
+let currentLayoutName = DEFAULT_LAYOUT;
 
 function runInitialLayout() {
   const chosen = pickInitialLayout();
   currentLayoutName = chosen;
   // Reflect choice in the dropdown if it differs (e.g. fallback to cose)
   const sel = document.getElementById('layout-select');
-  if (chosen === 'fcose') sel.value = 'fcose';
+  if (chosen === 'dagre' || chosen === 'fcose') sel.value = chosen;
+  if (chosen === 'dagre') {
+    cy.resize();
+    runLayout('dagre');
+    return;
+  }
   if (chosen === 'cose' || chosen === 'circle') {
     // Add ad-hoc option entry for transparency.
     const opt = document.createElement('option');
@@ -1827,7 +2142,7 @@ function renderNodePanel(n) {
       <h3>Crate</h3>
       <h2>${escapeHtml(n.label)}</h2>
       <div class="meta-grid">
-        <span class="key">Domain</span><span class="val"><span class="badge-dot" style="background:${domainColor[n.domain]||'#888'}"></span>${escapeHtml(n.domainLabel)}</span>
+        <span class="key">Domain</span><span class="val"><span class="badge-dot" style="background:${domainInk(n.domain)}"></span>${escapeHtml(n.domainLabel)}</span>
         <span class="key">Status</span><span class="val"><span class="status-pill ${status}">${statusLabel}</span></span>
         <span class="key">LoC band</span><span class="val">${escapeHtml(n.locBand)}${n.locApprox ? ' (~'+n.locApprox.toLocaleString()+')' : ''}</span>
       </div>
@@ -1974,6 +2289,7 @@ cy.on('mouseover', 'edge', (evt) => {
     <div class="tip-title">${escapeHtml(d.source)} → ${escapeHtml(d.target)}</div>
     <div class="tip-row">Risk: <span class="v">${escapeHtml(d.risk)}</span></div>
     <div class="tip-row">Types: <span class="v">${typesLine}</span></div>
+    ${d.implied ? '<div class="tip-row"><span class="v">implied: a longer path already connects these</span></div>' : ''}
     ${anomalyLine}
   `;
   tooltip.classList.add('visible');
@@ -2006,9 +2322,9 @@ function applyFilters() {
   // proper subset. Empty set or full set both mean "no filter applied."
   const domainFilterActive = isDomainFilterActive();
   let visibleCount = 0;
-  const totalCount = cy.nodes(':child').length;
+  const totalCount = cy.nodes(LEAF).length;
   const visiblePerDomain = {};
-  cy.nodes(':child').forEach(n => {
+  cy.nodes(LEAF).forEach(n => {
     const d = n.data();
     let visible = true;
     if (q && !d.label.toLowerCase().includes(q)) visible = false;
@@ -2032,7 +2348,7 @@ function applyFilters() {
   });
   // Hide compound parents whose children are all hidden — otherwise the user
   // sees empty colored bounding boxes which is confusing.
-  cy.nodes(':parent').forEach(p => {
+  cy.nodes(COMPOUND).forEach(p => {
     const domId = p.data('domain');
     if (!visiblePerDomain[domId]) p.addClass('hidden');
     else p.removeClass('hidden');
@@ -2209,6 +2525,7 @@ const state = {
   blastEnabled: true,        // on by default once a node is selected
   focusModeActive: false,    // off by default
   currentTour: null,         // { tourId, stepIndex }
+  showAllEdges: false,       // v2.3: false = implied edges hidden (default)
 };
 
 // Look up the full node record from NODES by id (we passed reconstructed
@@ -2221,24 +2538,311 @@ const NODE_BY_ID = new Map(NODES.map(n => [n.id, n]));
 // in v1. Done programmatically so we don't touch the cy() init block.
 // ----------------------------------------------------------------
 cy.style()
-  .selector('.blast-direct')
-    .style({ 'border-color': '#f0883e', 'border-width': 5, 'opacity': 1.0,
-             'background-blacken': -0.15 })
-  .selector('.blast-h2')
-    .style({ 'border-color': '#f0883e', 'border-width': 3, 'opacity': 0.75 })
-  .selector('.blast-h3')
-    .style({ 'border-color': '#f0883e', 'border-width': 2, 'opacity': 0.55 })
+  .selector('node[size].blast-direct:unselected')
+    .style({ 'outline-color': '#843b10', 'outline-width': 3, 'outline-offset': 1,
+             'opacity': 1.0, 'background-blacken': -0.15 })
+  .selector('node[size].blast-h2:unselected')
+    .style({ 'outline-color': '#843b10', 'outline-width': 2, 'outline-offset': 1,
+             'opacity': 0.85 })
+  .selector('node[size].blast-h3:unselected')
+    .style({ 'outline-color': '#843b10', 'outline-width': 1.5, 'outline-offset': 1,
+             'opacity': 0.74 })
   .selector('.blast-faded')
-    .style({ 'opacity': 0.20, 'text-opacity': 0.2 })
+    .style({ 'opacity': 0.20, 'text-opacity': 0.2, 'underlay-opacity': 0 })
   // v2.1: blast-edge thickens but retains the source→target domain gradient
   // (preserves the cross-domain visual signal — see spec note option (b)).
   .selector('edge.blast-edge')
     .style({ 'opacity': 0.95, 'width': 3.6, 'z-index': 50 })
   .selector('.focus-hidden')
-    .style({ 'opacity': 0.05, 'text-opacity': 0 })
-  .selector('.tour-highlight')
-    .style({ 'border-color': '#D55E00', 'border-width': 5 })
+    .style({ 'opacity': 0.05, 'text-opacity': 0, 'underlay-opacity': 0 })
+  .selector('node[size].tour-highlight:unselected')
+    .style({ 'outline-color': '#343b42', 'outline-width': 3,
+             'outline-offset': 3, 'outline-style': 'dotted' })
+  // v2.3: hover emphasis.
+  .selector('.hover-dim')
+    .style({ 'opacity': 0.22, 'underlay-opacity': 0 })
+  .selector('edge.hover-edge')
+    .style({ 'line-opacity': 1.0, 'width': 2.6, 'z-index': 60 })
+  // v2.3: implied edges are hidden unless something asks for them. Order
+  // matters: hide, then the reveal classes, then `.hidden` again so a filter
+  // still wins over a reveal.
+  .selector('edge.implied')
+    .style({ 'display': 'none', 'line-style': 'dashed' })
+  // `blast-edge` is deliberately not a reveal class: the blast radius spans up
+  // to three hops, and revealing every implied edge inside it redraws most of
+  // the hairball on each selection. The selected node's own edges all show.
+  .selector('edge.implied.reveal, edge.implied.sel-reveal, edge.implied.hover-edge, ' +
+            'edge.implied.highlighted, edge.implied.path-edge')
+    .style({ 'display': 'element' })
+  .selector('.hidden')
+    .style({ 'display': 'none' })
   .update();
+
+// ----------------------------------------------------------------
+// v2.3: essential / all edges
+// ----------------------------------------------------------------
+function updateEdgeCounter() {
+  const total = cy.edges().length;
+  const implied = cy.edges('.implied').length;
+  const el = document.getElementById('edge-counter');
+  el.textContent = state.showAllEdges
+    ? `${total} of ${total} edges · ${implied} implied shown dashed`
+    : `${total - implied} of ${total} edges · ${implied} implied hidden`;
+}
+function setShowAllEdges(on) {
+  state.showAllEdges = !!on;
+  cy.edges('.implied').toggleClass('reveal', state.showAllEdges);
+  const btn = document.getElementById('edges-toggle');
+  btn.textContent = `Edges: ${state.showAllEdges ? 'all' : 'essential'}`;
+  btn.setAttribute('aria-pressed', state.showAllEdges ? 'true' : 'false');
+  updateEdgeCounter();
+}
+document.getElementById('edges-toggle').addEventListener('click', () => {
+  setShowAllEdges(!state.showAllEdges);
+  updateHash();
+});
+// Selecting a node shows every edge it has, implied ones included.
+function applySelectionReveal() {
+  cy.edges('.sel-reveal').removeClass('sel-reveal');
+  if (!state.selectedNodeId) return;
+  cy.getElementById(state.selectedNodeId).connectedEdges('.implied').addClass('sel-reveal');
+}
+// Hover: light up the node's edges and neighbours. The rest dims only in free
+// exploration, so a story, tour, path or selection keeps its own emphasis.
+function clearHover() {
+  cy.elements('.hover-dim, .hover-edge').removeClass('hover-dim hover-edge');
+}
+cy.on('mouseover', 'node', (evt) => {
+  const n = evt.target;
+  if (n.isParent()) return;
+  clearHover();
+  n.connectedEdges().addClass('hover-edge');
+  const curated = state.selectedNodeId || state.currentTour ||
+                  storySelect.value !== 'free' ||
+                  document.getElementById('banner').classList.contains('active');
+  if (curated) return;
+  const keep = n.closedNeighborhood();
+  cy.elements().not(keep).not(COMPOUND).addClass('hover-dim');
+});
+cy.on('mouseout', 'node', clearHover);
+// ----------------------------------------------------------------
+// Runtime wiring uses long dashes that drift toward the target unless
+// reduced motion is requested. A graphite trace uses shorter, stationary
+// dashes even under reduced motion so it cannot look like a neighbor edge.
+// ----------------------------------------------------------------
+const REDUCED_MOTION = !!(window.matchMedia &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+if (!REDUCED_MOTION) {
+  let flowOffset = 0;
+  setInterval(() => {
+    if (document.hidden) return;
+    flowOffset = (flowOffset - 0.6) % 27;   // 27 = one dash + one gap; a slow drift
+    cy.edges('.runtime').forEach(edge => {
+      edge.style('line-dash-offset', edge.hasClass('path-edge') ? 0 : flowOffset);
+    });
+  }, 80);
+}
+// ----------------------------------------------------------------
+// v2.4: generated background ("tidewire"). Drawn in code on a canvas that
+// sits under the graph, so there is no image asset to license or ship.
+//   - Currents: a hundred or so particles drift on a slowly changing flow
+//     field and leave faint teal-graphite streaks (`COLORS`). The
+//     pointer stirs them gently.
+//   - Traces: muted pulses run along the 200px grid lines like dim signals.
+//   - Ripples: now and then a thin ring spreads out and fades.
+// It is decoration only, and it is tuned to stay out of the way: slow, dim,
+// nothing sudden. It also steps back when you start reading. With the
+// pointer over the graph it fades to about half, and while a node is
+// hovered or selected it fades to a trace (the `bg-quiet` / `bg-hush`
+// classes below). The FX button turns it off altogether and remembers that.
+// It never touches the graph canvas, it pauses while the tab is hidden, and
+// under prefers-reduced-motion it draws one still frame and stops.
+// ----------------------------------------------------------------
+(function tidewireBackground() {
+  const host = document.getElementById('cy');
+  if (!host || !window.HTMLCanvasElement) return;
+  const cv = document.createElement('canvas');
+  cv.id = 'tidewire-bg';
+  cv.setAttribute('aria-hidden', 'true');
+  cv.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;';
+  let fxOn = true;
+  host.insertBefore(cv, host.firstChild);
+  const ctx = cv.getContext('2d');
+  if (!ctx) return;
+
+  const COLORS = ['37,144,117', '42,102,104', '67,94,90'];
+  const GRID = 200;
+  let W = 0, H = 0, scale = 1;
+  let particles = [], pulses = [], ripples = [];
+  const pointer = { x: -9999, y: -9999, active: false };
+
+  // Small deterministic generator, so the still frame is the same every load.
+  let seed = 0x7ade;
+  function rnd() {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  }
+  function spawn(p) {
+    p.x = rnd() * W; p.y = rnd() * H;
+    p.life = 160 + rnd() * 420;
+    p.speed = 0.25 + rnd() * 0.6;      // slow drift, not a rush
+    p.c = COLORS[(rnd() * COLORS.length) | 0];
+    p.w = rnd() < 0.12 ? 1.8 : 1;
+    return p;
+  }
+  function resize() {
+    const r = host.getBoundingClientRect();
+    if (r.width < 10 || r.height < 10) return;
+    scale = Math.min(window.devicePixelRatio || 1, 1.5);
+    W = Math.round(r.width); H = Math.round(r.height);
+    cv.width = Math.round(W * scale); cv.height = Math.round(H * scale);
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    // Density follows area, capped so a 4K window stays cheap.
+    const want = Math.max(50, Math.min(190, Math.round((W * H) / 6000)));
+    particles = [];
+    for (let i = 0; i < want; i++) particles.push(spawn({}));
+    pulses = []; ripples = [];
+  }
+  // Flow angle at a point: three drifting sine waves. Cheap, smooth, and it
+  // curls enough to read as water without needing a noise library.
+  function angleAt(x, y, t) {
+    return Math.sin(x * 0.0031 + t * 0.21) * 1.7 +
+           Math.cos(y * 0.0043 - t * 0.17) * 1.5 +
+           Math.sin((x + y) * 0.0019 + t * 0.11) * 1.2;
+  }
+  function step(t, fade) {
+    // Fade what is already drawn, keeping the canvas see-through so the CSS
+    // grid and gradient under it stay visible.
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0,0,0,' + fade + ')';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const a = angleAt(p.x, p.y, t);
+      let vx = Math.cos(a) * p.speed, vy = Math.sin(a) * p.speed;
+      if (pointer.active) {
+        const dx = p.x - pointer.x, dy = p.y - pointer.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < 170 * 170 && d2 > 1) {
+          const d = Math.sqrt(d2), k = (1 - d / 170) * 1.1;
+          vx += (-dy / d) * k + (dx / d) * k * 0.25;   // swirl, plus a little push
+          vy += (dx / d) * k + (dy / d) * k * 0.25;
+        }
+      }
+      const nx = p.x + vx, ny = p.y + vy;
+      const alpha = Math.min(1, p.life / 80) * 0.20;
+      ctx.strokeStyle = 'rgba(' + p.c + ',' + alpha.toFixed(3) + ')';
+      ctx.lineWidth = p.w;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(nx, ny); ctx.stroke();
+      p.x = nx; p.y = ny; p.life -= 1;
+      if (p.life <= 0 || nx < -20 || ny < -20 || nx > W + 20 || ny > H + 20) spawn(p);
+    }
+
+    // Circuit traces along the major grid lines.
+    if (pulses.length < 2 && rnd() < 0.008) {
+      const horizontal = rnd() < 0.5;
+      const lines = Math.max(1, Math.floor((horizontal ? H : W) / GRID));
+      const dir = rnd() < 0.5 ? 1 : -1;
+      pulses.push({
+        h: horizontal,
+        line: (1 + ((rnd() * lines) | 0)) * GRID,
+        pos: dir > 0 ? -80 : (horizontal ? W : H) + 80,
+        v: dir * (2.5 + rnd() * 2.5),
+        c: COLORS[(rnd() * COLORS.length) | 0],
+      });
+    }
+    for (let i = pulses.length - 1; i >= 0; i--) {
+      const q = pulses[i];
+      // Only a short head is drawn; the canvas fade supplies the tail. A long
+      // bright segment stacked frame over frame into a solid line.
+      const len = 16;
+      const a = q.pos, b = q.pos - Math.sign(q.v) * len;
+      const g = q.h ? ctx.createLinearGradient(a, 0, b, 0) : ctx.createLinearGradient(0, a, 0, b);
+      g.addColorStop(0, 'rgba(' + q.c + ',0.22)');
+      g.addColorStop(1, 'rgba(' + q.c + ',0)');
+      ctx.strokeStyle = g; ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      if (q.h) { ctx.moveTo(a, q.line + 0.5); ctx.lineTo(b, q.line + 0.5); }
+      else     { ctx.moveTo(q.line + 0.5, a); ctx.lineTo(q.line + 0.5, b); }
+      ctx.stroke();
+      q.pos += q.v;
+      if (q.pos < -160 || q.pos > (q.h ? W : H) + 160) pulses.splice(i, 1);
+    }
+
+    // Ripples.
+    if (ripples.length < 1 && rnd() < 0.003) {
+      ripples.push({ x: rnd() * W, y: rnd() * H, r: 4, max: 120 + rnd() * 160 });
+    }
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i];
+      const k = 1 - r.r / r.max;
+      ctx.strokeStyle = 'rgba(37,144,117,' + (k * 0.10).toFixed(3) + ')';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+      // Step wider than the stroke so the rings stay separate, like sonar,
+      // and do not stack into a filled disc.
+      r.r += 5;
+      if (r.r >= r.max) ripples.splice(i, 1);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  resize();
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(host);
+  else window.addEventListener('resize', resize);
+
+  // Step back while the user is reading the graph.
+  host.addEventListener('pointerenter', () => host.classList.add('bg-quiet'));
+  host.addEventListener('pointerleave', () => host.classList.remove('bg-quiet'));
+  function syncHush() {
+    const busy = !!state.selectedNodeId || cy.elements('.hover-edge').length > 0 ||
+                 document.getElementById('banner').classList.contains('active');
+    host.classList.toggle('bg-hush', busy);
+  }
+  cy.on('mouseover mouseout tap', () => setTimeout(syncHush, 0));
+
+  // FX switch controls the moving canvas, not the static backlights.
+  const fxBtn = document.getElementById('fx-toggle');
+  function setFx(on) {
+    fxOn = !!on;
+    document.body.classList.toggle('fx-off', !fxOn);
+    if (fxBtn) {
+      fxBtn.textContent = 'FX: ' + (fxOn ? 'on' : 'off');
+      fxBtn.setAttribute('aria-pressed', fxOn ? 'true' : 'false');
+    }
+    try { localStorage.setItem('aw-map-fx', fxOn ? '1' : '0'); } catch (_) {}
+  }
+  let savedFx = null;
+  try { savedFx = localStorage.getItem('aw-map-fx'); } catch (_) {}
+  setFx(savedFx !== '0');
+  if (fxBtn) fxBtn.addEventListener('click', () => setFx(!fxOn));
+
+  const still = !!(window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (still) {
+    // One composed frame: run the field forward with a very light fade.
+    for (let i = 0; i < 160; i++) step(i * 0.033, 0.012);
+    return;
+  }
+  host.addEventListener('pointermove', (e) => {
+    const r = host.getBoundingClientRect();
+    pointer.x = e.clientX - r.left; pointer.y = e.clientY - r.top; pointer.active = true;
+  });
+  host.addEventListener('pointerleave', () => { pointer.active = false; });
+  let last = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (document.hidden || now - last < 50) return;   // about 20 fps is plenty at this pace
+    last = now;
+    if (W > 0 && fxOn) step(now / 1000, 0.035);
+  }
+  requestAnimationFrame(frame);
+})();
+updateEdgeCounter();
+applyFilters();   // fills the node counter from the data instead of static text
 
 // ----------------------------------------------------------------
 // Blast-radius computation (BFS over INCOMING edges — i.e. "who
@@ -2276,7 +2880,7 @@ function applyBlastHighlight() {
   const r = computeBlastRadius(state.selectedNodeId);
   // Fade the whole graph except: selected node, direct, hop2, hop3
   const keep = new Set([state.selectedNodeId, ...r.direct, ...r.hop2, ...r.hop3]);
-  cy.nodes(':child').forEach(n => {
+  cy.nodes(LEAF).forEach(n => {
     if (!keep.has(n.id())) n.addClass('blast-faded');
   });
   r.direct.forEach(id => cy.getElementById(id).addClass('blast-direct'));
@@ -2301,7 +2905,7 @@ function applyFocusMode() {
   const neighbors = new Set([state.selectedNodeId]);
   (outgoing.get(state.selectedNodeId) || []).forEach(e => neighbors.add(e.target));
   (incoming.get(state.selectedNodeId) || []).forEach(e => neighbors.add(e.source));
-  cy.nodes(':child').forEach(n => {
+  cy.nodes(LEAF).forEach(n => {
     if (!neighbors.has(n.id())) n.addClass('focus-hidden');
   });
   cy.edges().forEach(e => {
@@ -2323,6 +2927,7 @@ function setSelectedNode(id, opts = {}) {
   if (!id) {
     state.selectedNodeId = null;
     clearHighlights();
+    applySelectionReveal();
     cy.$(':selected').unselect();
     panelContent.innerHTML = '<div class="empty-panel">Click any node or edge to inspect.</div>';
     if (!skipHashUpdate) updateHash();
@@ -2337,6 +2942,8 @@ function setSelectedNode(id, opts = {}) {
   if (cyNode.length) cyNode.select();
   renderNodePanel(node);
   // Apply visual modes
+  clearHover();
+  applySelectionReveal();
   applyBlastHighlight();
   applyFocusMode();
   if (!skipHashUpdate) updateHash();
@@ -2404,7 +3011,8 @@ function encodeState() {
   }
   if (searchInput.value) parts.push('q=' + encodeURIComponent(searchInput.value));
   const lay = document.getElementById('layout-select').value;
-  if (lay && lay !== 'fcose') parts.push('layout=' + encodeURIComponent(lay));
+  if (lay && lay !== DEFAULT_LAYOUT) parts.push('layout=' + encodeURIComponent(lay));
+  if (state.showAllEdges) parts.push('edges=all');
   if (sidePanel.classList.contains('collapsed')) parts.push('panel=closed');
   if (state.focusModeActive) parts.push('focus=1');
   if (!state.blastEnabled) parts.push('blast=0');
@@ -2477,6 +3085,8 @@ function restoreFromHash() {
       runLayout(s.layout);
     }
   }
+  // v2.3: edge set. Absent means essential, which is the default.
+  setShowAllEdges(s.edges === 'all');
   // Apply filters now that domain/dormancy/q are set
   applyFilters();
   // Story (override layout dimming)
@@ -2575,7 +3185,7 @@ const TOURS = [
         title: 'The eight domains',
         preset: 'free',
         customViz: (cy) => { /* free exploration, no filtering */ },
-        narration: `The workspace is organised into <strong>eight domain groupings</strong> visible as labelled compound boxes: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. Each is colour-coded with a Wong colourblind-safe palette. Node size encodes LoC band; dashed borders mark dormant crates; <code>⚠</code> overlays mark silent-failure loci; <code>📄</code> overlays mark traced subsystems. Spend a moment scanning the layout — the relative position of clusters and the density of inter-cluster edges already tells you a lot.`,
+        narration: `The workspace is organised into <strong>eight domain groupings</strong> shown as labelled boxes in the Domain clusters layout: Core, AI, Rendering, Physics &amp; World, Gameplay, Networking, Tools, and the collapsed Examples bundle. The two-letter tag on each crate matches its toolbar chip, independently of color. Node height shows the size band. Dashed borders mark dormant crates, dotted borders mark partial crates, and <code>!</code> marks a silent-failure locus. Spend a moment scanning the layout — the relative position of clusters and the density of inter-cluster edges already tells you a lot.`,
       },
       {
         title: 'The foundation — Core domain',
@@ -2640,7 +3250,7 @@ function filterToDomains(domainIds) {
   applyFilters();
   // Fit to visible
   setTimeout(() => {
-    const vis = cy.nodes(':child').filter(n => !n.hasClass('hidden'));
+    const vis = cy.nodes(LEAF).filter(n => !n.hasClass('hidden'));
     if (vis.length) cy.fit(vis, 80);
   }, 100);
 }
@@ -2773,6 +3383,9 @@ v1ResetBtn.addEventListener('click', () => {
   state.selectedNodeId = null;
   state.focusModeActive = false;
   state.blastEnabled = true;
+  clearHover();
+  applySelectionReveal();
+  setShowAllEdges(false);
   // Reset toggle button labels
   const fb = document.getElementById('focus-mode');
   fb.textContent = 'Focus: off';
@@ -2797,7 +3410,7 @@ function restoreOnLoad() {
 let restoreAttempts = 0;
 function tryRestore() {
   if (restoreAttempts++ > 20) { restoreOnLoad(); return; }
-  if (cy.nodes(':child').length && currentLayoutName) {
+  if (cy.nodes(LEAF).length && currentLayoutName) {
     restoreOnLoad();
   } else {
     setTimeout(tryRestore, 100);

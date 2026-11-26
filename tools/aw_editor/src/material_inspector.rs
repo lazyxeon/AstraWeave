@@ -1465,7 +1465,7 @@ mod tests {
 
     #[test]
     fn test_display_mode_name() {
-        assert_eq!(DisplayMode::Combined.name(), "Combined");
+        assert_eq!(DisplayMode::Split.name(), "Split View");
         assert_eq!(DisplayMode::Albedo.name(), "Albedo");
         assert_eq!(DisplayMode::Normal.name(), "Normal");
         assert_eq!(DisplayMode::Orm.name(), "ORM");
@@ -1480,15 +1480,15 @@ mod tests {
 
     #[test]
     fn test_display_mode_shortcut() {
-        assert_eq!(DisplayMode::Combined.shortcut(), "C");
-        assert_eq!(DisplayMode::Albedo.shortcut(), "A");
-        assert_eq!(DisplayMode::Normal.shortcut(), "N");
-        assert_eq!(DisplayMode::Orm.shortcut(), "O");
+        assert_eq!(DisplayMode::Split.shortcut(), "4");
+        assert_eq!(DisplayMode::Albedo.shortcut(), "1");
+        assert_eq!(DisplayMode::Normal.shortcut(), "2");
+        assert_eq!(DisplayMode::Orm.shortcut(), "3");
     }
 
     #[test]
     fn test_display_mode_is_single_texture() {
-        assert!(!DisplayMode::Combined.is_single_texture());
+        assert!(!DisplayMode::Split.is_single_texture());
         assert!(DisplayMode::Albedo.is_single_texture());
         assert!(DisplayMode::Normal.is_single_texture());
         assert!(DisplayMode::Orm.is_single_texture());
@@ -1496,8 +1496,8 @@ mod tests {
 
     #[test]
     fn test_display_mode_display() {
-        assert_eq!(format!("{}", DisplayMode::Combined), "Combined");
-        assert_eq!(format!("{}", DisplayMode::Albedo), "Albedo");
+        assert_eq!(format!("{}", DisplayMode::Split), "⊞ Split View");
+        assert_eq!(format!("{}", DisplayMode::Albedo), "[Art] Albedo");
     }
 
     // ====================================================================
@@ -1512,7 +1512,7 @@ mod tests {
 
     #[test]
     fn test_channel_filter_name() {
-        assert_eq!(ChannelFilter::RGBA.name(), "RGBA");
+        assert_eq!(ChannelFilter::All.name(), "RGB");
         assert_eq!(ChannelFilter::Red.name(), "Red");
         assert_eq!(ChannelFilter::Green.name(), "Green");
         assert_eq!(ChannelFilter::Blue.name(), "Blue");
@@ -1528,16 +1528,16 @@ mod tests {
 
     #[test]
     fn test_channel_filter_shortcut() {
-        assert_eq!(ChannelFilter::RGBA.shortcut(), "0");
-        assert_eq!(ChannelFilter::Red.shortcut(), "1");
-        assert_eq!(ChannelFilter::Green.shortcut(), "2");
-        assert_eq!(ChannelFilter::Blue.shortcut(), "3");
-        assert_eq!(ChannelFilter::Alpha.shortcut(), "4");
+        assert_eq!(ChannelFilter::All.shortcut(), "0");
+        assert_eq!(ChannelFilter::Red.shortcut(), "R");
+        assert_eq!(ChannelFilter::Green.shortcut(), "G");
+        assert_eq!(ChannelFilter::Blue.shortcut(), "B");
+        assert_eq!(ChannelFilter::Alpha.shortcut(), "A");
     }
 
     #[test]
     fn test_channel_filter_is_single_channel() {
-        assert!(!ChannelFilter::RGBA.is_single_channel());
+        assert!(!ChannelFilter::All.is_single_channel());
         assert!(ChannelFilter::Red.is_single_channel());
         assert!(ChannelFilter::Green.is_single_channel());
         assert!(ChannelFilter::Blue.is_single_channel());
@@ -1546,8 +1546,8 @@ mod tests {
 
     #[test]
     fn test_channel_filter_display() {
-        assert_eq!(format!("{}", ChannelFilter::RGBA), "RGBA");
-        assert_eq!(format!("{}", ChannelFilter::Red), "Red");
+        assert_eq!(format!("{}", ChannelFilter::All), "🔳 RGB");
+        assert_eq!(format!("{}", ChannelFilter::Red), "[R] Red");
     }
 
     // ====================================================================
@@ -1562,7 +1562,7 @@ mod tests {
 
     #[test]
     fn test_color_space_name() {
-        assert_eq!(ColorSpace::SRGB.name(), "sRGB");
+        assert_eq!(ColorSpace::Srgb.name(), "sRGB");
         assert_eq!(ColorSpace::Linear.name(), "Linear");
     }
 
@@ -1575,20 +1575,20 @@ mod tests {
 
     #[test]
     fn test_color_space_description() {
-        assert!(ColorSpace::SRGB.description().contains("gamma"));
-        assert!(ColorSpace::Linear.description().contains("physically"));
+        assert!(ColorSpace::Srgb.description().contains("Gamma"));
+        assert!(ColorSpace::Linear.description().contains("linear"));
     }
 
     #[test]
     fn test_color_space_is_linear() {
-        assert!(!ColorSpace::SRGB.is_linear());
+        assert!(!ColorSpace::Srgb.is_linear());
         assert!(ColorSpace::Linear.is_linear());
     }
 
     #[test]
     fn test_color_space_display() {
-        assert_eq!(format!("{}", ColorSpace::SRGB), "sRGB");
-        assert_eq!(format!("{}", ColorSpace::Linear), "Linear");
+        assert_eq!(format!("{}", ColorSpace::Srgb), "[Mon] sRGB");
+        assert_eq!(format!("{}", ColorSpace::Linear), "[Chart] Linear");
     }
 
     // ====================================================================
@@ -1599,8 +1599,8 @@ mod tests {
     fn test_material_inspector_creation() {
         let inspector = MaterialInspector::new();
         assert_eq!(inspector.zoom_level, 1.0);
-        assert!(matches!(inspector.display_mode, DisplayMode::Combined));
-        assert!(matches!(inspector.channel_filter, ChannelFilter::RGBA));
+        assert!(matches!(inspector.display_mode, DisplayMode::Albedo));
+        assert!(matches!(inspector.channel_filter, ChannelFilter::All));
     }
 
     #[test]

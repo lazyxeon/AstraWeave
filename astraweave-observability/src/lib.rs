@@ -6,6 +6,8 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use astraweave_ecs::{App, Plugin};
 
+mod utc_stamp;
+
 pub mod llm_telemetry;
 pub use llm_telemetry::*;
 

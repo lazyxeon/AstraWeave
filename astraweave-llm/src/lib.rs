@@ -140,6 +140,7 @@ pub async fn read_capped_text_limited(response: reqwest::Response, limit: usize)
 }
 
 /// How long the next body read may block, and which deadline a timeout is.
+#[cfg(feature = "ollama")]
 struct ReadWait {
     wait: std::time::Duration,
     on_timeout: &'static str,
@@ -1148,6 +1149,8 @@ use astraweave_core::{ActionStep, PlanIntent, ToolRegistry, WorldSnapshot};
 use tracing::{debug, info};
 
 // --- Core modules (always available) ---
+mod utc_stamp;
+
 pub mod ab_testing;
 pub mod backpressure;
 pub mod batch_executor;

@@ -2,7 +2,6 @@ use astraweave_memory::{
     Memory, MemoryContent, MemoryManager, MemoryMetadata, MemorySource, MemoryType,
     SpatialTemporalContext,
 };
-use chrono::Utc;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::hint::black_box;
 
@@ -25,8 +24,8 @@ fn create_test_memory(id: &str) -> Memory {
             },
         },
         metadata: MemoryMetadata {
-            created_at: Utc::now(),
-            last_accessed: Utc::now(),
+            created_at: time::OffsetDateTime::now_utc(),
+            last_accessed: time::OffsetDateTime::now_utc(),
             access_count: 0,
             importance: 0.5,
             confidence: 0.8,

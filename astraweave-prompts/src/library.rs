@@ -133,7 +133,7 @@ impl LibraryMetadata {
             version: version.into(),
             description: description.into(),
             author: author.into(),
-            created_at: chrono::Utc::now().to_rfc3339(),
+            created_at: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
         }
     }
 
@@ -143,7 +143,7 @@ impl LibraryMetadata {
             version: "1.0.0".to_string(),
             description: "AstraWeave Template Library".to_string(),
             author: "AstraWeave".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
+            created_at: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
         }
     }
 
@@ -324,7 +324,7 @@ impl TemplateLibrary {
                 version: "1.0.0".to_string(),
                 description: "Loaded from directory".to_string(),
                 author: "AstraWeave".to_string(),
-                created_at: chrono::Utc::now().to_rfc3339(),
+                created_at: crate::utc_stamp::format_utc_rfc3339(time::OffsetDateTime::now_utc()),
             },
         );
 

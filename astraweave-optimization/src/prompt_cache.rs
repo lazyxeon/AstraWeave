@@ -1,5 +1,4 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
@@ -67,10 +66,13 @@ pub struct CachedResponse {
     pub response: String,
     pub original_prompt: String,
     pub prompt_hash: u64,
-    pub created_at: DateTime<Utc>,
-    pub last_accessed: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub created_at: time::OffsetDateTime,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_accessed: time::OffsetDateTime,
     pub access_count: u32,
-    pub ttl_expires_at: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub ttl_expires_at: time::OffsetDateTime,
     pub response_quality: f32,
     pub compression_ratio: Option<f32>,
     pub tags: Vec<String>,
@@ -108,7 +110,8 @@ pub struct CacheStats {
     pub average_response_time_ms: f32,
     pub memory_usage_mb: f32,
     pub compression_savings_mb: f32,
-    pub last_updated: DateTime<Utc>,
+    #[serde(with = "crate::utc_stamp::serde_rfc3339")]
+    pub last_updated: time::OffsetDateTime,
 }
 
 impl Default for CacheStats {
@@ -123,7 +126,7 @@ impl Default for CacheStats {
             average_response_time_ms: 0.0,
             memory_usage_mb: 0.0,
             compression_savings_mb: 0.0,
-            last_updated: Utc::now(),
+            last_updated: time::OffsetDateTime::now_utc(),
         }
     }
 }
@@ -237,7 +240,7 @@ impl PromptCache {
         }
 
         let prompt_hash = self.calculate_hash(prompt);
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
 
         let cached_response = CachedResponse {
             id: Uuid::new_v4().to_string(),
@@ -247,8 +250,7 @@ impl PromptCache {
             created_at: now,
             last_accessed: now,
             access_count: 1,
-            ttl_expires_at: now
-                + chrono::Duration::from_std(self.config.entry_ttl).unwrap_or_default(),
+            ttl_expires_at: crate::utc_stamp::instant_after(now, self.config.entry_ttl),
             response_quality: quality,
             compression_ratio: None, // Would be calculated if compression is enabled
             tags: Vec::new(),
@@ -320,7 +322,7 @@ impl PromptCache {
                 (stats.cache_hits + stats.semantic_hits) as f32 / stats.total_requests as f32;
         }
 
-        stats.last_updated = Utc::now();
+        stats.last_updated = time::OffsetDateTime::now_utc();
         stats.clone()
     }
 
@@ -388,7 +390,11 @@ impl PromptCache {
 
     /// Check if a cached response is expired
     fn is_expired(&self, cached: &CachedResponse) -> bool {
-        Utc::now() > cached.ttl_expires_at
+        self.expired_at(cached, time::OffsetDateTime::now_utc())
+    }
+
+    fn expired_at(&self, cached: &CachedResponse, now: time::OffsetDateTime) -> bool {
+        now > cached.ttl_expires_at
     }
 
     /// Record a cache hit
@@ -397,7 +403,7 @@ impl PromptCache {
         for mut cached_entry in self.hash_cache.iter_mut() {
             let cached = cached_entry.value_mut();
             if cached.id == response_id {
-                cached.last_accessed = Utc::now();
+                cached.last_accessed = time::OffsetDateTime::now_utc();
                 cached.access_count += 1;
                 break;
             }
@@ -535,7 +541,7 @@ impl PromptCache {
 
     /// Invalidate expired entries
     async fn invalidate_expired(&self) -> Result<usize> {
-        let now = Utc::now();
+        let now = time::OffsetDateTime::now_utc();
         let mut invalidated = 0;
 
         // Clean hash cache
@@ -582,11 +588,15 @@ impl PromptCache {
             semantic_cache.retain(|_, entries| !entries.is_empty());
         }
 
-        if invalidated > 0 {
+        if Self::any_expired(invalidated) {
             debug!("Invalidated {} expired cache entries", invalidated);
         }
 
         Ok(invalidated)
+    }
+
+    fn any_expired(count: usize) -> bool {
+        count > 0
     }
 
     /// Invalidate least recently used entries
@@ -708,5 +718,151 @@ mod tests {
 
         let exact_similarity = cache.calculate_text_similarity("hello world", "hello world");
         assert_eq!(exact_similarity, 1.0);
+    }
+
+    fn cached(id: &str, ttl: time::OffsetDateTime) -> CachedResponse {
+        CachedResponse {
+            id: id.into(),
+            response: "r".into(),
+            original_prompt: id.into(),
+            prompt_hash: 1,
+            created_at: ttl,
+            last_accessed: ttl,
+            access_count: 0,
+            ttl_expires_at: ttl,
+            response_quality: 1.0,
+            compression_ratio: None,
+            tags: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn expiry_is_strictly_after_the_ttl() {
+        let cache = PromptCache::new(PromptCacheConfig::default());
+        let now = time::OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(5_000);
+        let entry = cached("a", now);
+        assert!(!cache.expired_at(&entry, now));
+        assert!(cache.expired_at(&entry, now + time::Duration::nanoseconds(1)));
+        assert!(!cache.expired_at(&entry, now - time::Duration::seconds(1)));
+
+        let mut past = cached(
+            "past",
+            time::OffsetDateTime::now_utc() - time::Duration::hours(1),
+        );
+        past.ttl_expires_at = time::OffsetDateTime::now_utc() - time::Duration::hours(1);
+        assert!(cache.is_expired(&past));
+        let mut future = cached("future", time::OffsetDateTime::now_utc());
+        future.ttl_expires_at = time::OffsetDateTime::now_utc() + time::Duration::hours(1);
+        assert!(!cache.is_expired(&future));
+    }
+
+    #[tokio::test]
+    async fn record_hit_updates_only_the_matching_id_and_stats() {
+        let cache = PromptCache::new(PromptCacheConfig::default());
+        let now = time::OffsetDateTime::now_utc();
+        cache.hash_cache.insert(1, cached("alpha", now));
+        cache.hash_cache.insert(2, cached("beta", now));
+        cache.record_hit("alpha").await;
+        assert_eq!(cache.hash_cache.get(&1).unwrap().access_count, 1);
+        assert_eq!(cache.hash_cache.get(&2).unwrap().access_count, 0);
+        {
+            let stats = cache.stats.read().await;
+            assert_eq!(stats.cache_hits, 1);
+            assert_eq!(stats.total_requests, 1);
+        }
+        cache.semantic_cache.write().await.insert(
+            "kept".into(),
+            vec![SemanticCacheEntry {
+                cached_response: cached("sem", time::OffsetDateTime::now_utc()),
+                embedding: Vec::new(),
+                similarity_scores: HashMap::new(),
+            }],
+        );
+        {
+            let mut stats = cache.stats.write().await;
+            stats.semantic_hits = 3;
+            stats.total_requests = 8;
+        }
+        let stats = cache.get_stats().await;
+        assert_eq!(stats.cache_hits, 1);
+        assert_eq!(stats.semantic_hits, 3);
+        assert_eq!(stats.total_requests, 8);
+        assert!((stats.hit_rate - 0.5).abs() < f32::EPSILON);
+        assert!((stats.memory_usage_mb - (3.0 / 1024.0)).abs() < 1e-6);
+
+        let empty = PromptCache::new(PromptCacheConfig::default());
+        let empty_stats = empty.get_stats().await;
+        assert_eq!(empty_stats.hit_rate, 0.0);
+        assert_eq!(empty_stats.memory_usage_mb, 0.0);
+        assert_eq!(empty_stats.total_requests, 0);
+        assert!(PromptCache::any_expired(1));
+        assert!(PromptCache::any_expired(2));
+        assert!(!PromptCache::any_expired(0));
+    }
+
+    #[tokio::test]
+    async fn invalidate_expired_removes_every_expired_hash_entry() {
+        let cache = PromptCache::new(PromptCacheConfig::default());
+        let now = time::OffsetDateTime::now_utc();
+        cache
+            .hash_cache
+            .insert(1, cached("old-a", now - time::Duration::hours(2)));
+        cache
+            .hash_cache
+            .insert(2, cached("old-b", now - time::Duration::hours(3)));
+        cache
+            .hash_cache
+            .insert(3, cached("fresh", now + time::Duration::hours(2)));
+        cache.cache.write().await.put(
+            "old-lru".into(),
+            cached("old-lru", now - time::Duration::hours(1)),
+        );
+        cache.cache.write().await.put(
+            "fresh-lru".into(),
+            cached("fresh-lru", now + time::Duration::hours(1)),
+        );
+        cache.semantic_cache.write().await.insert(
+            "old".into(),
+            vec![SemanticCacheEntry {
+                cached_response: cached("old-sem", now - time::Duration::hours(1)),
+                embedding: Vec::new(),
+                similarity_scores: HashMap::new(),
+            }],
+        );
+        cache.semantic_cache.write().await.insert(
+            "keep".into(),
+            vec![SemanticCacheEntry {
+                cached_response: cached("fresh-sem", now + time::Duration::hours(1)),
+                embedding: Vec::new(),
+                similarity_scores: HashMap::new(),
+            }],
+        );
+        let removed = cache.invalidate_expired().await.unwrap();
+        assert_eq!(removed, 4);
+        assert_eq!(cache.hash_cache.len(), 1);
+        assert!(cache.hash_cache.contains_key(&3));
+        let lru = cache.cache.read().await;
+        assert!(lru.contains(&String::from("fresh-lru")));
+        assert!(!lru.contains(&String::from("old-lru")));
+        drop(lru);
+        let semantic = cache.semantic_cache.read().await;
+        assert!(semantic.contains_key("keep"));
+        assert!(!semantic.contains_key("old"));
+    }
+
+    #[tokio::test]
+    async fn a_ten_thousand_year_ttl_does_not_abort() {
+        let config = PromptCacheConfig {
+            entry_ttl: Duration::from_secs(10_000 * 365 * 24 * 3600),
+            enable_semantic_cache: false,
+            ..PromptCacheConfig::default()
+        };
+        let cache = PromptCache::new(config);
+        cache.store("prompt", "response", 1.0).await.unwrap();
+        let stored = cache.hash_cache.iter().next().expect("stored entry");
+        assert_eq!(
+            stored.ttl_expires_at,
+            time::OffsetDateTime::new_utc(time::Date::MAX, time::Time::MAX)
+        );
     }
 }
