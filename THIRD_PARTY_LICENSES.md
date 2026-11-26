@@ -380,4 +380,4 @@ Owner exception, 2026-11-25, recorded by @lazyxeon at <https://github.com/lazyxe
 
 ## 17. Dashboard chart script (2026-11-26)
 
-`tools/benchmark-dashboard/d3.min.js` is D3 7.9.0, Copyright 2010-2023 Mike Bostock, <https://d3js.org>. License: ISC. The file is 279,706 bytes. SHA-256 `f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539`. SHA-384 `CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i`. The dashboard loads it with `src="d3.min.js"`.
+`tools/benchmark-dashboard/d3.min.js` is D3 7.9.0, Copyright 2010-2023 Mike Bostock, <https://d3js.org>. License: ISC. The permission notice is `tools/benchmark-dashboard/d3.LICENSE`, the `LICENSE` file from the `v7.9.0` tag, fetched 2026-11-26. The script is 279,706 bytes. SHA-256 `f2094bbf6141b359722c4fe454eb6c4b0f0e42cc10cc7af921fc158fceb86539`. SHA-384 `CjloA8y00+1SDAUkjs099PVfnY2KmDC2BZnws9kh8D/lX1s46w6EPhpXdqMfjK6i`. The dashboard loads it with `src="d3.min.js"`. The prepare step copies `d3.LICENSE` next to that file.

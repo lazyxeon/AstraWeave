@@ -245,9 +245,9 @@
             .stat-card, .chart-container, .sparkline-cell, .legend-item, header, .version-badge, .chart-title { box-shadow: none; break-inside: avoid; }
         }
     </style>
-    <!-- Palette B. The snapshot next to this file loads first. The book copy
-         (/docs/theme/parchment, refreshed by docs.yml) loads second and wins
-         when both exist. A 404 on that path leaves the snapshot in effect. -->
+    <!-- Palette B. In a checkout, parchment/ is the symlink and
+         ../../docs/theme/parchment/ is the same sheet. The second link wins
+         when both files exist. -->
     <link rel="stylesheet" href="parchment/candlelit-grimoire.css">
     <link rel="stylesheet" href="../../docs/theme/parchment/candlelit-grimoire.css">
 </head>
