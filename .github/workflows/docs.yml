@@ -80,6 +80,12 @@ jobs:
         run: |
           mkdir -p docs/book/architecture
           cp docs/architecture/workspace_map.html docs/book/architecture/index.html
+          # Shared candlelit sheet. The map href is ../theme/parchment (book/theme).
+          # The dashboard's local href is ../../docs/theme/parchment, which on the
+          # book site is /docs/theme/parchment.
+          mkdir -p docs/book/theme/parchment docs/book/docs/theme/parchment
+          cp -a docs/theme/parchment/. docs/book/theme/parchment/
+          cp -a docs/theme/parchment/. docs/book/docs/theme/parchment/
           echo "Workspace architecture map copied; URL slug /architecture/"
 
       - name: Install system dependencies (for cargo doc)

@@ -365,3 +365,13 @@ Acquired via `tools/astraweave-assets fetch` (provider flow, session manifest mi
 **Attribution merge verified, not assumed:** the `generate_attribution_file` overwrite bug that fired in AD.4 and again in T.1 did **not** fire this time (the 5.C fix holds) — `assets/_downloaded/polyhaven/ATTRIBUTION.txt` went 18 → 21 slugs with **zero** lost entries (set-difference check against a pre-fetch baseline copy).
 
 **Also evaluated and rejected, recorded so the reasoning is not re-derived:** `leafy_grass` (2 m, real detail — but its shipped AO map is a hard constant 255, modal 100%, i.e. a flat placeholder, and its tone duplicates slot 2's leaf litter); `snow_04` (4.0 m, exact 1:1 tiling and the highest variance of any candidate — but it is a **plowed field** whose furrows would tile as directional stripes); `aerial_sand` (tags `costal`/`seaside`/`ocean`, which would undo the T.1 desert≠beach distinction); `sparse_grass` (too dark, R79/G61/B21, for a surface covering 91% of a world); `grass_path_2`/`_3` (a path runs through the scan — it would repeat as a visible stripe every 4 m).
+
+## 16. Candlelit grimoire display faces (2026-11-25)
+
+Owner exception, 2026-11-25: these three families are SIL Open Font License 1.1, not CC0. They are display faces for the architecture map and the benchmark dashboard. They are not engine assets. `@font-face` loads only the files under `docs/theme/parchment/fonts/`. No remote font fetch.
+
+| paths | upstream | license | attribution | evidence | date |
+|---|---|---|---|---|---|
+| `docs/theme/parchment/fonts/Cinzel-Variable.ttf` | The Cinzel Project Authors, <https://github.com/NDISCOVER/Cinzel> | SIL Open Font License 1.1. The vendored copyright line names no reserved font name. | required (OFL notice kept) | `docs/theme/parchment/licenses/OFL-Cinzel.txt` | 2026-11-25 |
+| `docs/theme/parchment/fonts/EBGaramond-Variable.ttf`, `EBGaramond-Italic-Variable.ttf` | The EB Garamond Project Authors, <https://github.com/octaviopardo/EBGaramond12> | SIL Open Font License 1.1 | required (OFL notice kept) | `docs/theme/parchment/licenses/OFL-EBGaramond.txt` | 2026-11-25 |
+| `docs/theme/parchment/fonts/IBMPlexMono-Regular.woff2`, `IBMPlexMono-Bold.woff2` | IBM Corp., <https://github.com/IBM/plex> | SIL Open Font License 1.1, with Reserved Font Name "Plex" | required (OFL notice kept; the reserved name is "Plex") | `docs/theme/parchment/licenses/OFL-IBMPlexMono.txt` | 2026-11-25 |

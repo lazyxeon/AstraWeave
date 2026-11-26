@@ -899,6 +899,7 @@
     :focus-visible, header :focus-visible { outline-color: Highlight; }
   }
 </style>
+<link rel="stylesheet" href="../theme/parchment/candlelit-grimoire.css">
 </head>
 <body>
 <header>
@@ -921,16 +922,16 @@
     <strong>First time here?</strong> Try <strong>Tour → First-time onboarding</strong> for a 10-minute guided walk-through (eight steps, narration + reconfigured graph at each step).
     <br><br>
     <strong>Click any node</strong> for crate detail. The side panel uses progressive disclosure: surface info visible, deeper sections (deps, integration types, open questions, silent failures) behind <code>▸</code> expanders.
-    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — a dark rust outline ring (<code>#843b10</code>) marks each hop, thinning and fading with distance. Honest dependency-graph highlighting, not behavioral simulation.
+    <strong>Blast radius</strong> (toggle, default on): selecting a node highlights its dependents within 3 hops — an ember outline ring marks each hop, thinning and fading with distance. Honest dependency-graph highlighting, not behavioral simulation.
     <strong>Focus mode</strong> (toggle, off by default): hides everything outside the selected node's 1-hop neighborhood. Use when the graph is too dense.
     <strong>Edges: essential / all</strong> (v2.3, default essential): a cargo dependency that a longer path already implies is hidden, which removes most of the crossings. Nothing is lost: hover or select a node to see every edge it has, and the side panel lists them all. Switch to <em>all</em> to draw every edge; implied ones are dashed. Runtime, anomalous, declared-unused and HIGH/CRITICAL-risk edges always show.
     <strong>Layout</strong> (v2.3): the default is <em>Dependency layers</em>, read left to right from dependents to foundation crates. <em>Domain clusters</em> and <em>Dormancy stratification</em> are still in the dropdown.
     <strong>Stories dropdown</strong> for narrative views (Dual-World Bridge, Editor↔Engine Boundary, Silent-Failure Map, Dormant Surface, AI Pipeline, Networking Coexistence, Aspirational Docs).
-    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain with short graphite dashes.
+    <strong>Path-find</strong>: <code>Pick A</code> → node → <code>Pick B</code> → node → <code>Show path</code> highlights the shortest directed dep chain with short ink dashes.
     <strong>Share ↗</strong> copies a URL that reproduces the exact current view (filters, selection, tour step, layout).
     <strong>Domain chips</strong> (v2.1): click any chip to add that domain to the include set. Nothing checked = no filter (show all). Any subset checked = show only those domains. All checked = same as none. Chips lock during a story or tour — use Reset to clear.
-    <strong>Theme</strong> (v2.5): Bootleg Manual uses graphite on warm paper, with a soft mint backlight. <strong>FX</strong> controls the moving background, not the static backlight. The background dims while reading the map. Long teal dashes mark confirmed runtime wiring. They stay still if your system requests reduced motion.
-    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; printed tag, tinted paper and ink border = domain (matching the toolbar markers); dashed border = dormant; dotted border = partial; <code>!</code> = silent-failure locus; an outer graphite ring = selected. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid red; declared-but-unused edges remain dashed grey.
+    <strong>Theme</strong>: Candlelit grimoire — dark leather, iron-gall ink, gold leaf on the walnut header. <strong>FX</strong> controls the moving background. The parchment grain stays still. The background dims while reading the map. Long verdigris dashes mark confirmed runtime wiring. They stay still if your system requests reduced motion.
+    <strong>Visual encoding</strong>: node height = LoC band (width follows the label); chamfered chip = crate; rounded corners = aspirational docs; hexagon = the collapsed examples node; printed tag, tinted paper and ink border = domain (matching the toolbar markers); dashed border = dormant; dotted border = partial; <code>!</code> = silent-failure locus; an outer gold ring = selected. <strong>Edges (v2.1)</strong> are linear gradients from source-domain colour to target-domain colour — same-domain edges look uniform, cross-domain edges show the transition. Anomalous edges remain solid rubric; declared-but-unused edges remain dashed.
     <strong>Keyboard</strong>: <code>Esc</code> to clear; <code>←</code> <code>→</code> to navigate tour steps.
     On mobile, tap <code>☰ Controls</code> for the toolbar; the side panel becomes a bottom sheet.
   </div>
@@ -1100,17 +1101,60 @@ const META = workspaceData.metadata;
 
 // Render-only ink and compact printed tags. Labels stay identifiable when
 // ink hues look alike or the graph is read in monochrome.
-const DOMAIN_STYLES = {
-  core:            ['CO', '#003f6c'],
-  ai:              ['AI', '#882816'],
-  rendering:       ['RE', '#993d6a'],
-  'physics-world': ['PH', '#006248'],
-  gameplay:        ['GA', '#7e6500'],
-  networking:      ['NE', '#436c90'],
-  tools:           ['TO', '#582ca3'],
-  examples:        ['EX', '#282626'],
+// Cytoscape paints on a canvas, so node and edge fills read the shared
+// candlelit sheet. var() aliases are resolved through a color probe.
+function cssToken(name, fallback) {
+  let specified = '';
+  try {
+    specified = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  } catch (e) {}
+  if (!specified) return fallback;
+  if (/^#[0-9a-f]{6}$/i.test(specified)) return specified.toLowerCase();
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;left:-9999px;color:var(' + name + ')';
+  document.body.appendChild(probe);
+  const computed = getComputedStyle(probe).color;
+  probe.remove();
+  const m = computed.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+  if (!m) return fallback;
+  return '#' + [1, 2, 3].map(i => Math.round(Number(m[i])).toString(16).padStart(2, '0')).join('');
+}
+function mixHex(a, b, t) {
+  const parse = hex => {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  };
+  const A = parse(a), B = parse(b);
+  if (!A || !B) return a;
+  return '#' + [0, 1, 2].map(i => Math.round(A[i] * (1 - t) + B[i] * t).toString(16).padStart(2, '0')).join('');
+}
+const PARCHMENT = {
+  bg0: cssToken('--bg-0', '#1c1410'),
+  bg1: cssToken('--bg-1', '#2a1e16'),
+  ink: cssToken('--ink', '#efe2c0'),
+  inkFaded: cssToken('--ink-faded', '#d6c39a'),
+  inkFaint: cssToken('--ink-faint', '#bfa978'),
+  rubric: cssToken('--rubric', '#e0705a'),
+  verdigris: cssToken('--verdigris', '#6fbfa6'),
+  goldInk: cssToken('--gold-ink', '#d9b45a'),
+  warn: cssToken('--warn', '#e0a050'),
+  mono: (getComputedStyle(document.documentElement).getPropertyValue('--mono').trim()
+    || '"IBM Plex Mono", ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace'),
 };
-const domainInk = id => DOMAIN_STYLES[id]?.[1] || '#282626';
+// Dark stain of the domain pigment. At 78% toward the leather, label ink stays
+// above 4.5:1 and the rim stays above 3:1 against the stain and the page.
+function domainPaper(hex) { return mixHex(hex, PARCHMENT.bg0, 0.78); }
+const DOMAIN_STYLES = {
+  core:            ['CO', cssToken('--pigment-core', '#8fb4e0')],
+  ai:              ['AI', cssToken('--pigment-ai', '#e0705a')],
+  rendering:       ['RE', cssToken('--pigment-rendering', '#e7a3c4')],
+  'physics-world': ['PH', cssToken('--pigment-physics', '#6fbfa6')],
+  gameplay:        ['GA', cssToken('--pigment-gameplay', '#d9b45a')],
+  networking:      ['NE', cssToken('--pigment-networking', '#9fd4ea')],
+  tools:           ['TO', cssToken('--pigment-tools', '#c9b0e8')],
+  examples:        ['EX', cssToken('--pigment-examples', '#bfa978')],
+};
+const domainInk = id => DOMAIN_STYLES[id]?.[1] || PARCHMENT.inkFaint;
 const domainTag = id => DOMAIN_STYLES[id]?.[0] || '??';
 
 // ============================================================
@@ -1285,19 +1329,8 @@ function heightForBand(band) {
     default:            return 26;
   }
 }
-// Domain rim is DOMAIN_STYLES ink as-is; paper is shadeHex of that ink.
-// domains[].color (the Wong set) is not read. Keep labels in dark ink so
-// they're readable even across different tints.
-function shadeHex(hex, amount) {
-  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
-  if (!m) return hex;
-  const to = amount < 0 ? 0 : 255;
-  const k = Math.abs(amount);
-  return '#' + [1, 2, 3].map(i => {
-    const c = Math.round(parseInt(m[i], 16) * (1 - k) + to * k);
-    return c.toString(16).padStart(2, '0');
-  }).join('');
-}
+// Domain rim is the shared pigment. Paper is a dark stain of that pigment
+// (domainPaper). domains[].color (the Wong set) is not read. Labels use ink.
 function widthForLabel(label, band) {
   // Monospace advance is ~0.62em; 18px covers the horizontal padding.
   return Math.ceil(String(label).length * fontForBand(band) * 0.62) + 18;
@@ -1401,7 +1434,7 @@ NODES.forEach(n => {
       w: widthForLabel(graphLabel, n.locBand),
       h: heightForBand(n.locBand),
       font: fontForBand(n.locBand),
-      paper: shadeHex(domainInk(n.domain), 0.64),
+      paper: domainPaper(domainInk(n.domain)),
       rim: domainInk(n.domain),
     },
     classes: `node status-${n.status} band-${n.locBand}`,
@@ -1458,14 +1491,14 @@ const cy = cytoscape({
         // Static canvas backlight, separate from the domain border and fill.
         // :selected and dormant rules adjust the underlay; highlighted and
         // .path-node do not. Dimmed rules still suppress it.
-        'underlay-color': '#5deabd',
+        'underlay-color': PARCHMENT.goldInk,
         'underlay-opacity': 0.28,
         'underlay-padding': 5,
         'underlay-shape': 'round-rectangle',
         'label': 'data(graphLabel)',
-        'color': '#242629',
+        'color': PARCHMENT.ink,
         'font-size': 'data(font)',
-        'font-family': 'ui-monospace, "SF Mono", Consolas, monospace',
+        'font-family': PARCHMENT.mono,
         'text-valign': 'center',
         'text-halign': 'center',
         'text-outline-width': 0,   // v2.3: the outline swamped small glyphs
@@ -1487,7 +1520,7 @@ const cy = cytoscape({
         'background-opacity': 0.30,
         'border-width': 3,
         'underlay-opacity': 0.16,
-        'color': '#454845',
+        'color': PARCHMENT.inkFaded,
       }
     },
     {
@@ -1519,13 +1552,13 @@ const cy = cytoscape({
     {
       selector: 'node:parent',
       style: {
-        'background-color': '#ded9cc',
-        'background-opacity': 0.22,
+        'background-color': PARCHMENT.bg1,
+        'background-opacity': 0.45,
         'border-color': 'data(rim)',
         'border-opacity': 0.96,
         'border-width': 1.5,
         'border-style': 'dashed',
-        'underlay-color': '#5deabd',
+        'underlay-color': PARCHMENT.goldInk,
         'underlay-opacity': 0.12,
         'underlay-padding': 4,
         'underlay-shape': 'round-rectangle',
@@ -1534,10 +1567,10 @@ const cy = cytoscape({
         'text-halign': 'center',
         'font-size': 12,
         'font-weight': 'bold',
-        'color': '#343b42',
+        'color': PARCHMENT.ink,
         'padding': 18,
         'text-outline-width': 3,
-        'text-outline-color': '#e6e0d2',
+        'text-outline-color': PARCHMENT.bg0,
         'shape': 'round-rectangle',
       }
     },
@@ -1566,8 +1599,8 @@ const cy = cytoscape({
       style: {
         'width': 2.2,
         'line-fill': 'solid',
-        'line-color': '#a44b13',
-        'target-arrow-color': '#a44b13',
+        'line-color': PARCHMENT.warn,
+        'target-arrow-color': PARCHMENT.warn,
         'line-opacity': 0.94,
       }
     },
@@ -1576,8 +1609,8 @@ const cy = cytoscape({
       style: {
         'width': 2.8,
         'line-fill': 'solid',
-        'line-color': '#ad2639',
-        'target-arrow-color': '#ad2639',
+        'line-color': PARCHMENT.rubric,
+        'target-arrow-color': PARCHMENT.rubric,
         'line-opacity': 0.9,
       }
     },
@@ -1585,8 +1618,8 @@ const cy = cytoscape({
       selector: 'edge.kind-anomalous',
       style: {
         'line-fill': 'solid',
-        'line-color': '#ad2639',
-        'target-arrow-color': '#ad2639',
+        'line-color': PARCHMENT.rubric,
+        'target-arrow-color': PARCHMENT.rubric,
         'width': 2.5,
         'line-opacity': 0.9,
       }
@@ -1596,8 +1629,8 @@ const cy = cytoscape({
       style: {
         'line-fill': 'solid',
         'line-style': 'dashed',
-        'line-color': '#656c70',
-        'target-arrow-color': '#656c70',
+        'line-color': PARCHMENT.inkFaint,
+        'target-arrow-color': PARCHMENT.inkFaint,
         'line-opacity': 0.94,
         'width': 1.1,
         'target-arrow-shape': 'tee',
@@ -1609,14 +1642,14 @@ const cy = cytoscape({
       selector: 'edge.runtime',
       style: {
         'line-fill': 'solid',
-        'line-color': '#086e68',
-        'target-arrow-color': '#086e68',
+        'line-color': PARCHMENT.verdigris,
+        'target-arrow-color': PARCHMENT.verdigris,
         'line-opacity': 0.95,
         'width': 3.0,
         // v2.4: long dashes that drift toward the target (see the flow ticker).
         'line-style': 'dashed',
         'line-dash-pattern': [18, 9],
-        'underlay-color': '#086e68',
+        'underlay-color': PARCHMENT.verdigris,
         'underlay-opacity': 0.12,
         'underlay-padding': 3,
         'target-arrow-shape': 'triangle',
@@ -1628,10 +1661,10 @@ const cy = cytoscape({
       selector: 'node[size]:selected',
       style: {
         'background-opacity': 1,
-        'underlay-color': '#45e5b3',
+        'underlay-color': PARCHMENT.goldInk,
         'underlay-opacity': 0.48,
         'underlay-padding': 8,
-        'outline-color': '#20262b',
+        'outline-color': PARCHMENT.goldInk,
         'outline-width': 2.5,
         'outline-offset': 4,
         'outline-style': 'solid',
@@ -1645,7 +1678,7 @@ const cy = cytoscape({
         'width': 3.5,
         'line-opacity': 1.0,
         // v2.4: `shadow-*` is not a Cytoscape 3 property; an underlay gives the glow.
-        'underlay-color': '#285a54',
+        'underlay-color': PARCHMENT.verdigris,
         'underlay-opacity': 0.30,
         'underlay-padding': 4,
         'z-index': 90,
@@ -1673,8 +1706,8 @@ const cy = cytoscape({
         'opacity': 1.0,
         'line-fill': 'solid',
         'line-style': 'solid',
-        'line-color': '#657477',
-        'target-arrow-color': '#657477',
+        'line-color': PARCHMENT.goldInk,
+        'target-arrow-color': PARCHMENT.goldInk,
         'width': 3.5,
         'line-opacity': 1.0,
       }
@@ -1686,8 +1719,8 @@ const cy = cytoscape({
         'line-style': 'dashed',
         'line-dash-pattern': [8, 5],
         'line-dash-offset': 0,
-        'line-color': '#20262b',
-        'target-arrow-color': '#20262b',
+        'line-color': PARCHMENT.ink,
+        'target-arrow-color': PARCHMENT.ink,
         'width': 5,
         'line-opacity': 1.0,
         'z-index': 999,
@@ -1709,6 +1742,15 @@ const cy = cytoscape({
   ],
   layout: { name: 'preset' }, // start with no layout, apply below
 });
+
+// Canvas labels do not repaint when a webfont finishes loading.
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(() => {
+    cy.style().update();
+    cy.resize();
+  });
+}
+
 
 // Overlay icons drawn after layout via DOM hack? Use compound trick instead.
 // Cytoscape doesn't easily support node-overlays; instead we use color + border
@@ -2539,13 +2581,13 @@ const NODE_BY_ID = new Map(NODES.map(n => [n.id, n]));
 // ----------------------------------------------------------------
 cy.style()
   .selector('node[size].blast-direct:unselected')
-    .style({ 'outline-color': '#843b10', 'outline-width': 3, 'outline-offset': 1,
+    .style({ 'outline-color': PARCHMENT.warn, 'outline-width': 3, 'outline-offset': 1,
              'opacity': 1.0, 'background-blacken': -0.15 })
   .selector('node[size].blast-h2:unselected')
-    .style({ 'outline-color': '#843b10', 'outline-width': 2, 'outline-offset': 1,
+    .style({ 'outline-color': PARCHMENT.warn, 'outline-width': 2, 'outline-offset': 1,
              'opacity': 0.85 })
   .selector('node[size].blast-h3:unselected')
-    .style({ 'outline-color': '#843b10', 'outline-width': 1.5, 'outline-offset': 1,
+    .style({ 'outline-color': PARCHMENT.warn, 'outline-width': 1.5, 'outline-offset': 1,
              'opacity': 0.74 })
   .selector('.blast-faded')
     .style({ 'opacity': 0.20, 'text-opacity': 0.2, 'underlay-opacity': 0 })
@@ -2556,7 +2598,7 @@ cy.style()
   .selector('.focus-hidden')
     .style({ 'opacity': 0.05, 'text-opacity': 0, 'underlay-opacity': 0 })
   .selector('node[size].tour-highlight:unselected')
-    .style({ 'outline-color': '#343b42', 'outline-width': 3,
+    .style({ 'outline-color': PARCHMENT.goldInk, 'outline-width': 3,
              'outline-offset': 3, 'outline-style': 'dotted' })
   // v2.3: hover emphasis.
   .selector('.hover-dim')
