@@ -154,6 +154,7 @@ const INDUSTRY_STANDARDS = {
 // categories, and the industry bar keeps its opacity and the 4px paper gap.
 function cssToken(name, fallback) {
     const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!raw) return fallback;
     if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
     const probe = document.createElement('span');
     probe.style.color = `var(${name})`;
