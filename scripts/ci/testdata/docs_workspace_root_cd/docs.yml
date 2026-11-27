@@ -1,0 +1,17 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Copy
+        working-directory: docs/book
+        run: |
+          cd "$GITHUB_WORKSPACE/docs/archive"
+          cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard

@@ -502,7 +502,8 @@ def _strip_workspace(token: str) -> str:
     stripped = _GITHUB_WORKSPACE_EXPR.sub("", token)
     for prefix in _WORKSPACE_PREFIXES:
         if stripped.startswith(prefix):
-            return stripped[len(prefix) :]
+            # The remainder is workspace-root absolute, under any working directory.
+            return "/" + stripped[len(prefix) :]
     return stripped
 
 
@@ -534,7 +535,8 @@ def _resolve_run_path(token: str, cwd: str) -> str:
     """Resolve one shell word against cwd.
 
     A relative word is joined onto cwd. A word that begins with ``/`` is
-    resolved from the workspace root.
+    resolved from the workspace root. A ``$GITHUB_WORKSPACE``,
+    ``${GITHUB_WORKSPACE}``, or ``GITHUB_WORKSPACE`` prefix is that root too.
     """
     token = _unwrap_echo_literal(token.strip())
     token = _strip_workspace(token.strip())
@@ -682,8 +684,49 @@ def _shell_words(command: str) -> list[tuple[str, bool, str | None]]:
     return words
 
 
+def _redirect_operator_end(text: str, index: int, current: str) -> int:
+    """End index of a redirection operator that contains ``&`` or ``|``.
+
+    ``index`` points at that ``&`` or ``|``. The return is ``index`` when the
+    character is a command separator instead.
+    """
+    if index >= len(text) or text[index] not in "&|":
+        return index
+    nxt = text[index + 1] if index + 1 < len(text) else ""
+    if text[index] == "&" and nxt == "&":
+        return index
+    if text[index] == "|" and nxt == "|":
+        return index
+    stripped = current.rstrip(" \t")
+    space = max(stripped.rfind(" "), stripped.rfind("\t"), stripped.rfind("\n"))
+    tail = stripped[space + 1 :] if stripped else ""
+    starts = False
+    if text[index] == "&" and (tail.endswith(">") or nxt == ">"):
+        starts = True
+    elif text[index] == "|" and tail.endswith(">"):
+        starts = True
+    elif text[index] == "|" and nxt == "&":
+        return index
+    if not starts:
+        return index
+    end = index + 1
+    if text[index] == "&" and nxt == ">":
+        end = index + 2
+        if end < len(text) and text[end] == ">":
+            end += 1
+    previous_end = index
+    while end < len(text) and text[end] not in " \t\n;&|":
+        if end <= previous_end:
+            raise AssertionError("redirect scan did not advance")
+        previous_end = end
+        end += 1
+    return end
+
+
 def _split_shell_commands(run_text: str) -> list[tuple[str, bool, bool, bool]]:
     """Split on newline, `;`, `&&`, `||`, `|`, and a single `&`.
+
+    A redirection operator that contains ``&`` or ``|`` is not a separator.
 
     The second bool is true when a directory change in that command stays in
     effect for the next command. Newline, `;`, `&&`, and `||` carry it. A
@@ -728,6 +771,11 @@ def _split_shell_commands(run_text: str) -> list[tuple[str, bool, bool, bool]]:
             index += 2
             continue
         if char in ("|", "&"):
+            redirect_end = _redirect_operator_end(run_text, index, "".join(current))
+            if redirect_end > index:
+                current.append(run_text[index:redirect_end])
+                index = redirect_end
+                continue
             doubled = index + 1 < len(run_text) and run_text[index + 1] == char
             # && and || run in the current shell. A single | is a pipeline
             # and a single & backgrounds the command. One advance consumes the
@@ -854,6 +902,38 @@ def _glob_directories(word: str, current: str) -> list[str]:
     return found
 
 
+def _repo_dir(logical: str) -> bool:
+    if not logical or logical.startswith("/"):
+        return False
+    candidate = (ROOT / logical).resolve()
+    try:
+        candidate.relative_to(ROOT.resolve())
+    except ValueError:
+        return False
+    return candidate.is_dir()
+
+
+def _cd_uses_cdpath(word: str, env: dict[str, str]) -> bool:
+    if "CDPATH" not in env or not word or word == "-":
+        return False
+    if word.startswith("/") or word.startswith(".") or "/" in word:
+        return False
+    return True
+
+
+def _cdpath_directory(operand: str, cwd: str, cdpath: str) -> str | None:
+    """Directory bash selects for a slash-free cd operand when CDPATH is set."""
+    for entry in cdpath.split(":"):
+        base = cwd if entry == "" else _resolve_run_path(entry, cwd)
+        candidate = _posix_norm(f"{base}/{operand}" if base else operand)
+        if _repo_dir(candidate):
+            return candidate
+    local = _resolve_run_path(operand, cwd)
+    if _repo_dir(local):
+        return local
+    return None
+
+
 def _directory_outcomes(
     rest: list[str],
     quoted: list[bool],
@@ -864,14 +944,16 @@ def _directory_outcomes(
 
     A word with an unquoted ``*``, ``?``, or ``[`` that matches exactly one
     directory uses that directory. A quoted metacharacter stays literal. More
-    than one match does not change the directory, and the return is None.
+    than one match returns None. The caller keeps the earlier state. While
+    errexit is on, an unconditional failure runs no later command in that state.
     ``$(echo ...)`` and backtick echo of one literal path are reduced first
     when that substitution is the whole word.
     """
     words = list(rest)
     pattern = globs[1] if len(globs) > 1 else None
+    env = dict(state.env)
     if len(words) > 1:
-        expanded = _unwrap_echo_literal(words[1])
+        expanded = _unwrap_echo_literal(_expand_assigned_word(words[1], env))
         word_quoted = quoted[1] if len(quoted) > 1 else False
         if expanded != words[1]:
             words[1] = expanded
@@ -881,6 +963,15 @@ def _directory_outcomes(
                 pattern = expanded
     word = words[1] if len(words) > 1 else ""
     command = words[0] if words else ""
+    if command == "cd" and word == "-":
+        if not state.oldpwd:
+            return None
+        return [(state.oldpwd, tuple(state.stack))]
+    if command == "cd" and _cd_uses_cdpath(word, env):
+        found = _cdpath_directory(word, state.cwd, env["CDPATH"])
+        if found is None:
+            return None
+        return [(found, tuple(state.stack))]
     if (
         command in ("cd", "pushd")
         and pattern
@@ -904,9 +995,10 @@ def _next_errexit(words: list[str], quoted: list[bool], enabled: bool) -> bool:
     """Errexit after a set command. Other commands leave it unchanged.
 
     ``+e``, ``-e``, ``+o errexit``, and ``-o errexit`` apply when the option
-    word is quoted. An assignment, ``builtin``, ``command``, or ``eval`` may
-    stand in front of ``set``. A following word that itself starts with ``+``
-    or ``-`` is not the name of ``-o``.
+    word is quoted. ``set --`` ends option scanning. An assignment,
+    ``builtin``, ``command``, or ``eval`` may stand in front of ``set``. A
+    following word that itself starts with ``+`` or ``-`` is not the name of
+    ``-o``.
     """
     if not words:
         return enabled
@@ -936,6 +1028,8 @@ def _next_errexit(words: list[str], quoted: list[bool], enabled: bool) -> bool:
             raise AssertionError("errexit scan did not advance")
         previous = index
         arg = words[index]
+        if arg == "--":
+            break
         if arg in ("+o", "-o"):
             nxt = words[index + 1] if index + 1 < limit else ""
             if nxt and nxt[0] not in "+-":
@@ -1013,7 +1107,9 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
     current directory. A word that begins with / is resolved from the workspace
     root. A cd or pushd directory word with an unquoted *, ?, or [ that matches
     exactly one directory uses that directory. A quoted metacharacter stays
-    literal. More than one match does not change the directory. Distinct states
+    literal. More than one match fails that directory change and keeps earlier
+    copies. While errexit is on, later commands in that state do not run.
+    Distinct states
     are capped at 32, and passing that cap raises. A leading command or builtin
     word is skipped even when it is quoted. command followed by an option is
     left in place. A leading NAME=value is skipped. An assignment-only command
@@ -1039,12 +1135,22 @@ class _ShellState:
         env: tuple[tuple[str, str], ...],
         paths: list[str],
         errexit: bool = True,
+        oldpwd: str = "",
+        expand_aliases: bool = False,
+        aliases: tuple[tuple[str, str], ...] = (),
+        exit_trap: str | None = None,
+        stopped: bool = False,
     ) -> None:
         self.cwd = cwd
         self.stack = stack
         self.env = env
         self.paths = paths
         self.errexit = errexit
+        self.oldpwd = oldpwd
+        self.expand_aliases = expand_aliases
+        self.aliases = aliases
+        self.exit_trap = exit_trap
+        self.stopped = stopped
 
 
 def _clone_state(
@@ -1055,6 +1161,12 @@ def _clone_state(
     env: tuple[tuple[str, str], ...] | None = None,
     paths: list[str] | None = None,
     errexit: bool | None = None,
+    oldpwd: str | None = None,
+    expand_aliases: bool | None = None,
+    aliases: tuple[tuple[str, str], ...] | None = None,
+    exit_trap: str | None = None,
+    exit_trap_set: bool = False,
+    stopped: bool | None = None,
 ) -> _ShellState:
     return _ShellState(
         state.cwd if cwd is None else cwd,
@@ -1062,6 +1174,11 @@ def _clone_state(
         state.env if env is None else env,
         list(state.paths) if paths is None else list(paths),
         state.errexit if errexit is None else errexit,
+        state.oldpwd if oldpwd is None else oldpwd,
+        state.expand_aliases if expand_aliases is None else expand_aliases,
+        state.aliases if aliases is None else aliases,
+        state.exit_trap if not exit_trap_set else exit_trap,
+        state.stopped if stopped is None else stopped,
     )
 
 
@@ -1126,7 +1243,17 @@ def _dedupe_states(states: list[_ShellState]) -> list[_ShellState]:
     seen: set[tuple[object, ...]] = set()
     kept: list[_ShellState] = []
     for state in states:
-        key = (state.cwd, state.stack, state.env, tuple(state.paths), state.errexit)
+        key = (
+            state.cwd,
+            state.stack,
+            state.env,
+            tuple(state.paths),
+            state.errexit,
+            state.expand_aliases,
+            state.aliases,
+            state.exit_trap,
+            state.stopped,
+        )
         if key in seen:
             continue
         seen.add(key)
@@ -1174,76 +1301,522 @@ def _apply_assignment(
     return _dedupe_states(produced)
 
 
+_FUNC_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_SHELL_CALL_DEPTH = 8
+
+
+def _word_edge(text: str, index: int) -> bool:
+    return index >= len(text) or not (text[index].isalnum() or text[index] == "_")
+
+
+def _skip_horizontal_space(text: str, index: int) -> int:
+    previous = index - 1
+    while index < len(text) and text[index] in " \t":
+        if index <= previous:
+            raise AssertionError("space scan did not advance")
+        previous = index
+        index += 1
+    return index
+
+
+def _matching_brace(text: str, open_at: int) -> int | None:
+    depth = 0
+    quote: str | None = None
+    index = open_at
+    limit = len(text)
+    previous = open_at - 1
+    while index < limit:
+        if index <= previous:
+            raise AssertionError("brace scan did not advance")
+        previous = index
+        char = text[index]
+        if quote is not None:
+            if quote == '"' and char == "\\" and index + 1 < limit:
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in "'\"":
+            quote = char
+            index += 1
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return None
+
+
+def _match_function(text: str, index: int) -> tuple[str, str, int] | None:
+    if index > 0 and (text[index - 1].isalnum() or text[index - 1] == "_"):
+        return None
+    cursor = index
+    if text.startswith("function", cursor) and _word_edge(text, cursor + 8):
+        cursor = _skip_horizontal_space(text, cursor + 8)
+        matched = _FUNC_NAME.match(text, cursor)
+        if matched is None:
+            return None
+        name = matched.group(0)
+        cursor = _skip_horizontal_space(text, matched.end())
+        if text.startswith("()", cursor):
+            cursor = _skip_horizontal_space(text, cursor + 2)
+    else:
+        matched = _FUNC_NAME.match(text, cursor)
+        if matched is None:
+            return None
+        name = matched.group(0)
+        cursor = _skip_horizontal_space(text, matched.end())
+        if not text.startswith("()", cursor):
+            return None
+        cursor = _skip_horizontal_space(text, cursor + 2)
+    if cursor >= len(text) or text[cursor] != "{":
+        return None
+    end = _matching_brace(text, cursor)
+    if end is None:
+        return None
+    return name, text[cursor + 1 : end], end + 1
+
+
+def _extract_functions(text: str) -> tuple[str, dict[str, str]]:
+    """Lift ``name() { body }`` and ``function name { body }`` out of a step."""
+    functions: dict[str, str] = {}
+    out: list[str] = []
+    index = 0
+    limit = len(text)
+    quote: str | None = None
+    subst = 0
+    previous = -1
+    while index < limit:
+        if index <= previous:
+            raise AssertionError("function scan did not advance")
+        previous = index
+        char = text[index]
+        if quote is not None:
+            out.append(char)
+            if quote == '"' and char == "\\" and index + 1 < limit:
+                out.append(text[index + 1])
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in "'\"":
+            quote = char
+            out.append(char)
+            index += 1
+            continue
+        if char == "$" and index + 1 < limit and text[index + 1] == "(":
+            subst += 1
+        elif char == ")" and subst:
+            subst -= 1
+        if subst == 0:
+            matched = _match_function(text, index)
+            if matched is not None:
+                name, body, end = matched
+                functions[name] = body
+                out.append(" ")
+                index = end
+                continue
+        out.append(char)
+        index += 1
+    return "".join(out), functions
+
+
+def _read_workspace_file(logical: str) -> str | None:
+    if not logical or logical.startswith("/") or ".." in logical.split("/"):
+        return None
+    root = ROOT.resolve()
+    candidate = (ROOT / logical).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    if not candidate.is_file() or candidate.stat().st_size > 1_000_000:
+        return None
+    try:
+        return candidate.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+
+
+def _strip_trailing_redirects(
+    words: list[str],
+    quoted: list[bool],
+    globs: list[str | None],
+) -> tuple[list[str], list[bool], list[str | None]]:
+    words = list(words)
+    quoted = list(quoted)
+    globs = list(globs)
+    while len(quoted) < len(words):
+        quoted.append(False)
+    while len(globs) < len(words):
+        globs.append(None)
+
+    def _operator(word: str) -> bool:
+        return bool(
+            word in _REDIRECT_WORDS
+            or _REDIRECT_OP.fullmatch(word)
+            or _REDIRECT_COMBINED.fullmatch(word)
+        )
+
+    previous_len = len(words) + 1
+    while words:
+        if len(words) >= previous_len:
+            raise AssertionError("redirect strip did not advance")
+        previous_len = len(words)
+        if quoted[-1]:
+            break
+        if _operator(words[-1]):
+            words.pop()
+            quoted.pop()
+            globs.pop()
+            continue
+        if (
+            len(words) >= 2
+            and not quoted[-2]
+            and _operator(words[-2])
+            and not _REDIRECT_COMBINED.fullmatch(words[-2])
+        ):
+            del words[-2:]
+            del quoted[-2:]
+            del globs[-2:]
+            continue
+        break
+    return words, quoted, globs
+
+
+def _alias_binding(words: list[str]) -> tuple[str, str] | None:
+    if len(words) < 2 or "=" not in words[1]:
+        return None
+    name, value = words[1].split("=", 1)
+    if not name.isidentifier():
+        return None
+    return name, value
+
+
+def _expand_one_alias(command: str, state: _ShellState) -> str:
+    if not state.expand_aliases or not state.aliases:
+        return command
+    words = _shell_words(command)
+    if not words or words[0][1]:
+        return command
+    value = dict(state.aliases).get(words[0][0])
+    if value is None:
+        return command
+    tail = " ".join(text for text, _quoted, _glob in words[1:])
+    return value if not tail else f"{value} {tail}"
+
+
+def _read_shopt(args: list[str], errexit: bool, expand: bool) -> tuple[bool, bool]:
+    """Apply ``shopt`` ``-o errexit`` and ``expand_aliases``."""
+    mode_set = False
+    mode_unset = False
+    option_mode = False
+    names: list[str] = []
+    index = 0
+    previous = -1
+    while index < len(args):
+        if index <= previous:
+            raise AssertionError("shopt scan did not advance")
+        previous = index
+        arg = args[index]
+        if arg == "--":
+            names.extend(args[index + 1 :])
+            break
+        if arg.startswith("-") and arg not in ("-",) and not arg.startswith("--"):
+            flags = arg[1:]
+            if "s" in flags:
+                mode_set = True
+            if "u" in flags:
+                mode_unset = True
+            if "o" in flags:
+                option_mode = True
+            index += 1
+            continue
+        names.append(arg)
+        index += 1
+    if mode_set and mode_unset:
+        return errexit, expand
+    if option_mode and "errexit" in names:
+        if mode_unset:
+            errexit = False
+        elif mode_set:
+            errexit = True
+    if "expand_aliases" in names:
+        if mode_set:
+            expand = True
+        elif mode_unset:
+            expand = False
+    return errexit, expand
+
+
+def _keep_and_run(
+    states: list[_ShellState],
+    uncertain: bool,
+    follows: bool,
+    runner,
+) -> list[_ShellState]:
+    produced: list[_ShellState] = []
+    for state in states:
+        if uncertain or follows:
+            produced.append(_clone_state(state))
+        produced.extend(runner(_clone_state(state)))
+    return _dedupe_states(produced)
+
+
 def _shell_states(run_text: str, cwd: str, *, errexit: bool = True) -> list[_ShellState]:
     """Shell states after one step.
 
     A conditional cd or assignment keeps the earlier state. A command after
     && or || may not run, so the earlier state is kept beside the new one. A
     cd or pushd before ||, before && when another command follows, or while
-    errexit is off, keeps the earlier directory beside the new one. A set
-    inside an if compound or after && or || keeps the earlier errexit beside
-    the new one. Distinct states are capped at 32.
+    errexit is off, keeps the earlier directory beside the new one. A failed
+    directory change keeps the state. While errexit is on and the command is
+    unconditional, later commands in that state do not run. A set inside an
+    if compound or after && or || keeps the earlier errexit beside the new
+    one. Distinct states are capped at 32.
     """
-    states = [_ShellState(_posix_norm(cwd), (), (), [], errexit)]
-    depth = 0
-    for command, carry, may_fail, follows in _split_shell_commands(run_text):
-        triples = _shell_words(command)
-        raw = [text for text, _quoted, _glob in triples]
-        raw_quoted = [is_quoted for _text, is_quoted, _glob in triples]
-        raw_globs = [glob for _text, _quoted, glob in triples]
-        body = _command_body(raw, raw_quoted)
-        depth = _opening_depth(raw, body, depth, raw_quoted)
-        uncertain = depth > 0 or follows
-        if not body:
-            continue
-        cut = len(raw) - len(body)
-        body_quoted = raw_quoted[cut:]
-        body_globs = raw_globs[cut:]
-        assignments: list[tuple[str, str]] = []
-        index = 0
-        previous = -1
-        while index < len(body):
-            if index <= previous:
-                raise AssertionError("assignment scan did not advance")
-            previous = index
-            match = _ASSIGNMENT_WORD.match(body[index])
-            if match is None:
-                break
-            assignments.append((match.group(1), match.group(2)))
-            index += 1
-        rest = body[index:]
-        rest_quoted = body_quoted[index:]
-        rest_globs = body_globs[index:]
-        if not rest:
-            states = _apply_assignment(
-                states, body, body_quoted, assignments, carry, uncertain
-            )
-            continue
-        if _directory_update(rest, "", []) is None:
-            for state in states:
-                _record_copy(state, rest)
-            states = _apply_errexit(states, body, body_quoted, uncertain)
-            continue
-        if not carry:
-            states = _apply_errexit(states, body, body_quoted, uncertain)
-            continue
-        produced: list[_ShellState] = []
-        for state in states:
-            keep_old = uncertain or may_fail or not state.errexit
-            outcomes = _directory_outcomes(rest, rest_quoted, rest_globs, state)
-            if outcomes is None:
-                if keep_old:
-                    produced.append(_clone_state(state))
-                continue
-            if keep_old:
-                produced.append(_clone_state(state))
-            for updated_cwd, stack in outcomes:
-                produced.append(
-                    _clone_state(state, cwd=updated_cwd, stack=stack, paths=list(state.paths))
-                )
-        states = _dedupe_states(produced)
-        states = _apply_errexit(states, body, body_quoted, uncertain)
+    text, functions = _extract_functions(run_text)
+    initial = _ShellState(_posix_norm(cwd), (), (), [], errexit)
+    return _interpret([initial], text, functions, 0)
+
+
+def _interpret(
+    states: list[_ShellState],
+    text: str,
+    functions: dict[str, str],
+    depth: int,
+) -> list[_ShellState]:
+    if depth > _SHELL_CALL_DEPTH:
+        return states
+    compound = 0
+    for command, carry, may_fail, follows in _split_shell_commands(text):
+        parked = [state for state in states if state.stopped]
+        live = [state for state in states if not state.stopped]
+        if not live:
+            states = parked
+            break
+        live, compound = _apply_command(
+            live, command, carry, may_fail, follows, functions, depth, compound
+        )
+        states = _dedupe_states(parked + live)
+    if depth == 0:
+        states = _run_exit_traps(states, functions)
     return states
+
+
+def _run_exit_traps(
+    states: list[_ShellState], functions: dict[str, str]
+) -> list[_ShellState]:
+    produced: list[_ShellState] = []
+    for state in states:
+        if not state.exit_trap:
+            produced.append(state)
+            continue
+        cleared = _clone_state(state, exit_trap=None, exit_trap_set=True)
+        produced.extend(_interpret([cleared], state.exit_trap, functions, 1))
+    return _dedupe_states(produced)
+
+
+def _apply_command(
+    states: list[_ShellState],
+    command: str,
+    carry: bool,
+    may_fail: bool,
+    follows: bool,
+    functions: dict[str, str],
+    depth: int,
+    compound: int,
+) -> tuple[list[_ShellState], int]:
+    if depth <= _SHELL_CALL_DEPTH and any(
+        state.expand_aliases and state.aliases for state in states
+    ):
+        groups: dict[str, list[_ShellState]] = {}
+        order: list[str] = []
+        for state in states:
+            expanded = _expand_one_alias(command, state)
+            if expanded not in groups:
+                groups[expanded] = []
+                order.append(expanded)
+            groups[expanded].append(state)
+        if order != [command]:
+            produced: list[_ShellState] = []
+            for expanded in order:
+                group = groups[expanded]
+                if expanded == command:
+                    applied, compound = _apply_command(
+                        group,
+                        command,
+                        carry,
+                        may_fail,
+                        follows,
+                        functions,
+                        depth,
+                        compound,
+                    )
+                    produced.extend(applied)
+                    continue
+                pieces = _split_shell_commands(expanded)
+                if len(pieces) == 1:
+                    applied, compound = _apply_command(
+                        group,
+                        pieces[0][0],
+                        carry,
+                        may_fail,
+                        follows,
+                        functions,
+                        depth + 1,
+                        compound,
+                    )
+                    produced.extend(applied)
+                    continue
+                produced.extend(
+                    _keep_and_run(
+                        group,
+                        False,
+                        follows,
+                        lambda state, body=expanded: _interpret(
+                            [state], body, functions, depth + 1
+                        ),
+                    )
+                )
+            return _dedupe_states(produced), compound
+    triples = _shell_words(command)
+    raw = [text for text, _quoted, _glob in triples]
+    raw_quoted = [is_quoted for _text, is_quoted, _glob in triples]
+    raw_globs = [glob for _text, _quoted, glob in triples]
+    body = _command_body(raw, raw_quoted)
+    compound = _opening_depth(raw, body, compound, raw_quoted)
+    uncertain = compound > 0 or follows
+    if not body:
+        return states, compound
+    body, body_quoted, body_globs = _strip_trailing_redirects(
+        body,
+        raw_quoted[len(raw) - len(body) :],
+        raw_globs[len(raw) - len(body) :],
+    )
+    if not body:
+        return states, compound
+    assignments: list[tuple[str, str]] = []
+    index = 0
+    previous = -1
+    while index < len(body):
+        if index <= previous:
+            raise AssertionError("assignment scan did not advance")
+        previous = index
+        match = _ASSIGNMENT_WORD.match(body[index])
+        if match is None:
+            break
+        assignments.append((match.group(1), match.group(2)))
+        index += 1
+    rest = body[index:]
+    rest_quoted = body_quoted[index:]
+    rest_globs = body_globs[index:]
+    if rest and rest[0] in functions and not (rest_quoted and rest_quoted[0]):
+        body_text = functions[rest[0]]
+        return (
+            _keep_and_run(
+                states,
+                uncertain,
+                follows,
+                lambda state, inner=body_text: _interpret(
+                    [state], inner, functions, depth + 1
+                ),
+            ),
+            compound,
+        )
+    if rest and rest[0] == "eval" and len(rest) >= 2 and rest_quoted and rest_quoted[0] is not None and len(rest_quoted) > 1 and rest_quoted[1]:
+        inner = " ".join(rest[1:])
+        return (
+            _keep_and_run(
+                states,
+                uncertain,
+                follows,
+                lambda state, script=inner: _interpret(
+                    [state], script, functions, depth + 1
+                ),
+            ),
+            compound,
+        )
+    if rest and rest[0] in (".", "source") and len(rest) >= 2:
+        def _source(state: _ShellState, word: str = rest[1]) -> list[_ShellState]:
+            expanded = _expand_assigned_word(word, dict(state.env))
+            script = _read_workspace_file(_resolve_run_path(expanded, state.cwd))
+            if script is None:
+                return [state]
+            return _interpret([state], script, functions, depth + 1)
+
+        return _keep_and_run(states, uncertain, follows, _source), compound
+    if rest and rest[0] == "trap" and len(rest) >= 3 and rest[-1] in ("EXIT", "exit", "0"):
+        trap_body = rest[1] if len(rest) == 3 else " ".join(rest[1:-1])
+
+        def _trap(state: _ShellState, body_text: str = trap_body) -> list[_ShellState]:
+            return [_clone_state(state, exit_trap=body_text, exit_trap_set=True)]
+
+        return _keep_and_run(states, uncertain, follows, _trap), compound
+    if rest and rest[0] == "alias":
+        binding = _alias_binding(rest)
+
+        def _alias(state: _ShellState, found: tuple[str, str] | None = binding) -> list[_ShellState]:
+            if found is None:
+                return [state]
+            updated = dict(state.aliases)
+            updated[found[0]] = found[1]
+            return [_clone_state(state, aliases=tuple(sorted(updated.items())))]
+
+        return _keep_and_run(states, uncertain, follows, _alias), compound
+    if rest and rest[0] == "shopt":
+        args = rest[1:]
+
+        def _shopt(state: _ShellState, shopt_args: list[str] = args) -> list[_ShellState]:
+            errexit, expand = _read_shopt(shopt_args, state.errexit, state.expand_aliases)
+            return [_clone_state(state, errexit=errexit, expand_aliases=expand)]
+
+        return _keep_and_run(states, uncertain, follows, _shopt), compound
+    if not rest:
+        return (
+            _apply_assignment(states, body, body_quoted, assignments, carry, uncertain),
+            compound,
+        )
+    if _directory_update(rest, "", []) is None:
+        for state in states:
+            _record_copy(state, rest)
+        return _apply_errexit(states, body, body_quoted, uncertain), compound
+    if not carry:
+        return _apply_errexit(states, body, body_quoted, uncertain), compound
+    produced: list[_ShellState] = []
+    for state in states:
+        keep_old = uncertain or may_fail or not state.errexit
+        outcomes = _directory_outcomes(rest, rest_quoted, rest_globs, state)
+        if outcomes is None:
+            cloned = _clone_state(state)
+            if not keep_old:
+                cloned.stopped = True
+            produced.append(cloned)
+            continue
+        if keep_old:
+            produced.append(_clone_state(state))
+        for updated_cwd, stack in outcomes:
+            new_old = state.cwd if updated_cwd != state.cwd else state.oldpwd
+            produced.append(
+                _clone_state(
+                    state,
+                    cwd=updated_cwd,
+                    stack=stack,
+                    paths=list(state.paths),
+                    oldpwd=new_old,
+                )
+            )
+    return (
+        _apply_errexit(_dedupe_states(produced), body, body_quoted, uncertain),
+        compound,
+    )
 
 
 def _archive_copied_onto_book(run_text: str, cwd: str, *, errexit: bool = True) -> bool:
@@ -1368,12 +1941,17 @@ def _template_errexit(shell: str) -> bool:
     """Errexit at the start of a step.
 
     An unset shell is the GitHub bash template and starts on. ``bash {0}``
-    does not pass ``-e`` and starts off. A template whose program is not
-    bash, sh, or dash starts off.
+    does not pass ``-e`` and starts off. Words after ``{0}`` are script
+    arguments. A template whose program is not bash, sh, or dash starts off.
     """
     if not shell.strip():
         return True
-    words = [word for word in shell.split() if word != "{0}"]
+    parts = shell.split()
+    if "{0}" in parts:
+        # Words after the script placeholder are arguments to the script.
+        words = parts[: parts.index("{0}")]
+    else:
+        words = parts
     if not words:
         return True
     base = words[0].replace("\\", "/").rsplit("/", 1)[-1]
@@ -1387,6 +1965,8 @@ def _template_errexit(shell: str) -> bool:
             raise AssertionError("shell template scan did not advance")
         previous = index
         arg = words[index]
+        if arg == "--":
+            break
         if arg in ("+o", "-o"):
             nxt = words[index + 1] if index + 1 < len(words) else ""
             if nxt and nxt[0] not in "+-":
@@ -1773,6 +2353,18 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     then the job defaults.run, then the workflow defaults.run. An unset shell
     starts with errexit on. A bash, sh, or dash template starts with errexit
     on only when it passes -e or -o errexit. bash {0} starts with errexit off.
+    Words after {0} are script arguments and do not change errexit. set --
+    ends option scanning, so a later -e or +e is not an option. shopt -u -o
+    errexit and shopt -uo errexit turn errexit off, and shopt -s -o errexit
+    turns it on. shopt -s expand_aliases makes a later alias run. A quoted
+    eval argument is shell text. A redirection operator that contains & or |
+    is not a command separator. A function body runs when that function is
+    called. cd - uses the previous directory. CDPATH is searched for a cd
+    operand with no slash. An EXIT trap runs at the end of the step. A sourced
+    file under the workspace is read. A stored variable in a directory word is
+    expanded, including when the word is quoted, and an unquoted glob in that
+    value is matched. A $GITHUB_WORKSPACE, ${GITHUB_WORKSPACE}, or
+    GITHUB_WORKSPACE prefix is resolved from the workspace root.
     The errexit scan, the paren scan, the backtick scan, the shell word scan,
     and the shell template scan raise if the index does not advance. The shell scan raises if its index does not
     advance. A backslash immediately before a newline continues the command.
@@ -1780,8 +2372,9 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     word is joined onto the current directory. A word that begins with / is
     resolved from the workspace root. A cd or pushd directory word with an
     unquoted *, ?, or [ that matches exactly one directory uses that directory.
-    A quoted metacharacter stays literal. More than one match does not change
-    the directory. Distinct shell states are capped at 32, and passing that
+    A quoted metacharacter stays literal. More than one match fails that
+    directory change and keeps earlier copies. While errexit is on, later
+    commands in that state do not run. Distinct shell states are capped at 32, and passing that
     cap raises. 32 states do not raise. 33 states raise. A quoted literal expression scan raises if its index does not
     advance. The
     copy command is cp, mv, or rsync, matched by basename. A backslash in that
@@ -1824,8 +2417,8 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     compound commands and a leading !; a copy run through sudo, exec, time,
     env, xargs, nohup, or another wrapper command; an assignment prefix in
     front of command cd; a $name or ${name} with more text in the same word;
-    an export or declare assignment; cd $TMP, cd ${TMP}, or pushd $TMP after
-    a stored assignment; a cd of $RUNNER_TEMP; a typeset or readonly assignment.
+    an export or declare assignment; a cd of $RUNNER_TEMP; a typeset or readonly
+    assignment.
     """
     data = _workflow_document(text, path=path)
     jobs = _require_jobs(data, path=path)
@@ -1842,8 +2435,6 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
             if _is_pages_publisher(step):
                 _assert_docs_pages_publish(step, path=path)
             run_text = _step_run_text(step)
-            if not isinstance(run_text, str):
-                raise AssertionError(f"{path}: step run text is not a string")
             if not run_text.strip():
                 continue
             if _archive_copied_onto_book(
@@ -3176,7 +3767,20 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertFalse(_shell_words('"x" if')[1][1])
         self.assertEqual(_shell_words('"x" cd docs/archiv?')[2][2], "docs/archiv?")
-        self.assertEqual(_shell_states("cd docs/arch*\ntrue", ""), [])
+        failed_glob = _shell_states("cd docs/arch*\ntrue", "")
+        self.assertEqual(len(failed_glob), 1)
+        self.assertEqual(failed_glob[0].cwd, "")
+        self.assertEqual(failed_glob[0].paths, [])
+        self.assertTrue(failed_glob[0].stopped)
+        self.assertIs(
+            _archive_copied_onto_book(
+                "cp -r docs/archive/benchmark_dashboard "
+                "docs/book/dashboard/benchmark_dashboard\n"
+                "cd docs/arch*",
+                "",
+            ),
+            True,
+        )
         self.assertTrue(
             _archive_copied_onto_book(
                 'cp "" -r docs/archive/benchmark_dashboard '
@@ -3405,6 +4009,472 @@ class WorkflowPolicyTest(unittest.TestCase):
         )
         self.assertNotIn("docs/archive/benchmark_dashboard", unconditional_cd)
         self.assertIn("nope/docs/archive/benchmark_dashboard", unconditional_cd)
+        self.assertFalse(_next_errexit(["set", "--", "-e"], [False, False, False], False))
+        self.assertTrue(_next_errexit(["set", "--", "+e"], [False, False, False], True))
+        self.assertTrue(_next_errexit(["set", "-e", "--", "+e"], [False, False, False, False], False))
+        self.assertEqual(_read_shopt(["-uo", "errexit"], True, False), (False, False))
+        self.assertEqual(_read_shopt(["-u", "-o", "errexit"], True, False), (False, False))
+        self.assertEqual(_read_shopt(["-s", "-o", "errexit"], False, False), (True, False))
+        self.assertEqual(_read_shopt(["-s", "expand_aliases"], True, False), (True, True))
+        self.assertFalse(_template_errexit("bash {0} -e"))
+        self.assertFalse(_template_errexit("bash {0} -o errexit"))
+        self.assertTrue(_template_errexit("bash -e {0} -x"))
+        self.assertIs(_template_errexit("pwsh {0}"), False)
+        self.assertIs(_template_errexit("dash {0}"), False)
+        self.assertEqual(
+            _step_shell({}, {}, {"defaults": {"run": {"shell": "bash {0}"}}}),
+            "bash {0}",
+        )
+        self.assertEqual(_defaults_shell(None), "")
+        self.assertEqual(_defaults_shell([]), "")
+        self.assertEqual(_defaults_shell({"run": {"shell": "  "}}), "")
+        self.assertEqual(_defaults_shell({"run": "bash"}), "")
+        self.assertEqual(
+            _resolve_run_path("${GITHUB_WORKSPACE}/docs/archive/benchmark_dashboard", "docs/book"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("GITHUB_WORKSPACE/docs/archive/benchmark_dashboard", "other"),
+            "docs/archive/benchmark_dashboard",
+        )
+        self.assertEqual(_resolve_run_path("docs/*", ""), "docs")
+        self.assertEqual(
+            _resolve_run_path("docs/book/dashboard/*", ""),
+            "docs/book/dashboard",
+        )
+        self.assertEqual(
+            _resolve_run_path("./docs/book/dashboard/*", ""),
+            "docs/book/dashboard",
+        )
+        self.assertEqual(_closing_paren("(')')", 0), 4)
+        self.assertEqual(_closing_paren('("\\")")', 0), 6)
+        self.assertEqual(_closing_paren("(", 0), 0)
+        self.assertEqual(_closing_paren("(abc", 0), 3)
+        self.assertEqual(_closing_paren('("a")', 0), 4)
+        self.assertEqual(_closing_backtick("`a`", 0), 2)
+        self.assertEqual(_closing_backtick("`\\``", 0), 3)
+        self.assertEqual(_closing_backtick("`", 0), 0)
+        self.assertIsNone(_shell_words("cp")[0][2])
+        self.assertEqual(len(_shell_words("$(echo a b)")), 1)
+        self.assertEqual(_shell_words('""'), [])
+        self.assertEqual(_shell_words("a*")[0][2], "a*")
+        self.assertIsNone(_shell_words("'a*'")[0][2])
+        self.assertEqual(_opening_depth(["if", "cp"], ["cp"], 0, [False, False]), 1)
+        self.assertEqual(_opening_depth(["if", "cp"], ["cp"], 0, [True, False]), 0)
+        self.assertEqual(_opening_depth(["fi", "cp"], ["cp"], 1, [False, False]), 0)
+        self.assertEqual(_opening_depth(["cp"], ["nope"], 0), 1)
+        self.assertEqual(_glob_directories("docs/archiv?", ""), ["docs/archive"])
+        self.assertGreater(len(_glob_directories("docs/arch*", "")), 1)
+        self.assertIs(_archive_copied_onto_book("echo ok", ""), False)
+        self.assertIs(
+            _archive_copied_onto_book(
+                "Z x cp -r docs/archive/benchmark_dashboard "
+                "docs/book/dashboard/benchmark_dashboard",
+                "",
+            ),
+            False,
+        )
+        self.assertIs(
+            _archive_copied_onto_book(
+                "cp -r docs/archive/benchmark_dashboard "
+                "docs/book/dashboard/benchmark_dashboard\n"
+                "pushd docs/arch*",
+                "",
+            ),
+            True,
+        )
+        one = (True, False, False)
+        self.assertEqual(_split_shell_commands("2>&1 cp a b"), [("2>&1 cp a b", *one)])
+        self.assertEqual(
+            _split_shell_commands("&>/dev/null cp a b"),
+            [("&>/dev/null cp a b", *one)],
+        )
+        self.assertEqual(
+            _split_shell_commands("&>>/dev/null cp a b"),
+            [("&>>/dev/null cp a b", *one)],
+        )
+        self.assertEqual(
+            _split_shell_commands(">| /dev/null cp a b"),
+            [(">| /dev/null cp a b", *one)],
+        )
+        self.assertEqual(
+            _split_shell_commands("echo foo>&2"),
+            [("echo foo>&2", *one)],
+        )
+        self.assertEqual(
+            _split_shell_commands("echo foo>|bar"),
+            [("echo foo>|bar", *one)],
+        )
+        self.assertEqual(
+            _split_shell_commands("echo foo&>bar"),
+            [("echo foo&>bar", *one)],
+        )
+        self.assertEqual(
+            _split_shell_commands("a>&&b"),
+            [("a>", True, True, False), ("b", True, False, True)],
+        )
+        self.assertEqual(
+            _split_shell_commands("a>||b"),
+            [("a>", True, True, False), ("b", True, False, True)],
+        )
+        self.assertEqual(
+            _split_shell_commands("a|&b"),
+            [("a", False, False, False), ("b", True, False, False)],
+        )
+        self.assertEqual(
+            _split_shell_commands("cd docs&extra"),
+            [("cd docs", False, False, False), ("extra", True, False, False)],
+        )
+        self.assertEqual(
+            _split_shell_commands("2>&1&&cp a b"),
+            [("2>&1", True, True, False), ("cp a b", True, False, True)],
+        )
+        self.assertEqual(
+            _split_shell_commands("a>&2&&b"),
+            [("a>&2", True, True, False), ("b", True, False, True)],
+        )
+        self.assertEqual(_redirect_operator_end("a>&&b", 2, "a>"), 2)
+        self.assertEqual(_redirect_operator_end("echo>&2", 5, "echo>"), 7)
+        self.assertEqual(_redirect_operator_end("2>&1 cp", 2, "2>"), 4)
+        self.assertEqual(_redirect_operator_end("echo>|f", 5, "echo>"), 7)
+        self.assertEqual(_redirect_operator_end("2>&-", 2, "2>"), 4)
+        self.assertEqual(
+            _strip_trailing_redirects(
+                ["cp", "a", "b", ">", "f"],
+                [False, False, False, False, False],
+                [None, None, None, None, None],
+            )[0],
+            ["cp", "a", "b"],
+        )
+        self.assertEqual(
+            _strip_trailing_redirects(
+                ["cp", "a", "b", "2>&1"],
+                [False, False, False, False],
+                [None, None, None, None],
+            )[0],
+            ["cp", "a", "b"],
+        )
+        kept, funcs = _extract_functions("publish() { cp a b; }\npublish")
+        self.assertEqual(funcs, {"publish": " cp a b; "})
+        self.assertIn("publish", kept)
+        kept, funcs = _extract_functions("function publish { cp a b; }\npublish")
+        self.assertEqual(funcs, {"publish": " cp a b; "})
+        kept, funcs = _extract_functions("function publish() { cp a b; }\npublish")
+        self.assertEqual(funcs, {"publish": " cp a b; "})
+        kept, funcs = _extract_functions("publish() { echo '}'; }\npublish")
+        self.assertEqual(funcs, {"publish": " echo '}'; "})
+        kept, funcs = _extract_functions("pre publish() { cp a b; } post")
+        self.assertEqual(funcs, {"publish": " cp a b; "})
+        self.assertIn("pre", kept)
+        self.assertIn("post", kept)
+        kept, funcs = _extract_functions("publish () { cp a b; }")
+        self.assertEqual(list(funcs), ["publish"])
+        text, funcs = _extract_functions("Date().toISOString()")
+        self.assertEqual(funcs, {})
+        self.assertEqual(text, "Date().toISOString()")
+        text, funcs = _extract_functions("'publish() { cp a b; }'")
+        self.assertEqual(funcs, {})
+        text, funcs = _extract_functions("$(publish() { cp a b; })")
+        self.assertEqual(funcs, {})
+        self.assertEqual(
+            _match_function("publish() { cp a b; }", 0),
+            ("publish", " cp a b; ", 21),
+        )
+        self.assertEqual(
+            _match_function("function publish { cp a b; }", 0),
+            ("publish", " cp a b; ", 28),
+        )
+        self.assertEqual(
+            _match_function("function publish() { cp a b; }", 0),
+            ("publish", " cp a b; ", 30),
+        )
+        self.assertEqual(_match_function("publish () { cp; }", 0)[0], "publish")
+        self.assertIsNone(_match_function("Date().toISOString()", 0))
+        self.assertIsNone(_match_function("not a function", 0))
+        self.assertIsNone(_match_function("xpublish() { }", 1))
+        self.assertEqual(_matching_brace("{a}", 0), 2)
+        self.assertEqual(_matching_brace("{a{b}c}", 0), 6)
+        self.assertEqual(_matching_brace("{a'}'b}", 0), 6)
+        self.assertEqual(_matching_brace('{a"}"b}', 0), 6)
+        self.assertEqual(_matching_brace("{a\\}b}", 0), 3)
+        self.assertEqual(_read_shopt(["-u", "expand_aliases"], True, True), (True, False))
+        self.assertEqual(_read_shopt(["--", "-s", "errexit"], True, False), (True, False))
+        self.assertEqual(_read_shopt(["-s", "-u", "-o", "errexit"], True, False), (True, False))
+        self.assertIs(_template_errexit("bash -e {0}"), True)
+        self.assertIs(_template_errexit("bash -- -e {0}"), False)
+        self.assertIs(_template_errexit("bash -o errexit {0}"), True)
+        self.assertEqual(_skip_horizontal_space("  a", 0), 2)
+        self.assertTrue(_word_edge("abc", 3))
+        self.assertFalse(_word_edge("abc", 1))
+        self.assertEqual(_alias_binding(["alias", "enter=cd"]), ("enter", "cd"))
+        self.assertIsNone(_alias_binding(["alias", "1bad=cd"]))
+        self.assertFalse(_cd_uses_cdpath(".archive", {"CDPATH": "docs"}))
+        self.assertFalse(_cd_uses_cdpath("/tmp", {"CDPATH": "docs"}))
+        self.assertTrue(_cd_uses_cdpath("archive", {"CDPATH": "docs"}))
+        self.assertEqual(_cdpath_directory("archive", "", "docs"), "docs/archive")
+        self.assertIsNone(_cdpath_directory("nope", "", "docs"))
+        rel_copy = "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard"
+        book_copy = (
+            "cp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard"
+        )
+        self.assertIs(
+            _archive_copied_onto_book(
+                "CDPATH=missing:docs\ncd archive\n" + rel_copy, ""
+            ),
+            True,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("CDPATH=missing\ncd archive\n" + rel_copy, ""),
+            False,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("CDPATH=docs:\ncd archive\n" + rel_copy, ""),
+            True,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("trap '" + book_copy + "' 0\ntrue", ""),
+            True,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("trap '" + book_copy + "' exit\ntrue", ""),
+            True,
+        )
+        nested = "inner() { " + book_copy + "; }\nouter() { inner; }\nouter"
+        self.assertIs(_archive_copied_onto_book(nested, ""), True)
+        chain = ["f0() { " + book_copy + "; }"]
+        for index in range(1, 9):
+            chain.append(f"f{index}() {{ f{index - 1}; }}")
+        chain.append("f8")
+        self.assertIs(_archive_copied_onto_book("\n".join(chain), ""), False)
+        big = ROOT / "scripts/ci/testdata/docs_source_copy/big.sh"
+        try:
+            big.write_bytes(b"a" * 1_000_001)
+            self.assertIsNone(
+                _read_workspace_file("scripts/ci/testdata/docs_source_copy/big.sh")
+            )
+        finally:
+            big.unlink(missing_ok=True)
+        self._pages_form_oracle()
+
+
+    def _pages_form_oracle(self) -> None:
+        """Pin shell-form results the pages suite reads."""
+        expected = json.loads(
+"{\"split:2>&1 cp a b\":[\"ok\",\"[('2>&1 cp a b', True, False, False)]\"],\"split:&>/dev/null cp a b\":[\"ok\",\"[('&>/dev/null cp a b', True, False, False)]\"],\"split:&>>/dev/null cp a b\":[\"ok\",\"[('&>>/dev/null cp a b', True, False, False)]\"],\"split:>| /dev/null cp a b\":[\"ok\",\"[('>| /dev/null cp a b', True, False, False)]\"],\"split:2>&- cp a b\":[\"ok\",\"[('2>&- cp a b', True, False, False)]\"],\"split:>&2 echo hi\":[\"ok\",\"[('>&2 echo hi', True, False, False)]\"],\"split:<&0 cat\":[\"ok\",\"[('<', False, False, False), ('0 cat', True, False, False)]\"],\"split:cd docs/archive 2>&1\":[\"ok\",\"[('cd docs/archive 2>&1', True, False, False)]\"],\"split:SRC=docs/archive 2>&1\":[\"ok\",\"[('SRC=docs/archive 2>&1', True, False, False)]\"],\"split:a&&b\":[\"ok\",\"[('a', True, True, False), ('b', True, False, True)]\"],\"split:a||b\":[\"ok\",\"[('a', True, True, False), ('b', True, False, True)]\"],\"split:a|b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:a&b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:a|&b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:cd docs&extra\":[\"ok\",\"[('cd docs', False, False, False), ('extra', True, False, False)]\"],\"split:a>&&b\":[\"ok\",\"[('a>', True, True, False), ('b', True, False, True)]\"],\"split:a>||b\":[\"ok\",\"[('a>', True, True, False), ('b', True, False, True)]\"],\"split:a>&2&&b\":[\"ok\",\"[('a>&2', True, True, False), ('b', True, False, True)]\"],\"split:a&>b&&c\":[\"ok\",\"[('a&>b', True, True, False), ('c', True, False, True)]\"],\"split:echo Z && cp a b\":[\"ok\",\"[('echo Z', True, True, False), ('cp a b', True, False, True)]\"],\"split:true & Z\":[\"ok\",\"[('true', False, False, False), ('Z', True, False, False)]\"],\"split:cmd>file\":[\"ok\",\"[('cmd>file', True, False, False)]\"],\"split:cmd>>file\":[\"ok\",\"[('cmd>>file', True, False, False)]\"],\"split:a\\nb\":[\"ok\",\"[('a', True, False, False), ('b', True, False, False)]\"],\"split:a;b\":[\"ok\",\"[('a', True, False, False), ('b', True, False, False)]\"],\"split:'a&&b'\":[\"ok\",\"[(\\\"'a&&b'\\\", True, False, False)]\"],\"split:\\\"a&&b\\\"\":[\"ok\",\"[('\\\"a&&b\\\"', True, False, False)]\"],\"split:a\\\\\\nb\":[\"ok\",\"[('ab', True, False, False)]\"],\"split:2>&1&&cp a b\":[\"ok\",\"[('2>&1', True, True, False), ('cp a b', True, False, True)]\"],\"split:echo foo>&2\":[\"ok\",\"[('echo foo>&2', True, False, False)]\"],\"split:echo foo>|bar\":[\"ok\",\"[('echo foo>|bar', True, False, False)]\"],\"split:echo foo&>bar\":[\"ok\",\"[('echo foo&>bar', True, False, False)]\"],\"split:echo foo&>>bar\":[\"ok\",\"[('echo foo&>>bar', True, False, False)]\"],\"split:echo foo<&0\":[\"ok\",\"[('echo foo<', False, False, False), ('0', True, False, False)]\"],\"split:echo foo 2>&1 | cat\":[\"ok\",\"[('echo foo 2>&1', False, False, False), ('cat', True, False, False)]\"],\"end:2>&1 cp\":[\"ok\",\"4\"],\"end:a&&b\":[\"ok\",\"1\"],\"end:a||b\":[\"ok\",\"1\"],\"end:a|&b\":[\"ok\",\"1\"],\"end:a&b\":[\"ok\",\"1\"],\"end:echo>&2\":[\"ok\",\"7\"],\"end:echo>|f\":[\"ok\",\"7\"],\"end:echo&>f\":[\"ok\",\"5\"],\"end:echo&>>f\":[\"ok\",\"5\"],\"end:a>&&b\":[\"ok\",\"2\"],\"end:Z>&1\":[\"ok\",\"1\"],\"end:2>&-\":[\"ok\",\"4\"],\"end:<&0\":[\"ok\",\"1\"],\"fn:publish() { cp a b; }\\npublish\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:function publish { cp a b; }\\np\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:function publish() { cp a b; }\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:Date().toISOString()\":[\"ok\",\"('Date().toISOString()', {})\"],\"fn:'publish() { cp a b; }'\":[\"ok\",\"(\\\"'publish() { cp a b; }'\\\", {})\"],\"fn:$(publish() { cp a b; })\":[\"ok\",\"('$(publish() { cp a b; })', {})\"],\"fn:publish() { echo '}'; }\\npublis\":[\"ok\",\"(' \\\\npublish', {'publish': \\\" echo '}'; \\\"})\"],\"fn:pre publish() { cp a b; } post\":[\"ok\",\"('pre   post', {'publish': ' cp a b; '})\"],\"fn:a() { b; }\\nZ() { c; }\":[\"ok\",\"(' \\\\n ', {'a': ' b; ', 'Z': ' c; '})\"],\"brace:{a}\":[\"ok\",\"2\"],\"brace:{a{b}c}\":[\"ok\",\"6\"],\"brace:{a'}'b}\":[\"ok\",\"6\"],\"brace:{a\\\"}\\\"b}\":[\"ok\",\"6\"],\"brace:{a\\\\}b}\":[\"ok\",\"3\"],\"brace:{\":[\"ok\",\"None\"],\"brace:a{b\":[\"ok\",\"None\"],\"match:publish() { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 21)\"],\"match:function publish { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 28)\"],\"match:function publish() { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 30)\"],\"match:not a function\":[\"ok\",\"None\"],\"match:xpublish() { }\":[\"ok\",\"('xpublish', ' ', 14)\"],\"match:publish () { cp; }\":[\"ok\",\"('publish', ' cp; ', 18)\"],\"match:Date().toISOString()\":[\"ok\",\"None\"],\"strip:cp a b 2>&1\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp a b > f\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:2>&1 cp a b\":[\"ok\",\"(['2>&1', 'cp', 'a', 'b'], [False, False, False, False], [None, None, None, None])\"],\"strip:cp a b\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp a b >&2\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp \\\"2>&1\\\"\":[\"ok\",\"(['cp', '\\\"2>&1\\\"'], [False, True], [None, None])\"],\"shopt:-uo errexit\":[\"ok\",\"(False, False)\"],\"shopt:-u -o errexit\":[\"ok\",\"(False, False)\"],\"shopt:-s -o errexit\":[\"ok\",\"(True, False)\"],\"shopt:-s expand_aliases\":[\"ok\",\"(False, True)\"],\"shopt:-u expand_aliases\":[\"ok\",\"(True, False)\"],\"shopt:-s -u -o errexit\":[\"ok\",\"(True, False)\"],\"shopt:-s globstar nullglob\":[\"ok\",\"(True, False)\"],\"shopt:-- -s errexit\":[\"ok\",\"(True, False)\"],\"shopt:-o\":[\"ok\",\"(True, False)\"],\"shopt:-Z errexit\":[\"ok\",\"(True, False)\"],\"tmpl:bash {0} -e\":[\"ok\",\"False\"],\"tmpl:bash -e {0}\":[\"ok\",\"True\"],\"tmpl:bash {0} -o errexit\":[\"ok\",\"False\"],\"tmpl:bash -o errexit {0}\":[\"ok\",\"True\"],\"tmpl:bash -- -e {0}\":[\"ok\",\"False\"],\"tmpl:pwsh\":[\"ok\",\"False\"],\"tmpl:dash {0}\":[\"ok\",\"False\"],\"tmpl:sh {0}\":[\"ok\",\"False\"],\"tmpl:\":[\"ok\",\"True\"],\"tmpl:bash {0}\":[\"ok\",\"False\"],\"tmpl:Z {0} -e\":[\"ok\",\"False\"],\"next:set -- -e\":[\"err\",\"TypeError\"],\"next:set -- +e\":[\"err\",\"TypeError\"],\"next:set -e\":[\"err\",\"TypeError\"],\"next:set +e\":[\"err\",\"TypeError\"],\"next:set -e -- +e\":[\"err\",\"TypeError\"],\"next:set +o -e\":[\"err\",\"TypeError\"],\"next:set +o errexit\":[\"err\",\"TypeError\"],\"next:true\":[\"err\",\"TypeError\"],\"next:set -Z\":[\"err\",\"TypeError\"],\"h:paren\":[\"ok\",\"4\"],\"h:paren2\":[\"ok\",\"6\"],\"h:tick\":[\"ok\",\"2\"],\"h:tick2\":[\"ok\",\"3\"],\"h:words\":[\"ok\",\"[]\"],\"h:words2\":[\"ok\",\"[('a*', False, 'a*')]\"],\"h:words3\":[\"ok\",\"[('a*', True, None)]\"],\"h:words4\":[\"ok\",\"[('cp', False, None)]\"],\"h:words5\":[\"ok\",\"[('$(echo a b)', False, None)]\"],\"h:wordsZ\":[\"ok\",\"[('Z', False, None)]\"],\"h:glob\":[\"ok\",\"['docs/archive']\"],\"h:glob2\":[\"ok\",\"['docs/architecture', 'docs/archive']\"],\"h:ws\":[\"ok\",\"'docs/archive/x'\"],\"h:ws2\":[\"ok\",\"'docs/a'\"],\"h:star\":[\"ok\",\"'docs/book/dashboard'\"],\"h:cdpath\":[\"ok\",\"'docs/archive'\"],\"h:cdpath2\":[\"ok\",\"None\"],\"h:uses\":[\"ok\",\"True\"],\"h:uses2\":[\"ok\",\"False\"],\"h:uses3\":[\"ok\",\"False\"],\"h:repo\":[\"ok\",\"True\"],\"h:read\":[\"ok\",\"True\"],\"h:read2\":[\"ok\",\"None\"],\"h:edge\":[\"ok\",\"True\"],\"h:edge2\":[\"ok\",\"False\"],\"h:skip\":[\"ok\",\"2\"],\"h:alias\":[\"ok\",\"('enter', 'cd')\"],\"h:alias2\":[\"ok\",\"None\"],\"st:cp -r docs/archive/benchmark_dashboard d\":[\"ok\",\"(('', True, True, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:cp -r docs/archive/benchmark_dashboard d\":[\"ok\",\"True\"],\"st:2>&1 cp -r docs/archive/benchmark_dashbo\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:2>&1 cp -r docs/archive/benchmark_dashbo\":[\"ok\",\"True\"],\"st:&>/dev/null cp -r docs/archive/benchmark\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:&>/dev/null cp -r docs/archive/benchmark\":[\"ok\",\"True\"],\"st:>| /dev/null cp -r docs/archive/benchmar\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:>| /dev/null cp -r docs/archive/benchmar\":[\"ok\",\"True\"],\"st:cd docs/archive 2>&1|cp -r benchmark_das\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:cd docs/archive 2>&1|cp -r benchmark_das\":[\"ok\",\"True\"],\"st:publish() { cp -r docs/archive/benchmark\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:publish() { cp -r docs/archive/benchmark\":[\"ok\",\"True\"],\"st:function relax { set +e; }|relax|cd nope\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:function relax { set +e; }|relax|cd nope\":[\"ok\",\"True\"],\"st:shopt -s expand_aliases|alias enter='cd \":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), True, (('enter', 'cd docs/archive'),), None, ''),)\"],\"cp:shopt -s expand_aliases|alias enter='cd \":[\"ok\",\"True\"],\"st:cd docs|cd archive|cd -|cp -r archive/be\":[\"ok\",\"(('docs', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'),)\"],\"cp:cd docs|cd archive|cd -|cp -r archive/be\":[\"ok\",\"True\"],\"st:CDPATH=docs|cd archive|cp -r benchmark_d\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:CDPATH=docs|cd archive|cp -r benchmark_d\":[\"ok\",\"True\"],\"st:trap 'cp -r docs/archive/benchmark_dashb\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:trap 'cp -r docs/archive/benchmark_dashb\":[\"ok\",\"True\"],\"st:. scripts/ci/testdata/docs_source_copy/p\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:. scripts/ci/testdata/docs_source_copy/p\":[\"ok\",\"True\"],\"st:D=docs/archive|cd \\\"$D\\\"|cp -r benchmark_d\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:D=docs/archive|cd \\\"$D\\\"|cp -r benchmark_d\":[\"ok\",\"True\"],\"st:P=docs/archiv?|cd $P|cp -r benchmark_das\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:P=docs/archiv?|cd $P|cp -r benchmark_das\":[\"ok\",\"True\"],\"st:set +e|set -- -e|cd nope|cp -r benchmark\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:set +e|set -- -e|cd nope|cp -r benchmark\":[\"ok\",\"True\"],\"st:set -- +e|cd nope|cp -r benchmark_dashbo\":[\"ok\",\"(('docs/archive/nope', True, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'),)\"],\"cp:set -- +e|cd nope|cp -r benchmark_dashbo\":[\"ok\",\"False\"],\"st:shopt -uo errexit|cd nope|cp -r benchmar\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:shopt -uo errexit|cd nope|cp -r benchmar\":[\"ok\",\"True\"],\"st:eval 'set +e'|cd nope|cp -r benchmark_da\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:eval 'set +e'|cd nope|cp -r benchmark_da\":[\"ok\",\"True\"],\"st:cd docs/arch*|true\":[\"ok\",\"(('', True, True, (), False, (), None, ''),)\"],\"cp:cd docs/arch*|true\":[\"ok\",\"False\"],\"st:Z x cp -r docs/archive/benchmark_dashboa\":[\"ok\",\"(('', True, False, (), False, (), None, ''),)\"],\"cp:Z x cp -r docs/archive/benchmark_dashboa\":[\"ok\",\"False\"],\"st:cd -\":[\"ok\",\"(('', True, True, (), False, (), None, ''),)\"],\"cp:cd -\":[\"ok\",\"False\"]}"
+        )
+        got: dict[str, list[str]] = {}
+
+        def add(name: str, fn) -> None:
+            try:
+                got[name] = ["ok", repr(fn())]
+            except Exception as exc:
+                got[name] = ["err", type(exc).__name__]
+
+        copy = (
+            "cp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard"
+        )
+        rel = "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard"
+        splits = [
+            "2>&1 cp a b", "&>/dev/null cp a b", "&>>/dev/null cp a b",
+            ">| /dev/null cp a b", "2>&- cp a b", ">&2 echo hi", "<&0 cat",
+            "cd docs/archive 2>&1", "SRC=docs/archive 2>&1", "a&&b", "a||b",
+            "a|b", "a&b", "a|&b", "cd docs&extra", "a>&&b", "a>||b",
+            "a>&2&&b", "a&>b&&c", "echo Z && cp a b", "true & Z", "cmd>file",
+            "cmd>>file", "a\nb", "a;b", "'a&&b'", '"a&&b"', "a\\\nb",
+            "2>&1&&cp a b", "echo foo>&2", "echo foo>|bar", "echo foo&>bar",
+            "echo foo&>>bar", "echo foo<&0", "echo foo 2>&1 | cat",
+        ]
+        for text in splits:
+            add("split:" + text, lambda text=text: _split_shell_commands(text))
+        ends = [
+            ("2>&1 cp", 2, "2>"), ("a&&b", 1, "a"), ("a||b", 1, "a"),
+            ("a|&b", 1, "a"), ("a&b", 1, "a"), ("echo>&2", 5, "echo>"),
+            ("echo>|f", 5, "echo>"), ("echo&>f", 5, "echo"),
+            ("echo&>>f", 5, "echo"), ("a>&&b", 2, "a>"), ("Z>&1", 1, "Z>"),
+            ("2>&-", 2, "2>"), ("<&0", 1, "<"),
+        ]
+        for text, index, current in ends:
+            add(
+                "end:" + text,
+                lambda text=text, index=index, current=current: _redirect_operator_end(
+                    text, index, current
+                ),
+            )
+        funcs = [
+            "publish() { cp a b; }\npublish",
+            "function publish { cp a b; }\npublish",
+            "function publish() { cp a b; }\npublish",
+            "Date().toISOString()",
+            "'publish() { cp a b; }'",
+            "$(publish() { cp a b; })",
+            "publish() { echo '}'; }\npublish",
+            "pre publish() { cp a b; } post",
+            "a() { b; }\nZ() { c; }",
+        ]
+        for text in funcs:
+            add("fn:" + text[:30], lambda text=text: _extract_functions(text))
+        for text in ["{a}", "{a{b}c}", "{a'}'b}", '{a"}"b}', "{a\\}b}", "{", "a{b"]:
+            add(
+                "brace:" + text,
+                lambda text=text: _matching_brace(text, text.find("{") if "{" in text else 0),
+            )
+        for text in [
+            "publish() { cp a b; }",
+            "function publish { cp a b; }",
+            "function publish() { cp a b; }",
+            "not a function",
+            "xpublish() { }",
+            "publish () { cp; }",
+            "Date().toISOString()",
+        ]:
+            add("match:" + text[:30], lambda text=text: _match_function(text, 0))
+        strips = [
+            (["cp", "a", "b", "2>&1"], [False] * 4, [None] * 4),
+            (["cp", "a", "b", ">", "f"], [False] * 5, [None] * 5),
+            (["2>&1", "cp", "a", "b"], [False] * 4, [None] * 4),
+            (["cp", "a", "b"], [False] * 3, [None] * 3),
+            (["cp", "a", "b", ">&2"], [False] * 4, [None] * 4),
+            (["cp", '"2>&1"'], [False, True], [None, None]),
+        ]
+        for words, quoted, globs in strips:
+            add(
+                "strip:" + " ".join(words),
+                lambda words=words, quoted=quoted, globs=globs: _strip_trailing_redirects(
+                    words, quoted, globs
+                ),
+            )
+        shopts = [
+            (["-uo", "errexit"], True, False),
+            (["-u", "-o", "errexit"], True, False),
+            (["-s", "-o", "errexit"], False, False),
+            (["-s", "expand_aliases"], False, False),
+            (["-u", "expand_aliases"], True, True),
+            (["-s", "-u", "-o", "errexit"], True, False),
+            (["-s", "globstar", "nullglob"], True, False),
+            (["--", "-s", "errexit"], True, False),
+            (["-o"], True, False),
+            (["-Z", "errexit"], True, False),
+        ]
+        for args, errexit, expand in shopts:
+            add(
+                "shopt:" + " ".join(args),
+                lambda args=args, errexit=errexit, expand=expand: _read_shopt(
+                    args, errexit, expand
+                ),
+            )
+        for text in [
+            "bash {0} -e", "bash -e {0}", "bash {0} -o errexit",
+            "bash -o errexit {0}", "bash -- -e {0}", "pwsh", "dash {0}",
+            "sh {0}", "", "bash {0}", "Z {0} -e",
+        ]:
+            add("tmpl:" + text, lambda text=text: _template_errexit(text))
+        for text, flag in [
+            ("set -- -e", False), ("set -- +e", True), ("set -e", False),
+            ("set +e", True), ("set -e -- +e", True), ("set +o -e", False),
+            ("set +o errexit", True), ("true", True), ("set -Z", True),
+        ]:
+            add(
+                "next:" + text,
+                lambda text=text, flag=flag: _next_errexit(text, flag),
+            )
+        helpers = {
+            "paren": lambda: _closing_paren("(')')", 0),
+            "paren2": lambda: _closing_paren('("\\")")', 0),
+            "tick": lambda: _closing_backtick("`a`", 0),
+            "tick2": lambda: _closing_backtick("`\\``", 0),
+            "words": lambda: _shell_words('""'),
+            "words2": lambda: _shell_words("a*"),
+            "words3": lambda: _shell_words("'a*'"),
+            "words4": lambda: _shell_words("cp"),
+            "words5": lambda: _shell_words("$(echo a b)"),
+            "wordsZ": lambda: _shell_words("Z"),
+            "glob": lambda: _glob_directories("docs/archiv?", ""),
+            "glob2": lambda: _glob_directories("docs/arch*", ""),
+            "ws": lambda: _resolve_run_path(
+                "$GITHUB_WORKSPACE/docs/archive/x", "docs/book"
+            ),
+            "ws2": lambda: _resolve_run_path("${GITHUB_WORKSPACE}/docs/a", ""),
+            "star": lambda: _resolve_run_path("docs/book/dashboard/*", ""),
+            "cdpath": lambda: _cdpath_directory("archive", "", "docs"),
+            "cdpath2": lambda: _cdpath_directory("nope", "", "docs"),
+            "uses": lambda: _cd_uses_cdpath("archive", {"CDPATH": "docs"}),
+            "uses2": lambda: _cd_uses_cdpath("/tmp", {"CDPATH": "docs"}),
+            "uses3": lambda: _cd_uses_cdpath(".archive", {"CDPATH": "docs"}),
+            "repo": lambda: _repo_dir("docs/archive"),
+            "read": lambda: _read_workspace_file(
+                "scripts/ci/testdata/docs_source_copy/payload.sh"
+            ) is not None,
+            "read2": lambda: _read_workspace_file("../secrets"),
+            "edge": lambda: _word_edge("abc", 3),
+            "edge2": lambda: _word_edge("abc", 1),
+            "skip": lambda: _skip_horizontal_space("  a", 0),
+            "alias": lambda: _alias_binding(["alias", "enter=cd"]),
+            "alias2": lambda: _alias_binding(["alias", "1bad=cd"]),
+        }
+        for name, fn in helpers.items():
+            add("h:" + name, fn)
+        scripts = [
+            (copy, ""),
+            ("2>&1 " + copy, ""),
+            ("&>/dev/null " + copy, ""),
+            (">| /dev/null " + copy, ""),
+            ("cd docs/archive 2>&1\n" + rel, ""),
+            ("publish() { " + copy + "\n}\npublish", ""),
+            ("function relax { set +e; }\nrelax\ncd nope\n" + rel, "docs/archive"),
+            (
+                "shopt -s expand_aliases\nalias enter='cd docs/archive'\nenter\n" + rel,
+                "",
+            ),
+            (
+                "cd docs\ncd archive\ncd -\n"
+                "cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard",
+                "",
+            ),
+            ("CDPATH=docs\ncd archive\n" + rel, ""),
+            ("trap '" + copy + "' EXIT\ntrue", ""),
+            (". scripts/ci/testdata/docs_source_copy/payload.sh", ""),
+            ('D=docs/archive\ncd "$D"\n' + rel, ""),
+            ("P=docs/archiv?\ncd $P\n" + rel, ""),
+            ("set +e\nset -- -e\ncd nope\n" + rel, "docs/archive"),
+            ("set -- +e\ncd nope\n" + rel, "docs/archive"),
+            ("shopt -uo errexit\ncd nope\n" + rel, "docs/archive"),
+            ("eval 'set +e'\ncd nope\n" + rel, "docs/archive"),
+            ("cd docs/arch*\ntrue", ""),
+            (copy + "\ncd docs/arch*", ""),
+            ("Z x " + copy, ""),
+            ("cd -", ""),
+        ]
+
+        def state_sig(script: str, cwd: str):
+            got_states = _shell_states(script, cwd)
+            return tuple(
+                (
+                    state.cwd,
+                    state.errexit,
+                    state.stopped,
+                    tuple(state.paths),
+                    state.expand_aliases,
+                    tuple(state.aliases),
+                    state.exit_trap,
+                    state.oldpwd,
+                )
+                for state in got_states
+            )
+
+        for script, cwd in scripts:
+            label = script.replace("\n", "|")[:40]
+            add("st:" + label, lambda script=script, cwd=cwd: state_sig(script, cwd))
+            add(
+                "cp:" + label,
+                lambda script=script, cwd=cwd: bool(
+                    _archive_copied_onto_book(script, cwd)
+                ),
+            )
+        self.assertEqual(set(got), set(expected))
+        for name, value in expected.items():
+            self.assertEqual(got[name], value, name)
 
     def test_benchmark_alert_gh_pages_publish_paths(self) -> None:
         alert = (WORKFLOWS / "benchmark_alert.yml").read_text(encoding="utf-8")
@@ -3504,6 +4574,49 @@ class WorkflowPolicyTest(unittest.TestCase):
                 assert_benchmark_alert_gh_pages_publish, "[]\n", path="list-root"
             )
         self.assertIn("not a mapping", str(caught.exception))
+        whole_tree = """
+name: Alert
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy dashboard to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_dir: ./docs/
+          destination_dir: dashboard/benchmark_data
+          publish_branch: gh-pages
+"""
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish, whole_tree, path="whole-tree"
+            )
+        self.assertIn("whole tree", str(caught.exception))
+        bare = whole_tree.replace("publish_dir: ./docs/\n", "publish_dir: ./docs/benchmark_data\n")
+        bare = bare.replace(
+            "destination_dir: dashboard/benchmark_data\n",
+            "destination_dir: dashboard\n",
+        )
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish, bare, path="bare-dashboard"
+            )
+        self.assertIn("bare dashboard", str(caught.exception))
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish,
+                "name: n\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps: []\n",
+                path="no-publish",
+            )
+        self.assertIn(PEACEIRIS_GH_PAGES, str(caught.exception))
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_benchmark_alert_gh_pages_publish,
+                "name: n\non: [push]\njobs:\n  build: []\n",
+                path="job-list",
+            )
+        self.assertIn("not a mapping", str(caught.exception))
 
     def test_docs_no_archive_benchmark_dashboard_copy(self) -> None:
         docs = (WORKFLOWS / "docs.yml").read_text(encoding="utf-8")
@@ -3591,6 +4704,7 @@ class WorkflowPolicyTest(unittest.TestCase):
             "docs_cd_glob_many",
             "docs_set_positional_safe",
             "docs_set_o_flag_safe",
+            "docs_set_double_dash_safe",
         ):
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
             _call_checker(
@@ -3779,6 +4893,29 @@ jobs:
             "docs_two_redirects",
             "docs_absolute_cd_copy",
             "docs_builtin_cd_copy",
+            "docs_cd_glob_after_copy",
+            "docs_pushd_glob_after_copy",
+            "docs_set_double_dash_e",
+            "docs_eval_quoted_set",
+            "docs_eval_quoted_cd",
+            "docs_shell_script_arg",
+            "docs_workspace_root_copy",
+            "docs_workspace_root_cd",
+            "docs_shopt_o_errexit",
+            "docs_shopt_uo_errexit",
+            "docs_redirect_fd_copy",
+            "docs_redirect_cd_copy",
+            "docs_redirect_assign_copy",
+            "docs_function_copy",
+            "docs_function_cd",
+            "docs_function_set",
+            "docs_alias_cd",
+            "docs_cd_previous",
+            "docs_cdpath_cd",
+            "docs_trap_exit_copy",
+            "docs_source_copy",
+            "docs_quoted_var_cd",
+            "docs_glob_var_cd",
             "docs_if_assign_archive",
             "docs_if_keeps_archive",
             "docs_extra_fi_copy",
@@ -3859,6 +4996,20 @@ jobs:
                 path="with-list",
             )
         self.assertIn("missing with", str(caught.exception))
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy,
+                "name: n\non: [push]\njobs:\n  build: []\n",
+                path="job-list",
+            )
+        self.assertIn("not a mapping", str(caught.exception))
+        with self.assertRaises(AssertionError) as caught:
+            _call_checker(
+                assert_docs_no_archive_benchmark_dashboard_copy,
+                "name: n\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n",
+                path="no-steps",
+            )
+        self.assertIn("missing steps", str(caught.exception))
 
     def test_shell_state_cap_boundary(self) -> None:
         under = "\n".join(f"if false; then cd d{index}; fi" for index in range(5))
