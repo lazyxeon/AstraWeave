@@ -136,36 +136,53 @@ fn deadline_exceeded(elapsed: std::time::Duration, limit: std::time::Duration) -
     elapsed > limit
 }
 
-/// Set after a probe child is still running when its kill ceiling is reached.
+/// Deadline miss for waits that share this value.
 ///
-/// Later waits that still see a live child stop at once. A `try_wait` that
-/// never reports exit cannot add every ceiling. A child that has already
-/// exited is observed by `try_wait` and is not killed here.
-fn deadline_already_missed() -> bool {
-    DEADLINE_MISS.load(std::sync::atomic::Ordering::SeqCst)
+/// A miss does not leave this value. `cargo test` keeps running other tests
+/// in the same process, so a static flag would fail a later wait at a limit
+/// that wait never reached. A new `DeadlineMiss` starts clear. A zero limit
+/// does not count as a miss. A child that has already exited is observed by
+/// `try_wait` and is not killed here.
+struct DeadlineMiss {
+    missed: std::cell::Cell<bool>,
 }
 
-fn note_deadline_miss() {
-    DEADLINE_MISS.store(true, std::sync::atomic::Ordering::SeqCst);
-}
-
-fn past_deadline(started: std::time::Instant, limit: std::time::Duration) -> bool {
-    deadline_already_missed() || deadline_exceeded(started.elapsed(), limit)
-}
-
-fn fail_deadline(child: &mut ReapedChild, what: &str, limit: std::time::Duration) -> ! {
-    // A zero limit is the unit pin. It must not mark later probes as missed.
-    if !limit.is_zero() {
-        note_deadline_miss();
+impl DeadlineMiss {
+    fn new() -> Self {
+        Self {
+            missed: std::cell::Cell::new(false),
+        }
     }
+
+    fn already(&self) -> bool {
+        self.missed.get()
+    }
+
+    fn note(&self, limit: std::time::Duration) {
+        if !limit.is_zero() {
+            self.missed.set(true);
+        }
+    }
+
+    fn past(&self, started: std::time::Instant, limit: std::time::Duration) -> bool {
+        self.already() || deadline_exceeded(started.elapsed(), limit)
+    }
+}
+
+fn fail_deadline(
+    child: &mut ReapedChild,
+    miss: &DeadlineMiss,
+    what: &str,
+    limit: std::time::Duration,
+) -> ! {
+    miss.note(limit);
     child.kill_and_reap();
     panic!("{what} still running after {limit:?}");
 }
 
-static DEADLINE_MISS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// Reads in one `finish_response` drain. A stub that reports bytes without
-/// taking them off the socket cannot spin until the join bound.
+/// Reads in one `finish_response` drain. The next read is not attempted, so a
+/// peer that keeps sending cannot hold the thread until the join bound.
+/// `finish_response` reads a `TcpStream`.
 const DRAIN_READ_CAP: u32 = 8192;
 
 fn peek_again(kind: std::io::ErrorKind) -> bool {
@@ -306,8 +323,9 @@ fn read_http_request_from<R: std::io::Read>(reader: &mut R) {
 /// data into `WSAECONNRESET`. The read runs off the accept loop: a 404 has to
 /// be able to accept `/api/generate` while the first client is still closing.
 /// Each of those reads uses `MOCK_READ_TIMEOUT`. The caller joins the thread.
-/// The loop also stops after `DRAIN_READ_CAP` reads, so a read that reports
-/// bytes without consuming them cannot spin for the join bound.
+/// The loop also stops after `DRAIN_READ_CAP` reads. A peer that keeps sending
+/// hits that cap before a silent read can sit for `MOCK_READ_TIMEOUT`. A peer
+/// that sends nothing returns on that timeout instead.
 fn finish_response(mut sock: std::net::TcpStream) -> std::thread::JoinHandle<()> {
     let _ = sock.shutdown(std::net::Shutdown::Write);
     std::thread::spawn(move || {
@@ -574,13 +592,23 @@ fn wait_for_exit(
     limit: std::time::Duration,
     what: &str,
 ) -> std::process::ExitStatus {
+    let miss = DeadlineMiss::new();
+    wait_for_exit_sharing(child, &miss, limit, what)
+}
+
+fn wait_for_exit_sharing(
+    child: &mut ReapedChild,
+    miss: &DeadlineMiss,
+    limit: std::time::Duration,
+    what: &str,
+) -> std::process::ExitStatus {
     let started = std::time::Instant::now();
     loop {
         if let Some(status) = child.try_wait().expect("wait") {
             return status;
         }
-        if past_deadline(started, limit) {
-            fail_deadline(child, what, limit);
+        if miss.past(started, limit) {
+            fail_deadline(child, miss, what, limit);
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
@@ -1496,8 +1524,7 @@ fn readable_error_status_does_not_start_streaming() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(4)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!(
                 "complete still running after a readable 500: {:?}",
@@ -1567,8 +1594,7 @@ fn run_complete(addr: std::net::SocketAddr, early_exit: &str) -> std::process::O
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(4)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             let _ = stdout_task.join();
             let _ = stderr_task.join();
@@ -1627,8 +1653,7 @@ fn oversized_chat_body_stops_at_the_stream_budget() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(4)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("complete kept reading past the stream budget");
         }
@@ -1684,8 +1709,7 @@ fn empty_ndjson_lines_stop_at_the_stream_budget() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(4)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("empty NDJSON lines were still streaming");
         }
@@ -1762,8 +1786,7 @@ fn a_512_token_reply_is_kept() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(8)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(8)) {
             child.kill_and_reap();
             panic!("512-token reply was still open");
         }
@@ -1909,8 +1932,7 @@ fn invalid_utf8_line_is_an_error() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(4)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("invalid utf-8 line was still open");
         }
@@ -1966,8 +1988,7 @@ fn good_line_before_bad_utf8_is_kept() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if past_deadline(started, std::time::Duration::from_secs(4)) {
-            note_deadline_miss();
+        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
             child.kill_and_reap();
             panic!("good line then bad utf-8 was still open");
         }
@@ -2611,6 +2632,9 @@ fn read_http_request_sets_the_socket_read_timeout() {
         let Some(mut sock) = accept_client(&listener, &shutdown) else {
             return;
         };
+        // `accept_if` already set this timeout. Clear it so the assert sees
+        // the call inside `read_http_request`. A deleted call leaves `None`.
+        sock.set_read_timeout(None).expect("clear read timeout");
         read_http_request(&mut sock);
         let timeout = sock.read_timeout().expect("read timeout");
         let _ = done_tx.send(timeout);
@@ -2727,18 +2751,34 @@ fn mock_server_drop_signals_shutdown() {
 }
 
 #[test]
-#[should_panic(expected = "mock server thread did not exit")]
 fn mock_server_drop_joins_a_worker_that_stays_blocked() {
-    let (park_tx, park_rx) = std::sync::mpsc::channel::<()>();
-    let mut server = start_server(move |_listener, shutdown| {
-        while !shutdown_requested(&shutdown) {
-            std::thread::yield_now();
-        }
-        let _ = park_rx.recv();
-    });
-    server.join_bound = std::time::Duration::ZERO;
-    std::mem::forget(park_tx);
-    drop(server);
+    let started = std::time::Instant::now();
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let (park_tx, park_rx) = std::sync::mpsc::channel::<()>();
+        let mut server = start_server(move |_listener, shutdown| {
+            while !shutdown_requested(&shutdown) {
+                std::thread::yield_now();
+            }
+            let _ = park_rx.recv();
+        });
+        server.join_bound = std::time::Duration::ZERO;
+        std::mem::forget(park_tx);
+        drop(server);
+    }));
+    let elapsed = started.elapsed();
+    let text = panic_text(
+        panicked
+            .expect_err("drop returned while the worker stayed blocked")
+            .as_ref(),
+    );
+    assert!(
+        text.contains("within 0ns"),
+        "join bound was not zero: {text}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "drop join waited {elapsed:?}"
+    );
 }
 
 #[test]
@@ -2842,13 +2882,43 @@ fn finish_response_drain_returns_when_the_peer_stays_silent() {
         .expect("drain did not return while the peer stayed open");
     assert!(
         elapsed + std::time::Duration::from_millis(500) >= MOCK_READ_TIMEOUT,
-        "drain returned in {elapsed:?} without the read cap"
+        "drain returned in {elapsed:?} without the read timeout"
     );
     assert!(
         elapsed < MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1),
         "drain took {elapsed:?}"
     );
     drop(client);
+}
+
+#[test]
+fn finish_response_drain_stops_at_the_read_cap() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let mut client = std::net::TcpStream::connect(addr).expect("connect");
+    let (sock, _) = listener.accept().expect("accept");
+    let buf = vec![b'x'; READ_CHUNK];
+    std::io::Write::write_all(&mut client, &buf).expect("prime");
+    let started = std::time::Instant::now();
+    let drain = finish_response(sock);
+    let writer = std::thread::spawn(move || loop {
+        if std::io::Write::write_all(&mut client, &buf).is_err() {
+            break;
+        }
+    });
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = drain.join();
+        let _ = done_tx.send(started.elapsed());
+    });
+    let elapsed = done_rx.recv_timeout(MOCK_READ_TIMEOUT).unwrap_or_else(|_| {
+        panic!("drain did not stop at the read cap");
+    });
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT,
+        "drain took {elapsed:?}; the read cap did not stop it"
+    );
+    writer.join().expect("writer");
 }
 
 #[test]
@@ -2919,6 +2989,78 @@ fn wait_for_exit_reaps_the_child_when_the_deadline_is_already_past() {
     let text = panic_text(panicked.expect_err("deadline was not a failure").as_ref());
     assert!(text.contains("hang still running"), "{text}");
     assert!(!process_alive(pid), "deadline arm left the child running");
+}
+
+#[test]
+fn deadline_miss_stays_on_its_invocation() {
+    let started = std::time::Instant::now();
+    let long = std::time::Duration::from_secs(30);
+    let miss = DeadlineMiss::new();
+    assert!(!miss.past(started, long));
+    miss.note(std::time::Duration::from_secs(4));
+    assert!(miss.past(started, long));
+    let other = DeadlineMiss::new();
+    assert!(
+        !other.past(started, long),
+        "a miss was visible on a new invocation"
+    );
+    let zero = DeadlineMiss::new();
+    zero.note(std::time::Duration::ZERO);
+    assert!(!zero.already());
+    assert!(!zero.past(started, long));
+}
+
+#[test]
+fn wait_for_exit_stops_when_its_miss_is_already_set() {
+    let miss = DeadlineMiss::new();
+    miss.note(std::time::Duration::from_secs(4));
+    let started = std::time::Instant::now();
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut child = ReapedChild::spawn(&mut hang_command());
+        wait_for_exit_sharing(
+            &mut child,
+            &miss,
+            std::time::Duration::from_secs(30),
+            "sleep",
+        );
+    }));
+    let elapsed = started.elapsed();
+    let text = panic_text(
+        panicked
+            .expect_err("a recorded miss did not stop the wait")
+            .as_ref(),
+    );
+    assert!(text.contains("sleep still running after 30s"), "{text}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "the shared miss waited {elapsed:?}"
+    );
+    let fresh = DeadlineMiss::new();
+    assert!(!fresh.past(
+        std::time::Instant::now(),
+        std::time::Duration::from_secs(30)
+    ));
+    let out = ollama_chat_probe("complete");
+    assert!(
+        !out.status.success(),
+        "a prior miss failed the closed-port probe"
+    );
+}
+
+#[test]
+fn wait_for_exit_zero_limit_does_not_mark_its_miss() {
+    let miss = DeadlineMiss::new();
+    let mut child = ReapedChild::spawn(&mut hang_command());
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        wait_for_exit_sharing(&mut child, &miss, std::time::Duration::ZERO, "hang");
+    }));
+    let text = panic_text(panicked.expect_err("zero limit did not fail").as_ref());
+    assert!(text.contains("hang still running"), "{text}");
+    assert!(!miss.already(), "a zero limit marked the miss");
+    assert!(!miss.past(
+        std::time::Instant::now(),
+        std::time::Duration::from_secs(30)
+    ));
 }
 
 #[test]
