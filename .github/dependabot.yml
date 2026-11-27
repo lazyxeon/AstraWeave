@@ -27,6 +27,24 @@ updates:
       # Ignore patch updates for wgpu as they might break compatibility
       - dependency-name: "wgpu"
         update-types: ["version-update:semver-patch"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: Andrew approves an MSRV/toolchain bump to >=1.91 and it lands.
+      - dependency-name: "notify"
+        versions: [">=9.0.0"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: Andrew approves an MSRV/toolchain bump to >=1.95 and it lands.
+      - dependency-name: "parking_lot"
+        versions: [">=0.13.0"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: Andrew approves an MSRV/toolchain bump to >=1.91 and it lands.
+      - dependency-name: "cargo_metadata"
+        versions: [">=0.19.0"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers candle 0.9/0.10 with workspace zip 9.7.0, or upstream candle drops zip 7.
+      - dependency-name: "candle-core"
+        versions: [">=0.9"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers candle 0.9/0.10 with workspace zip 9.7.0, or upstream candle drops zip 7.
+      - dependency-name: "candle-nn"
+        versions: [">=0.9"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers candle 0.9/0.10 with workspace zip 9.7.0, or upstream candle drops zip 7.
+      - dependency-name: "candle-transformers"
+        versions: [">=0.10"]
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
