@@ -33,18 +33,18 @@ updates:
       # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: Andrew approves an MSRV/toolchain bump to >=1.95 and it lands.
       - dependency-name: "parking_lot"
         versions: [">=0.13.0"]
-      # cargo-platform 0.3.3 sets rust-version 1.91. 0.3.2 sets 1.88. https://github.com/lazyxeon/AstraWeave/issues/787 — exit: toolchain >=1.91.
-      - dependency-name: "cargo-platform"
-        versions: [">=0.3.3"]
-      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers candle 0.9/0.10 with workspace zip 9.7.0, or upstream candle drops zip 7.
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: migrate the call site at tools/aw_trace_sync/src/main.rs:209. The lockfile can hold cargo-platform 0.3.2, which builds on rustc 1.89, so the real blocker is that migration, where E0308 comes from Package.name becoming PackageName starting at 0.20.0.
+      - dependency-name: "cargo_metadata"
+        versions: [">=0.20.0"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers releases in >=0.9, <0.11.1 with workspace zip 9.7.0, or those releases no longer resolve zip 7 (0.9 and 0.10) or zip ^8.6.0 (0.11.0). 0.11.1 resolves zip ^9.1.3 and is not in this range.
       - dependency-name: "candle-core"
-        versions: [">=0.9"]
-      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers candle 0.9/0.10 with workspace zip 9.7.0, or upstream candle drops zip 7.
+        versions: [">=0.9, <0.11.1"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers releases in >=0.9, <0.11.1 with workspace zip 9.7.0, or those releases no longer resolve zip 7 (0.9 and 0.10) or zip ^8.6.0 (0.11.0). 0.11.1 resolves zip ^9.1.3 and is not in this range.
       - dependency-name: "candle-nn"
-        versions: [">=0.9"]
-      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers candle 0.9/0.10 with workspace zip 9.7.0, or upstream candle drops zip 7.
+        versions: [">=0.9, <0.11.1"]
+      # https://github.com/lazyxeon/AstraWeave/issues/787 — exit: the vendor patch covers releases in >=0.9, <0.11.1 with workspace zip 9.7.0, or those releases no longer resolve zip 7 (0.9 and 0.10) or zip ^8.6.0 (0.11.0). 0.11.1 resolves zip ^9.1.3 and is not in this range.
       - dependency-name: "candle-transformers"
-        versions: [">=0.9"]
+        versions: [">=0.9, <0.11.1"]
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
