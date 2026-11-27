@@ -44,7 +44,7 @@ jobs:
             features: alloc-counter,planner_advanced
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload bench output
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: alloc-measure-${{ matrix.crate }}
           path: bench-output/
@@ -82,7 +82,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -100,7 +100,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
@@ -115,7 +115,7 @@ jobs:
 
       - name: Upload tick time
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sim-tick-time
           path: bench-output/sim-tick-time.txt
@@ -128,7 +128,7 @@ jobs:
     needs: [alloc-benches, zero-alloc, cpu-tick-time]
     if: always()
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts/
 
@@ -157,7 +157,7 @@ jobs:
           fi
 
       - name: Upload combined summary
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: alloc-measure-summary
           path: summary.md
@@ -170,7 +170,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Compare captured frame times to 11 ms
         shell: bash
