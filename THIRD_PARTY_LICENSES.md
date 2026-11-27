@@ -1,5 +1,7 @@
 # Third-Party Asset Licenses
 
+**Current recheck:** [November 2026 provenance and cleanup](docs/audits/ASSET_PROVENANCE_2026-11-27.md). The July inventory below is historical, not the current distribution list.
+
 **Scope**: the ratified AD.0 sample set (153 in-repo rows + 1 ratified acquisition) and the release-pack contents traced to date (see `docs/audits/DISPOSITION_REPORT_imported.md`), **plus the AD.1.A missed-file-class sweep (§10)** — video/audio/fonts/SVG and other classes the original audit never enumerated. Quarantined material is **intentionally absent** from this manifest — untraceable assets are never shipped in-repo or on release pages. | **Produced**: AD.1, 2026-07-05; AD.1.A addendum (§4 Artlist rows closed, §10 added), 2026-07-05; AD.1.B pack-bucket remainder (§11), 2026-07-06; AD.1.C residual trace + ratification (§8 flipped to RATIFIED, §12 added), 2026-07-06. | **Standard**: an asset appears as TRACED only when a source document states its license terms (upstream license page fetched this session, a LICENSE/README shipped inside the pack, or a documented storefront license). Every URL cited below was fetched on the stated retrieval date; operative terms are quoted. Filename conventions and "site X is usually CC0" were not accepted as evidence. Byte-identity (SHA-256) to a file inside a licensed pack is accepted as evidence that the copy is that pack's asset.
 
 Manifest row format: `paths | upstream source + URL | license (operative term quoted) | attribution requirement | evidence location | retrieval/verification date`.

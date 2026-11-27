@@ -5,11 +5,11 @@
 # This manifest supports autonomous asset fetching from multiple providers:
 # - polyhaven: Textures, HDRIs (CC0, API-based)
 # - polypizza: 3D models (CC0, direct URL)
-# - opengameart: Audio, sprites, 2D/3D (CC0/CC-BY/CC-BY-SA, direct URL)
+# - opengameart: Audio, sprites, 2D/3D (asset-specific CC0 only, direct URL)
 #
 # ⚖️  LICENSE COMPLIANCE:
-# - All assets must be free to use (CC0, CC-BY, CC-BY-SA only)
-# - GPL and restrictive licenses are NOT supported
+# - AstraWeave third-party asset entries require verified CC0-1.0
+# - CC-BY, CC-BY-SA, GPL and other non-CC0 licenses do not qualify for this project
 # - Attribution is automatically generated per provider
 # - Verify license before adding to this manifest
 #
@@ -264,18 +264,16 @@ format = "exr"
 
 
 # =============================================================================
-# OPENGAMEART ASSETS (Direct URL, Mixed Licenses)
+# OPENGAMEART ASSETS (Direct URL, verified CC0 1.0 only)
 # =============================================================================
 # Format: https://opengameart.org/content/<asset_name>
-# License: CC0, CC-BY-3.0, CC-BY-4.0, CC-BY-SA-3.0, CC-BY-SA-4.0 ONLY
-#          (NO GPL, NO OGA-BY unless absolutely necessary)
+# License: CC0-1.0 only; verify the exact publisher release.
 # Supported types: audio, sprite, tileset, model
 # =============================================================================
 #
 # ⚠️  CRITICAL: Verify license on OpenGameArt page before adding!
 # - Look for "License(s)" section on asset page
-# - Only add assets with permissive licenses (CC0, CC-BY, CC-BY-SA)
-# - Avoid GPL assets (incompatible with commercial use)
+# - Add only the version covered by the verified CC0 grant.
 #
 # EXAMPLE (commented out - add after verifying license):
 #
@@ -289,26 +287,6 @@ format = "exr"
 # author = "ArtistName"
 # source_url = "https://opengameart.org/content/forest-ambience"
 #
-# [[assets]]
-# handle = "sfx_footstep_grass"
-# provider = "opengameart"
-# type = "audio"
-# format = "ogg"
-# url = "https://opengameart.org/sites/default/files/footsteps_grass.ogg"
-# license = "CC-BY-3.0"
-# author = "ArtistName"
-# source_url = "https://opengameart.org/content/footsteps-grass"
-#
-# [[assets]]
-# handle = "sprite_character_rpg"
-# provider = "opengameart"
-# type = "sprite"
-# format = "png"
-# url = "https://opengameart.org/sites/default/files/character_sheet.png"
-# license = "CC-BY-SA-3.0"
-# author = "ArtistName"
-# source_url = "https://opengameart.org/content/character-sheet"
-
 
 # =============================================================================
 # HOW TO ADD ASSETS
@@ -329,7 +307,7 @@ format = "exr"
 # 3. OPENGAMEART (Manual verification CRITICAL):
 #    - Find asset on https://opengameart.org
 #    - Click asset to view detail page
-#    - Check "License(s)" section - ONLY add CC0, CC-BY, or CC-BY-SA
+#    - Check "License(s)" and verify CC0 for the exact download
 #    - Download file, inspect URL from browser's download manager
 #    - Add entry with: handle, provider="opengameart", type, url, license, author, source_url
 #

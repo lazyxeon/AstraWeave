@@ -12232,9 +12232,7 @@ assets/Other/Construct samples 2/Sources/multiplayerPlatformer.txt
 assets/Other/Construct samples 2/Sources/towerDefense.txt
 assets/Other/Construct samples 2/Sources/zombieShooter.txt
 assets/Other/Fonts/Kenney Blocks.ttf
-assets/Other/Fonts/Kenney Bold.ttf
 assets/Other/Fonts/Kenney Future Narrow.ttf
-assets/Other/Fonts/Kenney Future Square.ttf
 assets/Other/Fonts/Kenney Future.ttf
 assets/Other/Fonts/Kenney High Square.ttf
 assets/Other/Fonts/Kenney High.ttf
@@ -12246,9 +12244,7 @@ assets/Other/Fonts/Kenney Pixel.ttf
 assets/Other/Fonts/Kenney Rocket Square.ttf
 assets/Other/Fonts/Kenney Rocket.ttf
 assets/Other/Fonts/Kenney Space.ttf
-assets/Other/Fonts/Kenney Thick.ttf
-assets/Other/Fonts/Webfonts A.zip
-assets/Other/Fonts/Webfonts B.zip
+assets/Other/Fonts/License.txt
 assets/The Complete KayKit Collection v4/Changelog.txt
 assets/The Complete KayKit Collection v4/Discord Server.url
 assets/The Complete KayKit Collection v4/KayKit Adventurers 2.0/Animations/Click here for more Free Animations.url
