@@ -32,8 +32,10 @@ fn probe_exe(compiled: &str) -> std::path::PathBuf {
 fn ollama_chat_probe(mode: &str) -> std::process::Output {
     // The default client is low-latency, so `complete` skips the non-stream
     // attempts and reads `OLLAMA_TIMEOUT_SECS`. `Command::env` does not call `set_var`.
-    // A closed port returns immediately. The 4s bound is the same kill the
-    // header waits use, so a probe that never exits cannot hold the suite.
+    // A closed port fails without a body. Windows CI recorded about one second
+    // for that failure. The 4s kill on this probe is new. Header and body waits
+    // use the same 4s kill. `run_until` kills at 3s. The 5s and 15s checks are
+    // kill limits as well as asserts.
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let mut child = ReapedChild::spawn(
         std::process::Command::new(&exe)
@@ -133,6 +135,38 @@ fn buffered_result_wait() -> std::time::Duration {
 fn deadline_exceeded(elapsed: std::time::Duration, limit: std::time::Duration) -> bool {
     elapsed > limit
 }
+
+/// Set after a probe child is still running when its kill ceiling is reached.
+///
+/// Later waits that still see a live child stop at once. A `try_wait` that
+/// never reports exit cannot add every ceiling. A child that has already
+/// exited is observed by `try_wait` and is not killed here.
+fn deadline_already_missed() -> bool {
+    DEADLINE_MISS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+fn note_deadline_miss() {
+    DEADLINE_MISS.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn past_deadline(started: std::time::Instant, limit: std::time::Duration) -> bool {
+    deadline_already_missed() || deadline_exceeded(started.elapsed(), limit)
+}
+
+fn fail_deadline(child: &mut ReapedChild, what: &str, limit: std::time::Duration) -> ! {
+    // A zero limit is the unit pin. It must not mark later probes as missed.
+    if !limit.is_zero() {
+        note_deadline_miss();
+    }
+    child.kill_and_reap();
+    panic!("{what} still running after {limit:?}");
+}
+
+static DEADLINE_MISS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Reads in one `finish_response` drain. A stub that reports bytes without
+/// taking them off the socket cannot spin until the join bound.
+const DRAIN_READ_CAP: u32 = 8192;
 
 fn peek_again(kind: std::io::ErrorKind) -> bool {
     matches!(
@@ -272,12 +306,20 @@ fn read_http_request_from<R: std::io::Read>(reader: &mut R) {
 /// data into `WSAECONNRESET`. The read runs off the accept loop: a 404 has to
 /// be able to accept `/api/generate` while the first client is still closing.
 /// Each of those reads uses `MOCK_READ_TIMEOUT`. The caller joins the thread.
+/// The loop also stops after `DRAIN_READ_CAP` reads, so a read that reports
+/// bytes without consuming them cannot spin for the join bound.
 fn finish_response(mut sock: std::net::TcpStream) -> std::thread::JoinHandle<()> {
     let _ = sock.shutdown(std::net::Shutdown::Write);
     std::thread::spawn(move || {
         let _ = sock.set_read_timeout(Some(MOCK_READ_TIMEOUT));
+        let _ = sock.set_write_timeout(Some(MOCK_READ_TIMEOUT));
         let mut tmp = [0u8; READ_CHUNK];
+        let mut reads = 0u32;
         loop {
+            if reads >= DRAIN_READ_CAP {
+                break;
+            }
+            reads += 1;
             match read_once(&mut sock, &mut tmp) {
                 Ok(0) | Err(_) => break,
                 Ok(_) => {}
@@ -323,6 +365,7 @@ struct MockServer {
     addr: std::net::SocketAddr,
     shutdown: Option<std::sync::mpsc::Sender<()>>,
     handle: Option<std::thread::JoinHandle<()>>,
+    join_bound: std::time::Duration,
 }
 
 impl MockServer {
@@ -338,9 +381,11 @@ impl Drop for MockServer {
         }
         // `accept` blocks. Connecting to this listener unblocks it after the
         // shutdown signal, including when the test fails before the client connects.
-        let _ = std::net::TcpStream::connect(self.addr);
+        // `connect_timeout` stops this thread from sitting in SYN retries when
+        // the listener never answers. A loopback accept is not that wait.
+        let _ = std::net::TcpStream::connect_timeout(&self.addr, MOCK_READ_TIMEOUT);
         if let Some(handle) = self.handle.take() {
-            join_bounded(handle, MOCK_JOIN_BOUND);
+            join_bounded(handle, self.join_bound);
         }
     }
 }
@@ -357,6 +402,7 @@ where
         addr,
         shutdown: Some(shutdown_tx),
         handle: Some(handle),
+        join_bound: MOCK_JOIN_BOUND,
     }
 }
 
@@ -364,16 +410,36 @@ fn accept_client(
     listener: &std::net::TcpListener,
     shutdown: &std::sync::mpsc::Receiver<()>,
 ) -> Option<std::net::TcpStream> {
-    if shutdown_requested(shutdown) {
+    accept_if(listener, || shutdown_requested(shutdown))
+}
+
+fn accept_if(
+    listener: &std::net::TcpListener,
+    mut stop: impl FnMut() -> bool,
+) -> Option<std::net::TcpStream> {
+    if stop() {
         return None;
     }
     let Ok((sock, _)) = listener.accept() else {
         return None;
     };
-    if shutdown_requested(shutdown) {
+    // A later read or write must not sit in TCP retransmits after the peer is gone.
+    let _ = sock.set_read_timeout(Some(MOCK_READ_TIMEOUT));
+    let _ = sock.set_write_timeout(Some(MOCK_READ_TIMEOUT));
+    if stop() {
         return None;
     }
     Some(sock)
+}
+
+fn accept_until_shutdown(
+    listener: &std::net::TcpListener,
+    shutdown: &std::sync::mpsc::Receiver<()>,
+    mut on_client: impl FnMut(std::net::TcpStream),
+) {
+    while let Some(sock) = accept_client(listener, shutdown) {
+        on_client(sock);
+    }
 }
 
 fn join_drains(drains: Vec<std::thread::JoinHandle<()>>) {
@@ -459,6 +525,41 @@ impl ReapedChild {
     }
 }
 
+fn pipe_reader<R: std::io::Read + Send + 'static>(mut pipe: R) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        std::io::Read::read_to_end(&mut pipe, &mut buf).expect("read pipe");
+        buf
+    })
+}
+
+/// Take both pipes before waiting. A full pipe blocks the child, and `try_wait`
+/// then never observes an exit.
+fn piped_child(
+    cmd: &mut std::process::Command,
+) -> (
+    ReapedChild,
+    std::thread::JoinHandle<Vec<u8>>,
+    std::thread::JoinHandle<Vec<u8>>,
+) {
+    let mut child = ReapedChild::spawn(cmd);
+    let stdout = pipe_reader(child.stdout());
+    let stderr = pipe_reader(child.stderr());
+    (child, stdout, stderr)
+}
+
+fn joined_output(
+    status: std::process::ExitStatus,
+    stdout_task: std::thread::JoinHandle<Vec<u8>>,
+    stderr_task: std::thread::JoinHandle<Vec<u8>>,
+) -> std::process::Output {
+    std::process::Output {
+        status,
+        stdout: stdout_task.join().expect("stdout thread"),
+        stderr: stderr_task.join().expect("stderr thread"),
+    }
+}
+
 fn gap_elapsed(shutdown: &std::sync::mpsc::Receiver<()>, wait: std::time::Duration) -> bool {
     match shutdown.recv_timeout(wait) {
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => true,
@@ -478,15 +579,14 @@ fn wait_for_exit(
         if let Some(status) = child.try_wait().expect("wait") {
             return status;
         }
-        if deadline_exceeded(started.elapsed(), limit) {
-            child.kill_and_reap();
-            panic!("{what} still running after {limit:?}");
+        if past_deadline(started, limit) {
+            fail_deadline(child, what, limit);
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
 }
 
-/// `false` means shutdown won and the caller must not wait on it again.
+/// `None` means shutdown won or a sender dropped.
 fn wait_or_stop<T>(
     value: &std::sync::mpsc::Receiver<T>,
     shutdown: &std::sync::mpsc::Receiver<()>,
@@ -1074,7 +1174,7 @@ fn run_against(
 ) -> (std::time::Duration, std::process::Output) {
     let started = std::time::Instant::now();
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
-    let mut child = ReapedChild::spawn(
+    let (mut child, stdout_task, stderr_task) = piped_child(
         std::process::Command::new(&exe)
             .args([mode, &format!("http://{addr}")])
             .env("OLLAMA_LOW_LATENCY", "1")
@@ -1085,9 +1185,7 @@ fn run_against(
     );
     let status = wait_for_exit(&mut child, kill_after, mode);
     let elapsed = started.elapsed();
-    let mut output = child.wait_with_output().expect("output");
-    output.status = status;
-    (elapsed, output)
+    (elapsed, joined_output(status, stdout_task, stderr_task))
 }
 
 #[test]
@@ -1206,7 +1304,7 @@ fn probe_headers_near_timeout(
     let server = serve_no_headers(first_not_found);
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
-    let mut child = ReapedChild::spawn(
+    let (mut child, stdout_task, stderr_task) = piped_child(
         std::process::Command::new(&exe)
             .args([mode, &format!("http://{}", server.addr())])
             .env("OLLAMA_LOW_LATENCY", "1")
@@ -1221,27 +1319,32 @@ fn probe_headers_near_timeout(
         &format!("{mode} still waiting for headers"),
     );
     let elapsed = started.elapsed();
-    let mut output = child.wait_with_output().expect("output");
-    output.status = status;
+    let output = joined_output(status, stdout_task, stderr_task);
     drop(server);
     (elapsed, output)
 }
 
 /// Headers arrive, `Content-Length: 64` is declared, and no body bytes follow.
+///
+/// Every accepted connection gets that response. A retry is not left unread
+/// in the listen backlog, where its header wait would run until the kill.
 fn serve_declared_body(status_line: &'static str) -> MockServer {
     start_server(move |listener, shutdown| {
-        let Some(mut sock) = accept_client(&listener, &shutdown) else {
-            return;
-        };
-        read_http_request(&mut sock);
-        use std::io::Write;
-        let _ = sock.write_all(
-            format!("{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n").as_bytes(),
-        );
-        let _ = sock.flush();
-        let _ = shutdown.recv();
-        let drain = finish_response(sock);
-        join_bounded(drain, MOCK_JOIN_BOUND);
+        let mut held = Vec::new();
+        accept_until_shutdown(&listener, &shutdown, |mut sock| {
+            read_http_request(&mut sock);
+            use std::io::Write;
+            let _ = sock.write_all(
+                format!("{status_line}\r\nContent-Length: 64\r\nConnection: close\r\n\r\n")
+                    .as_bytes(),
+            );
+            let _ = sock.flush();
+            held.push(sock);
+        });
+        for sock in held {
+            let drain = finish_response(sock);
+            join_bounded(drain, MOCK_JOIN_BOUND);
+        }
     })
 }
 
@@ -1253,7 +1356,7 @@ fn probe_missing_body(
     let server = serve_declared_body(status_line);
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
-    let mut child = ReapedChild::spawn(
+    let (mut child, stdout_task, stderr_task) = piped_child(
         std::process::Command::new(&exe)
             .args([mode, &format!("http://{}", server.addr())])
             .env("OLLAMA_LOW_LATENCY", low_latency)
@@ -1268,8 +1371,7 @@ fn probe_missing_body(
         &format!("{mode} still reading a missing body"),
     );
     let elapsed = started.elapsed();
-    let mut output = child.wait_with_output().expect("output");
-    output.status = status;
+    let output = joined_output(status, stdout_task, stderr_task);
     drop(server);
     (elapsed, output)
 }
@@ -1394,7 +1496,8 @@ fn readable_error_status_does_not_start_streaming() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
+        if past_deadline(started, std::time::Duration::from_secs(4)) {
+            note_deadline_miss();
             child.kill_and_reap();
             panic!(
                 "complete still running after a readable 500: {:?}",
@@ -1464,7 +1567,8 @@ fn run_complete(addr: std::net::SocketAddr, early_exit: &str) -> std::process::O
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
+        if past_deadline(started, std::time::Duration::from_secs(4)) {
+            note_deadline_miss();
             child.kill_and_reap();
             let _ = stdout_task.join();
             let _ = stderr_task.join();
@@ -1523,7 +1627,8 @@ fn oversized_chat_body_stops_at_the_stream_budget() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
+        if past_deadline(started, std::time::Duration::from_secs(4)) {
+            note_deadline_miss();
             child.kill_and_reap();
             panic!("complete kept reading past the stream budget");
         }
@@ -1579,7 +1684,8 @@ fn empty_ndjson_lines_stop_at_the_stream_budget() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
+        if past_deadline(started, std::time::Duration::from_secs(4)) {
+            note_deadline_miss();
             child.kill_and_reap();
             panic!("empty NDJSON lines were still streaming");
         }
@@ -1656,7 +1762,8 @@ fn a_512_token_reply_is_kept() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(8)) {
+        if past_deadline(started, std::time::Duration::from_secs(8)) {
+            note_deadline_miss();
             child.kill_and_reap();
             panic!("512-token reply was still open");
         }
@@ -1802,7 +1909,8 @@ fn invalid_utf8_line_is_an_error() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
+        if past_deadline(started, std::time::Duration::from_secs(4)) {
+            note_deadline_miss();
             child.kill_and_reap();
             panic!("invalid utf-8 line was still open");
         }
@@ -1858,7 +1966,8 @@ fn good_line_before_bad_utf8_is_kept() {
         if let Some(status) = child.try_wait().expect("wait") {
             break status;
         }
-        if deadline_exceeded(started.elapsed(), std::time::Duration::from_secs(4)) {
+        if past_deadline(started, std::time::Duration::from_secs(4)) {
+            note_deadline_miss();
             child.kill_and_reap();
             panic!("good line then bad utf-8 was still open");
         }
@@ -1916,7 +2025,7 @@ fn run_until(
 ) -> (std::time::Duration, std::process::Output) {
     let exe = probe_exe(env!("CARGO_BIN_EXE_ollama_chat_probe"));
     let started = std::time::Instant::now();
-    let mut child = ReapedChild::spawn(
+    let (mut child, stdout_task, stderr_task) = piped_child(
         std::process::Command::new(&exe)
             .args([mode, &format!("http://{addr}")])
             .env("OLLAMA_LOW_LATENCY", "1")
@@ -1926,20 +2035,9 @@ fn run_until(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()),
     );
-    let status = loop {
-        if let Some(status) = child.try_wait().expect("wait") {
-            break status;
-        }
-        if deadline_exceeded(started.elapsed(), kill_after) {
-            child.kill_and_reap();
-            panic!("{mode} still running after {kill_after:?}");
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    };
+    let status = wait_for_exit(&mut child, kill_after, mode);
     let elapsed = started.elapsed();
-    let mut output = child.wait_with_output().expect("output");
-    output.status = status;
-    (elapsed, output)
+    (elapsed, joined_output(status, stdout_task, stderr_task))
 }
 
 /// Headers arrive and the declared body never does.
@@ -2067,21 +2165,23 @@ fn withheld_headers_end_at_the_lifetime() {
 /// The call fails on the header wait and does not accept the body.
 fn serve_late_headers() -> MockServer {
     start_server(move |listener, shutdown| {
-        let Some(mut sock) = accept_client(&listener, &shutdown) else {
-            return;
-        };
-        read_http_request(&mut sock);
-        let _ = shutdown.recv();
-        use std::io::Write;
-        let body = "{\"message\":{\"content\":\"late-token\"},\"done\":true}\n";
-        let _ = write!(
-            sock,
-            "HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        let _ = sock.flush();
-        let drain = finish_response(sock);
-        join_bounded(drain, MOCK_JOIN_BOUND);
+        let mut held = Vec::new();
+        accept_until_shutdown(&listener, &shutdown, |mut sock| {
+            read_http_request(&mut sock);
+            held.push(sock);
+        });
+        for mut sock in held {
+            use std::io::Write;
+            let body = "{\"message\":{\"content\":\"late-token\"},\"done\":true}\n";
+            let _ = write!(
+                sock,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/x-ndjson\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = sock.flush();
+            let drain = finish_response(sock);
+            join_bounded(drain, MOCK_JOIN_BOUND);
+        }
     })
 }
 
@@ -2602,7 +2702,7 @@ fn join_drains_propagates_a_drain_panic() {
 }
 
 #[test]
-fn mock_server_drop_signals_shutdown_and_joins_the_thread() {
+fn mock_server_drop_signals_shutdown() {
     let (abandon_tx, abandon_rx) = std::sync::mpsc::channel();
     let saw = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let flag = std::sync::Arc::clone(&saw);
@@ -2623,10 +2723,202 @@ fn mock_server_drop_signals_shutdown_and_joins_the_thread() {
     drop(server);
     let signaled = saw.load(std::sync::atomic::Ordering::SeqCst);
     drop(abandon_tx);
+    assert!(signaled, "drop did not signal shutdown");
+}
+
+#[test]
+#[should_panic(expected = "mock server thread did not exit")]
+fn mock_server_drop_joins_a_worker_that_stays_blocked() {
+    let (park_tx, park_rx) = std::sync::mpsc::channel::<()>();
+    let mut server = start_server(move |_listener, shutdown| {
+        while !shutdown_requested(&shutdown) {
+            std::thread::yield_now();
+        }
+        let _ = park_rx.recv();
+    });
+    server.join_bound = std::time::Duration::ZERO;
+    std::mem::forget(park_tx);
+    drop(server);
+}
+
+#[test]
+fn mock_server_drop_unblocks_a_blocked_accept() {
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let entered = std::sync::Arc::clone(&barrier);
+    let mut server = start_server(move |listener, _shutdown| {
+        entered.wait();
+        let _ = listener.accept();
+    });
+    server.join_bound = MOCK_JOIN_BOUND;
+    barrier.wait();
+    drop(server);
+}
+
+struct ParkedJoin {
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for ParkedJoin {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let started = std::time::Instant::now();
+            join_bounded(handle, std::time::Duration::ZERO);
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(1),
+                "a join timeout during unwind waited {:?}",
+                started.elapsed()
+            );
+        }
+    }
+}
+
+#[test]
+#[should_panic(expected = "original failure")]
+fn join_timeout_during_unwind_keeps_the_original_panic() {
+    let (park_tx, park_rx) = std::sync::mpsc::channel::<()>();
+    let _parked = ParkedJoin {
+        handle: Some(std::thread::spawn(move || {
+            let _ = park_rx.recv();
+        })),
+    };
+    std::mem::forget(park_tx);
+    panic!("original failure");
+}
+
+#[test]
+fn accept_client_returns_none_when_shutdown_is_already_signaled() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (tx, rx) = std::sync::mpsc::channel();
+    tx.send(()).expect("shutdown");
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let missed = accept_client(&listener, &rx).is_none();
+        let _ = done_tx.send(missed);
+    });
+    match done_rx.recv_timeout(MOCK_READ_TIMEOUT) {
+        Ok(true) => worker.join().expect("accept thread"),
+        Ok(false) => panic!("shutdown before accept still returned a socket"),
+        Err(_) => {
+            let _ = std::net::TcpStream::connect_timeout(&addr, MOCK_READ_TIMEOUT);
+            let _ = worker.join();
+            panic!("accept_client ignored shutdown signaled before accept");
+        }
+    }
+}
+
+#[test]
+fn accept_client_returns_none_when_shutdown_arrives_after_accept() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let _client = std::net::TcpStream::connect(addr).expect("connect");
+    let mut calls = 0u32;
+    let sock = accept_if(&listener, || {
+        calls += 1;
+        calls > 1
+    });
     assert!(
-        signaled,
-        "drop did not join the server thread after shutdown"
+        sock.is_none(),
+        "a shutdown after accept still returned the socket"
     );
+    assert!(calls >= 2, "the post-accept check did not run");
+}
+
+#[test]
+fn finish_response_drain_returns_when_the_peer_stays_silent() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let client = std::net::TcpStream::connect(addr).expect("connect");
+    let (sock, _) = listener.accept().expect("accept");
+    let started = std::time::Instant::now();
+    let drain = finish_response(sock);
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = drain.join();
+        let _ = done_tx.send(started.elapsed());
+    });
+    let elapsed = done_rx
+        .recv_timeout(MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1))
+        .expect("drain did not return while the peer stayed open");
+    assert!(
+        elapsed + std::time::Duration::from_millis(500) >= MOCK_READ_TIMEOUT,
+        "drain returned in {elapsed:?} without the read cap"
+    );
+    assert!(
+        elapsed < MOCK_READ_TIMEOUT + std::time::Duration::from_secs(1),
+        "drain took {elapsed:?}"
+    );
+    drop(client);
+}
+
+#[test]
+fn unread_byte_restores_blocking_reads() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let _client = std::net::TcpStream::connect(addr).expect("connect");
+    let (mut sock, _) = listener.accept().expect("accept");
+    assert!(!unread_byte(&mut sock), "an empty socket reported a byte");
+    sock.set_read_timeout(Some(std::time::Duration::from_millis(200)))
+        .expect("timeout");
+    let started = std::time::Instant::now();
+    let mut buf = [0u8; 1];
+    let err = std::io::Read::read(&mut sock, &mut buf).expect_err("empty read");
+    // Linux reports a timed-out blocking read as `WouldBlock`. A socket left
+    // nonblocking returns that kind immediately, so the wait is the pin.
+    assert!(
+        matches!(
+            err.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ),
+        "{err}"
+    );
+    assert!(
+        started.elapsed() >= std::time::Duration::from_millis(100),
+        "the read returned in {:?} while the socket was still nonblocking",
+        started.elapsed()
+    );
+}
+
+#[test]
+fn declared_body_answers_a_second_connection() {
+    let server = serve_declared_body("HTTP/1.1 200 OK");
+    let header = b"HTTP/1.1 200 OK\r\nContent-Length: 64\r\nConnection: close\r\n\r\n";
+    for _ in 0..2 {
+        let mut client = std::net::TcpStream::connect(server.addr()).expect("connect");
+        use std::io::Write;
+        client.write_all(EMPTY_POST).expect("request");
+        assert_eq!(read_exact_n(&mut client, header.len()), header);
+    }
+    drop(server);
+}
+
+fn panic_text(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(msg) = payload.downcast_ref::<String>() {
+        return msg.clone();
+    }
+    if let Some(msg) = payload.downcast_ref::<&str>() {
+        return (*msg).to_string();
+    }
+    "non-string panic".to_string()
+}
+
+#[test]
+#[should_panic(expected = "hang still running")]
+fn wait_for_exit_panics_when_the_deadline_is_already_past() {
+    let mut child = ReapedChild::spawn(&mut hang_command());
+    wait_for_exit(&mut child, std::time::Duration::ZERO, "hang");
+}
+
+#[test]
+fn wait_for_exit_reaps_the_child_when_the_deadline_is_already_past() {
+    let mut child = ReapedChild::spawn(&mut hang_command());
+    let pid = child.child.as_ref().expect("child").id();
+    let panicked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        wait_for_exit(&mut child, std::time::Duration::ZERO, "hang");
+    }));
+    let text = panic_text(panicked.expect_err("deadline was not a failure").as_ref());
+    assert!(text.contains("hang still running"), "{text}");
+    assert!(!process_alive(pid), "deadline arm left the child running");
 }
 
 #[test]
@@ -2635,11 +2927,7 @@ fn dropping_a_live_child_kills_and_reaps_it() {
     let pid = wrapped.child.as_ref().expect("child").id();
     assert!(process_alive(pid), "hang child was not alive");
     drop(wrapped);
-    let alive = process_alive(pid);
-    if alive {
-        stop_pid(pid);
-    }
-    assert!(!alive, "drop left the child running");
+    assert!(!process_alive(pid), "drop left the child running");
 }
 
 #[test]
@@ -2648,11 +2936,7 @@ fn kill_and_reap_kills_a_live_child() {
     let pid = wrapped.child.as_ref().expect("child").id();
     assert!(process_alive(pid), "hang child was not alive");
     wrapped.kill_and_reap();
-    let alive = process_alive(pid);
-    if alive {
-        stop_pid(pid);
-    }
-    assert!(!alive, "kill_and_reap left the child running");
+    assert!(!process_alive(pid), "kill_and_reap left the child running");
 }
 
 #[test]
