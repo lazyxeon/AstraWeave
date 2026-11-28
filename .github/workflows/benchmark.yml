@@ -64,7 +64,7 @@ jobs:
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: benchmark-results-${{ github.sha }}-shard-${{ matrix.shard_index }}
+          name: benchmark-results-${{ github.sha }}-shard-${{ matrix.shard_index }}-attempt-${{ github.run_attempt }}
           path: benchmark_results/shard-${{ matrix.shard_index }}/
           retention-days: 30
         if: always()
@@ -100,6 +100,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p benchmark_results
+          python3 scripts/ci/auto_retry.py --prune-older-shard-attempts benchmark-shards
 
           result_files=()
           status_files=()
@@ -131,7 +132,8 @@ jobs:
           : > benchmark_results/missing-shards.txt
           for shard_index in {0..15}; do
             if ! find benchmark-shards -mindepth 1 -maxdepth 1 -type d \
-              -name "*-shard-${shard_index}" -print -quit 2>/dev/null |
+              \( -name "*-shard-${shard_index}" -o -name "*-shard-${shard_index}-attempt-*" \) \
+              -print -quit 2>/dev/null |
               grep -q .; then
               echo "shard-${shard_index}" >> benchmark_results/missing-shards.txt
             fi
@@ -212,17 +214,21 @@ jobs:
           echo "failed_package_count=$failed_package_count" >> "$GITHUB_OUTPUT"
           echo "benchmark_count=$benchmark_count" >> "$GITHUB_OUTPUT"
 
+      # The name includes the run attempt. rerun-failed-jobs keeps the run id,
+      # and upload-artifact returns 409 when that name already exists. The
+      # earlier upload stays. There is no overwrite.
       - name: Upload combined benchmark artifact
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: benchmark-results-${{ github.sha }}
+          name: benchmark-results-${{ github.sha }}-attempt-${{ github.run_attempt }}
           path: benchmark_results/
           retention-days: 30
 
       - name: Store benchmark results for tracking
         uses: benchmark-action/github-action-benchmark@v1.22.2
         if: >-
+          success() &&
           steps.merge.outputs.healthy == 'true' &&
           github.event_name == 'push' &&
           github.ref == 'refs/heads/main'
@@ -252,6 +258,7 @@ jobs:
       - name: Comment benchmark results on PR
         uses: benchmark-action/github-action-benchmark@v1.22.2
         if: >-
+          success() &&
           steps.merge.outputs.healthy == 'true' &&
           github.event_name == 'pull_request' &&
           hashFiles('benchmark_results/benchmarks.json') != ''

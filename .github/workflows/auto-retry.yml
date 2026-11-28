@@ -1,0 +1,101 @@
+name: Auto Retry
+
+# workflow_run reads this file from the default branch. A pull request copy
+# does not run until it is merged. The workflows list is the exact `name:`
+# of each workflow that has a job in .github/flaky-jobs.json.
+# github.sha on this event is the default-branch commit that contains this
+# file. The upstream head stays in workflow_run.head_sha and is not checked out.
+
+on:
+  workflow_run:
+    workflows:
+      - Performance Benchmarks
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  retry:
+    name: Retry allowlisted flakes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      issues: write
+      pull-requests: write
+    if: >-
+      (github.event.workflow_run.conclusion == 'failure' ||
+       github.event.workflow_run.conclusion == 'timed_out') &&
+      github.event.workflow_run.run_attempt < 3 &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    steps:
+      - name: Fetch the retry script from the default branch
+        env:
+          SCRIPT_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repo = os.environ["REPO"]
+          sha = os.environ["SCRIPT_SHA"]
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+              raise SystemExit("refusing REPO")
+          if not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+              raise SystemExit("refusing SCRIPT_SHA")
+
+          def raw_url(repo: str, sha: str, rel: str) -> str:
+              if not re.fullmatch(r"[A-Za-z0-9._/-]+", rel) or ".." in rel.split("/"):
+                  raise SystemExit("refusing path")
+              return f"https://raw.githubusercontent.com/{repo}/{sha}/{rel}"
+
+          def reject_redirect(url: str) -> None:
+              parsed = urllib.parse.urlparse(url)
+              host = parsed.hostname or ""
+              if (
+                  parsed.scheme != "https"
+                  or host != "raw.githubusercontent.com"
+                  or parsed.username
+                  or parsed.password
+              ):
+                  raise urllib.error.URLError("refusing redirect")
+
+          class RawRedirectHandler(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  reject_redirect(newurl)
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+          urllib.request.install_opener(urllib.request.build_opener(RawRedirectHandler))
+          root = pathlib.Path("/tmp/auto-retry")
+          for rel in ("scripts/ci/auto_retry.py", ".github/flaky-jobs.json"):
+              dest = root / rel
+              dest.parent.mkdir(parents=True, exist_ok=True)
+              urllib.request.urlretrieve(raw_url(repo, sha, rel), dest)
+          PY
+
+      - name: Record the failure and retry allowlisted jobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+          UPSTREAM_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          UPSTREAM_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          UPSTREAM_HTML_URL: ${{ github.event.workflow_run.html_url }}
+          UPSTREAM_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          UPSTREAM_EVENT: ${{ github.event.workflow_run.event }}
+          UPSTREAM_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          UPSTREAM_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          UPSTREAM_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          AUTO_RETRY_ALLOWLIST: /tmp/auto-retry/.github/flaky-jobs.json
+        run: python3 /tmp/auto-retry/scripts/ci/auto_retry.py

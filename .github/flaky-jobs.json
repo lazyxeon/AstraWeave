@@ -1,0 +1,15 @@
+{
+  "note": "A failed run retries only when every failed job is listed here and its log matches a known infrastructure signature: a lost runner or exit 143, a crates.io or network timeout, or a failed artifact or cache download. Evidence cites a proven flake. scripts/ci/auto_retry.py denies cargo deny, cargo audit, Security Audit, replay hash, determinism-replay, compare, workflow policy, and Gate even if this file names them.",
+  "jobs": [
+    {
+      "workflow": "Performance Benchmarks",
+      "job": "Performance Benchmarks (shard 10)",
+      "evidence": "Runner shutdown, exit 143, while astraweave-sdk benches were in progress. The shard job went red before a package assertion. https://github.com/lazyxeon/AstraWeave/actions/runs/41059157117 (job 124079800700) and https://github.com/lazyxeon/AstraWeave/actions/runs/41859768393 (job 126731746710). Issue https://github.com/lazyxeon/AstraWeave/issues/272."
+    },
+    {
+      "workflow": "Performance Benchmarks",
+      "job": "Aggregate Benchmark Results",
+      "evidence": "All 16 shard jobs passed. The shard 15 artifact download failed after 5 retries, and Enforce benchmark shard health exited 1. https://github.com/lazyxeon/AstraWeave/actions/runs/41081301546 (job 124223585834). The previous push passed: https://github.com/lazyxeon/AstraWeave/actions/runs/41076516458. Issue https://github.com/lazyxeon/AstraWeave/issues/272."
+    }
+  ]
+}
