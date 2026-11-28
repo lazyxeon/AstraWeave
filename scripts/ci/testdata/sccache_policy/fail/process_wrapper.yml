@@ -1,0 +1,14 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+
+      - run: nice cargo install sccache --locked
+      - run: timeout 5 cargo install sccache --locked
+      - run: dash -c 'cargo install sccache --locked'
+      - run: python3 -c 'import os; os.system("cargo install sccache --locked")'
+      - run: printf '%s' 'sccache --locked' | xargs cargo install
+      - run: rustup run --install 1.89.0 cargo install sccache --locked

@@ -1,0 +1,14 @@
+# sites: 0
+name: benign
+on: workflow_dispatch
+env:
+  rustc_wrapper: SCCACHE
+  sccache_gha_enabled: "true"
+  sccache_cache_size: "10G"
+  sccache_idle_timeout: "0"
+  sccache_gha_rw_mode: READ_ONLY
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

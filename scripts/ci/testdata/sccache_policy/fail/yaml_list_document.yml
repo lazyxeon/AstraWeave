@@ -1,0 +1,6 @@
+# sites: 1
+- jobs:
+    check:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: mozilla-actions/sccache-action@v0.0.11

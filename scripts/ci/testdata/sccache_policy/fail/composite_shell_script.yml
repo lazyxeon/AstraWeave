@@ -1,0 +1,7 @@
+# sites: 0
+name: fixture
+runs:
+  using: composite
+  steps:
+    - shell: bash tools/hook.sh {0}
+      run: echo ok

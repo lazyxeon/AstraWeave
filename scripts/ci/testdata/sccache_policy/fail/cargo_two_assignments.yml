@@ -1,0 +1,8 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: FOO=1 BAR=2 cargo install sccache

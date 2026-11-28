@@ -1,0 +1,8 @@
+# sites: 1
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Mozilla-Actions/Sccache-Action@v0.0.11

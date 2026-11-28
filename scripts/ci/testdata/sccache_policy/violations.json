@@ -1,0 +1,1008 @@
+{
+  "pass/action_case_pinned.yml": [],
+  "pass/alias_other_install.yml": [],
+  "pass/anchor_alias.yml": [],
+  "pass/bare_missing.yml": [],
+  "pass/benign_env.yml": [],
+  "pass/benign_name_lower.yml": [],
+  "pass/canonical_pin.yml": [],
+  "pass/cargo_bare.yml": [],
+  "pass/cargo_empty_name.yml": [],
+  "pass/cargo_git_other.yml": [],
+  "pass/cargo_other_package.yml": [],
+  "pass/composite_action.yml": [],
+  "pass/composite_node.yml": [],
+  "pass/composite_using_int.yml": [],
+  "pass/container_options_bare.yml": [],
+  "pass/container_wrapper.yml": [],
+  "pass/dir_change_ident.yml": [],
+  "pass/dir_change_word.yml": [],
+  "pass/docker_entrypoint_shape.yml": [],
+  "pass/docker_image_int.yml": [],
+  "pass/docker_not_sccache.yml": [],
+  "pass/docker_registry_entrypoint.yml": [],
+  "pass/docker_upper.yml": [],
+  "pass/double_quoted.yml": [],
+  "pass/extra_with_key.yml": [],
+  "pass/folded_action.yml": [],
+  "pass/folded_wrapper.yml": [],
+  "pass/gh_dangling_repo.yml": [],
+  "pass/gh_help.yml": [],
+  "pass/gh_other.yml": [],
+  "pass/gh_other_repo.yml": [],
+  "pass/list_document_pinned.yml": [],
+  "pass/node_argument_boundary.yml": [],
+  "pass/node_bare_token.yml": [],
+  "pass/node_command_boundary.yml": [],
+  "pass/node_command_prefix.yml": [],
+  "pass/not_reusable_github.yml": [],
+  "pass/not_reusable_workflows.yml": [],
+  "pass/release_url_host_only.yml": [],
+  "pass/release_url_other_project.yml": [],
+  "pass/remote_reusable.yml": [],
+  "pass/remote_reusable_yaml.yml": [],
+  "pass/reusable_other_leaf.yml": [],
+  "pass/reusable_yaml.yml": [],
+  "pass/reusable_yml.yml": [],
+  "pass/single_quoted.yml": [],
+  "pass/stats_case.yml": [],
+  "pass/string_step.yml": [],
+  "pass/taiki_tool_non_str.yml": [],
+  "pass/unquoted.yml": [],
+  "pass/unrelated_commands.yml": [],
+  "pass/uses_empty.yml": [],
+  "pass/uses_empty_ref.yml": [],
+  "pass/uses_escape_other.yml": [],
+  "pass/uses_padded.yml": [],
+  "pass/uses_padded_pinned.yml": [],
+  "pass/uses_short.yml": [],
+  "pass/version_key_dotless_i.yml": [],
+  "fail/action_backslash.yml": [
+    "action_backslash.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_backslash_dotdot.yml": [
+    "action_backslash_dotdot.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_backslash_dotdot_pinned.yml": [
+    "action_backslash_dotdot_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_backslash_pinned.yml": [
+    "action_backslash_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_dot_path.yml": [
+    "action_dot_path.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_dot_path_pinned.yml": [
+    "action_dot_path_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_dotdot_path.yml": [
+    "action_dotdot_path.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_dotdot_path_pinned.yml": [
+    "action_dotdot_path_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_double_slash_dot.yml": [
+    "action_double_slash_dot.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_double_slash_dot_pinned.yml": [
+    "action_double_slash_dot_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_input_script.yml": [
+    "action_input_script.yml: inputs.cmd.default: script was not loaded: tools/install.sh"
+  ],
+  "fail/action_owner_case.yml": [
+    "action_owner_case.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/action_subpath.yml": [
+    "action_subpath.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/action_subpath_pinned.yml": [
+    "action_subpath_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/alias_stats.yml": [
+    "alias_stats.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/anchor_unpinned.yml": [
+    "anchor_unpinned.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/ansi_c_quote.yml": [
+    "ansi_c_quote.yml: jobs.check.steps[0]: literal sccache",
+    "ansi_c_quote.yml: jobs.check.steps[1]: literal sccache",
+    "ansi_c_quote.yml: jobs.check.steps[2]: literal sccache"
+  ],
+  "fail/apt_install.yml": [
+    "apt_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/apt_remove_sccache.yml": [
+    "apt_remove_sccache.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/assign_dash.yml": [
+    "assign_dash.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/assign_dot_name.yml": [
+    "assign_dot_name.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/assign_empty_name.yml": [
+    "assign_empty_name.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/backtick_substitution.yml": [
+    "backtick_substitution.yml: jobs.check.steps[0]: literal sccache",
+    "backtick_substitution.yml: jobs.check.steps[1]: literal sccache"
+  ],
+  "fail/bare_then_path.yml": [
+    "bare_then_path.yml: jobs.check.steps[0]: script was not loaded: tools/hook.sh"
+  ],
+  "fail/bash_c_install.yml": [
+    "bash_c_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/benign_name_adjacent.yml": [
+    "benign_name_adjacent.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/benign_value_literal.yml": [
+    "benign_value_literal.yml: env: literal sccache"
+  ],
+  "fail/brew_install.yml": [
+    "brew_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_alias.yml": [
+    "cargo_alias.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_bad_then_sccache.yml": [
+    "cargo_bad_then_sccache.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_binstall.yml": [
+    "cargo_binstall.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_binstall_binary.yml": [
+    "cargo_binstall_binary.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_binstall_binary_pinned.yml": [
+    "cargo_binstall_binary_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_binstall_pinned.yml": [
+    "cargo_binstall_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_binstall_version.yml": [
+    "cargo_binstall_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_both_pinned.yml": [
+    "cargo_both_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_branch_eq.yml": [
+    "cargo_branch_eq.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_branch_with_tag.yml": [
+    "cargo_branch_with_tag.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_case.yml": [
+    "cargo_case.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_command.yml": [
+    "cargo_command.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_command_pinned.yml": [
+    "cargo_command_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_double_dash.yml": [
+    "cargo_double_dash.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_env.yml": [
+    "cargo_env.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_env_assign.yml": [
+    "cargo_env_assign.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_env_assign_pinned.yml": [
+    "cargo_env_assign_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_env_pinned.yml": [
+    "cargo_env_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_exe.yml": [
+    "cargo_exe.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_exe_pinned.yml": [
+    "cargo_exe_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_git_branch.yml": [
+    "cargo_git_branch.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_git_eq.yml": [
+    "cargo_git_eq.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_git_tag.yml": [
+    "cargo_git_tag.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_git_tag_pinned.yml": [
+    "cargo_git_tag_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_git_userinfo.yml": [
+    "cargo_git_userinfo.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_git_www.yml": [
+    "cargo_git_www.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_install.yml": [
+    "cargo_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_install_pinned.yml": [
+    "cargo_install_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_rev_with_tag.yml": [
+    "cargo_rev_with_tag.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_second_package.yml": [
+    "cargo_second_package.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_sudo_pinned.yml": [
+    "cargo_sudo_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_sudo_unpinned.yml": [
+    "cargo_sudo_unpinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_tag_then_pkg.yml": [
+    "cargo_tag_then_pkg.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_toolchain.yml": [
+    "cargo_toolchain.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_toolchain_pinned.yml": [
+    "cargo_toolchain_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_two_assignments.yml": [
+    "cargo_two_assignments.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_underscore_assign.yml": [
+    "cargo_underscore_assign.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_var_pkg.yml": [
+    "cargo_var_pkg.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_at_bad.yml": [
+    "cargo_version_at_bad.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_dangling.yml": [
+    "cargo_version_dangling.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_eq_bad.yml": [
+    "cargo_version_eq_bad.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_equals.yml": [
+    "cargo_version_equals.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_equals_then_pkg.yml": [
+    "cargo_version_equals_then_pkg.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_equals_unpinned.yml": [
+    "cargo_version_equals_unpinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_flag_bad.yml": [
+    "cargo_version_flag_bad.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_quoted.yml": [
+    "cargo_version_quoted.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_single_quoted.yml": [
+    "cargo_version_single_quoted.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/cargo_version_unpinned.yml": [
+    "cargo_version_unpinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/choco_install.yml": [
+    "choco_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/command_newline.yml": [
+    "command_newline.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/command_pipe.yml": [
+    "command_pipe.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/comment_keeps_pin.yml": [
+    "comment_keeps_pin.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/comment_then_install.yml": [
+    "comment_then_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/composite_input.yml": [
+    "composite_input.yml: inputs.cmd.default: literal sccache"
+  ],
+  "fail/composite_shell_script.yml": [
+    "composite_shell_script.yml: runs.steps[0].shell: script was not loaded: tools/hook.sh"
+  ],
+  "fail/composite_using_case.yml": [
+    "composite_using_case.yml: runs.steps[0]: unpinned sccache action"
+  ],
+  "fail/container_entrypoint.yml": [
+    "container_entrypoint.yml: jobs.check.container.options: script was not loaded: tools/install.sh"
+  ],
+  "fail/container_env.yml": [
+    "container_env.yml: jobs.check.container.env: literal sccache"
+  ],
+  "fail/container_image.yml": [
+    "container_image.yml: jobs.check.container.image: literal sccache"
+  ],
+  "fail/container_options.yml": [
+    "container_options.yml: jobs.check.container.options: literal sccache"
+  ],
+  "fail/container_string.yml": [
+    "container_string.yml: jobs.check.container: literal sccache"
+  ],
+  "fail/curl_var.yml": [
+    "curl_var.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/defaults_shell.yml": [
+    "defaults_shell.yml: defaults.run.shell: literal sccache"
+  ],
+  "fail/defaults_shell_script.yml": [
+    "defaults_shell_script.yml: defaults.run.shell: script was not loaded: tools/hook.sh"
+  ],
+  "fail/defaults_workdir.yml": [
+    "defaults_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/dir_change_bare.yml": [
+    "dir_change_bare.yml: jobs.check.steps[0]: script was not loaded: install.sh",
+    "dir_change_bare.yml: jobs.check.steps[1]: script was not loaded: install.sh",
+    "dir_change_bare.yml: jobs.check.steps[2]: script was not loaded: install.sh"
+  ],
+  "fail/dir_change_case.yml": [
+    "dir_change_case.yml: jobs.check.steps[0]: script was not loaded: install.sh",
+    "dir_change_case.yml: jobs.check.steps[1]: script was not loaded: install.sh"
+  ],
+  "fail/dir_change_not_first.yml": [
+    "dir_change_not_first.yml: jobs.check.steps[0]: script was not loaded: install.sh",
+    "dir_change_not_first.yml: jobs.check.steps[1]: script was not loaded: install.sh"
+  ],
+  "fail/dir_change_path.yml": [
+    "dir_change_path.yml: jobs.check.steps[0]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[1]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[2]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[3]: script was not loaded: ./install.sh",
+    "dir_change_path.yml: jobs.check.steps[4]: script was not loaded: tools/install.sh",
+    "dir_change_path.yml: jobs.check.steps[5]: script was not loaded: ./install.sh"
+  ],
+  "fail/dir_change_push_location.yml": [
+    "dir_change_push_location.yml: jobs.check.steps[0]: script was not loaded: ./install.ps1",
+    "dir_change_push_location.yml: jobs.check.steps[1]: script was not loaded: ./install.ps1"
+  ],
+  "fail/dir_change_set_location.yml": [
+    "dir_change_set_location.yml: jobs.check.steps[0]: script was not loaded: ./install.ps1",
+    "dir_change_set_location.yml: jobs.check.steps[1]: script was not loaded: ./install.ps1"
+  ],
+  "fail/dispatch_input.yml": [
+    "dispatch_input.yml: on.workflow_dispatch.inputs.cmd.default: literal sccache"
+  ],
+  "fail/dispatch_inputs_shape.yml": [
+    "dispatch_inputs_shape.yml: on.workflow_call.inputs.cmd.default: literal sccache"
+  ],
+  "fail/docker_entrypoint.yml": [
+    "docker_entrypoint.yml: runs.entrypoint: script was not loaded: install.sh"
+  ],
+  "fail/docker_entrypoint_dot.yml": [
+    "docker_entrypoint_dot.yml: runs.entrypoint: script was not loaded: .hook"
+  ],
+  "fail/docker_entrypoint_rel.yml": [
+    "docker_entrypoint_rel.yml: runs.entrypoint: script was not loaded: tools/hook"
+  ],
+  "fail/docker_image.yml": [
+    "docker_image.yml: runs.image: script was not loaded: Dockerfile"
+  ],
+  "fail/docker_image_entrypoint_shape.yml": [
+    "docker_image_entrypoint_shape.yml: runs.image: script was not loaded: Dockerfile"
+  ],
+  "fail/docker_post_entrypoint.yml": [
+    "docker_post_entrypoint.yml: runs.post-entrypoint: script was not loaded: install.sh"
+  ],
+  "fail/docker_pre_entrypoint.yml": [
+    "docker_pre_entrypoint.yml: runs.pre-entrypoint: script was not loaded: install.sh"
+  ],
+  "fail/docker_sccache_pinned.yml": [
+    "docker_sccache_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/dot_node.yml": [
+    "dot_node.yml: jobs.check.steps[0]: script was not loaded: .hook.js"
+  ],
+  "fail/dot_script.yml": [
+    "dot_script.yml: jobs.check.steps[0]: script was not loaded: .hook.sh"
+  ],
+  "fail/dot_uses.yml": [
+    "dot_uses.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/empty_document.yml": [
+    "empty_document.yml: empty document"
+  ],
+  "fail/encoded_release_host.yml": [
+    "encoded_release_host.yml: jobs.check.steps[0]: literal sccache",
+    "encoded_release_host.yml: jobs.check.steps[1]: literal sccache",
+    "encoded_release_host.yml: jobs.check.steps[2]: literal sccache"
+  ],
+  "fail/env_after_benign.yml": [
+    "env_after_benign.yml: env: literal sccache"
+  ],
+  "fail/env_after_wrapper.yml": [
+    "env_after_wrapper.yml: env: literal sccache"
+  ],
+  "fail/env_int_then_literal.yml": [
+    "env_int_then_literal.yml: env: env key is not a string",
+    "env_int_then_literal.yml: env: literal sccache"
+  ],
+  "fail/env_key_adjacent.yml": [
+    "env_key_adjacent.yml: env: literal sccache"
+  ],
+  "fail/env_key_literal.yml": [
+    "env_key_literal.yml: env: literal sccache"
+  ],
+  "fail/env_not_mapping.yml": [
+    "env_not_mapping.yml: env: env value is not a mapping"
+  ],
+  "fail/env_only.yml": [
+    "env_only.yml: env: literal sccache"
+  ],
+  "fail/env_var_version.yml": [
+    "env_var_version.yml: jobs.check.steps[0]: unpinned sccache action",
+    "env_var_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/expr_job_dot.yml": [
+    "expr_job_dot.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"
+  ],
+  "fail/expr_workdir.yml": [
+    "expr_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/expr_workdir_dot.yml": [
+    "expr_workdir_dot.yml: jobs.check.steps[0]: script was not loaded: ./install.sh"
+  ],
+  "fail/expr_workdir_only.yml": [
+    "expr_workdir_only.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/expr_workdir_path.yml": [
+    "expr_workdir_path.yml: jobs.check.steps[0]: script was not loaded: tools/install.sh"
+  ],
+  "fail/expression_version.yml": [
+    "expression_version.yml: jobs.check.steps[0]: unpinned sccache action",
+    "expression_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/folded_composite.yml": [
+    "folded_composite.yml: runs.steps[0]: literal sccache"
+  ],
+  "fail/gh_asset_download.yml": [
+    "gh_asset_download.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_dangling_tag.yml": [
+    "gh_dangling_tag.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_env_repo_pinned.yml": [
+    "gh_env_repo_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_exe.yml": [
+    "gh_exe.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_release.yml": [
+    "gh_release.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_release_pinned.yml": [
+    "gh_release_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_release_view_sccache.yml": [
+    "gh_release_view_sccache.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_repo_before.yml": [
+    "gh_repo_before.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_repo_before_pinned.yml": [
+    "gh_repo_before_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_repo_eq_then_tag.yml": [
+    "gh_repo_eq_then_tag.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_repo_indirect.yml": [
+    "gh_repo_indirect.yml: jobs.check.steps[0]: literal sccache",
+    "gh_repo_indirect.yml: jobs.check.steps[1]: literal sccache",
+    "gh_repo_indirect.yml: jobs.check.steps[2].env: literal sccache"
+  ],
+  "fail/gh_substring.yml": [
+    "gh_substring.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_tag_eq_then_repo.yml": [
+    "gh_tag_eq_then_repo.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/gh_tag_then_repo.yml": [
+    "gh_tag_then_repo.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/git_dotgit_slash.yml": [
+    "git_dotgit_slash.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/git_dotgit_slash_pinned.yml": [
+    "git_dotgit_slash_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/git_scp.yml": [
+    "git_scp.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/git_scp_pinned.yml": [
+    "git_scp_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/glued_literal.yml": [
+    "glued_literal.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/indirect_dnf.yml": [
+    "indirect_dnf.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/indirect_function.yml": [
+    "indirect_function.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/indirect_glob.yml": [
+    "indirect_glob.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/indirect_pwsh.yml": [
+    "indirect_pwsh.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/indirect_shell.yml": [
+    "indirect_shell.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/indirect_var.yml": [
+    "indirect_var.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/job_defaults_shell.yml": [
+    "job_defaults_shell.yml: jobs.check.defaults.run.shell: literal sccache"
+  ],
+  "fail/job_env.yml": [
+    "job_env.yml: jobs.check.env: literal sccache"
+  ],
+  "fail/job_shell_script.yml": [
+    "job_shell_script.yml: jobs.check.defaults.run.shell: script was not loaded: tools/hook.sh"
+  ],
+  "fail/job_workdir.yml": [
+    "job_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/jobs_not_mapping.yml": [
+    "jobs_not_mapping.yml: jobs: jobs value is not a mapping"
+  ],
+  "fail/jobs_then_unpinned.yml": [
+    "jobs_then_unpinned.yml: jobs.bad: job value is not a mapping",
+    "jobs_then_unpinned.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/local_unresolved.yml": [
+    "local_unresolved.yml: jobs.check.steps[0]: local action was not loaded"
+  ],
+  "fail/lookalike_fork.yml": [
+    "lookalike_fork.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/matrix_value.yml": [
+    "matrix_value.yml: jobs.check.strategy.matrix: literal sccache"
+  ],
+  "fail/merge_unpinned.yml": [
+    "merge_unpinned.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/missing_version.yml": [
+    "missing_version.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/missing_with.yml": [
+    "missing_with.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/nested_command_group.yml": [
+    "nested_command_group.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/nested_env_int_key.yml": [
+    "nested_env_int_key.yml: env: env key is not a string"
+  ],
+  "fail/nested_env_key.yml": [
+    "nested_env_key.yml: env: literal sccache"
+  ],
+  "fail/nested_env_value.yml": [
+    "nested_env_value.yml: env: literal sccache"
+  ],
+  "fail/nix_env_install.yml": [
+    "nix_env_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/node_arg_case.yml": [
+    "node_arg_case.yml: jobs.check.steps[0]: script was not loaded: tools/install.JS"
+  ],
+  "fail/node_command_case.yml": [
+    "node_command_case.yml: jobs.check.steps[0]: script was not loaded: tools/install.js",
+    "node_command_case.yml: jobs.check.steps[1]: script was not loaded: tools/install.js",
+    "node_command_case.yml: jobs.check.steps[2]: script was not loaded: tools/install.js"
+  ],
+  "fail/node_flag_argument.yml": [
+    "node_flag_argument.yml: jobs.check.steps[0]: script was not loaded: tools/install.js"
+  ],
+  "fail/node_later_argument.yml": [
+    "node_later_argument.yml: jobs.check.steps[0]: script was not loaded: tools/clean.js",
+    "node_later_argument.yml: jobs.check.steps[0]: script was not loaded: tools/install.js",
+    "node_later_argument.yml: jobs.check.steps[1]: script was not loaded: tools/install.js",
+    "node_later_argument.yml: jobs.check.steps[1]: script was not loaded: tools/app.js"
+  ],
+  "fail/node_main.yml": [
+    "node_main.yml: runs.main: script was not loaded: index.js"
+  ],
+  "fail/node_not_first.yml": [
+    "node_not_first.yml: jobs.check.steps[0]: script was not loaded: tools/install.js"
+  ],
+  "fail/node_post.yml": [
+    "node_post.yml: runs.post: script was not loaded: post.js"
+  ],
+  "fail/node_pre.yml": [
+    "node_pre.yml: runs.pre: script was not loaded: pre.js"
+  ],
+  "fail/node_run.yml": [
+    "node_run.yml: jobs.check.steps[0]: script was not loaded: tools/install.js"
+  ],
+  "fail/non_mapping_with.yml": [
+    "non_mapping_with.yml: jobs.check.steps[0]: unpinned sccache action",
+    "non_mapping_with.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/non_string_version.yml": [
+    "non_string_version.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/non_taiki_tool.yml": [
+    "non_taiki_tool.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/not_our_action_owner.yml": [
+    "not_our_action_owner.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/not_our_action_repo.yml": [
+    "not_our_action_repo.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/not_taiki_owner.yml": [
+    "not_taiki_owner.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/not_taiki_repo.yml": [
+    "not_taiki_repo.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/other_package_manager.yml": [
+    "other_package_manager.yml: jobs.check.steps[0]: literal sccache",
+    "other_package_manager.yml: jobs.check.steps[1]: literal sccache",
+    "other_package_manager.yml: jobs.check.steps[2]: literal sccache"
+  ],
+  "fail/padded_version.yml": [
+    "padded_version.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/pkg_substring.yml": [
+    "pkg_substring.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/prefix_dollar_quote.yml": [
+    "prefix_dollar_quote.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/prefix_sudo_flags.yml": [
+    "prefix_sudo_flags.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/prefix_sudo_pinned.yml": [
+    "prefix_sudo_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/process_wrapper.yml": [
+    "process_wrapper.yml: jobs.check.steps[0]: literal sccache",
+    "process_wrapper.yml: jobs.check.steps[1]: literal sccache",
+    "process_wrapper.yml: jobs.check.steps[2]: literal sccache",
+    "process_wrapper.yml: jobs.check.steps[3]: literal sccache",
+    "process_wrapper.yml: jobs.check.steps[4]: literal sccache",
+    "process_wrapper.yml: jobs.check.steps[5]: literal sccache"
+  ],
+  "fail/python_script.yml": [
+    "python_script.yml: jobs.check.steps[0]: script was not loaded: tools/install.py"
+  ],
+  "fail/quoted_hash_install.yml": [
+    "quoted_hash_install.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/quoted_hash_single.yml": [
+    "quoted_hash_single.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_query_pinned.yml": [
+    "release_query_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url.yml": [
+    "release_url.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_asset.yml": [
+    "release_url_asset.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_dot_segment.yml": [
+    "release_url_dot_segment.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_dotdot.yml": [
+    "release_url_dotdot.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_download_only.yml": [
+    "release_url_download_only.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_empty_segment.yml": [
+    "release_url_empty_segment.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_encoded_dotdot.yml": [
+    "release_url_encoded_dotdot.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_escape.yml": [
+    "release_url_escape.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_fragment.yml": [
+    "release_url_fragment.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_host_dot.yml": [
+    "release_url_host_dot.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_http.yml": [
+    "release_url_http.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_http_case.yml": [
+    "release_url_http_case.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_latest.yml": [
+    "release_url_latest.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_not_download.yml": [
+    "release_url_not_download.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_not_releases.yml": [
+    "release_url_not_releases.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_other_host.yml": [
+    "release_url_other_host.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_other_sccache.yml": [
+    "release_url_other_sccache.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_parent_segment.yml": [
+    "release_url_parent_segment.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_pinned.yml": [
+    "release_url_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_port.yml": [
+    "release_url_port.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_port_pinned.yml": [
+    "release_url_port_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_project_only.yml": [
+    "release_url_project_only.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_query_dotdot.yml": [
+    "release_url_query_dotdot.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_scheme_only.yml": [
+    "release_url_scheme_only.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_schemeless.yml": [
+    "release_url_schemeless.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_then_word.yml": [
+    "release_url_then_word.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_userinfo.yml": [
+    "release_url_userinfo.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_userinfo_pinned.yml": [
+    "release_url_userinfo_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_www.yml": [
+    "release_url_www.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/release_url_www_pinned.yml": [
+    "release_url_www_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/run_continuation.yml": [
+    "run_continuation.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/run_continuation_pinned.yml": [
+    "run_continuation_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/run_not_string.yml": [
+    "run_not_string.yml: jobs.check.steps[0]: run value is not a string"
+  ],
+  "fail/scalar_document.yml": [
+    "scalar_document.yml: unparseable document"
+  ],
+  "fail/script_token.yml": [
+    "script_token.yml: jobs.check.steps[0]: script was not loaded: tools/install.sh"
+  ],
+  "fail/script_upper_ext.yml": [
+    "script_upper_ext.yml: jobs.check.steps[0]: script was not loaded: tools/bad.SH"
+  ],
+  "fail/scripts_two.yml": [
+    "scripts_two.yml: jobs.check.steps[0]: script was not loaded: tools/a.sh",
+    "scripts_two.yml: jobs.check.steps[0]: script was not loaded: tools/b.sh"
+  ],
+  "fail/service_env.yml": [
+    "service_env.yml: jobs.check.services.db.env: literal sccache"
+  ],
+  "fail/service_image.yml": [
+    "service_image.yml: jobs.check.services.db.image: literal sccache"
+  ],
+  "fail/service_name.yml": [
+    "service_name.yml: jobs.check.services.sccache: literal sccache"
+  ],
+  "fail/shell_control_prefix.yml": [
+    "shell_control_prefix.yml: jobs.check.steps[0]: literal sccache",
+    "shell_control_prefix.yml: jobs.check.steps[1]: literal sccache",
+    "shell_control_prefix.yml: jobs.check.steps[2]: literal sccache",
+    "shell_control_prefix.yml: jobs.check.steps[3]: literal sccache",
+    "shell_control_prefix.yml: jobs.check.steps[4]: literal sccache"
+  ],
+  "fail/shell_function_wrap.yml": [
+    "shell_function_wrap.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/shell_script.yml": [
+    "shell_script.yml: jobs.check.steps[0].shell: script was not loaded: tools/hook.sh"
+  ],
+  "fail/shell_script_ps1.yml": [
+    "shell_script_ps1.yml: jobs.check.steps[0].shell: script was not loaded: tools/hook.ps1"
+  ],
+  "fail/stats_embedded.yml": [
+    "stats_embedded.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/stats_trailing.yml": [
+    "stats_trailing.yml: jobs.check.steps[0]: literal sccache",
+    "stats_trailing.yml: jobs.check.steps[1]: literal sccache",
+    "stats_trailing.yml: jobs.check.steps[2]: literal sccache"
+  ],
+  "fail/step_shell.yml": [
+    "step_shell.yml: jobs.check.steps[0].shell: literal sccache"
+  ],
+  "fail/step_workdir.yml": [
+    "step_workdir.yml: jobs.check.steps[0]: script was not loaded: install.sh"
+  ],
+  "fail/steps_not_list.yml": [
+    "steps_not_list.yml: jobs.check: steps value is not a list"
+  ],
+  "fail/string_step_literal.yml": [
+    "string_step_literal.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_int_key.yml": [
+    "taiki_int_key.yml: jobs.check.steps[0]: with key is not a string"
+  ],
+  "fail/taiki_key_before_tool.yml": [
+    "taiki_key_before_tool.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_ref.yml": [
+    "taiki_ref.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_ref_bad_version.yml": [
+    "taiki_ref_bad_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_ref_pinned.yml": [
+    "taiki_ref_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_ref_upper.yml": [
+    "taiki_ref_upper.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_ref_upper_pinned.yml": [
+    "taiki_ref_upper_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool.yml": [
+    "taiki_tool.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_leading_sep.yml": [
+    "taiki_tool_leading_sep.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_list.yml": [
+    "taiki_tool_list.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_list_pinned.yml": [
+    "taiki_tool_list_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_mixed_list.yml": [
+    "taiki_tool_mixed_list.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_pinned.yml": [
+    "taiki_tool_pinned.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_second.yml": [
+    "taiki_tool_second.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_spaces.yml": [
+    "taiki_tool_spaces.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_substring.yml": [
+    "taiki_tool_substring.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_upper.yml": [
+    "taiki_tool_upper.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_tool_version.yml": [
+    "taiki_tool_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/taiki_with_not_mapping.yml": [
+    "taiki_with_not_mapping.yml: jobs.check.steps[0]: with value is not a mapping"
+  ],
+  "fail/upper_literal.yml": [
+    "upper_literal.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/uses_docker_digest.yml": [
+    "uses_docker_digest.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/uses_docker_sccache.yml": [
+    "uses_docker_sccache.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/uses_escape.yml": [
+    "uses_escape.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/uses_no_at.yml": [
+    "uses_no_at.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/uses_not_string.yml": [
+    "uses_not_string.yml: jobs.check.steps[0]: uses value is not a string"
+  ],
+  "fail/version_case.yml": [
+    "version_case.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/version_crate_not_tag.yml": [
+    "version_crate_not_tag.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/version_key_case.yml": [
+    "version_key_case.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/version_rc.yml": [
+    "version_rc.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/version_substring.yml": [
+    "version_substring.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/whitespace_uses.yml": [
+    "whitespace_uses.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/with_after_version.yml": [
+    "with_after_version.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/with_entrypoint.yml": [
+    "with_entrypoint.yml: jobs.check.steps[0].with.entrypoint: script was not loaded: tools/install.sh"
+  ],
+  "fail/with_int.yml": [
+    "with_int.yml: jobs.check.steps[0]: with value is not a mapping"
+  ],
+  "fail/with_key_literal.yml": [
+    "with_key_literal.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/with_literal.yml": [
+    "with_literal.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/with_non_str_key.yml": [
+    "with_non_str_key.yml: jobs.check.steps[0]: with key is not a string",
+    "with_non_str_key.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/with_version_other.yml": [
+    "with_version_other.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/workflow_call_input.yml": [
+    "workflow_call_input.yml: on.workflow_call.inputs.cmd.default: literal sccache"
+  ],
+  "fail/workflow_call_script.yml": [
+    "workflow_call_script.yml: on.workflow_call.inputs.cmd.default: script was not loaded: tools/install.sh"
+  ],
+  "fail/wrapper_flag_operand.yml": [
+    "wrapper_flag_operand.yml: jobs.check.steps[0]: literal sccache",
+    "wrapper_flag_operand.yml: jobs.check.steps[1]: literal sccache",
+    "wrapper_flag_operand.yml: jobs.check.steps[2]: literal sccache",
+    "wrapper_flag_operand.yml: jobs.check.steps[3]: literal sccache",
+    "wrapper_flag_operand.yml: jobs.check.steps[4]: literal sccache"
+  ],
+  "fail/wrapper_glued.yml": [
+    "wrapper_glued.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/wrapper_prefixed.yml": [
+    "wrapper_prefixed.yml: jobs.check.steps[0]: literal sccache"
+  ],
+  "fail/wrapper_then_later.yml": [
+    "wrapper_then_later.yml: env: literal sccache",
+    "wrapper_then_later.yml: env: literal sccache"
+  ],
+  "fail/wrapper_value_extra.yml": [
+    "wrapper_value_extra.yml: env: literal sccache"
+  ],
+  "fail/wrapper_value_list.yml": [
+    "wrapper_value_list.yml: env: literal sccache"
+  ],
+  "fail/wrong_ref.yml": [
+    "wrong_ref.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/wrong_version.yml": [
+    "wrong_version.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "fail/yaml_error.yml": [
+    "yaml_error.yml: YAML parse error: while parsing a block mapping\nexpected <block end>, but found ':'\n  in \"<unicode string>\", line 2, column 1:\n    :\n    ^"
+  ],
+  "fail/yaml_list_document.yml": [
+    "yaml_list_document.yml: jobs.check.steps[0]: unpinned sccache action"
+  ],
+  "direct/empty": [
+    "empty.yml: empty document"
+  ],
+  "direct/null": [
+    "null.yml: empty document"
+  ]
+}

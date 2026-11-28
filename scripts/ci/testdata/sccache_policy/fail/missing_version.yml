@@ -1,0 +1,10 @@
+# sites: 1
+name: fixture-fail-missing-version
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          token: none

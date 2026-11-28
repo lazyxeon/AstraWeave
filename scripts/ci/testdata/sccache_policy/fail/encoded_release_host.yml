@@ -1,0 +1,13 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+
+      - run: curl -fsSL https://github.com%2E/mozilla/sccache/releases/download/v0.20.0/sccache-v0.20.0-x86_64-unknown-linux-musl.tar.gz
+      - run: curl -fsSL -o sccache.tar.gz https://codeload.github.com/mozilla/sccache/tar.gz/refs/tags/v0.20.0
+      - run: |
+          url=$(curl -fsSL https://api.github.com/repos/mozilla/sccache/releases/latest)
+          curl -fsSL "$url"

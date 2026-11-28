@@ -1,0 +1,11 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: sccache
+    steps:
+      - run: echo ok

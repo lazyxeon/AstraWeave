@@ -1,0 +1,14 @@
+# sites: 0
+name: fixture
+on:
+  workflow_dispatch:
+    inputs: nope
+  workflow_call:
+    inputs:
+      cmd:
+        default: cargo install sccache --locked
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok

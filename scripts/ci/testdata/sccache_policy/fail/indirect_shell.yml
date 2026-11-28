@@ -1,0 +1,9 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - shell: python
+        run: import os; os.system('cargo install sccache')

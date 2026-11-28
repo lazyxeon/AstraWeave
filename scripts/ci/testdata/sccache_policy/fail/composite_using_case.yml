@@ -1,0 +1,6 @@
+# sites: 1
+name: case
+runs:
+  using: Composite
+  steps:
+    - uses: mozilla-actions/sccache-action@v0.0.11

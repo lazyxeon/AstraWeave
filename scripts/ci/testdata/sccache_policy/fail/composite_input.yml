@@ -1,0 +1,9 @@
+# sites: 0
+name: fixture
+inputs:
+  cmd:
+    default: sccache
+runs:
+  using: composite
+  steps:
+    - run: echo ok

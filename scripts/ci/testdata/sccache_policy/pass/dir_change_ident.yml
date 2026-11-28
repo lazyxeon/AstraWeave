@@ -1,0 +1,11 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mycd && bash install.sh
+      - run: mypushd && bash install.sh
+      - run: myset-location && bash install.sh
+      - run: mypush-location && bash install.sh

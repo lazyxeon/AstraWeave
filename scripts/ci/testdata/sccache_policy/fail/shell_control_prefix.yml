@@ -1,0 +1,13 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+
+      - run: if true; then cargo install sccache --locked; fi
+      - run: for i in 1; do cargo install sccache --locked; done
+      - run: "! cargo install sccache --locked"
+      - run: if cargo --version; then cargo install sccache --locked; fi
+      - run: "case x in x) cargo install sccache --locked;; esac"

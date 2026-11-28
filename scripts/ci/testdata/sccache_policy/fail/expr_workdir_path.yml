@@ -1,0 +1,9 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - working-directory: ${{ github.workspace }}/subdir
+        run: bash tools/install.sh

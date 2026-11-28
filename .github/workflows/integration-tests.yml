@@ -42,8 +42,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Enable sccache
         run: |
@@ -86,8 +89,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Enable sccache
         run: |
@@ -124,8 +130,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Enable sccache
         run: |
@@ -162,8 +171,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Enable sccache
         run: |
@@ -195,8 +207,11 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.89.0
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Enable sccache
         run: |

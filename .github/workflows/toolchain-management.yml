@@ -107,8 +107,11 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: brew install pkg-config cmake
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Configure sccache
         run: |
@@ -286,8 +289,11 @@ jobs:
             libasound2-dev libudev-dev \
             mesa-vulkan-drivers libvulkan1 vulkan-tools time
 
+      # Pin binary: sccache-action installs latest when version is omitted.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: "v0.19.0"
 
       - name: Configure sccache
         run: |

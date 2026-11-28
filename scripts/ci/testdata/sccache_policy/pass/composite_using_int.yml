@@ -1,0 +1,6 @@
+# sites: 0
+name: num
+runs:
+  using: 1
+  steps:
+    - uses: mozilla-actions/sccache-action@v0.0.11

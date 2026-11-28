@@ -1,0 +1,11 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo sccache_gha_enabled
+      - run: echo sccache_cache_size
+      - run: echo sccache_idle_timeout
+      - run: echo sccache_gha_rw_mode

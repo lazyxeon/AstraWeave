@@ -1,0 +1,12 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cd tools && bash install.sh
+      - run: |
+          cd tools
+          bash install.sh
+      - run: pushd tools; sh install.sh

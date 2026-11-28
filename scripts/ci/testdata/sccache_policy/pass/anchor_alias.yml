@@ -1,0 +1,12 @@
+# sites: 1
+name: fixture-pass-anchor-alias
+on: workflow_dispatch
+x-pin: &sccache_pin
+  version: v0.19.0
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          <<: *sccache_pin

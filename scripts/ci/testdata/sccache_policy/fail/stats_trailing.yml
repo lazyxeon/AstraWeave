@@ -1,0 +1,10 @@
+# sites: 0
+name: fixture
+on: workflow_dispatch
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: sccache --show-stats; cargo install sccache
+      - run: "sccache --show-stats | tee log"
+      - run: "  sccache --show-stats  ; echo x"
