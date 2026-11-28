@@ -38,6 +38,8 @@ TESTS = (
     "test_shell_state_cap_boundary",
     "test_identical_conditional_directories_stay_deduped",
     "test_literal_expression_scan_terminates",
+    "test_scan_loops_terminate",
+    "test_parameter_expansion_and_option_prefixes",
     "test_call_checker_reports_a_crash",
     "test_benchmark_alert_gh_pages_publish_paths",
     "test_docs_no_archive_benchmark_dashboard_copy",

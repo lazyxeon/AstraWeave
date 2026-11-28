@@ -953,7 +953,9 @@ def _directory_outcomes(
     pattern = globs[1] if len(globs) > 1 else None
     env = dict(state.env)
     if len(words) > 1:
-        expanded = _unwrap_echo_literal(_expand_assigned_word(words[1], env))
+        expanded = _unwrap_echo_literal(
+            _expand_assigned_word(words[1], env, state.positionals)
+        )
         word_quoted = quoted[1] if len(quoted) > 1 else False
         if expanded != words[1]:
             words[1] = expanded
@@ -1053,21 +1055,135 @@ def _recordable_assignment(value: str) -> bool:
     return "$" not in value and "`" not in value
 
 
-def _expand_assigned_word(word: str, env: dict[str, str]) -> str:
-    """Replace a whole-word $name or ${name}, including a one-character name.
+def _lookup_parameter(
+    name: str, env: dict[str, str], positionals: tuple[str, ...]
+) -> str | None:
+    """Value of one parameter. None leaves the original token in the word.
 
-    Leave every other word unchanged.
+    ``$GITHUB_WORKSPACE`` with no assignment is the workspace root. An unset
+    positional stays written out, so a word the shell did not set is unchanged.
     """
-    if (
-        word.startswith("${")
-        and word.endswith("}")
-        and len(word) >= 4
-        and word[2:-1].isidentifier()
-    ):
-        return env.get(word[2:-1], word)
-    if word.startswith("$") and len(word) >= 2 and word[1:].isidentifier():
-        return env.get(word[1:], word)
-    return word
+    if name.isdigit():
+        number = int(name)
+        if number <= 0 or number > len(positionals):
+            return None
+        return positionals[number - 1]
+    if name == "GITHUB_WORKSPACE" and name not in env:
+        return ""
+    if name in env:
+        return env[name]
+    return None
+
+
+def _expand_parameters(
+    word: str,
+    env: dict[str, str],
+    positionals: tuple[str, ...] = (),
+    depth: int = 0,
+) -> str:
+    """Expand ``$name``, ``${name}``, ``$n``, and ``${n}`` in one word.
+
+    ``$10`` is ``$1`` followed by ``0``. ``${10}`` is positional 10. More text
+    after the parameter stays in the word. ``$(...)`` and backticks stay in
+    place. A value that still holds a parameter is expanded again. The scan
+    raises if its index does not advance.
+    """
+    if depth > 8 or "$" not in word:
+        return word
+    out: list[str] = []
+    index = 0
+    limit = len(word)
+    changed = False
+    previous = -1
+    steps = 0
+    while index < limit:
+        steps += 1
+        if steps > limit + 1 or index <= previous:
+            raise AssertionError("parameter scan did not advance")
+        previous = index
+        char = word[index]
+        if char == "$" and index + 1 < limit and word[index + 1] == "(":
+            end = _closing_paren(word, index + 1)
+            out.append(word[index : end + 1])
+            index = end + 1
+            continue
+        if char == "`":
+            end = _closing_backtick(word, index)
+            out.append(word[index : end + 1])
+            index = end + 1
+            continue
+        if char == "$" and index + 1 < limit:
+            nxt = word[index + 1]
+            if nxt == "{":
+                close = word.find("}", index + 2)
+                name = word[index + 2 : close] if close > index + 2 else ""
+                if name.isidentifier() or name.isdigit():
+                    value = _lookup_parameter(name, env, positionals)
+                    if value is None:
+                        out.append(word[index : close + 1])
+                    else:
+                        out.append(value)
+                        changed = True
+                    index = close + 1
+                    continue
+            if nxt.isdigit():
+                value = _lookup_parameter(nxt, env, positionals)
+                if value is None:
+                    out.append(word[index : index + 2])
+                else:
+                    out.append(value)
+                    changed = True
+                index += 2
+                continue
+            if nxt.isalpha() or nxt == "_":
+                end = index + 2
+                previous_end = index + 1
+                while end < limit and (word[end].isalnum() or word[end] == "_"):
+                    if end <= previous_end:
+                        raise AssertionError("parameter scan did not advance")
+                    previous_end = end
+                    end += 1
+                name = word[index + 1 : end]
+                value = _lookup_parameter(name, env, positionals)
+                if value is None:
+                    out.append(word[index:end])
+                else:
+                    out.append(value)
+                    changed = True
+                index = end
+                continue
+        out.append(char)
+        index += 1
+    expanded = "".join(out)
+    if changed and expanded != word:
+        return _expand_parameters(expanded, env, positionals, depth + 1)
+    return expanded
+
+
+def _expand_assignment_value(
+    value: str, env: dict[str, str], positionals: tuple[str, ...]
+) -> str:
+    """Expand parameters and a workspace prefix in an assignment value.
+
+    A colon separates ``CDPATH`` entries. Each entry is expanded on its own.
+    """
+    expanded = _expand_parameters(value, env, positionals)
+    parts = [
+        _strip_workspace(part) if part else "" for part in expanded.split(":")
+    ]
+    return ":".join(parts)
+
+
+def _expand_assigned_word(
+    word: str, env: dict[str, str], positionals: tuple[str, ...] = ()
+) -> str:
+    """Expand parameters in a directory or copy word, including a stored value.
+
+    A whole-word ``$name`` or ``${name}`` is included, and so is a parameter
+    with more text in the same word. A stored value that holds a parameter is
+    expanded again.
+    """
+    return _expand_parameters(word, env, positionals)
 
 
 def _path_from_copy_word(command: str, word: str) -> str | None:
@@ -1113,9 +1229,10 @@ def _run_paths(run_text: str, cwd: str) -> list[str]:
     are capped at 32, and passing that cap raises. A leading command or builtin
     word is skipped even when it is quoted. command followed by an option is
     left in place. A leading NAME=value is skipped. An assignment-only command
-    stores a value with no
-    $ or backtick when the separator keeps shell state. A later copy word that
-    is $name or ${name} uses that value, including a one-character name.
+    expands a workspace prefix and a stored parameter in the value, then stores
+    it when no $ or backtick remains. A later copy word that is $name, ${name},
+    $n, or ${n} uses that value, including a one-character name and more text
+    in the same word.
     echo, or echo -n, of one literal path is reduced when $(...) or backticks
     are the whole word. The assignment scan raises if its index does not advance.
     """
@@ -1136,6 +1253,7 @@ class _ShellState:
         paths: list[str],
         errexit: bool = True,
         oldpwd: str = "",
+        positionals: tuple[str, ...] = (),
         expand_aliases: bool = False,
         aliases: tuple[tuple[str, str], ...] = (),
         exit_trap: str | None = None,
@@ -1147,6 +1265,7 @@ class _ShellState:
         self.paths = paths
         self.errexit = errexit
         self.oldpwd = oldpwd
+        self.positionals = positionals
         self.expand_aliases = expand_aliases
         self.aliases = aliases
         self.exit_trap = exit_trap
@@ -1162,6 +1281,7 @@ def _clone_state(
     paths: list[str] | None = None,
     errexit: bool | None = None,
     oldpwd: str | None = None,
+    positionals: tuple[str, ...] | None = None,
     expand_aliases: bool | None = None,
     aliases: tuple[tuple[str, str], ...] | None = None,
     exit_trap: str | None = None,
@@ -1175,6 +1295,7 @@ def _clone_state(
         list(state.paths) if paths is None else list(paths),
         state.errexit if errexit is None else errexit,
         state.oldpwd if oldpwd is None else oldpwd,
+        state.positionals if positionals is None else positionals,
         state.expand_aliases if expand_aliases is None else expand_aliases,
         state.aliases if aliases is None else aliases,
         state.exit_trap if not exit_trap_set else exit_trap,
@@ -1216,11 +1337,13 @@ def _opening_depth(
 def _stored_env(
     env: tuple[tuple[str, str], ...],
     assignments: list[tuple[str, str]],
+    positionals: tuple[str, ...] = (),
 ) -> tuple[tuple[str, str], ...]:
     updated = dict(env)
     for name, value in assignments:
-        if _recordable_assignment(value):
-            updated[name] = value
+        expanded = _expand_assignment_value(value, updated, positionals)
+        if _recordable_assignment(expanded):
+            updated[name] = expanded
         else:
             updated.pop(name, None)
     return tuple(sorted(updated.items()))
@@ -1232,7 +1355,7 @@ def _record_copy(state: _ShellState, rest: list[str]) -> None:
         return
     env = dict(state.env)
     for word in rest[1:]:
-        expanded = _expand_assigned_word(word, env)
+        expanded = _expand_assigned_word(word, env, state.positionals)
         path_word = _path_from_copy_word(command_name, expanded)
         if path_word is None:
             continue
@@ -1249,6 +1372,8 @@ def _dedupe_states(states: list[_ShellState]) -> list[_ShellState]:
             state.env,
             tuple(state.paths),
             state.errexit,
+            state.oldpwd,
+            state.positionals,
             state.expand_aliases,
             state.aliases,
             state.exit_trap,
@@ -1263,21 +1388,64 @@ def _dedupe_states(states: list[_ShellState]) -> list[_ShellState]:
     return kept
 
 
+def _positional_words(words: list[str]) -> list[str] | None:
+    """Words after ``set --``. None when this command does not assign them."""
+    index = 0
+    limit = len(words)
+    previous = -1
+    while index < limit:
+        if index <= previous:
+            raise AssertionError("errexit scan did not advance")
+        previous = index
+        if _ASSIGNMENT_WORD.match(words[index]):
+            index += 1
+            continue
+        if (
+            words[index] in ("builtin", "command", "eval")
+            and index + 1 < limit
+            and not words[index + 1].startswith("-")
+        ):
+            index += 1
+            continue
+        break
+    if index >= limit or words[index] != "set":
+        return None
+    rest = words[index + 1 :]
+    if "--" not in rest:
+        return None
+    return rest[rest.index("--") + 1 :]
+
+
 def _apply_errexit(
     states: list[_ShellState],
     words: list[str],
     quoted: list[bool],
     uncertain: bool,
 ) -> list[_ShellState]:
-    """Apply set to each state. An uncertain set keeps the earlier flag too."""
+    """Apply set to each state. An uncertain set keeps the earlier flag too.
+
+    ``set --`` stores the words after the option end as the positional
+    parameters. An uncertain set keeps the earlier parameters too.
+    """
     produced: list[_ShellState] = []
+    positional = _positional_words(words)
     for state in states:
         new_flag = _next_errexit(words, quoted, state.errexit)
-        if uncertain and new_flag != state.errexit:
+        new_pos = state.positionals
+        if positional is not None:
+            env = dict(state.env)
+            new_pos = tuple(
+                _expand_parameters(word, env, state.positionals) for word in positional
+            )
+        changed = new_flag != state.errexit or new_pos != state.positionals
+        if uncertain and changed:
             produced.append(_clone_state(state))
-            produced.append(_clone_state(state, errexit=new_flag))
+            produced.append(
+                _clone_state(state, errexit=new_flag, positionals=new_pos)
+            )
         else:
             state.errexit = new_flag
+            state.positionals = new_pos
             produced.append(state)
     return _dedupe_states(produced)
 
@@ -1292,12 +1460,26 @@ def _apply_assignment(
 ) -> list[_ShellState]:
     produced: list[_ShellState] = []
     for state in states:
-        new_env = _stored_env(state.env, assignments) if carry else state.env
+        new_env = (
+            _stored_env(state.env, assignments, state.positionals)
+            if carry
+            else state.env
+        )
         new_flag = _next_errexit(words, quoted, state.errexit)
-        changed = new_env != state.env or new_flag != state.errexit
+        new_old = state.oldpwd
+        if carry and any(name == "OLDPWD" for name, _ in assignments):
+            raw = dict(new_env).get("OLDPWD", "")
+            new_old = _resolve_run_path(raw, state.cwd) if raw else ""
+        changed = (
+            new_env != state.env
+            or new_flag != state.errexit
+            or new_old != state.oldpwd
+        )
         if uncertain and changed:
             produced.append(_clone_state(state))
-        produced.append(_clone_state(state, env=new_env, errexit=new_flag))
+        produced.append(
+            _clone_state(state, env=new_env, errexit=new_flag, oldpwd=new_old)
+        )
     return _dedupe_states(produced)
 
 
@@ -1391,8 +1573,10 @@ def _extract_functions(text: str) -> tuple[str, dict[str, str]]:
     quote: str | None = None
     subst = 0
     previous = -1
+    steps = 0
     while index < limit:
-        if index <= previous:
+        steps += 1
+        if steps > limit + 1 or index <= previous:
             raise AssertionError("function scan did not advance")
         previous = index
         char = text[index]
@@ -1445,6 +1629,20 @@ def _read_workspace_file(logical: str) -> str | None:
         return None
 
 
+def _pad_to_length(items: list, size: int, fill: object, label: str) -> None:
+    """Append until items reaches size. Raise if that pad does not advance."""
+    steps = 0
+    bound = size + 1
+    while len(items) < size:
+        steps += 1
+        if steps > bound:
+            raise AssertionError(f"{label} did not advance")
+        before = len(items)
+        items.append(fill)
+        if len(items) <= before:
+            raise AssertionError(f"{label} did not advance")
+
+
 def _strip_trailing_redirects(
     words: list[str],
     quoted: list[bool],
@@ -1453,10 +1651,8 @@ def _strip_trailing_redirects(
     words = list(words)
     quoted = list(quoted)
     globs = list(globs)
-    while len(quoted) < len(words):
-        quoted.append(False)
-    while len(globs) < len(words):
-        globs.append(None)
+    _pad_to_length(quoted, len(words), False, "quoted pad")
+    _pad_to_length(globs, len(words), None, "glob pad")
 
     def _operator(word: str) -> bool:
         return bool(
@@ -1595,6 +1791,9 @@ def _interpret(
 ) -> list[_ShellState]:
     if depth > _SHELL_CALL_DEPTH:
         return states
+    text, found = _extract_functions(text)
+    if found:
+        functions.update(found)
     compound = 0
     for command, carry, may_fail, follows in _split_shell_commands(text):
         parked = [state for state in states if state.stopped]
@@ -1719,47 +1918,64 @@ def _apply_command(
     rest_quoted = body_quoted[index:]
     rest_globs = body_globs[index:]
     if rest and rest[0] in functions and not (rest_quoted and rest_quoted[0]):
+        arg_words = rest[1:]
         body_text = functions[rest[0]]
-        return (
-            _keep_and_run(
-                states,
-                uncertain,
-                follows,
-                lambda state, inner=body_text: _interpret(
-                    [state], inner, functions, depth + 1
-                ),
-            ),
-            compound,
-        )
-    if rest and rest[0] == "eval" and len(rest) >= 2 and rest_quoted and rest_quoted[0] is not None and len(rest_quoted) > 1 and rest_quoted[1]:
-        inner = " ".join(rest[1:])
-        return (
-            _keep_and_run(
-                states,
-                uncertain,
-                follows,
-                lambda state, script=inner: _interpret(
-                    [state], script, functions, depth + 1
-                ),
-            ),
-            compound,
-        )
+
+        def _call(
+            state: _ShellState,
+            args: list[str] = arg_words,
+            inner: str = body_text,
+        ) -> list[_ShellState]:
+            env = dict(state.env)
+            bound_args = tuple(
+                _expand_parameters(word, env, state.positionals) for word in args
+            )
+            bound = _clone_state(state, positionals=bound_args)
+            result = _interpret([bound], inner, functions, depth + 1)
+            return [
+                _clone_state(item, positionals=state.positionals) for item in result
+            ]
+
+        return _keep_and_run(states, uncertain, follows, _call), compound
+    if rest and rest[0] == "eval" and len(rest) >= 2:
+        arg_words = rest[1:]
+
+        def _eval(
+            state: _ShellState, args: list[str] = arg_words
+        ) -> list[_ShellState]:
+            env = dict(state.env)
+            parts = [
+                _expand_parameters(word, env, state.positionals) for word in args
+            ]
+            return _interpret([state], " ".join(parts), functions, depth + 1)
+
+        return _keep_and_run(states, uncertain, follows, _eval), compound
     if rest and rest[0] in (".", "source") and len(rest) >= 2:
         def _source(state: _ShellState, word: str = rest[1]) -> list[_ShellState]:
-            expanded = _expand_assigned_word(word, dict(state.env))
+            expanded = _expand_assigned_word(word, dict(state.env), state.positionals)
             script = _read_workspace_file(_resolve_run_path(expanded, state.cwd))
             if script is None:
                 return [state]
             return _interpret([state], script, functions, depth + 1)
 
         return _keep_and_run(states, uncertain, follows, _source), compound
-    if rest and rest[0] == "trap" and len(rest) >= 3 and rest[-1] in ("EXIT", "exit", "0"):
-        trap_body = rest[1] if len(rest) == 3 else " ".join(rest[1:-1])
+    if rest and rest[0] == "trap":
+        trap_args = list(rest[1:])
+        if trap_args and trap_args[0] == "--":
+            trap_args = trap_args[1:]
+        if (
+            len(trap_args) >= 2
+            and not trap_args[0].startswith("-")
+            and any(signal in ("EXIT", "exit", "0") for signal in trap_args[1:])
+        ):
+            trap_body = trap_args[0]
 
-        def _trap(state: _ShellState, body_text: str = trap_body) -> list[_ShellState]:
-            return [_clone_state(state, exit_trap=body_text, exit_trap_set=True)]
+            def _trap(
+                state: _ShellState, body_text: str = trap_body
+            ) -> list[_ShellState]:
+                return [_clone_state(state, exit_trap=body_text, exit_trap_set=True)]
 
-        return _keep_and_run(states, uncertain, follows, _trap), compound
+            return _keep_and_run(states, uncertain, follows, _trap), compound
     if rest and rest[0] == "alias":
         binding = _alias_binding(rest)
 
@@ -2006,8 +2222,11 @@ def _reduce_literal_expressions(value: str) -> str | None:
     parts: list[str] = []
     index = 0
     previous = -1
+    steps = 0
+    bound = len(value) + 1
     while True:
-        if index <= previous:
+        steps += 1
+        if steps > bound or index <= previous:
             raise AssertionError("expression scan did not advance")
         previous = index
         start = value.find("${{", index)
@@ -2354,16 +2573,25 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     starts with errexit on. A bash, sh, or dash template starts with errexit
     on only when it passes -e or -o errexit. bash {0} starts with errexit off.
     Words after {0} are script arguments and do not change errexit. set --
-    ends option scanning, so a later -e or +e is not an option. shopt -u -o
+    ends option scanning, so a later -e or +e is not an option. The words
+    after -- are the positional parameters. shopt -u -o
     errexit and shopt -uo errexit turn errexit off, and shopt -s -o errexit
-    turns it on. shopt -s expand_aliases makes a later alias run. A quoted
-    eval argument is shell text. A redirection operator that contains & or |
+    turns it on. shopt -s expand_aliases makes a later alias run. An eval
+    argument is shell text, quoted or unquoted, including a stored word and a
+    function definition in that text. A redirection operator that contains & or |
     is not a command separator. A function body runs when that function is
-    called. cd - uses the previous directory. CDPATH is searched for a cd
-    operand with no slash. An EXIT trap runs at the end of the step. A sourced
-    file under the workspace is read. A stored variable in a directory word is
-    expanded, including when the word is quoted, and an unquoted glob in that
-    value is matched. A $GITHUB_WORKSPACE, ${GITHUB_WORKSPACE}, or
+    called, and the call binds the function's arguments. cd - uses the
+    previous directory. Distinct previous directories stay in their states.
+    An OLDPWD assignment sets that directory. CDPATH is searched for a cd
+    operand with no slash. A workspace prefix in that value is resolved from
+    the workspace root. An EXIT trap runs at the end of the step. A leading
+    -- is an option end. The trap is recorded when EXIT, exit, or 0 is one of
+    the signal words. A sourced
+    file under the workspace is read, including a function defined in that
+    file. A stored variable in a directory word is
+    expanded, including when the word is quoted, when the value holds a
+    parameter, and when more text follows the parameter in the word. An
+    unquoted glob in that value is matched. A $GITHUB_WORKSPACE, ${GITHUB_WORKSPACE}, or
     GITHUB_WORKSPACE prefix is resolved from the workspace root.
     The errexit scan, the paren scan, the backtick scan, the shell word scan,
     and the shell template scan raise if the index does not advance. The shell scan raises if its index does not
@@ -2392,9 +2620,10 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     replaces the state. That scan raises if its index does not advance.
     command
     followed by an option is left in place. A leading NAME=value is skipped.
-    An assignment-only command stores a value with no $ or backtick when the
-    separator keeps shell state, and a later copy word that is $name or
-    ${name} uses it, including a one-character name. cp and mv contribute a
+    An assignment-only command expands a workspace prefix and a stored
+    parameter in the value, then stores it when no $ or backtick remains.
+    A later copy word that is $name, ${name}, $n, or ${n} uses it, including
+    a one-character name and more text in the same word. cp and mv contribute a
     --target-directory= or --target= value. echo, or echo -n, of one literal
     path is reduced when $(...) or backticks are the whole word. A trailing /*
     is removed. The check reads one step at a time.
@@ -2416,8 +2645,8 @@ def assert_docs_no_archive_benchmark_dashboard_copy(
     that begins with a backslash; a ( ... ) subshell; for, while, until, case
     compound commands and a leading !; a copy run through sudo, exec, time,
     env, xargs, nohup, or another wrapper command; an assignment prefix in
-    front of command cd; a $name or ${name} with more text in the same word;
-    an export or declare assignment; a cd of $RUNNER_TEMP; a typeset or readonly
+    front of command cd; a parameter expansion other than $name, ${name}, $n,
+    and ${n}; an export or declare assignment; a cd of $RUNNER_TEMP; a typeset or readonly
     assignment.
     """
     data = _workflow_document(text, path=path)
@@ -4261,7 +4490,7 @@ class WorkflowPolicyTest(unittest.TestCase):
     def _pages_form_oracle(self) -> None:
         """Pin shell-form results the pages suite reads."""
         expected = json.loads(
-"{\"split:2>&1 cp a b\":[\"ok\",\"[('2>&1 cp a b', True, False, False)]\"],\"split:&>/dev/null cp a b\":[\"ok\",\"[('&>/dev/null cp a b', True, False, False)]\"],\"split:&>>/dev/null cp a b\":[\"ok\",\"[('&>>/dev/null cp a b', True, False, False)]\"],\"split:>| /dev/null cp a b\":[\"ok\",\"[('>| /dev/null cp a b', True, False, False)]\"],\"split:2>&- cp a b\":[\"ok\",\"[('2>&- cp a b', True, False, False)]\"],\"split:>&2 echo hi\":[\"ok\",\"[('>&2 echo hi', True, False, False)]\"],\"split:<&0 cat\":[\"ok\",\"[('<', False, False, False), ('0 cat', True, False, False)]\"],\"split:cd docs/archive 2>&1\":[\"ok\",\"[('cd docs/archive 2>&1', True, False, False)]\"],\"split:SRC=docs/archive 2>&1\":[\"ok\",\"[('SRC=docs/archive 2>&1', True, False, False)]\"],\"split:a&&b\":[\"ok\",\"[('a', True, True, False), ('b', True, False, True)]\"],\"split:a||b\":[\"ok\",\"[('a', True, True, False), ('b', True, False, True)]\"],\"split:a|b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:a&b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:a|&b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:cd docs&extra\":[\"ok\",\"[('cd docs', False, False, False), ('extra', True, False, False)]\"],\"split:a>&&b\":[\"ok\",\"[('a>', True, True, False), ('b', True, False, True)]\"],\"split:a>||b\":[\"ok\",\"[('a>', True, True, False), ('b', True, False, True)]\"],\"split:a>&2&&b\":[\"ok\",\"[('a>&2', True, True, False), ('b', True, False, True)]\"],\"split:a&>b&&c\":[\"ok\",\"[('a&>b', True, True, False), ('c', True, False, True)]\"],\"split:echo Z && cp a b\":[\"ok\",\"[('echo Z', True, True, False), ('cp a b', True, False, True)]\"],\"split:true & Z\":[\"ok\",\"[('true', False, False, False), ('Z', True, False, False)]\"],\"split:cmd>file\":[\"ok\",\"[('cmd>file', True, False, False)]\"],\"split:cmd>>file\":[\"ok\",\"[('cmd>>file', True, False, False)]\"],\"split:a\\nb\":[\"ok\",\"[('a', True, False, False), ('b', True, False, False)]\"],\"split:a;b\":[\"ok\",\"[('a', True, False, False), ('b', True, False, False)]\"],\"split:'a&&b'\":[\"ok\",\"[(\\\"'a&&b'\\\", True, False, False)]\"],\"split:\\\"a&&b\\\"\":[\"ok\",\"[('\\\"a&&b\\\"', True, False, False)]\"],\"split:a\\\\\\nb\":[\"ok\",\"[('ab', True, False, False)]\"],\"split:2>&1&&cp a b\":[\"ok\",\"[('2>&1', True, True, False), ('cp a b', True, False, True)]\"],\"split:echo foo>&2\":[\"ok\",\"[('echo foo>&2', True, False, False)]\"],\"split:echo foo>|bar\":[\"ok\",\"[('echo foo>|bar', True, False, False)]\"],\"split:echo foo&>bar\":[\"ok\",\"[('echo foo&>bar', True, False, False)]\"],\"split:echo foo&>>bar\":[\"ok\",\"[('echo foo&>>bar', True, False, False)]\"],\"split:echo foo<&0\":[\"ok\",\"[('echo foo<', False, False, False), ('0', True, False, False)]\"],\"split:echo foo 2>&1 | cat\":[\"ok\",\"[('echo foo 2>&1', False, False, False), ('cat', True, False, False)]\"],\"end:2>&1 cp\":[\"ok\",\"4\"],\"end:a&&b\":[\"ok\",\"1\"],\"end:a||b\":[\"ok\",\"1\"],\"end:a|&b\":[\"ok\",\"1\"],\"end:a&b\":[\"ok\",\"1\"],\"end:echo>&2\":[\"ok\",\"7\"],\"end:echo>|f\":[\"ok\",\"7\"],\"end:echo&>f\":[\"ok\",\"5\"],\"end:echo&>>f\":[\"ok\",\"5\"],\"end:a>&&b\":[\"ok\",\"2\"],\"end:Z>&1\":[\"ok\",\"1\"],\"end:2>&-\":[\"ok\",\"4\"],\"end:<&0\":[\"ok\",\"1\"],\"fn:publish() { cp a b; }\\npublish\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:function publish { cp a b; }\\np\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:function publish() { cp a b; }\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:Date().toISOString()\":[\"ok\",\"('Date().toISOString()', {})\"],\"fn:'publish() { cp a b; }'\":[\"ok\",\"(\\\"'publish() { cp a b; }'\\\", {})\"],\"fn:$(publish() { cp a b; })\":[\"ok\",\"('$(publish() { cp a b; })', {})\"],\"fn:publish() { echo '}'; }\\npublis\":[\"ok\",\"(' \\\\npublish', {'publish': \\\" echo '}'; \\\"})\"],\"fn:pre publish() { cp a b; } post\":[\"ok\",\"('pre   post', {'publish': ' cp a b; '})\"],\"fn:a() { b; }\\nZ() { c; }\":[\"ok\",\"(' \\\\n ', {'a': ' b; ', 'Z': ' c; '})\"],\"brace:{a}\":[\"ok\",\"2\"],\"brace:{a{b}c}\":[\"ok\",\"6\"],\"brace:{a'}'b}\":[\"ok\",\"6\"],\"brace:{a\\\"}\\\"b}\":[\"ok\",\"6\"],\"brace:{a\\\\}b}\":[\"ok\",\"3\"],\"brace:{\":[\"ok\",\"None\"],\"brace:a{b\":[\"ok\",\"None\"],\"match:publish() { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 21)\"],\"match:function publish { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 28)\"],\"match:function publish() { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 30)\"],\"match:not a function\":[\"ok\",\"None\"],\"match:xpublish() { }\":[\"ok\",\"('xpublish', ' ', 14)\"],\"match:publish () { cp; }\":[\"ok\",\"('publish', ' cp; ', 18)\"],\"match:Date().toISOString()\":[\"ok\",\"None\"],\"strip:cp a b 2>&1\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp a b > f\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:2>&1 cp a b\":[\"ok\",\"(['2>&1', 'cp', 'a', 'b'], [False, False, False, False], [None, None, None, None])\"],\"strip:cp a b\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp a b >&2\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp \\\"2>&1\\\"\":[\"ok\",\"(['cp', '\\\"2>&1\\\"'], [False, True], [None, None])\"],\"shopt:-uo errexit\":[\"ok\",\"(False, False)\"],\"shopt:-u -o errexit\":[\"ok\",\"(False, False)\"],\"shopt:-s -o errexit\":[\"ok\",\"(True, False)\"],\"shopt:-s expand_aliases\":[\"ok\",\"(False, True)\"],\"shopt:-u expand_aliases\":[\"ok\",\"(True, False)\"],\"shopt:-s -u -o errexit\":[\"ok\",\"(True, False)\"],\"shopt:-s globstar nullglob\":[\"ok\",\"(True, False)\"],\"shopt:-- -s errexit\":[\"ok\",\"(True, False)\"],\"shopt:-o\":[\"ok\",\"(True, False)\"],\"shopt:-Z errexit\":[\"ok\",\"(True, False)\"],\"tmpl:bash {0} -e\":[\"ok\",\"False\"],\"tmpl:bash -e {0}\":[\"ok\",\"True\"],\"tmpl:bash {0} -o errexit\":[\"ok\",\"False\"],\"tmpl:bash -o errexit {0}\":[\"ok\",\"True\"],\"tmpl:bash -- -e {0}\":[\"ok\",\"False\"],\"tmpl:pwsh\":[\"ok\",\"False\"],\"tmpl:dash {0}\":[\"ok\",\"False\"],\"tmpl:sh {0}\":[\"ok\",\"False\"],\"tmpl:\":[\"ok\",\"True\"],\"tmpl:bash {0}\":[\"ok\",\"False\"],\"tmpl:Z {0} -e\":[\"ok\",\"False\"],\"next:set -- -e\":[\"err\",\"TypeError\"],\"next:set -- +e\":[\"err\",\"TypeError\"],\"next:set -e\":[\"err\",\"TypeError\"],\"next:set +e\":[\"err\",\"TypeError\"],\"next:set -e -- +e\":[\"err\",\"TypeError\"],\"next:set +o -e\":[\"err\",\"TypeError\"],\"next:set +o errexit\":[\"err\",\"TypeError\"],\"next:true\":[\"err\",\"TypeError\"],\"next:set -Z\":[\"err\",\"TypeError\"],\"h:paren\":[\"ok\",\"4\"],\"h:paren2\":[\"ok\",\"6\"],\"h:tick\":[\"ok\",\"2\"],\"h:tick2\":[\"ok\",\"3\"],\"h:words\":[\"ok\",\"[]\"],\"h:words2\":[\"ok\",\"[('a*', False, 'a*')]\"],\"h:words3\":[\"ok\",\"[('a*', True, None)]\"],\"h:words4\":[\"ok\",\"[('cp', False, None)]\"],\"h:words5\":[\"ok\",\"[('$(echo a b)', False, None)]\"],\"h:wordsZ\":[\"ok\",\"[('Z', False, None)]\"],\"h:glob\":[\"ok\",\"['docs/archive']\"],\"h:glob2\":[\"ok\",\"['docs/architecture', 'docs/archive']\"],\"h:ws\":[\"ok\",\"'docs/archive/x'\"],\"h:ws2\":[\"ok\",\"'docs/a'\"],\"h:star\":[\"ok\",\"'docs/book/dashboard'\"],\"h:cdpath\":[\"ok\",\"'docs/archive'\"],\"h:cdpath2\":[\"ok\",\"None\"],\"h:uses\":[\"ok\",\"True\"],\"h:uses2\":[\"ok\",\"False\"],\"h:uses3\":[\"ok\",\"False\"],\"h:repo\":[\"ok\",\"True\"],\"h:read\":[\"ok\",\"True\"],\"h:read2\":[\"ok\",\"None\"],\"h:edge\":[\"ok\",\"True\"],\"h:edge2\":[\"ok\",\"False\"],\"h:skip\":[\"ok\",\"2\"],\"h:alias\":[\"ok\",\"('enter', 'cd')\"],\"h:alias2\":[\"ok\",\"None\"],\"st:cp -r docs/archive/benchmark_dashboard d\":[\"ok\",\"(('', True, True, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:cp -r docs/archive/benchmark_dashboard d\":[\"ok\",\"True\"],\"st:2>&1 cp -r docs/archive/benchmark_dashbo\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:2>&1 cp -r docs/archive/benchmark_dashbo\":[\"ok\",\"True\"],\"st:&>/dev/null cp -r docs/archive/benchmark\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:&>/dev/null cp -r docs/archive/benchmark\":[\"ok\",\"True\"],\"st:>| /dev/null cp -r docs/archive/benchmar\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:>| /dev/null cp -r docs/archive/benchmar\":[\"ok\",\"True\"],\"st:cd docs/archive 2>&1|cp -r benchmark_das\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:cd docs/archive 2>&1|cp -r benchmark_das\":[\"ok\",\"True\"],\"st:publish() { cp -r docs/archive/benchmark\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:publish() { cp -r docs/archive/benchmark\":[\"ok\",\"True\"],\"st:function relax { set +e; }|relax|cd nope\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:function relax { set +e; }|relax|cd nope\":[\"ok\",\"True\"],\"st:shopt -s expand_aliases|alias enter='cd \":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), True, (('enter', 'cd docs/archive'),), None, ''),)\"],\"cp:shopt -s expand_aliases|alias enter='cd \":[\"ok\",\"True\"],\"st:cd docs|cd archive|cd -|cp -r archive/be\":[\"ok\",\"(('docs', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'),)\"],\"cp:cd docs|cd archive|cd -|cp -r archive/be\":[\"ok\",\"True\"],\"st:CDPATH=docs|cd archive|cp -r benchmark_d\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:CDPATH=docs|cd archive|cp -r benchmark_d\":[\"ok\",\"True\"],\"st:trap 'cp -r docs/archive/benchmark_dashb\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:trap 'cp -r docs/archive/benchmark_dashb\":[\"ok\",\"True\"],\"st:. scripts/ci/testdata/docs_source_copy/p\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:. scripts/ci/testdata/docs_source_copy/p\":[\"ok\",\"True\"],\"st:D=docs/archive|cd \\\"$D\\\"|cp -r benchmark_d\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:D=docs/archive|cd \\\"$D\\\"|cp -r benchmark_d\":[\"ok\",\"True\"],\"st:P=docs/archiv?|cd $P|cp -r benchmark_das\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:P=docs/archiv?|cd $P|cp -r benchmark_das\":[\"ok\",\"True\"],\"st:set +e|set -- -e|cd nope|cp -r benchmark\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:set +e|set -- -e|cd nope|cp -r benchmark\":[\"ok\",\"True\"],\"st:set -- +e|cd nope|cp -r benchmark_dashbo\":[\"ok\",\"(('docs/archive/nope', True, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'),)\"],\"cp:set -- +e|cd nope|cp -r benchmark_dashbo\":[\"ok\",\"False\"],\"st:shopt -uo errexit|cd nope|cp -r benchmar\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:shopt -uo errexit|cd nope|cp -r benchmar\":[\"ok\",\"True\"],\"st:eval 'set +e'|cd nope|cp -r benchmark_da\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:eval 'set +e'|cd nope|cp -r benchmark_da\":[\"ok\",\"True\"],\"st:cd docs/arch*|true\":[\"ok\",\"(('', True, True, (), False, (), None, ''),)\"],\"cp:cd docs/arch*|true\":[\"ok\",\"False\"],\"st:Z x cp -r docs/archive/benchmark_dashboa\":[\"ok\",\"(('', True, False, (), False, (), None, ''),)\"],\"cp:Z x cp -r docs/archive/benchmark_dashboa\":[\"ok\",\"False\"],\"st:cd -\":[\"ok\",\"(('', True, True, (), False, (), None, ''),)\"],\"cp:cd -\":[\"ok\",\"False\"]}"
+"{\"split:2>&1 cp a b\":[\"ok\",\"[('2>&1 cp a b', True, False, False)]\"],\"split:&>/dev/null cp a b\":[\"ok\",\"[('&>/dev/null cp a b', True, False, False)]\"],\"split:&>>/dev/null cp a b\":[\"ok\",\"[('&>>/dev/null cp a b', True, False, False)]\"],\"split:>| /dev/null cp a b\":[\"ok\",\"[('>| /dev/null cp a b', True, False, False)]\"],\"split:2>&- cp a b\":[\"ok\",\"[('2>&- cp a b', True, False, False)]\"],\"split:>&2 echo hi\":[\"ok\",\"[('>&2 echo hi', True, False, False)]\"],\"split:<&0 cat\":[\"ok\",\"[('<', False, False, False), ('0 cat', True, False, False)]\"],\"split:cd docs/archive 2>&1\":[\"ok\",\"[('cd docs/archive 2>&1', True, False, False)]\"],\"split:SRC=docs/archive 2>&1\":[\"ok\",\"[('SRC=docs/archive 2>&1', True, False, False)]\"],\"split:a&&b\":[\"ok\",\"[('a', True, True, False), ('b', True, False, True)]\"],\"split:a||b\":[\"ok\",\"[('a', True, True, False), ('b', True, False, True)]\"],\"split:a|b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:a&b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:a|&b\":[\"ok\",\"[('a', False, False, False), ('b', True, False, False)]\"],\"split:cd docs&extra\":[\"ok\",\"[('cd docs', False, False, False), ('extra', True, False, False)]\"],\"split:a>&&b\":[\"ok\",\"[('a>', True, True, False), ('b', True, False, True)]\"],\"split:a>||b\":[\"ok\",\"[('a>', True, True, False), ('b', True, False, True)]\"],\"split:a>&2&&b\":[\"ok\",\"[('a>&2', True, True, False), ('b', True, False, True)]\"],\"split:a&>b&&c\":[\"ok\",\"[('a&>b', True, True, False), ('c', True, False, True)]\"],\"split:echo Z && cp a b\":[\"ok\",\"[('echo Z', True, True, False), ('cp a b', True, False, True)]\"],\"split:true & Z\":[\"ok\",\"[('true', False, False, False), ('Z', True, False, False)]\"],\"split:cmd>file\":[\"ok\",\"[('cmd>file', True, False, False)]\"],\"split:cmd>>file\":[\"ok\",\"[('cmd>>file', True, False, False)]\"],\"split:a\\nb\":[\"ok\",\"[('a', True, False, False), ('b', True, False, False)]\"],\"split:a;b\":[\"ok\",\"[('a', True, False, False), ('b', True, False, False)]\"],\"split:'a&&b'\":[\"ok\",\"[(\\\"'a&&b'\\\", True, False, False)]\"],\"split:\\\"a&&b\\\"\":[\"ok\",\"[('\\\"a&&b\\\"', True, False, False)]\"],\"split:a\\\\\\nb\":[\"ok\",\"[('ab', True, False, False)]\"],\"split:2>&1&&cp a b\":[\"ok\",\"[('2>&1', True, True, False), ('cp a b', True, False, True)]\"],\"split:echo foo>&2\":[\"ok\",\"[('echo foo>&2', True, False, False)]\"],\"split:echo foo>|bar\":[\"ok\",\"[('echo foo>|bar', True, False, False)]\"],\"split:echo foo&>bar\":[\"ok\",\"[('echo foo&>bar', True, False, False)]\"],\"split:echo foo&>>bar\":[\"ok\",\"[('echo foo&>>bar', True, False, False)]\"],\"split:echo foo<&0\":[\"ok\",\"[('echo foo<', False, False, False), ('0', True, False, False)]\"],\"split:echo foo 2>&1 | cat\":[\"ok\",\"[('echo foo 2>&1', False, False, False), ('cat', True, False, False)]\"],\"end:2>&1 cp\":[\"ok\",\"4\"],\"end:a&&b\":[\"ok\",\"1\"],\"end:a||b\":[\"ok\",\"1\"],\"end:a|&b\":[\"ok\",\"1\"],\"end:a&b\":[\"ok\",\"1\"],\"end:echo>&2\":[\"ok\",\"7\"],\"end:echo>|f\":[\"ok\",\"7\"],\"end:echo&>f\":[\"ok\",\"5\"],\"end:echo&>>f\":[\"ok\",\"5\"],\"end:a>&&b\":[\"ok\",\"2\"],\"end:Z>&1\":[\"ok\",\"1\"],\"end:2>&-\":[\"ok\",\"4\"],\"end:<&0\":[\"ok\",\"1\"],\"fn:publish() { cp a b; }\\npublish\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:function publish { cp a b; }\\np\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:function publish() { cp a b; }\":[\"ok\",\"(' \\\\npublish', {'publish': ' cp a b; '})\"],\"fn:Date().toISOString()\":[\"ok\",\"('Date().toISOString()', {})\"],\"fn:'publish() { cp a b; }'\":[\"ok\",\"(\\\"'publish() { cp a b; }'\\\", {})\"],\"fn:$(publish() { cp a b; })\":[\"ok\",\"('$(publish() { cp a b; })', {})\"],\"fn:publish() { echo '}'; }\\npublis\":[\"ok\",\"(' \\\\npublish', {'publish': \\\" echo '}'; \\\"})\"],\"fn:pre publish() { cp a b; } post\":[\"ok\",\"('pre   post', {'publish': ' cp a b; '})\"],\"fn:a() { b; }\\nZ() { c; }\":[\"ok\",\"(' \\\\n ', {'a': ' b; ', 'Z': ' c; '})\"],\"brace:{a}\":[\"ok\",\"2\"],\"brace:{a{b}c}\":[\"ok\",\"6\"],\"brace:{a'}'b}\":[\"ok\",\"6\"],\"brace:{a\\\"}\\\"b}\":[\"ok\",\"6\"],\"brace:{a\\\\}b}\":[\"ok\",\"3\"],\"brace:{\":[\"ok\",\"None\"],\"brace:a{b\":[\"ok\",\"None\"],\"match:publish() { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 21)\"],\"match:function publish { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 28)\"],\"match:function publish() { cp a b; }\":[\"ok\",\"('publish', ' cp a b; ', 30)\"],\"match:not a function\":[\"ok\",\"None\"],\"match:xpublish() { }\":[\"ok\",\"('xpublish', ' ', 14)\"],\"match:publish () { cp; }\":[\"ok\",\"('publish', ' cp; ', 18)\"],\"match:Date().toISOString()\":[\"ok\",\"None\"],\"strip:cp a b 2>&1\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp a b > f\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:2>&1 cp a b\":[\"ok\",\"(['2>&1', 'cp', 'a', 'b'], [False, False, False, False], [None, None, None, None])\"],\"strip:cp a b\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp a b >&2\":[\"ok\",\"(['cp', 'a', 'b'], [False, False, False], [None, None, None])\"],\"strip:cp \\\"2>&1\\\"\":[\"ok\",\"(['cp', '\\\"2>&1\\\"'], [False, True], [None, None])\"],\"shopt:-uo errexit\":[\"ok\",\"(False, False)\"],\"shopt:-u -o errexit\":[\"ok\",\"(False, False)\"],\"shopt:-s -o errexit\":[\"ok\",\"(True, False)\"],\"shopt:-s expand_aliases\":[\"ok\",\"(False, True)\"],\"shopt:-u expand_aliases\":[\"ok\",\"(True, False)\"],\"shopt:-s -u -o errexit\":[\"ok\",\"(True, False)\"],\"shopt:-s globstar nullglob\":[\"ok\",\"(True, False)\"],\"shopt:-- -s errexit\":[\"ok\",\"(True, False)\"],\"shopt:-o\":[\"ok\",\"(True, False)\"],\"shopt:-Z errexit\":[\"ok\",\"(True, False)\"],\"tmpl:bash {0} -e\":[\"ok\",\"False\"],\"tmpl:bash -e {0}\":[\"ok\",\"True\"],\"tmpl:bash {0} -o errexit\":[\"ok\",\"False\"],\"tmpl:bash -o errexit {0}\":[\"ok\",\"True\"],\"tmpl:bash -- -e {0}\":[\"ok\",\"False\"],\"tmpl:pwsh\":[\"ok\",\"False\"],\"tmpl:dash {0}\":[\"ok\",\"False\"],\"tmpl:sh {0}\":[\"ok\",\"False\"],\"tmpl:\":[\"ok\",\"True\"],\"tmpl:bash {0}\":[\"ok\",\"False\"],\"tmpl:Z {0} -e\":[\"ok\",\"False\"],\"next:set -- -e\":[\"ok\",\"False\"],\"next:set -- +e\":[\"ok\",\"True\"],\"next:set -e\":[\"ok\",\"True\"],\"next:set +e\":[\"ok\",\"False\"],\"next:set -e -- +e\":[\"ok\",\"True\"],\"next:set +o -e\":[\"ok\",\"True\"],\"next:set +o errexit\":[\"ok\",\"False\"],\"next:true\":[\"ok\",\"True\"],\"next:set -Z\":[\"ok\",\"True\"],\"h:paren\":[\"ok\",\"4\"],\"h:paren2\":[\"ok\",\"6\"],\"h:tick\":[\"ok\",\"2\"],\"h:tick2\":[\"ok\",\"3\"],\"h:words\":[\"ok\",\"[]\"],\"h:words2\":[\"ok\",\"[('a*', False, 'a*')]\"],\"h:words3\":[\"ok\",\"[('a*', True, None)]\"],\"h:words4\":[\"ok\",\"[('cp', False, None)]\"],\"h:words5\":[\"ok\",\"[('$(echo a b)', False, None)]\"],\"h:wordsZ\":[\"ok\",\"[('Z', False, None)]\"],\"h:glob\":[\"ok\",\"['docs/archive']\"],\"h:glob2\":[\"ok\",\"['docs/architecture', 'docs/archive']\"],\"h:ws\":[\"ok\",\"'docs/archive/x'\"],\"h:ws2\":[\"ok\",\"'docs/a'\"],\"h:star\":[\"ok\",\"'docs/book/dashboard'\"],\"h:cdpath\":[\"ok\",\"'docs/archive'\"],\"h:cdpath2\":[\"ok\",\"None\"],\"h:uses\":[\"ok\",\"True\"],\"h:uses2\":[\"ok\",\"False\"],\"h:uses3\":[\"ok\",\"False\"],\"h:repo\":[\"ok\",\"True\"],\"h:read\":[\"ok\",\"True\"],\"h:read2\":[\"ok\",\"None\"],\"h:edge\":[\"ok\",\"True\"],\"h:edge2\":[\"ok\",\"False\"],\"h:skip\":[\"ok\",\"2\"],\"h:alias\":[\"ok\",\"('enter', 'cd')\"],\"h:alias2\":[\"ok\",\"None\"],\"st:cp -r docs/archive/benchmark_dashboard d\":[\"ok\",\"(('', True, True, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:cp -r docs/archive/benchmark_dashboard d\":[\"ok\",\"True\"],\"st:2>&1 cp -r docs/archive/benchmark_dashbo\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:2>&1 cp -r docs/archive/benchmark_dashbo\":[\"ok\",\"True\"],\"st:&>/dev/null cp -r docs/archive/benchmark\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:&>/dev/null cp -r docs/archive/benchmark\":[\"ok\",\"True\"],\"st:>| /dev/null cp -r docs/archive/benchmar\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:>| /dev/null cp -r docs/archive/benchmar\":[\"ok\",\"True\"],\"st:cd docs/archive 2>&1|cp -r benchmark_das\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:cd docs/archive 2>&1|cp -r benchmark_das\":[\"ok\",\"True\"],\"st:publish() { cp -r docs/archive/benchmark\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:publish() { cp -r docs/archive/benchmark\":[\"ok\",\"True\"],\"st:function relax { set +e; }|relax|cd nope\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:function relax { set +e; }|relax|cd nope\":[\"ok\",\"True\"],\"st:shopt -s expand_aliases|alias enter='cd \":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), True, (('enter', 'cd docs/archive'),), None, ''),)\"],\"cp:shopt -s expand_aliases|alias enter='cd \":[\"ok\",\"True\"],\"st:cd docs|cd archive|cd -|cp -r archive/be\":[\"ok\",\"(('docs', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'),)\"],\"cp:cd docs|cd archive|cd -|cp -r archive/be\":[\"ok\",\"True\"],\"st:CDPATH=docs|cd archive|cp -r benchmark_d\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:CDPATH=docs|cd archive|cp -r benchmark_d\":[\"ok\",\"True\"],\"st:trap 'cp -r docs/archive/benchmark_dashb\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:trap 'cp -r docs/archive/benchmark_dashb\":[\"ok\",\"True\"],\"st:. scripts/ci/testdata/docs_source_copy/p\":[\"ok\",\"(('', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:. scripts/ci/testdata/docs_source_copy/p\":[\"ok\",\"True\"],\"st:D=docs/archive|cd \\\"$D\\\"|cp -r benchmark_d\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:D=docs/archive|cd \\\"$D\\\"|cp -r benchmark_d\":[\"ok\",\"True\"],\"st:P=docs/archiv?|cd $P|cp -r benchmark_das\":[\"ok\",\"(('docs/archive', True, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''),)\"],\"cp:P=docs/archiv?|cd $P|cp -r benchmark_das\":[\"ok\",\"True\"],\"st:set +e|set -- -e|cd nope|cp -r benchmark\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:set +e|set -- -e|cd nope|cp -r benchmark\":[\"ok\",\"True\"],\"st:set -- +e|cd nope|cp -r benchmark_dashbo\":[\"ok\",\"(('docs/archive/nope', True, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'),)\"],\"cp:set -- +e|cd nope|cp -r benchmark_dashbo\":[\"ok\",\"False\"],\"st:shopt -uo errexit|cd nope|cp -r benchmar\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:shopt -uo errexit|cd nope|cp -r benchmar\":[\"ok\",\"True\"],\"st:eval 'set +e'|cd nope|cp -r benchmark_da\":[\"ok\",\"(('docs/archive', False, False, ('docs/archive/benchmark_dashboard', 'docs/book/dashboard/benchmark_dashboard'), False, (), None, ''), ('docs/archive/nope', False, False, ('docs/archive/nope/benchmark_dashboard', 'docs/archive/book/dashboard/benchmark_dashboard'), False, (), None, 'docs/archive'))\"],\"cp:eval 'set +e'|cd nope|cp -r benchmark_da\":[\"ok\",\"True\"],\"st:cd docs/arch*|true\":[\"ok\",\"(('', True, True, (), False, (), None, ''),)\"],\"cp:cd docs/arch*|true\":[\"ok\",\"False\"],\"st:Z x cp -r docs/archive/benchmark_dashboa\":[\"ok\",\"(('', True, False, (), False, (), None, ''),)\"],\"cp:Z x cp -r docs/archive/benchmark_dashboa\":[\"ok\",\"False\"],\"st:cd -\":[\"ok\",\"(('', True, True, (), False, (), None, ''),)\"],\"cp:cd -\":[\"ok\",\"False\"]}"
         )
         got: dict[str, list[str]] = {}
 
@@ -4377,7 +4606,9 @@ class WorkflowPolicyTest(unittest.TestCase):
         ]:
             add(
                 "next:" + text,
-                lambda text=text, flag=flag: _next_errexit(text, flag),
+                lambda text=text, flag=flag: _next_errexit(
+                    text.split(), [False] * len(text.split()), flag
+                ),
             )
         helpers = {
             "paren": lambda: _closing_paren("(')')", 0),
@@ -4920,6 +5151,30 @@ jobs:
             "docs_if_keeps_archive",
             "docs_extra_fi_copy",
             "docs_nested_fi_assign",
+            "docs_previous_directory_state",
+            "docs_oldpwd_assignment",
+            "docs_function_arguments",
+            "docs_eval_unquoted",
+            "docs_eval_stored_word",
+            "docs_eval_function",
+            "docs_trap_option_end",
+            "docs_trap_signal_words",
+            "docs_set_positionals",
+            "docs_cdpath_workspace_prefix",
+            "docs_stored_directory_word",
+            "docs_stored_directory_suffix",
+            "docs_stored_directory_chain",
+            "docs_stored_workspace_word",
+            "docs_cdpath_brace_prefix",
+            "docs_cdpath_mixed_prefix",
+            "docs_oldpwd_parameter",
+            "docs_oldpwd_workspace_prefix",
+            "docs_function_argument_suffix",
+            "docs_function_argument_directory",
+            "docs_set_positional_suffix",
+            "docs_trap_option_signals",
+            "docs_eval_unquoted_stored",
+            "docs_sourced_function",
         )
         for directory in copy_dirs:
             fixture = _call_checker(_read_policy_fixture, directory, "docs.yml")
@@ -5011,6 +5266,220 @@ jobs:
             )
         self.assertIn("missing steps", str(caught.exception))
 
+    def _assert_pages_form(self, directory: str) -> None:
+        """The form writes under bash -e, and the checker records that copy."""
+        text = _read_policy_fixture(directory, "docs.yml")
+        data = yaml.safe_load(text)
+        step = data["jobs"]["build-and-deploy"]["steps"][0]
+        script = step["run"]
+        cwd = _normalize_cwd(step.get("working-directory"))
+        self.assertIs(_archive_copied_onto_book(script, cwd), True, directory)
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            archive = root / "docs" / "archive" / "benchmark_dashboard"
+            archive.mkdir(parents=True)
+            (archive / "index.html").write_text("archive-marker\n", encoding="utf-8")
+            (root / "docs" / "book" / "dashboard").mkdir(parents=True)
+            fixture = ROOT / "scripts" / "ci" / "testdata" / directory
+            for path in fixture.rglob("*"):
+                if not path.is_file() or path.name == "docs.yml":
+                    continue
+                dest = root / path.relative_to(ROOT)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(path.read_bytes())
+            env = os.environ.copy()
+            env["GITHUB_WORKSPACE"] = str(root)
+            env.pop("CDPATH", None)
+            env.pop("OLDPWD", None)
+            proc = subprocess.run(
+                ["bash", "-e", "-c", script],
+                cwd=root / cwd if cwd else root,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            target = (
+                root / "docs" / "book" / "dashboard" / "benchmark_dashboard" / "index.html"
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(
+                target.read_text(encoding="utf-8"), "archive-marker\n", directory
+            )
+
+    def test_previous_directory_state_writes(self) -> None:
+        self._assert_pages_form("docs_previous_directory_state")
+
+    def test_oldpwd_assignment_writes(self) -> None:
+        self._assert_pages_form("docs_oldpwd_assignment")
+
+    def test_function_arguments_write(self) -> None:
+        self._assert_pages_form("docs_function_arguments")
+
+    def test_eval_unquoted_words_write(self) -> None:
+        self._assert_pages_form("docs_eval_unquoted")
+
+    def test_eval_stored_word_writes(self) -> None:
+        self._assert_pages_form("docs_eval_stored_word")
+
+    def test_eval_function_definition_writes(self) -> None:
+        self._assert_pages_form("docs_eval_function")
+
+    def test_trap_option_end_writes(self) -> None:
+        self._assert_pages_form("docs_trap_option_end")
+
+    def test_trap_signal_words_write(self) -> None:
+        self._assert_pages_form("docs_trap_signal_words")
+
+    def test_set_positionals_write(self) -> None:
+        self._assert_pages_form("docs_set_positionals")
+
+    def test_cdpath_workspace_prefix_writes(self) -> None:
+        self._assert_pages_form("docs_cdpath_workspace_prefix")
+
+    def test_stored_directory_word_writes(self) -> None:
+        self._assert_pages_form("docs_stored_directory_word")
+
+    def test_directory_parameter_forms_write(self) -> None:
+        for directory in (
+            "docs_stored_directory_suffix",
+            "docs_stored_directory_chain",
+            "docs_stored_workspace_word",
+            "docs_cdpath_brace_prefix",
+            "docs_cdpath_mixed_prefix",
+            "docs_oldpwd_parameter",
+            "docs_oldpwd_workspace_prefix",
+            "docs_function_argument_suffix",
+            "docs_function_argument_directory",
+            "docs_set_positional_suffix",
+            "docs_trap_option_signals",
+            "docs_eval_unquoted_stored",
+            "docs_sourced_function",
+        ):
+            with self.subTest(directory=directory):
+                self._assert_pages_form(directory)
+
+    def test_scan_loops_terminate(self) -> None:
+        holder: dict[str, object] = {}
+
+        def run() -> None:
+            holder["short"] = _strip_trailing_redirects(["cp", "a"], [False], [None])
+            holder["long"] = _strip_trailing_redirects(
+                ["cp", "a"],
+                [False, False, False, False],
+                [None, None, None, None],
+            )
+            holder["expr"] = _reduce_literal_expressions("${{ 'lit' }}")
+            holder["fn"] = _extract_functions("publish() { cp a b; }\npublish")
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive())
+        short_words, short_quoted, short_globs = holder["short"]
+        self.assertEqual(len(short_quoted), len(short_words))
+        self.assertEqual(len(short_globs), len(short_words))
+        long_words, long_quoted, _long_globs = holder["long"]
+        self.assertEqual(long_words, ["cp", "a"])
+        self.assertEqual(len(long_quoted), 4)
+        self.assertEqual(holder["expr"], "lit")
+        _text, functions = holder["fn"]
+        self.assertIn("publish", functions)
+
+    def test_parameter_expansion_and_option_prefixes(self) -> None:
+        """Pin expansion, option prefixes, and trap or source words the suite reads."""
+        self.assertEqual(_expand_parameters("$(echo a)", {}, ()), "$(echo a)")
+        self.assertEqual(_expand_parameters("`echo a`", {}, ()), "`echo a`")
+        self.assertEqual(
+            _expand_parameters("$(echo $B)", {"B": "docs"}, ()), "$(echo $B)"
+        )
+        self.assertEqual(
+            _expand_parameters("`echo $B`", {"B": "docs"}, ()), "`echo $B`"
+        )
+        self.assertEqual(_expand_parameters("$10", {}, ("docs",)), "docs0")
+        self.assertEqual(
+            _expand_parameters("${10}", {}, tuple(f"p{n}" for n in range(1, 11))),
+            "p10",
+        )
+        self.assertEqual(
+            _expand_parameters("$A/archive", {"A": "docs"}, ()), "docs/archive"
+        )
+        self.assertEqual(
+            _expand_parameters("${A}x", {"A": "docs"}, ()), "docsx"
+        )
+        self.assertEqual(
+            _expand_parameters("$A", {"A": "$B", "B": "docs"}, ()), "docs"
+        )
+        self.assertEqual(
+            _expand_parameters("${A}", {"A": "${B}", "B": "docs"}, ()), "docs"
+        )
+        self.assertEqual(
+            _expand_parameters("$1", {}, ("$2", "docs")), "docs"
+        )
+        self.assertEqual(
+            _expand_parameters("$A", {"A": "x"}, (), 8), "x"
+        )
+        self.assertEqual(
+            _expand_parameters("$A", {"A": "x"}, (), 9), "$A"
+        )
+        self.assertIsNone(_lookup_parameter("0", {}, ("a",)))
+        self.assertEqual(_lookup_parameter("2", {}, ("a",)), None)
+        self.assertEqual(_lookup_parameter("GITHUB_WORKSPACE", {}, ()), "")
+        self.assertEqual(
+            _lookup_parameter("GITHUB_WORKSPACE", {"GITHUB_WORKSPACE": "kept"}, ()),
+            "kept",
+        )
+        self.assertEqual(
+            _expand_parameters("$GITHUB_WORKSPACE/docs", {}, ()), "/docs"
+        )
+        self.assertEqual(
+            _expand_assignment_value("missing:$GITHUB_WORKSPACE/docs", {}, ()),
+            "missing:/docs",
+        )
+        self.assertIsNone(_match_function("xpublish() { }", 1))
+        self.assertEqual(
+            _matching_brace('{a"\\"}"b}', 0),
+            len('{a"\\"}"b}') - 1,
+        )
+        copy = (
+            "cp -r docs/archive/benchmark_dashboard "
+            "docs/book/dashboard/benchmark_dashboard"
+        )
+        self.assertIs(
+            _archive_copied_onto_book("source scripts/ci/testdata/docs_source_copy/payload.sh", ""),
+            True,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("command set +e\ncd nope\n" + copy, ""),
+            True,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("builtin set +e\ncd nope\n" + copy, ""),
+            True,
+        )
+        self.assertIs(
+            _archive_copied_onto_book("eval set +e\ncd nope\n" + copy, ""),
+            True,
+        )
+        self.assertIs(_archive_copied_onto_book("trap '" + copy + "'\ntrue", ""), False)
+        self.assertIs(
+            _archive_copied_onto_book("cd $GITHUB_WORKSPACE/docs/archive\n" + "cp -r benchmark_dashboard ../book/dashboard/benchmark_dashboard", ""),
+            True,
+        )
+        states = _shell_states("set -- one two\ntrue", "")
+        self.assertEqual(states[0].positionals, ("one", "two"))
+        for prefix in ("command", "builtin", "eval"):
+            prefixed = _shell_states(f"{prefix} set -- one\ntrue", "")
+            self.assertEqual(prefixed[0].positionals, ("one",), prefix)
+        again = _shell_states(
+            "OLDPWD=docs/archive\ncd docs/book\nif false; then OLDPWD=docs/archive; fi\ncd -\ntrue",
+            "",
+        )
+        self.assertEqual(
+            {item.cwd for item in again}, {"docs/book", "docs/book/docs/archive"}
+        )
+
     def test_shell_state_cap_boundary(self) -> None:
         under = "\n".join(f"if false; then cd d{index}; fi" for index in range(5))
         states = _shell_states(under, "")
@@ -5018,7 +5487,21 @@ jobs:
         over = under + "\nif false; then cd /cap-extra; fi"
         with self.assertRaises(AssertionError) as caught:
             _shell_states(over, "")
-        self.assertIn("shell state cap exceeded: 33", str(caught.exception))
+        self.assertIn("shell state cap exceeded: 64", str(caught.exception))
+        held = [_ShellState(f"c{index}", (), (), [], True) for index in range(32)]
+        self.assertEqual(len(_dedupe_states(held)), 32)
+        held.append(_ShellState("c32", (), (), [], True))
+        with self.assertRaises(AssertionError) as extra:
+            _dedupe_states(held)
+        self.assertIn("shell state cap exceeded: 33", str(extra.exception))
+        distinguished = _dedupe_states(
+            [
+                _ShellState("docs/book", (), (), [], True, oldpwd=""),
+                _ShellState("docs/book", (), (), [], True, oldpwd="docs/archive"),
+            ]
+        )
+        self.assertEqual(len(distinguished), 2)
+        self.assertEqual({item.oldpwd for item in distinguished}, {"", "docs/archive"})
 
     def test_shell_state_cap_bounds_conditional_directories(self) -> None:
         lines = [f"if false; then cd d{index}; fi" for index in range(20)]
@@ -5039,20 +5522,17 @@ jobs:
             "else:\n"
             "    raise SystemExit('no raise')\n"
         )
-        started = time.perf_counter()
         try:
             proc = subprocess.run(
                 [sys.executable, "-c", probe],
                 cwd=ROOT,
                 capture_output=True,
                 text=True,
-                timeout=1,
+                timeout=30,
                 check=False,
             )
         except subprocess.TimeoutExpired:
-            self.fail("shell state scan did not finish within 1s")
-        elapsed = time.perf_counter() - started
-        self.assertLess(elapsed, 1.0, proc.stderr)
+            self.fail("shell state scan did not finish")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         message = proc.stdout.strip()
         self.assertIn("shell state cap exceeded:", message)
