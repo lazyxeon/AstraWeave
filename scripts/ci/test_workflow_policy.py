@@ -789,6 +789,96 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertIn("--head HEAD", changes)
         self.assertIn("reason=missing-merge-parent", changes)
 
+    def test_toolchain_push_keeps_the_pinned_compiler(self) -> None:
+        text = (WORKFLOWS / "toolchain-management.yml").read_text(encoding="utf-8")
+        pin, extra = text.split("toolchain-validation-extra:", 1)
+        channel = re.search(
+            r'(?m)^channel\s*=\s*"([^"]+)"',
+            (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8"),
+        )
+        rust_version = re.search(
+            r'(?m)^rust-version\s*=\s*"([^"]+)"',
+            (ROOT / "Cargo.toml").read_text(encoding="utf-8"),
+        )
+        self.assertIsNotNone(channel)
+        self.assertIsNotNone(rust_version)
+        assert channel is not None and rust_version is not None
+        self.assertEqual(channel.group(1), rust_version.group(1))
+        minimum = tuple(int(part) for part in rust_version.group(1).split("."))
+        declared = re.findall(r'toolchain:\s*(?:\[\s*)?"(\d+\.\d+\.\d+)"', text)
+        self.assertIn(rust_version.group(1), declared)
+        for found in declared:
+            got = tuple(int(part) for part in found.split("."))
+            self.assertGreaterEqual(got, minimum, found)
+        self.assertNotIn("1.88.0", text)
+        self.assertIn("branches: [ main ]", text)
+        self.assertIn('cron: "40 5 * * *"', text)
+        self.assertIn('default: ""', text)
+        self.assertNotIn("default: 'stable'", text)
+        self.assertNotIn("github.event_name == 'push'", text)
+        self.assertNotIn("github.event_name != 'push'", pin)
+        self.assertNotIn("github.event.inputs", pin)
+        self.assertIn(f'toolchain: ["{channel.group(1)}"]', pin)
+        self.assertNotIn("toolchain: stable", pin)
+        self.assertNotIn("continue-on-error:", pin)
+        self.assertNotIn("|| true", pin)
+        self.assertIn("MATRIX_TOOLCHAIN: ${{ matrix.toolchain }}", pin)
+        self.assertIn(
+            'echo "RUSTUP_TOOLCHAIN=${MATRIX_TOOLCHAIN}" >> "$GITHUB_ENV"',
+            pin,
+        )
+        self.assertIn("if: github.event_name != 'push'", extra)
+        self.assertIn("toolchain: stable", extra)
+        self.assertIn("toolchain: beta", extra)
+        self.assertIn("toolchain: pinned-nightly", extra)
+        self.assertIn("experimental: true", extra)
+        self.assertIn("continue-on-error: ${{ matrix.experimental || false }}", extra)
+        self.assertIn("id: extra-rust", extra)
+        self.assertIn(
+            "INSTALLED_TOOLCHAIN: ${{ steps.extra-rust.outputs.name }}",
+            extra,
+        )
+        self.assertIn(
+            "REQUESTED_TOOLCHAIN: ${{ github.event.inputs.toolchain_version }}",
+            extra,
+        )
+        self.assertIn(
+            "toolchain: ${{ github.event.inputs.toolchain_version || matrix.toolchain }}",
+            extra,
+        )
+        self.assertNotIn(
+            'echo "RUSTUP_TOOLCHAIN=${{ github.event.inputs.toolchain_version',
+            text,
+        )
+        self.assertIn(
+            'echo "RUSTUP_TOOLCHAIN=${INSTALLED_TOOLCHAIN}" >> "$GITHUB_ENV"',
+            extra,
+        )
+        self.assertIn("id: perf-rust", extra)
+        self.assertIn(
+            "INSTALLED_TOOLCHAIN: ${{ steps.perf-rust.outputs.name }}",
+            extra,
+        )
+        self.assertIn('echo "RUSTUP_TOOLCHAIN=${PINNED_NIGHTLY}" >> "$GITHUB_ENV"', extra)
+        self.assertIn(
+            "overridden by environment variable RUSTUP_TOOLCHAIN",
+            pin,
+        )
+        self.assertIn(
+            "overridden by environment variable RUSTUP_TOOLCHAIN",
+            extra,
+        )
+        # The pinned-nightly `|| true` is pre-existing. This pull request does
+        # not remove it. The follow-up that deletes the swallow updates this
+        # count in the same change.
+        self.assertEqual(extra.count("cargo check --all-features || true"), 1)
+        self.assertIn("github.event_name == 'schedule'", extra)
+        self.assertIn("name: Minimum Supported Rust Version Check", text)
+        self.assertIn(
+            "needs: [toolchain-validation, toolchain-validation-extra, msrv-check]",
+            text,
+        )
+
     def test_nightly_failure_issue_serializes_per_upstream_run(self) -> None:
         text = (WORKFLOWS / "nightly-failure-issue.yml").read_text(encoding="utf-8")
         self.assertIn(
