@@ -8,10 +8,10 @@
 # - opengameart: Audio, sprites, 2D/3D (asset-specific CC0 only, direct URL)
 #
 # ⚖️  LICENSE COMPLIANCE:
-# - AstraWeave third-party asset entries require verified CC0-1.0
-# - CC-BY, CC-BY-SA, GPL and other non-CC0 licenses do not qualify for this project
+# - Project admission policy requires verified CC0-1.0 for shipped third-party assets.
+# - The generic downloader supports some other licenses (such as CC-BY and CC-BY-SA).
 # - Attribution is automatically generated per provider
-# - Verify license before adding to this manifest
+# - A successful fetch does not prove provenance or eligibility for distribution.
 #
 # 📥 FETCH COMMAND:
 #   cargo run -p astraweave-assets -- fetch

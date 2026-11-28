@@ -14,3 +14,6 @@ assets/aravath/**/*.md text eol=lf
 *.usda text eol=lf
 *.hdr binary
 *.ktx2 binary
+
+# Keep Kenney publisher notice bytes unchanged, including original whitespace.
+/assets/Other/Fonts/License.txt -text whitespace=cr-at-eol,-blank-at-eol,-blank-at-eof

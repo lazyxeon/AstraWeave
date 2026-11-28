@@ -1,6 +1,6 @@
 # AstraWeave Asset Library
 
-AstraWeave distributes third-party assets only with verified CC0 1.0 provenance, per [AGENTS.md](../AGENTS.md). First-party project originals documented under MIT are not represented as CC0.
+AstraWeave policy requires verified CC0 1.0 provenance before third-party assets can be included in its distribution. See [AGENTS.md](../AGENTS.md) and the [provenance recheck](../docs/audits/ASSET_PROVENANCE_2026-11-27.md) for the evidence and its limits. First-party project originals documented under MIT are not represented as CC0.
 
 ## Where to find assets
 
