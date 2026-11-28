@@ -1,0 +1,477 @@
+/* AstraWeave parchment theme B — Candlelit grimoire (#781 variant 2)
+ * Shared stylesheet for the architecture trace map and the benchmark dashboard.
+ * One file. Both pages link it. Fonts are the sibling fonts/ directory (SIL OFL,
+ * vendored, no CDN). Owner exception:
+ * https://github.com/lazyxeon/AstraWeave/pull/782#issuecomment-7180199236
+ *
+ * Astrid's contrast fix (issue comment 7177936736): --warn #e0a050 and
+ * --wax-seal #b0404a. Wax-seal is fill-only. Text on it is --paper-white
+ * (4.97:1). The seal shades toward black only: a white ridge drops that pair
+ * under 4.5:1. Alert and risk text sits on --bg-2, not on a pigment wash
+ * (a 16% rubric wash is 3.69:1).
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* #781 base tokens, then Variant 2 — Candlelit grimoire overrides */
+  --bg-0: #1c1410;
+  --bg-1: #2a1e16;
+  --bg-2: #33251a;
+  --code-bg: #2a1e16;
+  --paper-white: #f8efd4;
+  --header-bg: #2a2218;
+  --header-text: #f8efd4;
+  --header-muted: #e2d3ae;
+  --ink: #efe2c0;
+  --ink-faded: #d6c39a;
+  --ink-faint: #bfa978;
+  --border: #8a7048;
+  --rubric: #e0705a;
+  --verdigris: #6fbfa6;
+  --gold-leaf: #c6a037;
+  --gold-ink: #d9b45a;
+  --wax-seal: #b0404a; /* fill only; paper-white on it is 4.97:1. Not text. */
+  --lapis: #8fb4e0;
+  --warn: #e0a050; /* 8.05 / 7.19 / 6.56 on bg-0 / bg-1 / bg-2 */
+  --ochre: #e08a3a;
+  --focus-on-dark: #e4c56a;
+  --good: var(--verdigris);
+  --danger: var(--rubric);
+  --link: var(--lapis);
+  --accent: var(--verdigris);
+
+  /* Domain rims (map) and chart series (dashboard). Raw hexes so canvas code
+     can read them. Each is at least 4.5:1 on --bg-2, the lightest ground. */
+  --pigment-core: #8fb4e0;
+  --pigment-ai: #e0705a;
+  --pigment-rendering: #e7a3c4;
+  --pigment-physics: #6fbfa6;
+  --pigment-gameplay: #d9b45a;
+  --pigment-networking: #9fd4ea;
+  --pigment-tools: #c9b0e8;
+  --pigment-examples: #bfa978;
+
+  --series-ecs: #8fb4e0;
+  --series-ai: #e8b07a;
+  --series-physics: #6fbfa6;
+  --series-terrain: #e7c99a;
+  --series-input: #e0a050;
+  --series-rendering: #d9b45a;
+  --series-math: #e0705a;
+  --series-networking: #9fd4ea;
+  --series-persistence: #e7a3c4;
+  --series-audio: #b7d39a;
+  --series-ui: #c9b0e8;
+  --series-tools: #d7c4a2;
+  --series-animation: #f0a8b4;
+  --series-default: #bfa978;
+
+  --text-0: var(--ink);
+  --text-1: var(--ink-faded);
+  --text-2: var(--ink-faint);
+  --backlight: none;
+  --box-shadow: 1px 2px 0 color-mix(in srgb, #000 45%, transparent);
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "SF Mono", Consolas, monospace;
+  --font-display: "Cinzel", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --font-body: "EB Garamond", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+
+  --paper: var(--bg-0);
+  --panel: var(--bg-2);
+  --tape: var(--bg-1);
+  --graphite: var(--ink);
+  --muted: var(--ink-faded);
+  --rule: var(--border);
+  --grid: color-mix(in srgb, var(--border) 55%, var(--bg-0));
+  --mint-ink: var(--verdigris);
+  --rust: var(--ochre);
+  --info: var(--lapis);
+  --stamped: 1px 2px 0 color-mix(in srgb, #000 45%, transparent);
+}
+
+/* Font track A (SIL OFL, vendored, no CDN). Textures are CSS gradients plus
+ * one inline SVG grain. No network fetch.
+ */
+
+@font-face {
+  font-family: "Cinzel";
+  src: url("fonts/Cinzel-Variable.ttf") format("truetype");
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("fonts/EBGaramond-Variable.ttf") format("truetype");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "EB Garamond";
+  src: url("fonts/EBGaramond-Italic-Variable.ttf") format("truetype");
+  font-weight: 400 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/IBMPlexMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("fonts/IBMPlexMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ---- Surfaces: drop mint backlight and the newsprint stipple ---- */
+html, body {
+  background-color: var(--bg-0);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+body {
+  background-image:
+    radial-gradient(ellipse at 10% 8%, color-mix(in srgb, var(--ochre) 16%, transparent), transparent 42%),
+    radial-gradient(ellipse at 88% 6%, color-mix(in srgb, var(--verdigris) 12%, transparent), transparent 38%),
+    radial-gradient(ellipse at 78% 92%, color-mix(in srgb, var(--lapis) 10%, transparent), transparent 40%),
+    radial-gradient(ellipse at 16% 86%, color-mix(in srgb, var(--gold-ink) 10%, transparent), transparent 36%),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27180%27%20height%3D%27180%27%3E%3Cfilter%20id%3D%27g%27%20x%3D%270%27%20y%3D%270%27%20width%3D%27100%25%27%20height%3D%27100%25%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%27.85%27%20numOctaves%3D%274%27%20stitchTiles%3D%27stitch%27%20result%3D%27n%27%2F%3E%3CfeColorMatrix%20type%3D%27matrix%27%20values%3D%270%200%200%200%20.42%20%200%200%200%200%20.36%20%200%200%200%200%20.24%20%200%200%200%20.28%200%27%20in%3D%27n%27%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%27100%25%27%20height%3D%27100%25%27%20filter%3D%27url%28%23g%29%27%2F%3E%3C%2Fsvg%3E");
+  background-size: auto, auto, auto, auto, 180px 180px;
+  background-blend-mode: normal, normal, normal, normal, multiply;
+}
+
+/* Tidewire stays on the map. The map script recolors its streaks to ochre,
+   gold-ink, and verdigris. body.fx-off in the page sheet is what hides it. */
+
+#cy {
+  background-color: var(--bg-0) !important;
+  background-image:
+    radial-gradient(ellipse at 18% 12%, color-mix(in srgb, var(--ochre) 12%, transparent), transparent 40%),
+    radial-gradient(ellipse at 84% 80%, color-mix(in srgb, var(--verdigris) 10%, transparent), transparent 42%),
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27180%27%20height%3D%27180%27%3E%3Cfilter%20id%3D%27g%27%20x%3D%270%27%20y%3D%270%27%20width%3D%27100%25%27%20height%3D%27100%25%27%3E%3CfeTurbulence%20type%3D%27fractalNoise%27%20baseFrequency%3D%27.85%27%20numOctaves%3D%274%27%20stitchTiles%3D%27stitch%27%20result%3D%27n%27%2F%3E%3CfeColorMatrix%20type%3D%27matrix%27%20values%3D%270%200%200%200%20.42%20%200%200%200%200%20.36%20%200%200%200%200%20.24%20%200%200%200%20.28%200%27%20in%3D%27n%27%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%27100%25%27%20height%3D%27100%25%27%20filter%3D%27url%28%23g%29%27%2F%3E%3C%2Fsvg%3E") !important;
+  background-size: auto, auto, 180px 180px !important;
+  background-blend-mode: normal, normal, multiply;
+  box-shadow: inset 0 0 90px color-mix(in srgb, var(--header-bg) 22%, transparent);
+}
+
+/* Walnut manuscript header. Gold-leaf on walnut is 6.33:1. */
+header {
+  color: var(--header-text) !important;
+  background: var(--header-bg) !important;
+  border: 2px solid var(--gold-leaf) !important;
+  box-shadow: none !important;
+  position: relative;
+}
+h1 {
+  font-family: var(--font-display) !important;
+  font-weight: 650 !important;
+  font-style: normal !important;
+  text-transform: none !important;
+  letter-spacing: .06em !important;
+  color: var(--gold-leaf) !important;
+  -webkit-text-fill-color: currentColor !important;
+  -webkit-background-clip: border-box !important;
+  background-clip: border-box !important;
+  line-height: 1.15 !important;
+  text-shadow: none !important;
+  background: none !important;
+}
+/* Replace the Bootleg skewed graphite block with a gold-leaf rule under the title. */
+h1::before {
+  background: linear-gradient(90deg, transparent, var(--gold-leaf), transparent) !important;
+  transform: none !important;
+  inset: auto 0 .02em 0 !important;
+  height: 2px !important;
+  top: auto !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+/* Illuminated initial: map title starts with "A". Glyph is gold-leaf on walnut;
+   the gold-leaf is also the frame. Dashboard h1 starts with an emoji — skip it. */
+body:not(:has(#benchmark-table)) h1::first-letter {
+  color: var(--gold-leaf);
+  background: color-mix(in srgb, var(--header-bg) 70%, #000);
+  border: 1.5px solid var(--gold-leaf);
+  box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--gold-leaf) 35%, transparent);
+  padding: .04em .1em .02em;
+  margin-right: .12em;
+  line-height: 1;
+}
+
+.header-meta,
+.masthead-kicker,
+.subtitle {
+  color: var(--header-muted) !important;
+  font-family: var(--font-body) !important;
+}
+.masthead-kicker {
+  font-family: var(--font-display) !important;
+  font-weight: 600 !important;
+  letter-spacing: .14em !important;
+  color: var(--gold-leaf) !important;
+}
+.header-meta .pill,
+.version-badge {
+  background: color-mix(in srgb, var(--header-bg) 80%, var(--bg-2)) !important;
+  color: var(--header-text) !important;
+  -webkit-text-fill-color: currentColor !important;
+  border: 1px solid var(--gold-leaf) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  font-family: var(--mono) !important;
+}
+.subtitle { font-style: italic; }
+
+.toolbar {
+  background-color: var(--bg-1) !important;
+  box-shadow: inset 0 -1px 0 var(--border) !important;
+}
+.tb-label,
+.filter-group label,
+.stat-label,
+.panel-section h3,
+footer strong {
+  font-family: var(--font-display) !important;
+  color: var(--gold-ink);
+  letter-spacing: .06em;
+}
+.panel-section h2,
+.chart-title,
+.lb-title {
+  font-family: var(--font-display) !important;
+  font-weight: 650 !important;
+  color: var(--ink) !important;
+  -webkit-text-fill-color: currentColor !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: .15em 0 .35em !important;
+  border-bottom: 1px solid var(--gold-leaf) !important;
+  text-shadow: none !important;
+  letter-spacing: .06em;
+}
+.chart-title {
+  display: table;
+  margin: 0 0 17px;
+}
+.chart-title .note {
+  color: var(--ink-faded) !important;
+  font-family: var(--font-body) !important;
+  font-style: italic;
+  letter-spacing: 0;
+  font-weight: 400 !important;
+}
+
+/* Deckled edge: inset rough shadow only (a mask-image ate heading glyphs). */
+header,
+.side-panel,
+.chart-container,
+.stat-card {
+  box-shadow:
+    var(--stamped),
+    inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--gold-leaf) 35%, transparent);
+}
+.filters, .stat-card, .chart-container, .sparkline-cell, .summary-tile,
+.chart-lightbox-content, .static-graph-img, .legend-item,
+select, .toolbar button, .lb-close, .toast,
+.toolbar input[type="text"], .toolbar select,
+.btn, .htu-toggle, .panel-toggle, .panel-actions .btn-sm,
+.mobile-toolbar-toggle, .domain-chip, .panel-content details,
+.htu-body, .cy-tooltip, .path-display, .tour-narration {
+  border-radius: 1px !important;
+  border-color: var(--border) !important;
+  background-color: var(--bg-2) !important;
+  color: var(--ink);
+  box-shadow: var(--stamped) !important;
+  font-family: var(--font-body);
+}
+.filters { background-color: var(--bg-1) !important; }
+.stat-card { border-left: 4px solid var(--series, var(--border)) !important; }
+select, button, .btn, .toolbar button, .tb-label {
+  font-family: var(--font-body) !important;
+  color: var(--ink) !important;
+}
+option {
+  background: var(--bg-1);
+  color: var(--ink);
+}
+.btn[aria-pressed="true"], .panel-actions .btn-sm.on,
+.domain-chip.on, .domain-chip.on:hover,
+.btn.primary:not(:disabled) {
+  background: var(--header-bg) !important;
+  color: var(--header-text) !important;
+  border-color: var(--gold-leaf) !important;
+  box-shadow: none !important;
+}
+select:hover, .toolbar button:hover, .lb-close:hover, .legend-item:hover,
+.sparkline-cell:hover, tbody tr:hover, .panel-content details > summary:hover {
+  background-color: var(--bg-1) !important;
+  border-color: var(--gold-ink) !important;
+}
+
+/* Plex Mono for code, numbers, tags, axis ticks. */
+.stat-value,
+.sparkline-cell .spark-value,
+.header-meta .pill,
+#benchmark-table td,
+#benchmark-table th,
+code, pre, kbd,
+.ci-badge,
+#node-count, #edge-count, #filter-counter, #edge-counter {
+  font-family: var(--mono) !important;
+}
+.stat-value { color: var(--ink) !important; }
+.sparkline-cell .spark-value { color: var(--verdigris) !important; }
+.axis text { fill: var(--ink-faint) !important; font-family: var(--mono) !important; }
+.axis path, .axis line { stroke: var(--border) !important; }
+.grid line { stroke: var(--border) !important; stroke-dasharray: 2, 4 !important; opacity: .55; }
+.grid .domain { stroke: none !important; }
+
+.side-panel {
+  background: var(--bg-1) !important;
+  box-shadow: -2px 0 0 var(--border) !important;
+}
+.panel-content details { background: var(--bg-2) !important; }
+.banner, .tour-overlay {
+  border-left: 4px solid var(--gold-leaf) !important;
+  background: var(--bg-1) !important;
+  color: var(--ink);
+}
+.cy-tooltip, .toast, .tooltip {
+  border-left: 3px solid var(--gold-leaf) !important;
+  background: var(--bg-2) !important;
+  color: var(--ink) !important;
+}
+
+/* Good / bad = verdigris / rubric, as text on the panel, not on a wash.
+   Rubric on a 16% wash of itself is 3.69:1. On --bg-2 it is 4.67:1. */
+.error, .alert-warning {
+  background-color: var(--bg-2) !important;
+  color: var(--rubric) !important;
+  border-left: 4px solid var(--rubric) !important;
+}
+.alert-success {
+  background-color: var(--bg-2) !important;
+  color: var(--verdigris) !important;
+  border-left: 4px solid var(--verdigris) !important;
+}
+.alert-info {
+  background-color: var(--bg-2) !important;
+  color: var(--lapis) !important;
+  border-left: 4px solid var(--lapis) !important;
+}
+
+/* Status and risk pills: pigment text on --bg-2. A tinted chip behind
+   rubric or warn text falls under 4.5:1. The border keeps the cue. */
+.risk-pill, .status-pill {
+  background: var(--bg-2) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+.risk-pill.CRITICAL, .status-pill.dormant {
+  color: var(--rubric) !important;
+  border-color: var(--rubric) !important;
+}
+.risk-pill.HIGH, .status-pill.partial {
+  color: var(--warn) !important;
+  border-color: var(--warn) !important;
+}
+.risk-pill.MEDIUM, .status-pill.active {
+  color: var(--verdigris) !important;
+  border-color: var(--verdigris) !important;
+}
+.risk-pill.LOW {
+  color: var(--ink-faded) !important;
+  border-color: var(--ink-faint) !important;
+}
+
+/* Wax-seal badges. Text stays. Paper-white on #b0404a is 4.97:1.
+   Ridges mix the seal with black, never white. */
+.ci-badge {
+  display: inline-block;
+  min-width: 2.4em;
+  padding: .28em .5em !important;
+  border-radius: 50% !important;
+  border: 2px solid color-mix(in srgb, var(--wax-seal) 70%, #000) !important;
+  color: var(--paper-white) !important;
+  background:
+    repeating-conic-gradient(from 0deg, var(--wax-seal) 0 8deg, color-mix(in srgb, var(--wax-seal) 72%, #000) 8deg 16deg),
+    radial-gradient(circle at 35% 30%, var(--wax-seal), color-mix(in srgb, var(--wax-seal) 70%, #000)) !important;
+  box-shadow: 0 1px 0 color-mix(in srgb, #000 35%, transparent), inset 0 0 0 3px color-mix(in srgb, var(--wax-seal) 80%, #000) !important;
+  font-family: var(--mono) !important;
+  font-weight: 700 !important;
+  letter-spacing: .04em;
+}
+
+footer {
+  color: var(--ink-faded) !important;
+  font-family: var(--font-body) !important;
+}
+footer a { color: var(--lapis) !important; }
+#repo-link { color: var(--header-muted) !important; }
+a { color: var(--lapis); }
+header a { color: var(--header-muted); }
+
+/* Soft vignette + gold-leaf page rule. Grain is already static. */
+body::after {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  border: 2px solid var(--gold-leaf);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--header-bg) 35%, transparent),
+    inset 0 0 110px 16px color-mix(in srgb, var(--header-bg) 28%, transparent);
+}
+
+/* Bundled-data stamp. The loader adds .bundled-data only for static-data
+   and the inline fallback. A load from benchmark-data/history.jsonl does not. */
+body.bundled-data:has(#benchmark-table) .version-badge::after {
+  content: " · sample / bundled data";
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: none;
+  color: var(--gold-leaf);
+}
+
+/* #775 focus rings: 2px solid, offset 2px. Verdigris on parchment, focus-on-dark on header. */
+:focus-visible,
+select:focus-visible,
+input:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--verdigris) !important;
+  outline-offset: 2px !important;
+}
+header :focus-visible {
+  outline-color: var(--focus-on-dark) !important;
+}
+::selection {
+  background: var(--header-bg);
+  color: var(--header-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+@media (forced-colors: active) {
+  h1::before, body::after { display: none; }
+  header, .side-panel, .chart-container, .stat-card {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  :focus-visible, header :focus-visible { outline-color: Highlight !important; }
+}

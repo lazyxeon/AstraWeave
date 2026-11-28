@@ -148,24 +148,73 @@ const INDUSTRY_STANDARDS = {
 };
 
 // ─── COLOR SCHEME ────────────────────────────────────────────────────────────
+// Display-only. Canvas and inline paints read the shared candlelit sheet.
+// SYSTEM_MARK, benchmarkMarker, INDUSTRY_MARK_OPACITY, and pairGap stay as
+// they were on the folded dashboard: shape plus hollow, not hue, separates
+// categories, and the industry bar keeps its opacity and the 4px paper gap.
+function cssToken(name, fallback) {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    if (!raw) return fallback;
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
+    const probe = document.createElement('span');
+    probe.style.color = `var(${name})`;
+    probe.style.position = 'absolute';
+    probe.style.left = '-9999px';
+    document.body.appendChild(probe);
+    const got = getComputedStyle(probe).color;
+    probe.remove();
+    const m = /rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(got);
+    if (!m) return fallback;
+    const hex = [m[1], m[2], m[3]].map(n => Math.round(Number(n)).toString(16).padStart(2, '0')).join('');
+    return `#${hex}`;
+}
+const INK = cssToken('--ink', '#efe2c0');
+const MUTED = cssToken('--ink-faded', '#d6c39a');
+const GOOD = cssToken('--verdigris', '#6fbfa6');
+const BAD = cssToken('--rubric', '#e0705a');
+const LAPIS = cssToken('--lapis', '#8fb4e0');
+const GOLD = cssToken('--gold-ink', '#d9b45a');
+const WARN = cssToken('--warn', '#e0a050');
+const OCHRE = cssToken('--ochre', '#e08a3a');
+const BORDER = cssToken('--border', '#8a7048');
+const PANEL = cssToken('--bg-2', '#33251a');
+
 const COLOR_SCHEME = {
-    ecs: '#4facfe',
-    ai: '#00f2fe',
-    physics: '#43e97b',
-    terrain: '#fa709a',
-    input: '#f093fb',
-    rendering: '#feca57',
-    math: '#ff6b6b',
-    networking: '#48dbfb',
-    persistence: '#ff9ff3',
-    audio: '#54a0ff',
-    ui: '#5f27cd',
-    tools: '#00d2d3',
-    animation: '#e17055',
-    default: '#a0a0a0'
+    ecs: cssToken('--series-ecs', '#8fb4e0'),
+    ai: cssToken('--series-ai', '#e8b07a'),
+    physics: cssToken('--series-physics', '#6fbfa6'),
+    terrain: cssToken('--series-terrain', '#e7c99a'),
+    input: cssToken('--series-input', '#e0a050'),
+    rendering: cssToken('--series-rendering', '#d9b45a'),
+    math: cssToken('--series-math', '#e0705a'),
+    networking: cssToken('--series-networking', '#9fd4ea'),
+    persistence: cssToken('--series-persistence', '#e7a3c4'),
+    audio: cssToken('--series-audio', '#b7d39a'),
+    ui: cssToken('--series-ui', '#c9b0e8'),
+    tools: cssToken('--series-tools', '#d7c4a2'),
+    animation: cssToken('--series-animation', '#f0a8b4'),
+    default: cssToken('--series-default', '#bfa978')
 };
 
-const INDUSTRY_LINE_COLOR = '#ff9500';
+const INDUSTRY_LINE_COLOR = OCHRE;
+const INDUSTRY_MARK_OPACITY = 0.7;
+const INDUSTRY_DASH = '14,5';
+const USER_DASH = '8,4';
+
+// Give each subsystem a shape + fill signature independent of hue and filter order.
+const SYSTEM_MARK = {
+    ecs: [0, false], ai: [1, false], physics: [2, false], terrain: [3, false],
+    input: [4, false], rendering: [5, false], math: [6, false],
+    networking: [1, true], persistence: [2, true], audio: [3, true],
+    ui: [4, true], tools: [0, true], animation: [5, true], default: [6, true]
+};
+
+function benchmarkMarker(selection, system, color) {
+    const [shape, hollow] = SYSTEM_MARK[system] || SYSTEM_MARK.default;
+    return selection.attr('d', d3.symbol(d3.symbolsFill[shape], 56)())
+        .attr('fill', hollow ? 'var(--panel)' : color)
+        .attr('stroke', color).attr('stroke-width', 1.4);
+}
 
 // ─── PERFORMANCE ─────────────────────────────────────────────────────────────
 const PERF = { loadStart: performance.now(), renderCount: 0 };
@@ -289,6 +338,8 @@ async function loadBenchmarkData() {
         });
 
         console.log(`Loaded: ${benchmarkData.length} entries, ${hardwareProfiles.size} hardware(s) from ${sourceUsed}`);
+        const bundled = !sourceUsed || sourceUsed === 'inline-fallback' || sourceUsed.includes('static-data/');
+        document.body.classList.toggle('bundled-data', bundled);
         updateFilters();
         restoreFiltersFromURL();
         autoAdjustTimeRange();
@@ -522,28 +573,28 @@ function renderHardwareComparisonBar() {
     const baseCount = benchmarkData.filter(d => d.hardware_id === BASELINE_HARDWARE_ID).length;
     const userCount = benchmarkData.filter(d => d.hardware_id !== BASELINE_HARDWARE_ID).length;
 
-    let baseInfo = `<span style="color:#43e97b">Baseline: ${BASELINE_HARDWARE_LABEL}</span>`;
+    let baseInfo = `<span style="color:${GOOD}">Baseline: ${BASELINE_HARDWARE_LABEL}</span>`;
     let userInfo = '';
     const userHw = Array.from(hardwareProfiles.entries()).filter(([id]) => id !== BASELINE_HARDWARE_ID);
     if (userHw.length > 0) {
-        userInfo = userHw.map(([, label]) => `<span style="color:#4facfe">User: ${label}</span>`).join('<br/>');
+        userInfo = userHw.map(([, label]) => `<span style="color:${LAPIS}">User: ${label}</span>`).join('<br/>');
     }
 
     c.innerHTML = `
         <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
             <div style="flex:1;min-width:200px;">
-                <div style="font-size:0.85em;color:#a0a0a0;margin-bottom:4px;">Hardware Profiles (${hardwareProfiles.size})</div>
+                <div style="font-size:0.85em;color:${MUTED};margin-bottom:4px;">Hardware Profiles (${hardwareProfiles.size})</div>
                 <div style="font-size:0.9em;">${baseInfo}</div>
                 ${userInfo ? `<div style="font-size:0.9em;margin-top:4px;">${userInfo}</div>` : ''}
             </div>
             <div style="display:flex;gap:16px;align-items:center;">
-                <div style="text-align:center;padding:8px 16px;background:rgba(67,233,123,0.1);border-radius:8px;">
-                    <div style="font-size:1.4em;font-weight:bold;color:#43e97b;">${baseCount}</div>
-                    <div style="font-size:0.75em;color:#a0a0a0;">Baseline Points</div>
+                <div class="summary-tile" style="background:${PANEL};">
+                    <div style="font-size:1.4em;font-weight:bold;color:${GOOD};">${baseCount}</div>
+                    <div style="font-size:0.75em;color:${MUTED};">Baseline Points</div>
                 </div>
-                <div style="text-align:center;padding:8px 16px;background:rgba(79,172,254,0.1);border-radius:8px;">
-                    <div style="font-size:1.4em;font-weight:bold;color:#4facfe;">${userCount}</div>
-                    <div style="font-size:0.75em;color:#a0a0a0;">User Points</div>
+                <div class="summary-tile" style="background:${PANEL};">
+                    <div style="font-size:1.4em;font-weight:bold;color:${LAPIS};">${userCount}</div>
+                    <div style="font-size:0.75em;color:${MUTED};">User Points</div>
                 </div>
             </div>
         </div>`;
@@ -580,12 +631,13 @@ function renderStatCards() {
     stats.slice(0, 8).forEach(s => {
         const card = document.createElement('div');
         card.className = `stat-card ${s.system}`;
+        card.style.setProperty("--series", COLOR_SCHEME[s.system] || COLOR_SCHEME.default);
         const icon = s.change > 0 ? '▲' : s.change < 0 ? '▼' : '─';
-        const cc = s.change > 10 ? '#ff6b6b' : s.change < -10 ? '#43e97b' : '#a0a0a0';
+        const cc = s.change > 10 ? BAD : s.change < -10 ? GOOD : MUTED;
         let badge = '';
         if (s.industryAvg !== null && currentFilters.showIndustry) {
             const ratio = ((s.value / s.industryAvg) * 100).toFixed(0);
-            const ic = s.value <= s.industryAvg ? '#43e97b' : '#ff6b6b';
+            const ic = s.value <= s.industryAvg ? GOOD : BAD;
             const il = s.value <= s.industryAvg ? 'faster' : 'slower';
             badge = `<div style="font-size:0.75em;color:${ic};margin-top:4px;">vs Industry: ${ratio}% (${il})</div>`;
         }
@@ -593,7 +645,7 @@ function renderStatCards() {
             <div class="stat-label">${s.name}</div>
             <div class="stat-value">${formatNumber(s.value)}<span class="stat-unit">${s.unit}</span></div>
             <div class="stat-change" style="color:${cc}">${icon} ${Math.abs(s.change).toFixed(1)}%
-                ${s.isBaseline ? '<span style="font-size:0.7em;color:#43e97b;margin-left:4px;">[baseline]</span>' : ''}
+                ${s.isBaseline ? `<span style="font-size:0.7em;color:${GOOD};margin-left:4px;">[baseline]</span>` : ''}
             </div>${badge}`;
         grid.appendChild(card);
     });
@@ -624,7 +676,7 @@ function renderChart() {
     div.innerHTML = '';
     if (filteredData.length === 0) { div.innerHTML = '<div class="loading">No data</div>'; return; }
     if (typeof d3 === 'undefined') {
-        div.innerHTML = '<div class="loading" style="color:#ff6b6b;">D3.js failed to load.</div>';
+        div.innerHTML = `<div class="loading" style="color:${BAD};">D3.js failed to load.</div>`;
         return;
     }
 
@@ -640,6 +692,7 @@ function renderChart() {
                 rawName: name,
                 values: hwVals,
                 color: getSystemColor(hwVals[0].crate),
+                system: detectSystem(hwVals[0].crate),
                 isBaseline: isBase,
                 hardwareId: hwId
             });
@@ -705,7 +758,7 @@ function renderChart() {
     // ── SINGLE-SNAPSHOT: render bar chart instead of line chart ──
     if (isSinglePoint) {
         renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax, valMin);
-        renderLegend(chartSeries, industryLines);
+        renderLegend(chartSeries, industryLines, true);
         renderHistogram(chartSeries);
         renderSparklines(chartSeries);
         return;
@@ -734,24 +787,24 @@ function renderChart() {
     // Axes
     svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(xScale).ticks(8).tickFormat(d3.timeFormat('%b %d')))
-        .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+        .selectAll('text').style('font-size', '13px').attr('fill', MUTED);
     const yAxisGen = useLog
         ? d3.axisLeft(yScale).ticks(10).tickFormat(d => d === 0 ? '0' : formatNumber(d))
         : d3.axisLeft(yScale).ticks(8).tickFormat(d => formatNumber(d));
     svg.append('g').attr('class', 'axis').call(yAxisGen)
-        .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+        .selectAll('text').style('font-size', '13px').attr('fill', MUTED);
     svg.append('text').attr('transform', 'rotate(-90)').attr('y', -75).attr('x', -height / 2)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '15px').style('font-weight', '500')
+        .attr('text-anchor', 'middle').attr('fill', MUTED).style('font-size', '15px').style('font-weight', '500')
         .text(useLog ? 'Value (log scale)' : 'Time (ns)');
     svg.append('text').attr('x', width / 2).attr('y', height + 55)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '14px').text('Date');
+        .attr('text-anchor', 'middle').attr('fill', MUTED).style('font-size', '14px').text('Date');
 
     // Industry standard lines
     industryLines.forEach(il => {
         svg.append('line').attr('x1', 0).attr('x2', width)
             .attr('y1', yScale(il.value)).attr('y2', yScale(il.value))
             .attr('stroke', il.color).attr('stroke-width', 2)
-            .attr('stroke-dasharray', '8,4').attr('opacity', 0.7);
+            .attr('stroke-dasharray', INDUSTRY_DASH).attr('opacity', INDUSTRY_MARK_OPACITY);
         const names = Object.keys(il.engines).join('/');
         svg.append('text').attr('x', width + 4).attr('y', yScale(il.value) + 4)
             .attr('fill', il.color).style('font-size', '10px').text(`Industry (${names})`);
@@ -762,10 +815,12 @@ function renderChart() {
     chartSeries.forEach(s => {
         svg.append('path').datum(s.values).attr('class', 'line').attr('d', lineGen)
             .attr('stroke', s.color).attr('stroke-width', s.isBaseline ? 3.5 : 2.5)
-            .attr('stroke-dasharray', s.isBaseline ? 'none' : '8,4').attr('opacity', s.isBaseline ? 1 : 0.85);
-        svg.selectAll(null).data(s.values).enter().append('circle')
-            .attr('cx', d => xScale(d.timestamp)).attr('cy', d => yScale(d.value))
-            .attr('r', 4).attr('fill', s.color).attr('opacity', 0.8);
+            .attr('stroke-dasharray', s.isBaseline ? 'none' : USER_DASH).attr('opacity', s.isBaseline ? 1 : 0.85);
+    });
+    chartSeries.forEach(s => {
+        benchmarkMarker(svg.selectAll(null).data(s.values).enter().append('path')
+            .attr('class', 'trend-marker')
+            .attr('transform', d => `translate(${xScale(d.timestamp)},${yScale(d.value)})`), s.system, s.color);
     });
 
     // Tooltip
@@ -871,7 +926,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
     industryLines.forEach(il => indMap.set(il.name, il));
 
     // Tier accent colors (subtle left-border accent)
-    const tierColors = { ns: '#43e97b', us: '#38f9d7', ms: '#f7971e', s: '#ff6b6b' };
+    const tierColors = { ns: GOOD, us: LAPIS, ms: OCHRE, s: BAD };
 
     // ── 5. Render each tier ─────────────────────────────────────────────────
     let cursorY = 0;
@@ -885,7 +940,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
         const xScale = d3.scaleLinear().domain([0, scaledMax]).range([0, barAreaWidth]);
 
         // ── Tier header ─────────────────────────────────────────────────────
-        const accentColor = tierColors[tier.key] || '#ccc';
+        const accentColor = tierColors[tier.key] || MUTED;
 
         // Accent bar on left
         svg.append('rect')
@@ -904,7 +959,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
         svg.append('line')
             .attr('x1', -labelWidth - 16).attr('x2', barAreaWidth)
             .attr('y1', cursorY + tierHeaderH - 2).attr('y2', cursorY + tierHeaderH - 2)
-            .attr('stroke', 'rgba(255,255,255,0.08)').attr('stroke-width', 1);
+            .attr('stroke', BORDER).attr('stroke-width', 1);
 
         cursorY += tierHeaderH;
 
@@ -920,7 +975,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
                 .attr('width', barW).attr('height', barHeight)
                 .attr('fill', item.color).attr('opacity', 0.85).attr('rx', 3)
                 .on('mouseenter', function(event) {
-                    d3.select(this).attr('opacity', 1).attr('stroke', '#fff').attr('stroke-width', 1);
+                    d3.select(this).attr('opacity', 1).attr('stroke', INK).attr('stroke-width', 1);
                     const sys = detectSystem(item.crate);
                     const ref = findIndustryStandard(item.rawName, sys);
                     let indLine = '';
@@ -955,13 +1010,13 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
             // Value label (right of bar)
             svg.append('text')
                 .attr('x', barW + 8).attr('y', y + barHeight / 2 + 4)
-                .attr('fill', '#c0c0c0').style('font-size', '11px').style('font-weight', '500')
+                .attr('fill', MUTED).style('font-size', '11px').style('font-weight', '500')
                 .text(formatDuration(item.value));
 
             // Benchmark name label (left of bar)
             svg.append('text')
                 .attr('x', -8).attr('y', y + barHeight / 2 + 4)
-                .attr('text-anchor', 'end').attr('fill', '#e0e0e0')
+                .attr('text-anchor', 'end').attr('fill', INK)
                 .style('font-size', '12px').style('font-weight', '400')
                 .text(item.name);
         });
@@ -974,7 +1029,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
         svg.append('g').attr('class', 'axis')
             .attr('transform', `translate(0,${cursorY + 4})`)
             .call(xAxisGen)
-            .selectAll('text').style('font-size', '11px').attr('fill', '#999');
+            .selectAll('text').style('font-size', '11px').attr('fill', MUTED);
 
         // Grid lines for this tier
         svg.append('g').attr('class', 'grid')
@@ -982,7 +1037,7 @@ function renderSingleSnapshotBars(div, chartSeries, industryLines, useLog, yMax,
             .call(d3.axisBottom(xScale)
                 .tickSize(-(barHeight + gap) * tier.items.length - 4)
                 .tickFormat(''))
-            .selectAll('line').attr('stroke', 'rgba(255,255,255,0.04)');
+            .selectAll('line').attr('stroke', BORDER);
 
         cursorY += tierAxisH;
         if (ti < tiers.length - 1) cursorY += tierGap;
@@ -1028,7 +1083,7 @@ function renderIndustryComparisonSection() {
     comparisons.sort((a, b) => (a.ourValue / a.industryAvg) - (b.ourValue / b.industryAvg));
 
     const margin = { top: 24, right: 30, bottom: 50, left: 300 };
-    const barH = 36, gap = 8;
+    const barH = 36, gap = 8, pairGap = 4;
     const totalH = (barH + gap) * comparisons.length + margin.top + margin.bottom;
     const svgW = c.clientWidth || 800;
     const w = svgW - margin.left - margin.right;
@@ -1048,14 +1103,14 @@ function renderIndustryComparisonSection() {
         const y = i * (barH + gap);
         // Industry bar
         svg.append('rect').attr('x', 0).attr('y', y).attr('width', x(comp.industryAvg))
-            .attr('height', barH / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', 0.4).attr('rx', 3);
+            .attr('height', (barH - pairGap) / 2).attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', INDUSTRY_MARK_OPACITY).attr('rx', 3);
         // Our bar
-        const col = comp.ourValue <= comp.industryAvg ? '#43e97b' : '#ff6b6b';
-        svg.append('rect').attr('x', 0).attr('y', y + barH / 2).attr('width', x(comp.ourValue))
-            .attr('height', barH / 2).attr('fill', col).attr('opacity', 0.8).attr('rx', 3);
+        const col = comp.ourValue <= comp.industryAvg ? GOOD : BAD;
+        svg.append('rect').attr('x', 0).attr('y', y + (barH + pairGap) / 2).attr('width', x(comp.ourValue))
+            .attr('height', (barH - pairGap) / 2).attr('fill', col).attr('opacity', 0.8).attr('rx', 3);
         // Label
         svg.append('text').attr('x', -10).attr('y', y + barH / 2 + 3).attr('text-anchor', 'end')
-            .attr('fill', '#e0e0e0').style('font-size', '13px').style('font-weight', '400')
+            .attr('fill', INK).style('font-size', '13px').style('font-weight', '400')
             .text(comp.displayName.substring(0, 50));
         // Values
         const ratio = ((comp.ourValue / comp.industryAvg) * 100).toFixed(0);
@@ -1066,11 +1121,11 @@ function renderIndustryComparisonSection() {
 
     // Legend
     svg.append('rect').attr('x', w - 220).attr('y', -18).attr('width', 14).attr('height', 10)
-        .attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', 0.6).attr('rx', 2);
-    svg.append('text').attr('x', w - 202).attr('y', -9).attr('fill', '#c0c0c0').style('font-size', '12px').text('Industry Avg');
+        .attr('fill', INDUSTRY_LINE_COLOR).attr('opacity', INDUSTRY_MARK_OPACITY).attr('rx', 2);
+    svg.append('text').attr('x', w - 202).attr('y', -9).attr('fill', MUTED).style('font-size', '12px').text('Industry Avg');
     svg.append('rect').attr('x', w - 110).attr('y', -18).attr('width', 14).attr('height', 10)
-        .attr('fill', '#43e97b').attr('opacity', 0.8).attr('rx', 2);
-    svg.append('text').attr('x', w - 92).attr('y', -9).attr('fill', '#c0c0c0').style('font-size', '12px').text('AstraWeave');
+        .attr('fill', GOOD).attr('opacity', 0.8).attr('rx', 2);
+    svg.append('text').attr('x', w - 92).attr('y', -9).attr('fill', MUTED).style('font-size', '12px').text('AstraWeave');
 }
 
 // ─── HISTOGRAM ───────────────────────────────────────────────────────────────
@@ -1113,10 +1168,10 @@ function renderHistogram(series) {
     svg.selectAll('rect').data(bins).enter().append('rect')
         .attr('x', d => x(d.x0)).attr('y', d => y(d.length))
         .attr('width', d => Math.max(2, x(d.x1) - x(d.x0) - 2))
-        .attr('height', d => h - y(d.length)).attr('fill', '#4facfe').attr('opacity', 0.75)
+        .attr('height', d => h - y(d.length)).attr('fill', LAPIS).attr('opacity', 0.75)
         .attr('rx', 2)
         .on('mouseenter', function(event, d) {
-            d3.select(this).attr('opacity', 1).attr('fill', '#00f2fe');
+            d3.select(this).attr('opacity', 1).attr('fill', GOLD);
             const names = d.map(v => v.name).slice(0, 5).join('<br>');
             const more = d.length > 5 ? `<br>+${d.length - 5} more` : '';
             tooltip.style('left', (event.pageX + 12) + 'px').style('top', (event.pageY - 20) + 'px')
@@ -1124,7 +1179,7 @@ function renderHistogram(series) {
                 .html(`<strong>${d.length} benchmark${d.length > 1 ? 's' : ''}</strong><br>Range: ${formatNumber(d.x0)} – ${formatNumber(d.x1)}<br>${names}${more}`);
         })
         .on('mouseleave', function() {
-            d3.select(this).attr('opacity', 0.75).attr('fill', '#4facfe');
+            d3.select(this).attr('opacity', 0.75).attr('fill', LAPIS);
             tooltip.classed('visible', false);
         });
 
@@ -1139,10 +1194,10 @@ function renderHistogram(series) {
 
     // Axis labels
     svg.append('text').attr('x', w / 2).attr('y', h + 42)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px')
+        .attr('text-anchor', 'middle').attr('fill', MUTED).style('font-size', '13px')
         .text(histUseLog ? 'Benchmark Value (log scale)' : 'Benchmark Value');
     svg.append('text').attr('transform', 'rotate(-90)').attr('y', -52).attr('x', -h / 2)
-        .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px').text('Count');
+        .attr('text-anchor', 'middle').attr('fill', MUTED).style('font-size', '13px').text('Count');
 }
 
 // ─── SPARKLINES ──────────────────────────────────────────────────────────────
@@ -1200,7 +1255,7 @@ function renderSparklines(series) {
                 .text(formatNumber(latestVal ? latestVal.value : 0));
             sparkSvg.append('text')
                 .attr('x', w / 2).attr('y', h * 0.85)
-                .attr('text-anchor', 'middle').attr('fill', '#888')
+                .attr('text-anchor', 'middle').attr('fill', MUTED)
                 .style('font-size', '9px')
                 .text('single snapshot');
         } else {
@@ -1255,7 +1310,7 @@ function renderBenchTable() {
     const hr = document.createElement('tr');
     ['Benchmark', 'System', 'Latest', 'p50', 'p95', 'CV%', 'Change', 'vs Industry', 'Hardware'].forEach(h => {
         const th = document.createElement('th');
-        th.style.cssText = 'text-align:left;padding:6px 10px;color:#a0a0a0;font-size:0.85em;';
+        th.style.cssText = `text-align:left;padding:6px 10px;color:${MUTED};font-size:0.85em;`;
         th.textContent = h; hr.appendChild(th);
     });
     head.appendChild(hr); table.appendChild(head);
@@ -1263,7 +1318,7 @@ function renderBenchTable() {
     const body = document.createElement('tbody');
     rows.forEach(r => {
         const tr = document.createElement('tr');
-        tr.style.borderTop = '1px solid rgba(255,255,255,0.03)';
+        tr.style.borderTop = `1px solid ${BORDER}`;
 
         const td = (text, style) => { const el = document.createElement('td'); el.style.cssText = 'padding:6px 10px;' + (style || ''); el.innerHTML = text; return el; };
 
@@ -1274,22 +1329,22 @@ function renderBenchTable() {
         const cv = coefficientOfVariation(allVals);
 
         tr.appendChild(td(r.latest.display_name || r.name));
-        tr.appendChild(td(`<span style="color:${COLOR_SCHEME[r.system]||'#a0a0a0'};font-size:0.8em;">${r.system}</span>`));
+        tr.appendChild(td(`<span style="color:${COLOR_SCHEME[r.system]||MUTED};font-size:0.8em;">${r.system}</span>`));
         tr.appendChild(td(`${formatNumber(r.latest.value)} ${r.latest.unit}`));
-        tr.appendChild(td(`${formatNumber(p50)}`, 'color:#a0a0a0;font-size:0.85em;'));
-        tr.appendChild(td(`${formatNumber(p95)}`, 'color:#a0a0a0;font-size:0.85em;'));
-        const cvColor = cv < 5 ? '#43e97b' : cv < 15 ? '#feca57' : '#ff6b6b';
+        tr.appendChild(td(`${formatNumber(p50)}`, `color:${MUTED};font-size:0.85em;`));
+        tr.appendChild(td(`${formatNumber(p95)}`, `color:${MUTED};font-size:0.85em;`));
+        const cvColor = cv < 5 ? GOOD : cv < 15 ? WARN : BAD;
         tr.appendChild(td(`<span style="color:${cvColor}">${cv.toFixed(1)}%</span>`, 'font-size:0.85em;'));
-        tr.appendChild(td(`${r.change > 0 ? '+' : ''}${r.change.toFixed(1)}%`, `color:${r.change > 0 ? '#ff6b6b' : '#43e97b'}`));
+        tr.appendChild(td(`${r.change > 0 ? '+' : ''}${r.change.toFixed(1)}%`, `color:${r.change > 0 ? BAD : GOOD}`));
 
         let indTxt = '—';
         if (r.ref && currentFilters.showIndustry) {
             const ratio = ((r.latest.value / r.ref.average) * 100).toFixed(0);
-            const ic = r.latest.value <= r.ref.average ? '#43e97b' : '#ff6b6b';
+            const ic = r.latest.value <= r.ref.average ? GOOD : BAD;
             indTxt = `<span style="color:${ic}">${ratio}%</span>`;
         }
         tr.appendChild(td(indTxt));
-        tr.appendChild(td(r.latest.hardware_id === BASELINE_HARDWARE_ID ? '🏠 Baseline' : '🖥️ User', 'font-size:0.8em;color:#a0a0a0;'));
+        tr.appendChild(td(r.latest.hardware_id === BASELINE_HARDWARE_ID ? '🏠 Baseline' : '🖥️ User', `font-size:0.8em;color:${MUTED};`));
 
         body.appendChild(tr);
     });
@@ -1298,23 +1353,39 @@ function renderBenchTable() {
 
 // ─── LEGEND ──────────────────────────────────────────────────────────────────
 
-function renderLegend(series, industryLines = []) {
+function renderLegend(series, industryLines = [], snapshot = false) {
+    function swatch(s, industry = false) {
+        const color = industry ? INDUSTRY_LINE_COLOR : s.color;
+        if (snapshot) {
+            const rect = document.createElement('div');
+            rect.className = 'legend-color';
+            rect.style.backgroundColor = color;
+            rect.style.opacity = industry ? INDUSTRY_MARK_OPACITY : 0.85;
+            return rect;
+        }
+        const icon = d3.create('svg:svg').attr('width', 32).attr('height', 14)
+            .attr('aria-hidden', 'true').style('flex', '0 0 32px');
+        icon.append('line').attr('x1', 0).attr('x2', 32).attr('y1', 7).attr('y2', 7)
+            .attr('stroke', color).attr('stroke-width', industry ? 2 : s.isBaseline ? 3.5 : 2.5)
+            .attr('stroke-dasharray', industry ? INDUSTRY_DASH : s.isBaseline ? 'none' : USER_DASH)
+            .attr('opacity', industry ? INDUSTRY_MARK_OPACITY : s.isBaseline ? 1 : 0.85);
+        if (!industry) benchmarkMarker(icon.append('path').attr('transform', 'translate(16,7)'), s.system, color);
+        return icon.node();
+    }
     const div = document.getElementById('legend');
     div.innerHTML = '';
     const LEGEND_SHOW = 20;
     const visible = series.slice(0, LEGEND_SHOW);
     visible.forEach(s => {
         const item = document.createElement('div'); item.className = 'legend-item';
-        const color = document.createElement('div'); color.className = 'legend-color';
-        color.style.backgroundColor = s.color;
-        if (!s.isBaseline) color.style.borderTop = '2px dashed ' + s.color;
+        const color = swatch(s);
         const label = document.createElement('span'); label.textContent = s.name;
         item.appendChild(color); item.appendChild(label); div.appendChild(item);
     });
     if (series.length > LEGEND_SHOW) {
         const more = document.createElement('div');
         more.className = 'legend-item';
-        more.style.cssText = 'color:#a0a0a0;font-style:italic;font-size:0.85em;cursor:pointer;';
+        more.style.cssText = `color:${MUTED};font-style:italic;font-size:0.85em;cursor:pointer;`;
         more.textContent = `+ ${series.length - LEGEND_SHOW} more (use filters to narrow)`;
         more.addEventListener('click', () => {
             // Toggle showing all
@@ -1327,8 +1398,7 @@ function renderLegend(series, industryLines = []) {
                 more.textContent = '− collapse';
                 series.slice(LEGEND_SHOW).forEach(s => {
                     const item = document.createElement('div'); item.className = 'legend-item legend-extra';
-                    const color = document.createElement('div'); color.className = 'legend-color';
-                    color.style.backgroundColor = s.color;
+                    const color = swatch(s);
                     const label = document.createElement('span'); label.textContent = s.name;
                     item.appendChild(color); item.appendChild(label); div.appendChild(item);
                 });
@@ -1338,9 +1408,7 @@ function renderLegend(series, industryLines = []) {
     }
     if (industryLines.length > 0 && currentFilters.showIndustry) {
         const item = document.createElement('div'); item.className = 'legend-item';
-        const color = document.createElement('div'); color.className = 'legend-color';
-        color.style.backgroundColor = INDUSTRY_LINE_COLOR;
-        color.style.borderTop = '2px dashed ' + INDUSTRY_LINE_COLOR;
+        const color = swatch(null, true);
         const label = document.createElement('span'); label.textContent = 'Industry Standard';
         label.style.color = INDUSTRY_LINE_COLOR;
         item.appendChild(color); item.appendChild(label); div.appendChild(item);
@@ -1366,16 +1434,16 @@ function renderRegressionAlerts() {
 
     if (regs.length === 0) {
         c.innerHTML = `<div class="alert-success">✅ <strong>No Performance Regressions Detected</strong>
-            <p style="margin-top:8px;font-size:0.9em;color:#a0a0a0;">All ${Object.keys(groups).length} benchmarks within ±10%</p></div>`;
+            <p style="margin-top:8px;font-size:0.9em;color:${MUTED};">All ${Object.keys(groups).length} benchmarks within ±10%</p></div>`;
         return;
     }
     regs.sort((a, b) => b.change - a.change);
     c.innerHTML = `<div class="alert-warning">⚠️ <strong>${regs.length} Regression${regs.length > 1 ? 's' : ''}</strong>
         <div style="margin-top:12px;max-height:200px;overflow-y:auto;">
-            ${regs.slice(0, 10).map(r => `<div style="padding:8px;border-left:3px solid #ff6b6b;margin:6px 0;background:rgba(255,107,107,0.1);border-radius:4px;">
-                <div style="font-weight:600;color:#ff6b6b;">${r.name}</div>
-                <div style="font-size:0.85em;color:#a0a0a0;margin-top:4px;">${formatNumber(r.baseline)} → ${formatNumber(r.current)} ${r.unit}
-                    <span style="color:#ff6b6b;font-weight:600;">(+${r.change.toFixed(1)}%)</span></div>
+            ${regs.slice(0, 10).map(r => `<div style="padding:8px;border-left:3px solid ${BAD};margin:6px 0;background:${PANEL};border-radius:4px;">
+                <div style="font-weight:600;color:${BAD};">${r.name}</div>
+                <div style="font-size:0.85em;color:${MUTED};margin-top:4px;">${formatNumber(r.baseline)} → ${formatNumber(r.current)} ${r.unit}
+                    <span style="color:${BAD};font-weight:600;">(+${r.change.toFixed(1)}%)</span></div>
             </div>`).join('')}
         </div></div>`;
 }
@@ -1401,10 +1469,10 @@ function renderProductionHealthSummary() {
     }
     const total = Object.keys(groups).length;
     const pct = total > 0 ? (regCount / total) * 100 : 0;
-    let grade = 'A+', gc = '#00f2fe';
-    if (pct > 20) { grade = 'C'; gc = '#ff6b6b'; }
-    else if (pct > 10) { grade = 'B'; gc = '#feca57'; }
-    else if (pct > 5) { grade = 'A'; gc = '#43e97b'; }
+    let grade = 'A+', gc = GOLD;
+    if (pct > 20) { grade = 'C'; gc = BAD; }
+    else if (pct > 10) { grade = 'B'; gc = WARN; }
+    else if (pct > 5) { grade = 'A'; gc = GOOD; }
 
     let indCount = 0;
     for (const name of Object.keys(groups)) {
@@ -1419,20 +1487,20 @@ function renderProductionHealthSummary() {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:16px;">
             ${[
                 [grade, gc, 'Health Grade'],
-                [uniqueB, '#4facfe', 'Benchmarks'],
-                [uniqueC, '#4facfe', 'Crates'],
-                [uniqueH, '#4facfe', 'Hardware Profiles'],
-                [`${dateRange}d`, '#4facfe', 'Data Range'],
+                [uniqueB, LAPIS, 'Benchmarks'],
+                [uniqueC, LAPIS, 'Crates'],
+                [uniqueH, LAPIS, 'Hardware Profiles'],
+                [`${dateRange}d`, LAPIS, 'Data Range'],
                 [indCount, INDUSTRY_LINE_COLOR, 'Industry Comparisons']
             ].map(([v, color, label]) => `
-                <div style="text-align:center;padding:16px;background:rgba(255,255,255,0.03);border-radius:8px;">
+                <div class="summary-tile" style="background:${PANEL};">
                     <div style="font-size:${String(v).length > 3 ? '1.5' : '2'}em;font-weight:bold;color:${color};">${v}</div>
-                    <div style="color:#a0a0a0;font-size:0.85em;margin-top:4px;">${label}</div>
+                    <div style="color:${MUTED};font-size:0.85em;margin-top:4px;">${label}</div>
                 </div>`).join('')}
         </div>
         <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;">
             ${Object.entries(sysCounts).map(([s, cnt]) =>
-                `<span style="padding:4px 12px;background:${COLOR_SCHEME[s]||'#666'}22;color:${COLOR_SCHEME[s]||'#666'};border-radius:16px;font-size:0.8em;">${s}: ${cnt}</span>`
+                `<span style="padding:4px 12px;background:${COLOR_SCHEME[s]||MUTED}22;color:${INK};border-radius:1px;font-size:0.8em;">${s}: ${cnt}</span>`
             ).join('')}
         </div>`;
 }
@@ -1533,7 +1601,7 @@ function _lightboxEscHandler(e) {
 function enlargeImage(imgEl) {
     openLightbox(imgEl.alt || 'Graph', (body) => {
         const clone = imgEl.cloneNode(true);
-        clone.style.cssText = 'max-width:100%;max-height:75vh;height:auto;border-radius:8px;';
+        clone.style.cssText = 'max-width:100%;max-height:75vh;height:auto;border-radius:1px;';
         clone.className = '';
         body.appendChild(clone);
     });
@@ -1567,9 +1635,9 @@ function enlargeSparkline(seriesData) {
         // Axes
         svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${h})`)
             .call(d3.axisBottom(xs).ticks(8).tickFormat(d3.timeFormat('%b %d')))
-            .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+            .selectAll('text').style('font-size', '13px').attr('fill', MUTED);
         svg.append('g').attr('class', 'axis').call(d3.axisLeft(ys).ticks(8).tickFormat(d => formatNumber(d)))
-            .selectAll('text').style('font-size', '13px').attr('fill', '#c0c0c0');
+            .selectAll('text').style('font-size', '13px').attr('fill', MUTED);
 
         // Area
         const area = d3.area().x(d => xs(d.timestamp)).y0(h).y1(d => ys(d.value)).curve(d3.curveMonotoneX);
@@ -1585,7 +1653,7 @@ function enlargeSparkline(seriesData) {
         svg.selectAll('circle').data(seriesData.values).enter().append('circle')
             .attr('cx', d => xs(d.timestamp)).attr('cy', d => ys(d.value))
             .attr('r', 4).attr('fill', seriesData.color).attr('opacity', 0.85)
-            .attr('stroke', '#fff').attr('stroke-width', 1);
+            .attr('stroke', INK).attr('stroke-width', 1);
 
         // Tooltip
         const tooltip = d3.select('.tooltip');
@@ -1605,13 +1673,13 @@ function enlargeSparkline(seriesData) {
 
         // Axis labels
         svg.append('text').attr('x', w / 2).attr('y', h + 42)
-            .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px').text('Date');
+            .attr('text-anchor', 'middle').attr('fill', MUTED).style('font-size', '13px').text('Date');
         svg.append('text').attr('transform', 'rotate(-90)').attr('y', -60).attr('x', -h / 2)
-            .attr('text-anchor', 'middle').attr('fill', '#b0b0b0').style('font-size', '13px').text('Value');
+            .attr('text-anchor', 'middle').attr('fill', MUTED).style('font-size', '13px').text('Value');
 
         // Stats summary below chart
         const stats = document.createElement('div');
-        stats.style.cssText = 'margin-top:16px;display:flex;gap:24px;flex-wrap:wrap;color:#c0c0c0;font-size:13px;';
+        stats.style.cssText = `margin-top:16px;display:flex;gap:24px;flex-wrap:wrap;color:${MUTED};font-size:13px;`;
         const allV = seriesData.values.map(d => d.value);
         const latest = allV[allV.length - 1];
         const min = Math.min(...allV);
@@ -1620,12 +1688,12 @@ function enlargeSparkline(seriesData) {
         const p50 = percentile(allV, 50);
         const cv = coefficientOfVariation(allV);
         stats.innerHTML = [
-            `Latest: <strong style="color:#4facfe">${formatNumber(latest)}</strong>`,
+            `Latest: <strong style="color:${LAPIS}">${formatNumber(latest)}</strong>`,
             `Min: <strong>${formatNumber(min)}</strong>`,
             `Max: <strong>${formatNumber(max)}</strong>`,
             `Avg: <strong>${formatNumber(avg)}</strong>`,
             `p50: <strong>${formatNumber(p50)}</strong>`,
-            `CV: <strong style="color:${cv < 5 ? '#43e97b' : cv < 15 ? '#feca57' : '#ff6b6b'}">${cv.toFixed(1)}%</strong>`,
+            `CV: <strong style="color:${cv < 5 ? GOOD : cv < 15 ? WARN : BAD}">${cv.toFixed(1)}%</strong>`,
             `Samples: <strong>${allV.length}</strong>`,
         ].map(s => `<span>${s}</span>`).join('');
         body.appendChild(stats);

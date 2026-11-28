@@ -8,6 +8,9 @@ on:
   push:
     branches:
       - main
+    # A push to main that touches these paths deploys to
+    # dashboard/benchmark_dashboard. docs.yml still copies the archived
+    # dashboard onto that path until #776 removes the copy. Land #776 first.
     paths:
       - '.github/workflows/benchmark-dashboard.yml'
       - 'scripts/export_benchmark_jsonl.ps1'
@@ -105,7 +108,8 @@ jobs:
           mkdir -p gh-pages
           cp tools/benchmark-dashboard/index.html gh-pages/
           cp tools/benchmark-dashboard/dashboard.js gh-pages/
-          
+          cp tools/benchmark-dashboard/d3.min.js gh-pages/
+          cp tools/benchmark-dashboard/d3.LICENSE gh-pages/
           # Copy static-data snapshot (inline fallback for first deploy)
           mkdir -p gh-pages/static-data
           if [ -d tools/benchmark-dashboard/static-data ]; then

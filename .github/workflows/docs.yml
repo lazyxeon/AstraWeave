@@ -155,6 +155,8 @@ jobs:
           fi
           echo "mdBook output verified: $(find docs/book -name '*.html' | wc -l) HTML files"
 
+      # Until #776 removes the archived dashboard copy above, this deploy can
+      # overwrite dashboard/benchmark_dashboard. Merge #776 before this branch.
       - name: Deploy to GitHub Pages
         if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         uses: peaceiris/actions-gh-pages@v4

@@ -209,7 +209,7 @@ gh workflow run benchmark-dashboard.yml
 Top 8 benchmarks by current value, showing:
 - Current mean time (ns, µs, ms)
 - % change over selected time range
-- Color-coded by system (ECS = blue, AI = cyan, etc.)
+- Color-coded by system (`COLOR_SCHEME` in `dashboard.js`, read from `docs/theme/parchment/candlelit-grimoire.css`): ECS `#8fb4e0`, AI `#e8b07a`, Physics `#6fbfa6`, Terrain `#e7c99a`, Input `#e0a050`, Rendering `#d9b45a`, Math `#e0705a`, Networking `#9fd4ea`, Persistence `#e7a3c4`, Audio `#b7d39a`, UI `#c9b0e8`, Tools `#d7c4a2`, Animation `#f0a8b4`, default `#bfa978`
 
 ### Trend Chart
 
@@ -217,6 +217,7 @@ Top 8 benchmarks by current value, showing:
 - **Multi-Series**: Compare multiple benchmarks on same chart
 - **Legend**: Click to highlight specific series
 - **Auto-Scaling**: Y-axis adjusts to data range
+- **Series markers** (`SYSTEM_MARK` in `dashboard.js`): each `detectSystem` category is encoded as a *(shape index 0–6, solid vs hollow)* pair on the trend line and in the trend-mode legend—seven D3 `symbolsFill` shapes, two categories per index (one solid fill in the category color, one hollow with `fill: var(--panel)` and a colored stroke). Single-snapshot view uses plain color swatches with no markers. Partners are different categories with distinct hues (for example ecs solid circle and tools hollow circle on shape 0), not secondary crates within one category. Summary cards only set `--series` from `COLOR_SCHEME`; markers are not drawn on the cards.
 
 ---
 
@@ -293,7 +294,7 @@ Edit `tools/benchmark-dashboard/dashboard.js` to:
 
 ### Dependencies
 
-- **D3.js v7**: Loaded from CDN (no local install needed)
+- **D3.js 7.9.0**: Vendored as `tools/benchmark-dashboard/d3.min.js`. `index.html` loads `d3.min.js`.
 - **Criterion**: Rust benchmarking framework
 - **PowerShell**: Export script (cross-platform with pwsh)
 - **GitHub Pages**: Free static site hosting
@@ -356,17 +357,11 @@ cargo bench
 
 ### Issue: "D3.js library failed to load"
 
-**Root Cause**: CDN blocked by ad blocker, firewall, or network issues.
+**Root Cause**: `d3.min.js` failed to load beside `index.html`.
 
 **Solutions**:
-1. Disable ad blocker for localhost
-2. Check browser console for specific error
-3. Download d3.v7.min.js locally (optional):
-   ```bash
-   cd tools/benchmark-dashboard
-   curl https://d3js.org/d3.v7.min.js -o d3.v7.min.js
-   # Update index.html to use local file instead of CDN
-   ```
+1. Check the browser console for the script error
+2. Confirm `tools/benchmark-dashboard/d3.min.js` is the file `index.html` loads
 
 **Note**: Stats cards will still display correctly even if D3.js fails to load - only the chart will be unavailable.
 
