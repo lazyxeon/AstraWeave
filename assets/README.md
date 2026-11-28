@@ -1,100 +1,13 @@
 # AstraWeave Asset Library
 
-> **Version**: 2.0 | **Total**: 1,445 files, 8.83 GB | **License**: Mixed (see per-asset)
+AstraWeave policy requires verified CC0 1.0 provenance before third-party assets can be included in its distribution. See [AGENTS.md](../AGENTS.md) and the [provenance recheck](../docs/audits/ASSET_PROVENANCE_2026-11-27.md) for the evidence and its limits. First-party project originals documented under MIT are not represented as CC0.
 
-Asset library for the AstraWeave AI-Native Game Engine. Every biome defined in the engine has complete material coverage, PBR texture sets, and HDRI environment lighting.
+## Where to find assets
 
----
-
-## Directory Structure
-
-```
-assets/
-├── audio/                    # Sound effects & music
-│   ├── loops/                # Looping ambient sounds (wav/ogg/mp3)
-│   ├── tracks/               # Music tracks (wav/ogg/mp3)
-│   └── water_ambient_*/      # Water ambience variants (mono + stereo)
-│
-├── castles_forts_asset_pack/ # Modular castle/fort 3D models (GLB)
-│
-├── cells/                    # World streaming cell definitions (RON)
-│
-├── cinematics/               # Cinematic sequence data
-│
-├── exemplars/                # Entity prefab definitions (RON)
-│
-├── hdri/                     # Environment lighting
-│   ├── hdri_catalog.toml     # Biome → HDRI mapping + time-of-day
-│   └── polyhaven/            # PolyHaven CC0 HDRIs (2K HDR)
-│       ├── kloppenheim/      # Clear sky daytime
-│       ├── spruit_sunrise/   # Morning golden hour
-│       └── venice_sunset/    # Evening sunset
-│
-├── materials/                # Terrain material system
-│   ├── *.png                 # Source PBR textures (22 sets × 3 maps)
-│   ├── baked/                # GPU-ready KTX2 compressed textures
-│   ├── polyhaven/            # PolyHaven CC0 PBR material sets
-│   │   ├── cobblestone/
-│   │   ├── metal_plate/
-│   │   ├── plastered_wall/
-│   │   └── wood_floor/
-│   ├── beach/                # Biome material configs
-│   ├── desert/
-│   ├── forest/
-│   ├── grassland/
-│   ├── mountain/
-│   ├── river/
-│   ├── swamp/
-│   ├── terrain/              # Default/fallback biome
-│   └── tundra/
-│
-├── models/                   # 3D models
-│   ├── Amber-Npc/            # Character model (CC4, FBX + textures)
-│   └── greybox/              # Prototype placeholder meshes
-│
-├── npc/                      # NPC configuration data
-│
-├── shaders/                  # WGSL shader source files
-│
-├── textures/                 # General-purpose textures
-│   ├── demo/                 # Demo/example textures
-│   ├── desert/               # Desert biome extras
-│   ├── fabrics/              # Fabric textures
-│   ├── forest/               # Forest biome extras
-│   ├── grass_hd/             # High-res grass
-│   ├── grassland/            # Grassland biome extras
-│   ├── models/houses/        # Building textures
-│   ├── pbr/PBR_2K/           # 2K PBR texture sets (4 materials)
-│   ├── pbr/PBR_4K/           # 4K PBR texture sets (4 materials)
-│   └── pine_forest/          # Pine forest environment
-│
-├── tests/                    # Test fixture assets
-│   ├── biome/                # Biome test data
-│   └── textures/             # Test textures
-│
-├── asset_manifest.toml       # Multi-source asset manifest
-├── polyhaven_manifest.toml   # PolyHaven download manifest
-└── README.md                 # This file
-```
-
-## File Statistics by Format
-
-| Format | Count | Size (GB) | Purpose |
-|--------|------:|----------:|---------|
-| `.png` | 425 | 3.14 | PBR textures (albedo, normal, MRA) |
-| `.wav` | 104 | 2.73 | Lossless audio (SFX, ambience) |
-| `.glb` | 474 | 1.20 | 3D models (glTF binary) |
-| `.ktx2` | 72 | 1.02 | GPU-compressed textures (baked) |
-| `.exr` | 30 | 0.32 | OpenEXR textures (HDR data) |
-| `.fbx` | 77 | 0.25 | Legacy 3D models (Amber NPC) |
-| `.mp3` | 20 | 0.14 | Compressed audio |
-| `.ogg` | 20 | 0.10 | Compressed audio (Vorbis) |
-| `.hdr` | 6 | 0.03 | HDRI environment maps |
-| `.toml` | 42 | <0.01 | Configuration files |
-| `.ron` | 15 | <0.01 | Rusty Object Notation data |
-| Other | 160 | 0.07 | JSON, WGSL, OBJ, USDC, etc. |
-
----
+- Use `cargo xtask fetch-assets` for the starter packs, or `cargo xtask fetch-assets --all` for the full pack set. [The pack manifest](packs.manifest.toml) pins the archives; [packlists](packlists/) list the exact paths installed.
+- [Third-party asset licenses](../THIRD_PARTY_LICENSES.md) records source and license evidence. See the [November 2026 provenance recheck](../docs/audits/ASSET_PROVENANCE_2026-11-27.md), including delisted upstreams, evidence limitations, and legacy font cleanup.
+- The old Amber NPC, standalone Castles & Forts pack, and non-compliant or untraced legacy audio are not part of the current library. Do not restore them from archives without verified evidence for the exact edition.
+- [Aravath demo asset credits](aravath/CREDITS.md) cover the demo's small in-tree set. See the [HDRI catalog](hdri/hdri_catalog.toml) and the biome material configs for runtime paths.
 
 ## Terrain Material System
 
@@ -227,34 +140,9 @@ Every biome+time combination has a defined fallback in the catalog. The renderer
 
 ---
 
-## Audio Library
+## Audio and models
 
-### Format Policy
-
-Three formats maintained per audio asset for platform flexibility:
-- **WAV**: Lossless source (game runtime, editors)
-- **OGG**: Compressed lossy (game runtime, streaming)
-- **MP3**: Compressed lossy (web exports, legacy)
-
-### Audio Categories
-
-| Category | Count | Description |
-|----------|-------|-------------|
-| Loops | ~34 per format | Ambient loops (wind, rain, fire, etc.) |
-| Tracks | ~20 per format | Music tracks |
-| Water Ambient | 3 variants | Mono + stereo water ambience |
-
----
-
-## 3D Models
-
-| Collection | Format | Count | Description |
-|-----------|--------|-------|-------------|
-| Castles & Forts | GLB | ~470 | Modular castle/fort building pieces |
-| Amber NPC | FBX | 77 | CC4 character model with full texture set |
-| Greybox | GLB | ~4 | Prototype placeholder meshes |
-
----
+The starter pack includes Kenney audio and KayKit. The full pack manifest lists optional editor and scenery libraries, including the archived CC0 Road to Vostok pack. Check exact pack lists before referencing a path rather than assuming it is tracked in a fresh clone.
 
 ## Validation
 
@@ -311,14 +199,10 @@ Run the asset validation script to check library integrity:
 | Issue | Severity | Notes |
 |-------|----------|-------|
 | 12 KTX2 MRA stubs in `baked/` | Medium | 84-byte placeholders, need rebake from source PNGs |
-| Amber-Npc uses PascalCase | Low | 3rd-party model, renaming would break references |
 | Morning/Evening HDRI gaps | Low | Only 1 HDRI each; more variety recommended |
 
 ---
 
-## License Notes
+## Adding an asset
 
-- **PolyHaven assets** (materials, HDRIs): CC0 (public domain)
-- **Amber NPC**: Check original CC4 license
-- **Castles & Forts pack**: Check original asset pack license
-- **Engine-generated textures** (MRA maps, procedural): MIT (engine license)
+Verify the exact publisher release is CC0, record its source and checksum in the appropriate provenance record, and retain any included license notice. Do not infer CC0 from a free download, a filename or another edition. If the original is delisted, use a verified historical capture or keep the asset out of distribution.
