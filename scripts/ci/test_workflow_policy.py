@@ -7,6 +7,8 @@ wrapper. It does not dispatch a workflow.
 
 from __future__ import annotations
 
+import difflib
+import errno
 import inspect
 import json
 import os
@@ -403,6 +405,1061 @@ def without_status_guard(expr: str) -> str:
     return stripped
 
 
+def _normalize_line_endings(text: str) -> str:
+    """Replace CRLF and CR with LF. No other change."""
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+_GPU_FRAME_BUDGET_GOLDEN = (
+    Path(__file__).resolve().parent / "gpu_frame_budget_workflow.golden.yml"
+)
+_GPU_FRAME_BUDGET_MISMATCH = "gpu-frame-budget.yml is not the canonical workflow text"
+
+
+def _read_regular_utf8(path: Path) -> str:
+    """Read UTF-8 bytes from `path`.
+
+    Open with `O_NOFOLLOW`. `ELOOP` raises `AssertionError`.
+    Any other `OSError` propagates. Decode the bytes as UTF-8.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise AssertionError(f"{path.name} path is a symlink") from exc
+        raise
+    try:
+        data = os.read(fd, os.fstat(fd).st_size)
+    finally:
+        os.close(fd)
+    return data.decode("utf-8")
+
+
+def _canonical_gpu_frame_budget_text() -> str:
+    raw = _read_regular_utf8(_GPU_FRAME_BUDGET_GOLDEN)
+    return _normalize_line_endings(raw)
+
+
+def _gpu_frame_budget_workflow_text() -> str:
+    """Read `.github/workflows/gpu-frame-budget.yml` without following a symlink."""
+    return _read_regular_utf8(WORKFLOWS / "gpu-frame-budget.yml")
+
+
+_GPU_FRAME_BUDGET_CHECKOUT = (
+    "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+)
+_GPU_FRAME_BUDGET_TOOLCHAIN = (
+    "      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master\n"
+)
+_GPU_FRAME_BUDGET_RUNS_ON = "    runs-on: [self-hosted, Windows, gpu]\n"
+_GPU_FRAME_BUDGET_ENV = "          AW_GLB: ${{ inputs.glb }}\n"
+_GPU_FRAME_BUDGET_RUN = "        run: |\n"
+_GPU_FRAME_BUDGET_CARGO = (
+    "          cargo run -p astraweave-render --release "
+    "--features gpu-frame-budget --bin gpu_frame_budget -- "
+    '--scene heavy --glb "$env:AW_GLB"\n'
+)
+_GPU_FRAME_BUDGET_JOBS = (
+    "jobs:\n",
+    "  capture:\n",
+    "    name: gpu_frame_budget\n",
+    _GPU_FRAME_BUDGET_RUNS_ON,
+    "    timeout-minutes: 60\n",
+    "    steps:\n",
+    _GPU_FRAME_BUDGET_CHECKOUT,
+    "        with:\n",
+    "          persist-credentials: false\n",
+    _GPU_FRAME_BUDGET_TOOLCHAIN,
+    "        with:\n",
+    '          toolchain: "1.89.0"\n',
+    "      - name: Median draw_into\n",
+    "        shell: pwsh\n",
+    "        env:\n",
+    _GPU_FRAME_BUDGET_ENV,
+    _GPU_FRAME_BUDGET_RUN,
+    _GPU_FRAME_BUDGET_CARGO,
+)
+_GPU_FRAME_BUDGET_JOBS_LINE_FORMS = (
+    "permissions_space_before_colon",
+    "explicit_permissions_key",
+    "quoted_permissions_write",
+    "single_quoted_permissions_write",
+    "plain_run_space_before_colon",
+    "explicit_plain_run",
+    "uses_space_persist_credentials",
+    "relay_secrets_inherit",
+    "other_job_space_keys",
+    "other_job_quoted_keys",
+    "path_beside_aw_glb",
+    "working_directory_step",
+)
+
+
+def _top_level_key_indexes(lines: list[str]) -> list[int]:
+    indexes = []
+    for index, line in enumerate(lines):
+        if not line.strip() or line[0] in " \t#":
+            continue
+        indexes.append(index)
+    return indexes
+
+
+def _top_level_block(lines: list[str], key: str) -> list[str]:
+    """Return the lines of the first top-level `key`, or `[]` when it is absent.
+
+    A top-level line is non-blank and does not start with a space, tab,
+    or `#`. The block runs from that key's line up to the next top-level
+    key, or through the end of `lines` when the key is last.
+    """
+    indexes = _top_level_key_indexes(lines)
+    for position, index in enumerate(indexes):
+        if lines[index].split(":", 1)[0] != key:
+            continue
+        end = indexes[position + 1] if position + 1 < len(indexes) else len(lines)
+        return lines[index:end]
+    return []
+
+
+def _gpu_frame_budget_guard_failures(text: str) -> list[str]:
+    """Return the canonical-property messages `text` fails, in check order.
+
+    A top-level line is non-blank and does not start with a space, tab,
+    or `#`. The keys message is `gpu-frame-budget canonical keys` when
+    those keys are not `name`, `on`, `permissions`, and `jobs`.
+    The `on` block is `_top_level_block` of `on`. Its message is
+    `gpu-frame-budget on is not workflow_dispatch only` when the first
+    two lines are not `on:` and `  workflow_dispatch:`, or a later
+    non-blank line is not indented at least four spaces, or the lines
+    indented exactly four spaces are not `    inputs:`.
+    The permissions message is
+    `gpu-frame-budget permissions are not contents: read` when the
+    non-blank lines of the `permissions` block are not `permissions:`
+    and `  contents: read`.
+    The jobs message is `gpu-frame-budget jobs block` when
+    `_top_level_block` of `jobs` is not `_GPU_FRAME_BUDGET_JOBS`.
+    The expression message is `gpu-frame-budget expression` when a line
+    contains `${{` and is not `_GPU_FRAME_BUDGET_ENV`.
+    Each message appears at most once.
+    """
+    failures: list[str] = []
+    lines = text.splitlines(keepends=True)
+    indexes = _top_level_key_indexes(lines)
+    keys = [lines[index].split(":", 1)[0] for index in indexes]
+    if keys != ["name", "on", "permissions", "jobs"]:
+        failures.append("gpu-frame-budget canonical keys")
+    on_lines = _top_level_block(lines, "on")
+    on_message = "gpu-frame-budget on is not workflow_dispatch only"
+    if on_lines[:2] != ["on:\n", "  workflow_dispatch:\n"]:
+        failures.append(on_message)
+    elif any(
+        line.strip() and not line.startswith("    ") for line in on_lines[2:]
+    ):
+        failures.append(on_message)
+    elif [
+        line
+        for line in on_lines[2:]
+        if line.startswith("    ") and not line.startswith("     ")
+    ] != ["    inputs:\n"]:
+        failures.append(on_message)
+    perm_lines = [
+        line for line in _top_level_block(lines, "permissions") if line.strip()
+    ]
+    if perm_lines != ["permissions:\n", "  contents: read\n"]:
+        failures.append("gpu-frame-budget permissions are not contents: read")
+    if tuple(_top_level_block(lines, "jobs")) != _GPU_FRAME_BUDGET_JOBS:
+        failures.append("gpu-frame-budget jobs block")
+    for line in lines:
+        if "${{" in line and line != _GPU_FRAME_BUDGET_ENV:
+            failures.append("gpu-frame-budget expression")
+            break
+    return failures
+
+
+def _assert_gpu_frame_budget_canonical_properties(text: str) -> None:
+    """Raise the first message from `_gpu_frame_budget_guard_failures`.
+
+    An empty failure list passes.
+    """
+    failures = _gpu_frame_budget_guard_failures(text)
+    if failures:
+        raise AssertionError(failures[0])
+
+
+def assert_gpu_frame_budget_dispatch_input_is_env(text: str) -> None:
+    """Accept `.github/workflows/gpu-frame-budget.yml` only in canonical form.
+
+    Read `scripts/ci/gpu_frame_budget_workflow.golden.yml` with
+    `_read_regular_utf8`. Normalize CRLF and CR to LF. That golden text must
+    pass `_assert_gpu_frame_budget_canonical_properties`. `text` must equal
+    that golden text after the same normalization, or this raises
+    `gpu-frame-budget.yml is not the canonical workflow text`.
+    """
+    golden = _canonical_gpu_frame_budget_text()
+    _assert_gpu_frame_budget_canonical_properties(golden)
+    if _normalize_line_endings(text) != golden:
+        raise AssertionError(_GPU_FRAME_BUDGET_MISMATCH)
+
+
+def _replace_once(text: str, old: str, new: str) -> str:
+    count = text.count(old)
+    if count == 0:
+        raise AssertionError("policy fixture anchor missing")
+    if count != 1:
+        raise AssertionError("policy fixture anchor matched more than once")
+    return text.replace(old, new, 1)
+
+
+def gpu_frame_budget_policy_cases(text: str) -> list[tuple[str, str]]:
+    """One full-file variant of `.github/workflows/gpu-frame-budget.yml` per form.
+
+    Each text differs from `text`. A missing anchor fails closed.
+    """
+    on_anchor = "on:\n  workflow_dispatch:\n"
+    perm_anchor = "permissions:\n  contents: read\n"
+    cred_anchor = "          persist-credentials: false\n"
+    with_anchor = "        with:\n          persist-credentials: false\n"
+    env_anchor = "        env:\n          AW_GLB: ${{ inputs.glb }}\n"
+    median_anchor = "      - name: Median draw_into\n"
+    shell_anchor = "        shell: pwsh\n"
+    run_anchor = "        run: |\n"
+    cargo_anchor = (
+        "          cargo run -p astraweave-render --release "
+        "--features gpu-frame-budget --bin gpu_frame_budget -- "
+        '--scene heavy --glb "$env:AW_GLB"\n'
+    )
+    cargo_without_glb = (
+        "          cargo run -p astraweave-render --release "
+        "--features gpu-frame-budget --bin gpu_frame_budget -- "
+        "--scene heavy\n"
+    )
+    toolchain_anchor = (
+        "      - uses: dtolnay/rust-toolchain@"
+        "df2a88e9fe4098bad09cb42c3dec7187f15861fc # master\n"
+    )
+    capture_anchor = "  capture:\n    name: gpu_frame_budget\n"
+    expression_line = '          echo "${{ inputs.glb }}"\n'
+
+    def before_median(block: str) -> str:
+        return _replace_once(text, median_anchor, block + median_anchor)
+
+    def on_insert(line: str) -> str:
+        return _replace_once(text, on_anchor, "on:\n" + line + "  workflow_dispatch:\n")
+
+    def run_header(header: str) -> str:
+        return _replace_once(text, run_anchor, header + expression_line)
+
+    cases = [
+        (
+            "quoted_run_key",
+            before_median(
+                '      - name: extra\n        "run": echo "${{ inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "flow_step",
+            before_median(
+                "      - {name: extra, shell: pwsh, run: 'echo ${{ inputs.glb }}'}\n"
+            ),
+        ),
+        (
+            "run_space_before_colon",
+            before_median(
+                '      - name: extra\n        run : echo "${{ inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "empty_run_indented",
+            before_median(
+                "      - name: extra\n        run:\n          echo ${{ inputs.glb }}\n"
+            ),
+        ),
+        (
+            "double_quoted_split",
+            before_median(
+                '      - name: extra\n'
+                '        run: "echo\n'
+                '          ${{ inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "single_quoted_split",
+            before_median(
+                "      - name: extra\n"
+                "        run: 'echo\n"
+                "          ${{ inputs.glb }}'\n"
+            ),
+        ),
+        (
+            "plain_continuation",
+            before_median(
+                "      - name: extra\n        run: echo\n          ${{ inputs.glb }}\n"
+            ),
+        ),
+        (
+            "hash_without_space",
+            before_median("      - run: echo x#${{ inputs.glb }}\n"),
+        ),
+        (
+            "explicit_run_key",
+            before_median(
+                "      - name: extra\n"
+                "        ? run\n"
+                '        : echo "${{ inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "alias_run_value",
+            before_median(
+                "      - name: extra\n"
+                "        env:\n"
+                "          PAYLOAD: &payload echo ${{ inputs.glb }}\n"
+                "        run: *payload\n"
+            ),
+        ),
+        (
+            "alias_step",
+            _replace_once(
+                _replace_once(
+                    text,
+                    "jobs:\n",
+                    "x-step: &extra {name: extra, shell: pwsh, "
+                    "run: 'echo ${{ inputs.glb }}'}\njobs:\n",
+                ),
+                median_anchor,
+                "      - *extra\n" + median_anchor,
+            ),
+        ),
+        (
+            "double_quoted_hex",
+            before_median(
+                '      - name: extra\n'
+                '        run: "echo \\x24\\x7B\\x7B inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "double_quoted_unicode",
+            before_median(
+                '      - name: extra\n'
+                '        run: "echo \\u0024\\u007B\\u007B inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "escaped_line_break",
+            before_median(
+                '      - name: extra\n        run: "echo $\\\n'
+                '          {{ inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "quoted_pull_request_target",
+            on_insert('  "pull_request_target":\n'),
+        ),
+        (
+            "single_quoted_pull_request",
+            on_insert("  'pull_request':\n"),
+        ),
+        (
+            "single_quoted_pull_request_target",
+            on_insert("  'pull_request_target':\n"),
+        ),
+        (
+            "quoted_workflow_run",
+            on_insert('  "workflow_run":\n'),
+        ),
+        (
+            "quoted_id_token",
+            _replace_once(
+                text,
+                perm_anchor,
+                'permissions:\n  contents: read\n  "id-token": write\n',
+            ),
+        ),
+        (
+            "job_write_all",
+            _replace_once(
+                text,
+                capture_anchor,
+                "  capture:\n    permissions: write-all\n    name: gpu_frame_budget\n",
+            ),
+        ),
+        (
+            "job_id_token_write",
+            _replace_once(
+                text,
+                capture_anchor,
+                "  capture:\n"
+                "    permissions:\n"
+                "      contents: write\n"
+                "      id-token: write\n"
+                "    name: gpu_frame_budget\n",
+            ),
+        ),
+        (
+            "indented_trigger",
+            _replace_once(
+                text,
+                on_anchor,
+                "on:\n   pull_request_target:\n  workflow_dispatch:\n",
+            ),
+        ),
+        (
+            "env_persist_credentials",
+            _replace_once(
+                text,
+                with_anchor,
+                "        with:\n"
+                "          persist-credentials: true\n"
+                "        env:\n"
+                "          persist-credentials: false\n",
+            ),
+        ),
+        (
+            "second_checkout_true",
+            _replace_once(
+                text,
+                toolchain_anchor,
+                "      - uses: actions/checkout@"
+                "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+                "        with:\n"
+                "          persist-credentials: true\n"
+                + toolchain_anchor,
+            ),
+        ),
+        (
+            "sibling_aw_glb",
+            _replace_once(
+                text,
+                env_anchor,
+                "        env:\n"
+                "          AW_GLB: ${{ github.event.pull_request.title }}\n"
+                "        with:\n"
+                "          AW_GLB: ${{ inputs.glb }}\n",
+            ),
+        ),
+        (
+            "duplicate_shell",
+            _replace_once(
+                text,
+                shell_anchor,
+                "        shell: pwsh\n        shell: bash\n",
+            ),
+        ),
+        (
+            "pwsh_comment_glb",
+            _replace_once(
+                text,
+                cargo_anchor,
+                '          # --glb "$env:AW_GLB"\n' + cargo_without_glb,
+            ),
+        ),
+        (
+            "echo_glb_token",
+            _replace_once(
+                text,
+                cargo_anchor,
+                "          echo '--glb \"$env:AW_GLB\"'\n" + cargo_without_glb,
+            ),
+        ),
+        (
+            "local_composite_uses",
+            before_median(
+                "      - uses: ./.github/actions/gpu-capture\n"
+                "        with:\n"
+                "          glb: ${{ inputs.glb }}\n"
+            ),
+        ),
+        (
+            "job_level_uses",
+            _replace_once(
+                text,
+                "jobs:\n  capture:\n",
+                "jobs:\n"
+                "  relay:\n"
+                "    uses: ./.github/workflows/reusable-capture.yml\n"
+                "    with:\n"
+                "      glb: ${{ inputs.glb }}\n"
+                "  capture:\n",
+            ),
+        ),
+        (
+            "shell_bash",
+            _replace_once(text, shell_anchor, "        shell: bash\n"),
+        ),
+        (
+            "zero_run_bodies",
+            _replace_once(text, run_anchor + cargo_anchor, ""),
+        ),
+        (
+            "unnamed_run",
+            before_median('      - run: echo "${{ inputs.glb }}"\n'),
+        ),
+        (
+            "unnamed_run_block",
+            before_median("      - run: |\n" + expression_line),
+        ),
+        (
+            "commented_out_with",
+            _replace_once(
+                text,
+                with_anchor,
+                "        # with:\n        #   persist-credentials: false\n",
+            ),
+        ),
+        (
+            "inlined_expression",
+            _replace_once(text, '--glb "$env:AW_GLB"', '--glb "${{ inputs.glb }}"'),
+        ),
+        (
+            "unquoted_glb",
+            _replace_once(text, '--glb "$env:AW_GLB"', "--glb $env:AW_GLB"),
+        ),
+        (
+            "dropped_credentials",
+            _replace_once(text, cred_anchor, ""),
+        ),
+        (
+            "block_header_2",
+            run_header("        run: |2\n"),
+        ),
+        (
+            "block_header_strip_2",
+            run_header("        run: |-2\n"),
+        ),
+        (
+            "block_header_2_strip",
+            run_header("        run: |2-\n"),
+        ),
+        (
+            "block_header_comment",
+            run_header("        run: | # c\n"),
+        ),
+        (
+            "folded_gt",
+            run_header("        run: >\n"),
+        ),
+        (
+            "kept_block_header",
+            run_header("        run: |+\n"),
+        ),
+        (
+            "comment_expression",
+            _replace_once(
+                _replace_once(
+                    text,
+                    run_anchor,
+                    "        run: | # ${{ inputs.glb }}\n",
+                ),
+                "permissions:\n",
+                "# ${{ inputs.glb }}\npermissions:\n",
+            ),
+        ),
+        (
+            "comment_credentials",
+            _replace_once(
+                text,
+                cred_anchor,
+                "          persist-credentials: true\n"
+                "          # persist-credentials: false\n",
+            ),
+        ),
+        (
+            "comment_aw_glb",
+            _replace_once(
+                text,
+                "          AW_GLB: ${{ inputs.glb }}\n",
+                "          # AW_GLB: ${{ inputs.glb }}\n"
+                "          AW_GLB: ${{ github.event.pull_request.title }}\n",
+            ),
+        ),
+        (
+            "comment_trigger",
+            _replace_once(
+                text,
+                on_anchor,
+                "on:\n  workflow_dispatch:\n  # pull_request_target:\n",
+            ),
+        ),
+        (
+            "comment_permission",
+            _replace_once(
+                text,
+                perm_anchor,
+                "permissions:\n  contents: read\n  # id-token: write\n",
+            ),
+        ),
+        (
+            "pull_request_target",
+            on_insert("  pull_request_target:\n"),
+        ),
+        (
+            "pull_request",
+            on_insert("  pull_request:\n"),
+        ),
+        (
+            "workflow_run",
+            on_insert("  workflow_run:\n"),
+        ),
+        (
+            "list_form_on",
+            _replace_once(text, on_anchor, "on: [workflow_dispatch, pull_request]\n"),
+        ),
+        (
+            "quoted_on_key",
+            _replace_once(text, "on:\n", '"on":\n'),
+        ),
+        (
+            "id_token_write",
+            _replace_once(
+                text,
+                perm_anchor,
+                "permissions:\n  contents: read\n  id-token: write\n",
+            ),
+        ),
+        (
+            "top_level_write_all",
+            _replace_once(text, perm_anchor, "permissions: write-all\n"),
+        ),
+        (
+            "flow_permissions",
+            _replace_once(
+                text,
+                perm_anchor,
+                "permissions: {contents: read, id-token: write}\n",
+            ),
+        ),
+        (
+            "flow_with",
+            _replace_once(
+                text,
+                with_anchor,
+                "        with: {persist-credentials: true}\n",
+            ),
+        ),
+        (
+            "script_line_hash",
+            _replace_once(
+                text,
+                cargo_anchor,
+                "          # ${{ inputs.glb }}\n" + cargo_anchor,
+            ),
+        ),
+        (
+            "second_block_line",
+            _replace_once(text, cargo_anchor, cargo_anchor + expression_line),
+        ),
+        (
+            "tag_run",
+            before_median(
+                '      - name: extra\n        run: !!str "${{ inputs.glb }}"\n'
+            ),
+        ),
+        (
+            "second_job_expression",
+            text
+            + "  other:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            '      - run: echo "${{ inputs.glb }}"\n',
+        ),
+        (
+            "trailing_space",
+            _replace_once(text, "  contents: read\n", "  contents: read \n"),
+        ),
+        (
+            "permissions_space_before_colon",
+            _replace_once(
+                text,
+                capture_anchor,
+                "  capture:\n"
+                "    name: gpu_frame_budget\n"
+                "    permissions : write-all\n",
+            ),
+        ),
+        (
+            "explicit_permissions_key",
+            _replace_once(
+                text,
+                capture_anchor,
+                "  capture:\n"
+                "    name: gpu_frame_budget\n"
+                "    ? permissions\n"
+                "    : write-all\n",
+            ),
+        ),
+        (
+            "quoted_permissions_write",
+            _replace_once(
+                text,
+                capture_anchor,
+                "  capture:\n"
+                "    name: gpu_frame_budget\n"
+                '    "permissions":\n'
+                "      contents: write\n"
+                "      id-token: write\n",
+            ),
+        ),
+        (
+            "single_quoted_permissions_write",
+            _replace_once(
+                text,
+                capture_anchor,
+                "  capture:\n"
+                "    name: gpu_frame_budget\n"
+                "    'permissions':\n"
+                "      contents: write\n"
+                "      id-token: write\n",
+            ),
+        ),
+        (
+            "plain_run_space_before_colon",
+            before_median(
+                "      - name: extra\n        run : Write-Output pwned\n"
+            ),
+        ),
+        (
+            "explicit_plain_run",
+            before_median(
+                "      - name: extra\n"
+                "        ? run\n"
+                "        : Write-Output pwned\n"
+            ),
+        ),
+        (
+            "uses_space_persist_credentials",
+            _replace_once(
+                text,
+                toolchain_anchor,
+                "      - uses : actions/checkout@"
+                "3d3c42e5aac5ba805825da76410c181273ba90b1\n"
+                "        with:\n"
+                "          persist-credentials : true\n"
+                + toolchain_anchor,
+            ),
+        ),
+        (
+            "relay_secrets_inherit",
+            _replace_once(
+                text,
+                "jobs:\n  capture:\n",
+                "jobs:\n"
+                "  relay:\n"
+                "    uses : ./.github/workflows/reusable-capture.yml\n"
+                "    secrets : inherit\n"
+                "  capture:\n",
+            ),
+        ),
+        (
+            "other_job_space_keys",
+            _replace_once(
+                text,
+                "jobs:\n  capture:\n",
+                "jobs:\n"
+                "  other:\n"
+                "    runs-on : ubuntu-latest\n"
+                "    permissions : write-all\n"
+                "    steps:\n"
+                "      - run : echo pwned\n"
+                "  capture:\n",
+            ),
+        ),
+        (
+            "other_job_quoted_keys",
+            _replace_once(
+                text,
+                "jobs:\n  capture:\n",
+                "jobs:\n"
+                "  other:\n"
+                '    "runs-on": ubuntu-latest\n'
+                '    "permissions": write-all\n'
+                "    steps:\n"
+                '      - "run": echo pwned\n'
+                "  capture:\n",
+            ),
+        ),
+        (
+            "path_beside_aw_glb",
+            _replace_once(
+                text,
+                env_anchor,
+                "        env:\n          AW_GLB: ${{ inputs.glb }}\n"
+                "          PATH: C:\\evil\n",
+            ),
+        ),
+        (
+            "working_directory_step",
+            _replace_once(
+                text,
+                shell_anchor,
+                "        shell: pwsh\n        working-directory: C:\\evil\n",
+            ),
+        ),
+    ]
+    _reject_gpu_frame_budget_fixture_list(cases, _normalize_line_endings(text))
+    return cases
+
+
+def _reject_gpu_frame_budget_fixture_list(
+    cases: list[tuple[str, str]], canonical: str
+) -> None:
+    """Reject a duplicate fixture name or a fixture equal to `canonical`.
+
+    The duplicate message is `duplicate policy fixture name`.
+    A fixture equal to `canonical` raises `{name} matches the canonical text`.
+    """
+    names = [name for name, _mutant in cases]
+    if len(names) != len(set(names)):
+        raise AssertionError("duplicate policy fixture name")
+    for name, mutant in cases:
+        if _normalize_line_endings(mutant) == canonical:
+            raise AssertionError(f"{name} matches the canonical text")
+
+
+def _line_diff_spans(canonical: str, mutant: str) -> tuple[tuple[str, str], ...]:
+    """Return each non-equal line span as `(deleted, inserted)`."""
+    left = canonical.splitlines(keepends=True)
+    right = mutant.splitlines(keepends=True)
+    spans: list[tuple[str, str]] = []
+    matcher = difflib.SequenceMatcher(a=left, b=right, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+        spans.append(("".join(left[i1:i2]), "".join(right[j1:j2])))
+    return tuple(spans)
+
+
+# Named form of each gpu_frame_budget_policy_cases entry: the line diff
+# against the canonical workflow text, as (deleted, inserted) spans.
+_GPU_FRAME_BUDGET_NAMED_FORMS: dict[str, tuple[tuple[str, str], ...]] = {
+    'quoted_run_key': (
+        ('', '      - name: extra\n        "run": echo "${{ inputs.glb }}"\n'),
+    ),
+    'flow_step': (
+        ('', "      - {name: extra, shell: pwsh, run: 'echo ${{ inputs.glb }}'}\n"),
+    ),
+    'run_space_before_colon': (
+        ('', '      - name: extra\n        run : echo "${{ inputs.glb }}"\n'),
+    ),
+    'empty_run_indented': (
+        ('', '      - name: extra\n        run:\n          echo ${{ inputs.glb }}\n'),
+    ),
+    'double_quoted_split': (
+        ('', '      - name: extra\n        run: "echo\n          ${{ inputs.glb }}"\n'),
+    ),
+    'single_quoted_split': (
+        ('', "      - name: extra\n        run: 'echo\n          ${{ inputs.glb }}'\n"),
+    ),
+    'plain_continuation': (
+        ('', '      - name: extra\n        run: echo\n          ${{ inputs.glb }}\n'),
+    ),
+    'hash_without_space': (
+        ('', '      - run: echo x#${{ inputs.glb }}\n'),
+    ),
+    'explicit_run_key': (
+        ('', '      - name: extra\n        ? run\n        : echo "${{ inputs.glb }}"\n'),
+    ),
+    'alias_run_value': (
+        ('', '      - name: extra\n        env:\n          PAYLOAD: &payload echo ${{ inputs.glb }}\n        run: *payload\n'),
+    ),
+    'alias_step': (
+        ('', "x-step: &extra {name: extra, shell: pwsh, run: 'echo ${{ inputs.glb }}'}\n"),
+        ('', '      - *extra\n'),
+    ),
+    'double_quoted_hex': (
+        ('', '      - name: extra\n        run: "echo \\x24\\x7B\\x7B inputs.glb }}"\n'),
+    ),
+    'double_quoted_unicode': (
+        ('', '      - name: extra\n        run: "echo \\u0024\\u007B\\u007B inputs.glb }}"\n'),
+    ),
+    'escaped_line_break': (
+        ('', '      - name: extra\n        run: "echo $\\\n          {{ inputs.glb }}"\n'),
+    ),
+    'quoted_pull_request_target': (
+        ('', '  "pull_request_target":\n'),
+    ),
+    'single_quoted_pull_request': (
+        ('', "  'pull_request':\n"),
+    ),
+    'single_quoted_pull_request_target': (
+        ('', "  'pull_request_target':\n"),
+    ),
+    'quoted_workflow_run': (
+        ('', '  "workflow_run":\n'),
+    ),
+    'quoted_id_token': (
+        ('', '  "id-token": write\n'),
+    ),
+    'job_write_all': (
+        ('', '    permissions: write-all\n'),
+    ),
+    'job_id_token_write': (
+        ('', '    permissions:\n      contents: write\n      id-token: write\n'),
+    ),
+    'indented_trigger': (
+        ('', '   pull_request_target:\n'),
+    ),
+    'env_persist_credentials': (
+        ('', '          persist-credentials: true\n        env:\n'),
+    ),
+    'second_checkout_true': (
+        ('', '      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n        with:\n          persist-credentials: true\n'),
+    ),
+    'sibling_aw_glb': (
+        ('', '          AW_GLB: ${{ github.event.pull_request.title }}\n        with:\n'),
+    ),
+    'duplicate_shell': (
+        ('', '        shell: bash\n'),
+    ),
+    'pwsh_comment_glb': (
+        ('          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "$env:AW_GLB"\n', '          # --glb "$env:AW_GLB"\n          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy\n'),
+    ),
+    'echo_glb_token': (
+        ('          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "$env:AW_GLB"\n', '          echo \'--glb "$env:AW_GLB"\'\n          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy\n'),
+    ),
+    'local_composite_uses': (
+        ('', '      - uses: ./.github/actions/gpu-capture\n        with:\n          glb: ${{ inputs.glb }}\n'),
+    ),
+    'job_level_uses': (
+        ('', '  relay:\n    uses: ./.github/workflows/reusable-capture.yml\n    with:\n      glb: ${{ inputs.glb }}\n'),
+    ),
+    'shell_bash': (
+        ('        shell: pwsh\n', '        shell: bash\n'),
+    ),
+    'zero_run_bodies': (
+        ('        run: |\n          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "$env:AW_GLB"\n', ''),
+    ),
+    'unnamed_run': (
+        ('', '      - run: echo "${{ inputs.glb }}"\n'),
+    ),
+    'unnamed_run_block': (
+        ('', '      - run: |\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'commented_out_with': (
+        ('        with:\n          persist-credentials: false\n', '        # with:\n        #   persist-credentials: false\n'),
+    ),
+    'inlined_expression': (
+        ('          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "$env:AW_GLB"\n', '          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "${{ inputs.glb }}"\n'),
+    ),
+    'unquoted_glb': (
+        ('          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb "$env:AW_GLB"\n', '          cargo run -p astraweave-render --release --features gpu-frame-budget --bin gpu_frame_budget -- --scene heavy --glb $env:AW_GLB\n'),
+    ),
+    'dropped_credentials': (
+        ('          persist-credentials: false\n', ''),
+    ),
+    'block_header_2': (
+        ('        run: |\n', '        run: |2\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'block_header_strip_2': (
+        ('        run: |\n', '        run: |-2\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'block_header_2_strip': (
+        ('        run: |\n', '        run: |2-\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'block_header_comment': (
+        ('        run: |\n', '        run: | # c\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'folded_gt': (
+        ('        run: |\n', '        run: >\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'kept_block_header': (
+        ('        run: |\n', '        run: |+\n          echo "${{ inputs.glb }}"\n'),
+    ),
+    'comment_expression': (
+        ('', '# ${{ inputs.glb }}\n'),
+        ('        run: |\n', '        run: | # ${{ inputs.glb }}\n'),
+    ),
+    'comment_credentials': (
+        ('          persist-credentials: false\n', '          persist-credentials: true\n          # persist-credentials: false\n'),
+    ),
+    'comment_aw_glb': (
+        ('          AW_GLB: ${{ inputs.glb }}\n', '          # AW_GLB: ${{ inputs.glb }}\n          AW_GLB: ${{ github.event.pull_request.title }}\n'),
+    ),
+    'comment_trigger': (
+        ('', '  # pull_request_target:\n'),
+    ),
+    'comment_permission': (
+        ('', '  # id-token: write\n'),
+    ),
+    'pull_request_target': (
+        ('', '  pull_request_target:\n'),
+    ),
+    'pull_request': (
+        ('', '  pull_request:\n'),
+    ),
+    'workflow_run': (
+        ('', '  workflow_run:\n'),
+    ),
+    'list_form_on': (
+        ('on:\n  workflow_dispatch:\n', 'on: [workflow_dispatch, pull_request]\n'),
+    ),
+    'quoted_on_key': (
+        ('on:\n', '"on":\n'),
+    ),
+    'id_token_write': (
+        ('', '  id-token: write\n'),
+    ),
+    'top_level_write_all': (
+        ('permissions:\n  contents: read\n', 'permissions: write-all\n'),
+    ),
+    'flow_permissions': (
+        ('permissions:\n  contents: read\n', 'permissions: {contents: read, id-token: write}\n'),
+    ),
+    'flow_with': (
+        ('        with:\n          persist-credentials: false\n', '        with: {persist-credentials: true}\n'),
+    ),
+    'script_line_hash': (
+        ('', '          # ${{ inputs.glb }}\n'),
+    ),
+    'second_block_line': (
+        ('', '          echo "${{ inputs.glb }}"\n'),
+    ),
+    'tag_run': (
+        ('', '      - name: extra\n        run: !!str "${{ inputs.glb }}"\n'),
+    ),
+    'second_job_expression': (
+        ('', '  other:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo "${{ inputs.glb }}"\n'),
+    ),
+    'trailing_space': (
+        ('  contents: read\n', '  contents: read \n'),
+    ),
+    'permissions_space_before_colon': (
+        ('', '    permissions : write-all\n'),
+    ),
+    'explicit_permissions_key': (
+        ('', '    ? permissions\n    : write-all\n'),
+    ),
+    'quoted_permissions_write': (
+        ('', '    "permissions":\n      contents: write\n      id-token: write\n'),
+    ),
+    'single_quoted_permissions_write': (
+        ('', "    'permissions':\n      contents: write\n      id-token: write\n"),
+    ),
+    'plain_run_space_before_colon': (
+        ('', '      - name: extra\n        run : Write-Output pwned\n'),
+    ),
+    'explicit_plain_run': (
+        ('', '      - name: extra\n        ? run\n        : Write-Output pwned\n'),
+    ),
+    'uses_space_persist_credentials': (
+        ('', '      - uses : actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n        with:\n          persist-credentials : true\n'),
+    ),
+    'relay_secrets_inherit': (
+        ('', '  relay:\n    uses : ./.github/workflows/reusable-capture.yml\n    secrets : inherit\n'),
+    ),
+    'other_job_space_keys': (
+        ('', '  other:\n    runs-on : ubuntu-latest\n    permissions : write-all\n    steps:\n      - run : echo pwned\n'),
+    ),
+    'other_job_quoted_keys': (
+        ('', '  other:\n    "runs-on": ubuntu-latest\n    "permissions": write-all\n    steps:\n      - "run": echo pwned\n'),
+    ),
+    'path_beside_aw_glb': (
+        ('', '          PATH: C:\\evil\n'),
+    ),
+    'working_directory_step': (
+        ('', '        working-directory: C:\\evil\n'),
+    ),
+}
+
+
 def assert_alert_followup_runs(text: str) -> None:
     """Issue and upload steps run after a failed check that set has_regressions."""
     outputs = {("regression_check", "has_regressions"): "true"}
@@ -555,6 +1612,113 @@ def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
         raise AssertionError("summary must capture python output before eval")
     if ': "${DECIDED:?}"' not in run or '"${SCORE:?}"' not in run:
         raise AssertionError("summary must require DECIDED and SCORE")
+
+
+def _gpu_frame_budget_property_samples(golden: str) -> list[tuple[str, str]]:
+    """Return `(message, text)` pairs for `WorkflowPolicyTest` property checks.
+
+    The first 15 texts are `golden` plus one edit. The other 12 are the
+    `gpu_frame_budget_policy_cases` texts named by
+    `_GPU_FRAME_BUDGET_JOBS_LINE_FORMS`, in that order. 27 texts.
+    The second text prefixes `golden` with a top-level `Xevil: write-all`
+    line and fails only `gpu-frame-budget canonical keys`.
+    """
+    samples = [
+        ("gpu-frame-budget canonical keys", golden + "env:\n  FOO: 1\n"),
+        (
+            "gpu-frame-budget canonical keys",
+            "Xevil: write-all\n" + golden,
+        ),
+        (
+            "gpu-frame-budget on is not workflow_dispatch only",
+            _replace_once(golden, "on:\n", "on: [workflow_dispatch]\n"),
+        ),
+        (
+            "gpu-frame-budget on is not workflow_dispatch only",
+            _replace_once(
+                golden,
+                "  workflow_dispatch:\n",
+                "  workflow_dispatch:\n  pull_request_target:\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget on is not workflow_dispatch only",
+            _replace_once(
+                golden,
+                "    inputs:\n",
+                "    inputs:\n    pull_request:\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget permissions are not contents: read",
+            _replace_once(
+                golden,
+                "  contents: read\n",
+                "  contents: read\n  id-token: write\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(
+                golden,
+                "  capture:\n",
+                "  capture:\n    permissions: write-all\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(
+                golden,
+                _GPU_FRAME_BUDGET_RUNS_ON,
+                "    runs-on: ubuntu-latest\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(
+                golden,
+                "3d3c42e5aac5ba805825da76410c181273ba90b1",
+                "3d3c42e5aac5ba805825da76410c181273ba90b0",
+            ),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(
+                golden,
+                "          persist-credentials: false\n",
+                "          persist-credentials: true\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(golden, "        shell: pwsh\n", "        shell: bash\n"),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(golden, _GPU_FRAME_BUDGET_ENV, "          AW_GLB: literal\n"),
+        ),
+        ("gpu-frame-budget expression", "# ${{ inputs.glb }}\n" + golden),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(
+                golden,
+                "      - name: Median draw_into\n",
+                "      - run: echo x\n      - name: Median draw_into\n",
+            ),
+        ),
+        (
+            "gpu-frame-budget jobs block",
+            _replace_once(
+                golden,
+                _GPU_FRAME_BUDGET_CARGO,
+                _GPU_FRAME_BUDGET_CARGO.replace("--scene heavy", "--scene light"),
+            ),
+        ),
+    ]
+    by_name = dict(gpu_frame_budget_policy_cases(golden))
+    for name in _GPU_FRAME_BUDGET_JOBS_LINE_FORMS:
+        samples.append(("gpu-frame-budget jobs block", by_name[name]))
+    return samples
 
 
 class WorkflowPolicyTest(unittest.TestCase):
@@ -1148,6 +2312,332 @@ class WorkflowPolicyTest(unittest.TestCase):
             mutant = mutant.replace(expr, stripped, 1)
         with self.assertRaises(AssertionError):
             assert_alert_followup_runs(mutant)
+
+    def test_gpu_frame_budget_dispatch_input_is_env(self) -> None:
+        """The checked-in workflow matches the golden file after normalization.
+
+        `_gpu_frame_budget_workflow_text` reads the workflow without following
+        a symlink. `assert_gpu_frame_budget_dispatch_input_is_env` reads the
+        golden the same way, requires
+        `_assert_gpu_frame_budget_canonical_properties`, and compares the
+        whole text after CRLF and CR become LF. The same text with CRLF or
+        CR line endings passes. Every case from
+        `gpu_frame_budget_policy_cases` fails
+        `_assert_gpu_frame_budget_canonical_properties` and fails
+        `assert_gpu_frame_budget_dispatch_input_is_env` with
+        `gpu-frame-budget.yml is not the canonical workflow text`.
+        """
+        raw = _gpu_frame_budget_workflow_text()
+        normalized = _normalize_line_endings(raw)
+        assert_gpu_frame_budget_dispatch_input_is_env(raw)
+        assert_gpu_frame_budget_dispatch_input_is_env(normalized.replace("\n", "\r\n"))
+        assert_gpu_frame_budget_dispatch_input_is_env(normalized.replace("\n", "\r"))
+        for name, mutant in gpu_frame_budget_policy_cases(raw):
+            self.assertNotEqual(_normalize_line_endings(mutant), normalized, name)
+            with self.assertRaises(AssertionError, msg=name):
+                _assert_gpu_frame_budget_canonical_properties(
+                    _normalize_line_endings(mutant)
+                )
+            with self.assertRaises(AssertionError, msg=name) as caught:
+                assert_gpu_frame_budget_dispatch_input_is_env(mutant)
+            self.assertEqual(
+                str(caught.exception),
+                "gpu-frame-budget.yml is not the canonical workflow text",
+                name,
+            )
+
+    def test_gpu_frame_budget_canonical_properties(self) -> None:
+        """Each of the 27 samples fails only the guard named by its message.
+
+        The canonical text passes. `_assert_gpu_frame_budget_canonical_properties`
+        raises the first message from `_gpu_frame_budget_guard_failures`.
+        `name: x` fails keys, then `on`, then permissions, then the jobs
+        block. Both canonical-keys samples and the expression sample keep
+        `_GPU_FRAME_BUDGET_JOBS`. The second sample is the canonical text
+        prefixed with a top-level `Xevil: write-all` line. Two `${{` lines
+        before the canonical text produce one expression message. A line
+        whose text is `{{` has no `$` and adds no
+        `gpu-frame-budget expression` message. Nine samples are pinned to
+        the `_replace_once` text that inserts `pull_request_target`,
+        `pull_request`, `id-token: write`, `permissions: write-all`,
+        `runs-on: ubuntu-latest`, `persist-credentials: true`,
+        `shell: bash`, `AW_GLB: literal`, or `run: echo x`. The first
+        `on` key is the block `_top_level_block` returns.
+        """
+        golden = _canonical_gpu_frame_budget_text()
+        _assert_gpu_frame_budget_canonical_properties(golden)
+        samples = _gpu_frame_budget_property_samples(golden)
+        self.assertEqual(len(samples), 27)
+        self.assertEqual(len(_GPU_FRAME_BUDGET_JOBS_LINE_FORMS), 12)
+        keys_message, keys_sample = samples[0]
+        self.assertEqual(keys_message, "gpu-frame-budget canonical keys")
+        self.assertEqual(keys_sample, golden + "env:\n  FOO: 1\n")
+        self.assertEqual(
+            tuple(_top_level_block(keys_sample.splitlines(keepends=True), "jobs")),
+            _GPU_FRAME_BUDGET_JOBS,
+        )
+        prefix_message, prefix_sample = samples[1]
+        self.assertEqual(prefix_message, "gpu-frame-budget canonical keys")
+        self.assertEqual(prefix_sample, "Xevil: write-all\n" + golden)
+        self.assertEqual(
+            tuple(_top_level_block(prefix_sample.splitlines(keepends=True), "jobs")),
+            _GPU_FRAME_BUDGET_JOBS,
+        )
+        pinned = [text for _message, text in samples if "ba90b0" in text]
+        self.assertEqual(pinned, [
+            _replace_once(
+                golden,
+                "3d3c42e5aac5ba805825da76410c181273ba90b1",
+                "3d3c42e5aac5ba805825da76410c181273ba90b0",
+            )
+        ])
+        lit = [text for _message, text in samples if "--scene light" in text]
+        self.assertEqual(lit, [
+            _replace_once(
+                golden,
+                _GPU_FRAME_BUDGET_CARGO,
+                _GPU_FRAME_BUDGET_CARGO.replace("--scene heavy", "--scene light"),
+            )
+        ])
+        insertions = (
+            (
+                "  workflow_dispatch:\n",
+                "  workflow_dispatch:\n  pull_request_target:\n",
+            ),
+            (
+                "    inputs:\n",
+                "    inputs:\n    pull_request:\n",
+            ),
+            (
+                "  contents: read\n",
+                "  contents: read\n  id-token: write\n",
+            ),
+            (
+                "  capture:\n",
+                "  capture:\n    permissions: write-all\n",
+            ),
+            (
+                _GPU_FRAME_BUDGET_RUNS_ON,
+                "    runs-on: ubuntu-latest\n",
+            ),
+            (
+                "          persist-credentials: false\n",
+                "          persist-credentials: true\n",
+            ),
+            (
+                "        shell: pwsh\n",
+                "        shell: bash\n",
+            ),
+            (
+                _GPU_FRAME_BUDGET_ENV,
+                "          AW_GLB: literal\n",
+            ),
+            (
+                "      - name: Median draw_into\n",
+                "      - run: echo x\n      - name: Median draw_into\n",
+            ),
+        )
+        for old, new in insertions:
+            self.assertEqual(
+                [text for _message, text in samples if new in text],
+                [_replace_once(golden, old, new)],
+                new,
+            )
+        self.assertNotIn("$", "{{\n")
+        self.assertEqual(
+            _gpu_frame_budget_guard_failures("{{\n" + golden),
+            ["gpu-frame-budget canonical keys"],
+        )
+        expression = [
+            text
+            for message, text in samples
+            if message == "gpu-frame-budget expression"
+        ]
+        self.assertEqual(len(expression), 1)
+        self.assertEqual(
+            tuple(_top_level_block(expression[0].splitlines(keepends=True), "jobs")),
+            _GPU_FRAME_BUDGET_JOBS,
+        )
+        self.assertEqual(
+            _gpu_frame_budget_guard_failures("# ${{ a }}\n# ${{ b }}\n" + golden),
+            ["gpu-frame-budget expression"],
+        )
+        self.assertEqual(
+            _top_level_block(["on:\n", "  a:\n", "on:\n", "  b:\n"], "on"),
+            ["on:\n", "  a:\n"],
+        )
+        self.assertEqual(_top_level_block(["name: x\n"], "jobs"), [])
+        bare = "name: x\n"
+        self.assertEqual(
+            _gpu_frame_budget_guard_failures(bare),
+            [
+                "gpu-frame-budget canonical keys",
+                "gpu-frame-budget on is not workflow_dispatch only",
+                "gpu-frame-budget permissions are not contents: read",
+                "gpu-frame-budget jobs block",
+            ],
+        )
+        with self.assertRaises(AssertionError) as caught:
+            _assert_gpu_frame_budget_canonical_properties(bare)
+        self.assertEqual(str(caught.exception), "gpu-frame-budget canonical keys")
+        for message, sample in samples:
+            self.assertEqual(
+                _gpu_frame_budget_guard_failures(sample), [message], message
+            )
+            with self.assertRaises(AssertionError, msg=message) as caught:
+                _assert_gpu_frame_budget_canonical_properties(sample)
+            self.assertEqual(str(caught.exception), message, message)
+
+    def test_gpu_frame_budget_paired_golden_fails_properties(self) -> None:
+        """Each property sample fails when it is both the golden and the workflow.
+
+        `_gpu_frame_budget_property_samples` supplies the 27 texts. The
+        golden path is that text. `assert_gpu_frame_budget_dispatch_input_is_env`
+        receives the same text and raises that sample's message.
+        """
+        global _GPU_FRAME_BUDGET_GOLDEN
+        golden = _canonical_gpu_frame_budget_text()
+        samples = _gpu_frame_budget_property_samples(golden)
+        self.assertEqual(len(samples), 27)
+        previous = _GPU_FRAME_BUDGET_GOLDEN
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                path = Path(tmp) / "gpu_frame_budget_workflow.golden.yml"
+                _GPU_FRAME_BUDGET_GOLDEN = path
+                for message, sample in samples:
+                    path.write_text(sample, encoding="utf-8")
+                    with self.assertRaises(AssertionError, msg=message) as caught:
+                        assert_gpu_frame_budget_dispatch_input_is_env(sample)
+                    self.assertEqual(str(caught.exception), message, message)
+        finally:
+            _GPU_FRAME_BUDGET_GOLDEN = previous
+
+    def test_gpu_frame_budget_symlink_paths_fail_closed(self) -> None:
+        """A symlink at the workflow path or the golden path fails closed.
+
+        `_read_regular_utf8` keeps a leading BOM. A missing path raises
+        `FileNotFoundError`.
+        """
+        global WORKFLOWS, _GPU_FRAME_BUDGET_GOLDEN
+        real_workflow = (WORKFLOWS / "gpu-frame-budget.yml").read_bytes()
+        real_golden = _GPU_FRAME_BUDGET_GOLDEN.read_bytes()
+        previous_workflows = WORKFLOWS
+        previous_golden = _GPU_FRAME_BUDGET_GOLDEN
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                workflow_target = root / "workflow-target.yml"
+                workflow_target.write_bytes(real_workflow)
+                workflow_link = root / "gpu-frame-budget.yml"
+                workflow_link.symlink_to(workflow_target)
+                WORKFLOWS = root
+                with self.assertRaises(AssertionError) as caught:
+                    _gpu_frame_budget_workflow_text()
+                self.assertEqual(
+                    str(caught.exception),
+                    "gpu-frame-budget.yml path is a symlink",
+                )
+                golden_target = root / "golden-target.yml"
+                golden_target.write_bytes(real_golden)
+                golden_link = root / "gpu_frame_budget_workflow.golden.yml"
+                golden_link.symlink_to(golden_target)
+                _GPU_FRAME_BUDGET_GOLDEN = golden_link
+                with self.assertRaises(AssertionError) as caught:
+                    assert_gpu_frame_budget_dispatch_input_is_env(
+                        real_golden.decode("utf-8")
+                    )
+                self.assertEqual(
+                    str(caught.exception),
+                    "gpu_frame_budget_workflow.golden.yml path is a symlink",
+                )
+                kept = root / "kept.yml"
+                kept.write_bytes(b"\xef\xbb\xbfname: x\n")
+                self.assertTrue(_read_regular_utf8(kept).startswith("\ufeff"))
+                missing = root / "missing.yml"
+                with self.assertRaises(FileNotFoundError):
+                    _read_regular_utf8(missing)
+        finally:
+            WORKFLOWS = previous_workflows
+            _GPU_FRAME_BUDGET_GOLDEN = previous_golden
+
+    def test_gpu_frame_budget_fixtures_match_named_forms(self) -> None:
+        """Each policy fixture's line diff equals the form stored under its name.
+
+        The case names and order equal `_GPU_FRAME_BUDGET_NAMED_FORMS`.
+        A fixture that differs from the canonical text in any other line fails.
+        `_GPU_FRAME_BUDGET_JOBS_LINE_FORMS` is 12 names in that list, and each
+        of those texts fails with `gpu-frame-budget jobs block` only.
+        """
+        raw = _gpu_frame_budget_workflow_text()
+        normalized = _normalize_line_endings(raw)
+        cases = gpu_frame_budget_policy_cases(raw)
+        self.assertEqual(
+            [name for name, _mutant in cases],
+            list(_GPU_FRAME_BUDGET_NAMED_FORMS),
+        )
+        for name, mutant in cases:
+            self.assertEqual(
+                _line_diff_spans(normalized, _normalize_line_endings(mutant)),
+                _GPU_FRAME_BUDGET_NAMED_FORMS[name],
+                name,
+            )
+        self.assertEqual(
+            [name for name in _GPU_FRAME_BUDGET_JOBS_LINE_FORMS],
+            [
+                "permissions_space_before_colon",
+                "explicit_permissions_key",
+                "quoted_permissions_write",
+                "single_quoted_permissions_write",
+                "plain_run_space_before_colon",
+                "explicit_plain_run",
+                "uses_space_persist_credentials",
+                "relay_secrets_inherit",
+                "other_job_space_keys",
+                "other_job_quoted_keys",
+                "path_beside_aw_glb",
+                "working_directory_step",
+            ],
+        )
+        for name in _GPU_FRAME_BUDGET_JOBS_LINE_FORMS:
+            self.assertEqual(
+                _gpu_frame_budget_guard_failures(
+                    _normalize_line_endings(dict(cases)[name])
+                ),
+                ["gpu-frame-budget jobs block"],
+                name,
+            )
+
+    def test_gpu_frame_budget_fixture_list_rejects_duplicates_and_canonical(
+        self,
+    ) -> None:
+        """`_reject_gpu_frame_budget_fixture_list` rejects both bad lists.
+
+        A repeated name raises `duplicate policy fixture name`.
+        A fixture equal to the canonical text raises
+        `{name} matches the canonical text`.
+        """
+        with self.assertRaises(AssertionError) as duplicate:
+            _reject_gpu_frame_budget_fixture_list([("a", "x"), ("a", "y")], "z")
+        self.assertEqual(str(duplicate.exception), "duplicate policy fixture name")
+        with self.assertRaises(AssertionError) as same:
+            _reject_gpu_frame_budget_fixture_list([("kept", "z")], "z")
+        self.assertEqual(str(same.exception), "kept matches the canonical text")
+
+    def test_replace_once_rejects_zero_and_two_anchors(self) -> None:
+        """`_replace_once` raises when the anchor matches 0 times or 2 times.
+
+        Zero matches raise `policy fixture anchor missing`.
+        Two matches raise `policy fixture anchor matched more than once`.
+        """
+        with self.assertRaises(AssertionError) as zero:
+            _replace_once("alpha", "missing", "x")
+        self.assertEqual(str(zero.exception), "policy fixture anchor missing")
+        with self.assertRaises(AssertionError) as two:
+            _replace_once("alpha alpha", "alpha", "beta")
+        self.assertEqual(
+            str(two.exception), "policy fixture anchor matched more than once"
+        )
+        self.assertEqual(_replace_once("alpha", "alpha", "beta"), "beta")
 
 
 if __name__ == "__main__":
