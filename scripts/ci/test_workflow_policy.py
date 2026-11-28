@@ -449,7 +449,7 @@ _GPU_FRAME_BUDGET_CHECKOUT = (
     "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
 )
 _GPU_FRAME_BUDGET_TOOLCHAIN = (
-    "      - uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0\n"
+    "      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master\n"
 )
 _GPU_FRAME_BUDGET_RUNS_ON = "    runs-on: [self-hosted, Windows, gpu]\n"
 _GPU_FRAME_BUDGET_ENV = "          AW_GLB: ${{ inputs.glb }}\n"
@@ -470,6 +470,8 @@ _GPU_FRAME_BUDGET_JOBS = (
     "        with:\n",
     "          persist-credentials: false\n",
     _GPU_FRAME_BUDGET_TOOLCHAIN,
+    "        with:\n",
+    '          toolchain: "1.89.0"\n',
     "      - name: Median draw_into\n",
     "        shell: pwsh\n",
     "        env:\n",
@@ -599,8 +601,11 @@ def assert_gpu_frame_budget_dispatch_input_is_env(text: str) -> None:
 
 
 def _replace_once(text: str, old: str, new: str) -> str:
-    if text.count(old) != 1:
+    count = text.count(old)
+    if count == 0:
         raise AssertionError("policy fixture anchor missing")
+    if count != 1:
+        raise AssertionError("policy fixture anchor matched more than once")
     return text.replace(old, new, 1)
 
 
@@ -629,7 +634,7 @@ def gpu_frame_budget_policy_cases(text: str) -> list[tuple[str, str]]:
     )
     toolchain_anchor = (
         "      - uses: dtolnay/rust-toolchain@"
-        "d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0\n"
+        "df2a88e9fe4098bad09cb42c3dec7187f15861fc # master\n"
     )
     capture_anchor = "  capture:\n    name: gpu_frame_budget\n"
     expression_line = '          echo "${{ inputs.glb }}"\n'
@@ -1612,12 +1617,18 @@ def assert_mutation_ai_scoring_uses_strict_eval(text: str) -> None:
 def _gpu_frame_budget_property_samples(golden: str) -> list[tuple[str, str]]:
     """Return `(message, text)` pairs for `WorkflowPolicyTest` property checks.
 
-    The first 14 texts are `golden` plus one edit. The other 12 are the
+    The first 15 texts are `golden` plus one edit. The other 12 are the
     `gpu_frame_budget_policy_cases` texts named by
-    `_GPU_FRAME_BUDGET_JOBS_LINE_FORMS`, in that order. 26 texts.
+    `_GPU_FRAME_BUDGET_JOBS_LINE_FORMS`, in that order. 27 texts.
+    The second text prefixes `golden` with a top-level `Xevil: write-all`
+    line and fails only `gpu-frame-budget canonical keys`.
     """
     samples = [
         ("gpu-frame-budget canonical keys", golden + "env:\n  FOO: 1\n"),
+        (
+            "gpu-frame-budget canonical keys",
+            "Xevil: write-all\n" + golden,
+        ),
         (
             "gpu-frame-budget on is not workflow_dispatch only",
             _replace_once(golden, "on:\n", "on: [workflow_dispatch]\n"),
@@ -2332,26 +2343,34 @@ class WorkflowPolicyTest(unittest.TestCase):
             self.assertEqual(str(caught.exception), _GPU_FRAME_BUDGET_MISMATCH, name)
 
     def test_gpu_frame_budget_canonical_properties(self) -> None:
-        """Each of the 26 samples fails only the guard named by its message.
+        """Each of the 27 samples fails only the guard named by its message.
 
         The canonical text passes. `_assert_gpu_frame_budget_canonical_properties`
         raises the first message from `_gpu_frame_budget_guard_failures`.
         `name: x` fails keys, then `on`, then permissions, then the jobs
-        block. The canonical-keys sample and the expression sample keep
-        `_GPU_FRAME_BUDGET_JOBS`. Two `${{` lines before the canonical text
-        produce one expression message. The first `on` key is the block
-        `_top_level_block` returns.
+        block. Both canonical-keys samples and the expression sample keep
+        `_GPU_FRAME_BUDGET_JOBS`. The second sample is the canonical text
+        prefixed with a top-level `Xevil: write-all` line. Two `${{` lines
+        before the canonical text produce one expression message. The first
+        `on` key is the block `_top_level_block` returns.
         """
         golden = _canonical_gpu_frame_budget_text()
         _assert_gpu_frame_budget_canonical_properties(golden)
         samples = _gpu_frame_budget_property_samples(golden)
-        self.assertEqual(len(samples), 26)
+        self.assertEqual(len(samples), 27)
         self.assertEqual(len(_GPU_FRAME_BUDGET_JOBS_LINE_FORMS), 12)
         keys_message, keys_sample = samples[0]
         self.assertEqual(keys_message, "gpu-frame-budget canonical keys")
         self.assertEqual(keys_sample, golden + "env:\n  FOO: 1\n")
         self.assertEqual(
             tuple(_top_level_block(keys_sample.splitlines(keepends=True), "jobs")),
+            _GPU_FRAME_BUDGET_JOBS,
+        )
+        prefix_message, prefix_sample = samples[1]
+        self.assertEqual(prefix_message, "gpu-frame-budget canonical keys")
+        self.assertEqual(prefix_sample, "Xevil: write-all\n" + golden)
+        self.assertEqual(
+            tuple(_top_level_block(prefix_sample.splitlines(keepends=True), "jobs")),
             _GPU_FRAME_BUDGET_JOBS,
         )
         pinned = [text for _message, text in samples if "ba90b0" in text]
@@ -2413,14 +2432,14 @@ class WorkflowPolicyTest(unittest.TestCase):
     def test_gpu_frame_budget_paired_golden_fails_properties(self) -> None:
         """Each property sample fails when it is both the golden and the workflow.
 
-        `_gpu_frame_budget_property_samples` supplies the 26 texts. The
+        `_gpu_frame_budget_property_samples` supplies the 27 texts. The
         golden path is that text. `assert_gpu_frame_budget_dispatch_input_is_env`
         receives the same text and raises that sample's message.
         """
         global _GPU_FRAME_BUDGET_GOLDEN
         golden = _canonical_gpu_frame_budget_text()
         samples = _gpu_frame_budget_property_samples(golden)
-        self.assertEqual(len(samples), 26)
+        self.assertEqual(len(samples), 27)
         previous = _GPU_FRAME_BUDGET_GOLDEN
         try:
             with tempfile.TemporaryDirectory() as tmp:
@@ -2546,13 +2565,19 @@ class WorkflowPolicyTest(unittest.TestCase):
         self.assertEqual(str(same.exception), "kept matches the canonical text")
 
     def test_replace_once_rejects_zero_and_two_anchors(self) -> None:
-        """`_replace_once` raises when the anchor matches 0 times or 2 times."""
+        """`_replace_once` raises when the anchor matches 0 times or 2 times.
+
+        Zero matches raise `policy fixture anchor missing`.
+        Two matches raise `policy fixture anchor matched more than once`.
+        """
         with self.assertRaises(AssertionError) as zero:
             _replace_once("alpha", "missing", "x")
         self.assertEqual(str(zero.exception), "policy fixture anchor missing")
         with self.assertRaises(AssertionError) as two:
             _replace_once("alpha alpha", "alpha", "beta")
-        self.assertEqual(str(two.exception), "policy fixture anchor missing")
+        self.assertEqual(
+            str(two.exception), "policy fixture anchor matched more than once"
+        )
         self.assertEqual(_replace_once("alpha", "alpha", "beta"), "beta")
 
 
