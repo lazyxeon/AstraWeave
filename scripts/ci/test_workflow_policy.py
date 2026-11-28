@@ -2340,7 +2340,11 @@ class WorkflowPolicyTest(unittest.TestCase):
                 )
             with self.assertRaises(AssertionError, msg=name) as caught:
                 assert_gpu_frame_budget_dispatch_input_is_env(mutant)
-            self.assertEqual(str(caught.exception), _GPU_FRAME_BUDGET_MISMATCH, name)
+            self.assertEqual(
+                str(caught.exception),
+                "gpu-frame-budget.yml is not the canonical workflow text",
+                name,
+            )
 
     def test_gpu_frame_budget_canonical_properties(self) -> None:
         """Each of the 27 samples fails only the guard named by its message.
@@ -2351,7 +2355,13 @@ class WorkflowPolicyTest(unittest.TestCase):
         block. Both canonical-keys samples and the expression sample keep
         `_GPU_FRAME_BUDGET_JOBS`. The second sample is the canonical text
         prefixed with a top-level `Xevil: write-all` line. Two `${{` lines
-        before the canonical text produce one expression message. The first
+        before the canonical text produce one expression message. A line
+        whose text is `{{` has no `$` and adds no
+        `gpu-frame-budget expression` message. Nine samples are pinned to
+        the `_replace_once` text that inserts `pull_request_target`,
+        `pull_request`, `id-token: write`, `permissions: write-all`,
+        `runs-on: ubuntu-latest`, `persist-credentials: true`,
+        `shell: bash`, `AW_GLB: literal`, or `run: echo x`. The first
         `on` key is the block `_top_level_block` returns.
         """
         golden = _canonical_gpu_frame_budget_text()
@@ -2389,6 +2399,55 @@ class WorkflowPolicyTest(unittest.TestCase):
                 _GPU_FRAME_BUDGET_CARGO.replace("--scene heavy", "--scene light"),
             )
         ])
+        insertions = (
+            (
+                "  workflow_dispatch:\n",
+                "  workflow_dispatch:\n  pull_request_target:\n",
+            ),
+            (
+                "    inputs:\n",
+                "    inputs:\n    pull_request:\n",
+            ),
+            (
+                "  contents: read\n",
+                "  contents: read\n  id-token: write\n",
+            ),
+            (
+                "  capture:\n",
+                "  capture:\n    permissions: write-all\n",
+            ),
+            (
+                _GPU_FRAME_BUDGET_RUNS_ON,
+                "    runs-on: ubuntu-latest\n",
+            ),
+            (
+                "          persist-credentials: false\n",
+                "          persist-credentials: true\n",
+            ),
+            (
+                "        shell: pwsh\n",
+                "        shell: bash\n",
+            ),
+            (
+                _GPU_FRAME_BUDGET_ENV,
+                "          AW_GLB: literal\n",
+            ),
+            (
+                "      - name: Median draw_into\n",
+                "      - run: echo x\n      - name: Median draw_into\n",
+            ),
+        )
+        for old, new in insertions:
+            self.assertEqual(
+                [text for _message, text in samples if new in text],
+                [_replace_once(golden, old, new)],
+                new,
+            )
+        self.assertNotIn("$", "{{\n")
+        self.assertEqual(
+            _gpu_frame_budget_guard_failures("{{\n" + golden),
+            ["gpu-frame-budget canonical keys"],
+        )
         expression = [
             text
             for message, text in samples
