@@ -26,17 +26,18 @@ jobs:
     
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # Need full history for gh-pages
       
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@1.89.0
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
+          toolchain: "1.89.0"
           components: clippy
       
       - name: Cache Rust Dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: ${{ runner.os }}-astraweave
           cache-targets: false
@@ -182,7 +183,7 @@ jobs:
           EOF
       
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./gh-pages
@@ -193,7 +194,7 @@ jobs:
       
       - name: Create Regression Issue (if needed)
         if: steps.regression-check.outcome == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const title = '⚠️ Benchmark Regression Detected';

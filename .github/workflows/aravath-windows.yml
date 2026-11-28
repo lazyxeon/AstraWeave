@@ -87,7 +87,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: "1.89.0"
 
       - name: Install lavapipe
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libudev-dev libasound2-dev mesa-vulkan-drivers libvulkan1
@@ -122,7 +124,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: "1.89.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -209,7 +213,9 @@ jobs:
           lfs: true
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: "1.89.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

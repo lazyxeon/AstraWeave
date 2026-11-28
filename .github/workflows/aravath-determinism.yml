@@ -104,7 +104,9 @@ jobs:
 
       - name: Install Rust toolchain
         if: needs.scope.outputs.run == 'true'
-        uses: dtolnay/rust-toolchain@d77020bf130f2e8c39c025bf9c4c3a445fe2b9fa # 1.89.0
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
+        with:
+          toolchain: "1.89.0"
 
       - name: Cache Cargo
         if: needs.scope.outputs.run == 'true'

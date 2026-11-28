@@ -38,7 +38,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       
@@ -62,7 +62,7 @@ jobs:
             --shard-count 16
       
       - name: Upload benchmark artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: benchmark-results-${{ github.sha }}-shard-${{ matrix.shard_index }}
           path: benchmark_results/shard-${{ matrix.shard_index }}/
@@ -84,12 +84,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       - name: Download benchmark shards
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         continue-on-error: true
         with:
           pattern: benchmark-results-${{ github.sha }}-shard-*
@@ -213,7 +213,7 @@ jobs:
           echo "benchmark_count=$benchmark_count" >> "$GITHUB_OUTPUT"
 
       - name: Upload combined benchmark artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: benchmark-results-${{ github.sha }}
@@ -221,7 +221,7 @@ jobs:
           retention-days: 30
 
       - name: Store benchmark results for tracking
-        uses: benchmark-action/github-action-benchmark@v1.22.2
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         if: >-
           steps.merge.outputs.healthy == 'true' &&
           github.event_name == 'push' &&
@@ -250,7 +250,7 @@ jobs:
           gh-repository: github.com/${{ github.repository }}
           
       - name: Comment benchmark results on PR
-        uses: benchmark-action/github-action-benchmark@v1.22.2
+        uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
         if: >-
           steps.merge.outputs.healthy == 'true' &&
           github.event_name == 'pull_request' &&
@@ -388,7 +388,7 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.label.name == 'run-benchmarks'
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Rust CI setup
         uses: ./.github/actions/rust-ci-setup
