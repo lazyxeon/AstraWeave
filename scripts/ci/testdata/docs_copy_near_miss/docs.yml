@@ -1,0 +1,30 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Option points elsewhere
+        run: cp --target-directory=/tmp/out docs/archive/benchmark_dashboard
+      - name: Echo is a different directory
+        run: cp "$(echo docs/archive/benchmark_dashboardEXTRA)" docs/book/dashboard/benchmark_dashboard
+      - name: pushd leaves the checkout
+        run: |
+          pushd /tmp
+          cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard
+      - name: Verbose is not a destination
+        run: cp --verbose docs/archive/benchmark_dashboard /tmp/out
+      - name: Separate short option still names the other directory
+        run: cp -t /tmp/out docs/archive/benchmark_dashboard
+      - name: rsync does not read that long option
+        run: rsync --target-directory=docs/book/dashboard/benchmark_dashboard docs/archive/benchmark_dashboard /tmp/out
+      - name: pushd with no directory leaves the checkout
+        run: |
+          pushd
+          cp -r archive/benchmark_dashboard book/dashboard/benchmark_dashboard

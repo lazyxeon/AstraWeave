@@ -1,0 +1,18 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy Docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Copy
+        run: |
+          publish() {
+          cp -r "$1/benchmark_dashboard" "$2"
+          }
+          publish docs/archive docs/book/dashboard/benchmark_dashboard

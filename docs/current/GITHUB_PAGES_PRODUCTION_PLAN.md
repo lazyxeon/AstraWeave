@@ -78,43 +78,52 @@ Critical Stubs (All Core Systems):
 
 ### Task 0.1: Unify GitHub Pages Deployment Actions
 
-**Problem**: `docs.yml` uses `JamesIves/github-pages-deploy-action@v4` while `benchmark-dashboard.yml` uses `peaceiris/actions-gh-pages@v4` with `force_orphan: true`, causing mutual destruction.
+**Problem**: Regression Alerts published `./docs` to `dashboard`, and Documentation copied `docs/archive/benchmark_dashboard` into `docs/book/dashboard/benchmark_dashboard`. That pair replaces the dashboard at `dashboard/benchmark_dashboard`. `docs.yml` deploys with `peaceiris/actions-gh-pages@v4` and `keep_files: true`. `benchmark-dashboard.yml` publishes to `dashboard/benchmark_dashboard` with `keep_files: true`. No workflow sets `force_orphan`.
 
-**Solution**: Standardize on `peaceiris/actions-gh-pages@v4` with `keep_files: true` and use subdirectory deployment.
+**Solution**: The alert job publishes `./docs/benchmark_data` to `dashboard/benchmark_data` and leaves `force_orphan` unset. Documentation does not copy the archived dashboard into the book.
 
-**Changes Required**:
+**Publishers**:
 
-1. **Update `.github/workflows/docs.yml`**:
+1. **`.github/workflows/docs.yml`** deploy step:
 ```yaml
-# Replace line 58-63:
 - name: Deploy to GitHub Pages
-  if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
   uses: peaceiris/actions-gh-pages@v4
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     publish_dir: ./docs/book
     publish_branch: gh-pages
     keep_files: true
-    commit_message: 'Deploy mdBook documentation'
+    commit_message: 'Deploy mdBook documentation: ${{ github.sha }}'
 ```
 
-2. **Update `.github/workflows/benchmark-dashboard.yml`**:
+2. **`.github/workflows/benchmark_alert.yml`** publish step:
 ```yaml
-# Replace line 142-149 (remove force_orphan, add destination_dir):
-- name: Deploy to GitHub Pages
+- name: Deploy dashboard to GitHub Pages
+  if: steps.merge.outputs.healthy == 'true' && success()
   uses: peaceiris/actions-gh-pages@v4
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
-    publish_dir: ./gh-pages
+    publish_dir: ./docs/benchmark_data
     publish_branch: gh-pages
-    keep_files: true
-    destination_dir: benchmarks
-    commit_message: 'Update benchmark dashboard: ${{ github.sha }}'
+    destination_dir: dashboard/benchmark_data
+    commit_message: "Update benchmark dashboard (${{ github.sha }})"
+    user_name: 'github-actions[bot]'
+    user_email: 'github-actions[bot]@users.noreply.github.com'
 ```
+
+`docs.yml` must not copy `docs/archive/benchmark_dashboard` onto the book dashboard. `assert_docs_no_archive_benchmark_dashboard_copy` reads `working-directory` from the step, then the job `defaults.run`, then the workflow `defaults.run`. It strips a `github.workspace` expression and the `$GITHUB_WORKSPACE`, `${GITHUB_WORKSPACE}`, and `GITHUB_WORKSPACE` prefixes from that directory and from shell words. `cd` and `pushd` use the second word. An option in the `pushd` word is not a directory. `popd` pops the directory stack and does not read a directory word. A directory change before a newline or `;` replaces the directory for later commands. A directory change before `||`, or before `&&` when another command follows, keeps the earlier directory beside the new one, including when the next command is flush against `&&` or `||`. A command after `&&` or `||`, including an assignment-only command, may not run, so the earlier state is kept beside the new one. A directory change before a single `|` or a single `&` does not apply. `set +e`, `set "+e"`, `set +o errexit`, and `set -o errexit` change errexit, including when the option word is quoted. An assignment, `builtin`, `command`, or `eval` prefix may stand in front of `set`. A `set` inside an `if` compound or after `&&` or `||` keeps the earlier errexit beside the new one. `set +e` keeps the earlier directory beside a later `cd` or `pushd` until `set -e`. The shell template is read from the step, then the job `defaults.run`, then the workflow `defaults.run`. An unset shell starts with errexit on. A bash, sh, or dash template starts with errexit on only when it passes `-e` or `-o errexit`. `bash {0}` starts with errexit off. Words after `{0}` are script arguments and do not change errexit. `set --` ends option scanning, so a later `-e` or `+e` is not an option. The words after `--` are the positional parameters. `shopt -u -o errexit` and `shopt -uo errexit` turn errexit off, and `shopt -s -o errexit` turns it on. `shopt -s expand_aliases` makes a later alias run. An `eval` argument is shell text, quoted or unquoted, including a stored word and a function definition in that text. A redirection operator that contains `&` or `|` is not a command separator. A function body runs when that function is called, and the call binds the function's arguments. `cd -` uses the previous directory. Distinct previous directories stay in their states. An `OLDPWD` assignment sets that directory. `CDPATH` is searched for a `cd` operand with no slash. A workspace prefix in that value is resolved from the workspace root. An `EXIT` trap runs at the end of the step. A leading `--` is an option end. The trap is recorded when `EXIT`, `exit`, or `0` is one of the signal words. A sourced file under the workspace is read, including a function defined in that file. A stored variable in a directory word is expanded, including when the word is quoted, when the value holds a parameter, and when more text follows the parameter in the word. An unquoted glob in that value is matched. A `$GITHUB_WORKSPACE`, `${GITHUB_WORKSPACE}`, or `GITHUB_WORKSPACE` prefix is resolved from the workspace root. The errexit scan, the paren scan, the backtick scan, the shell word scan, and the shell template scan raise if the index does not advance. The shell scan raises if its index does not advance. A backslash immediately before a newline continues the command. A quoted `if`, `elif`, `then`, `else`, or `fi` is not a reserved word. A relative word is joined onto the current directory. A word that begins with `/` is resolved from the workspace root. A `cd` or `pushd` directory word with an unquoted `*`, `?`, or `[` that matches exactly one directory uses that directory. A quoted metacharacter stays literal. More than one match fails that directory change and keeps earlier copies. While errexit is on, later commands in that state do not run. Distinct shell states are capped at 32, and passing that cap raises. 32 states do not raise. 33 states raise. A quoted literal expression scan raises if its index does not advance. A blank or non-string `working-directory` is ignored. A source that is `docs/archive/benchmark_dashboard`, a file under it, or an ancestor (`docs/archive`, `docs`) counts when the other path is the book dashboard. The copy command is `cp`, `mv`, or `rsync`, matched by basename. A backslash in that word is a separator. A leading `command` or `builtin` word is skipped before `cd`, `pushd`, `popd`, and a copy, including when that word is quoted. A leading `{` group token is skipped the same way. A leading redirection is skipped the same way, including a file-descriptor redirection and more than one redirection. A leading `if`, `elif`, `then`, `else`, or `fi` is skipped when the word is unquoted, so a copy or directory change in that branch is read, including when it shares the command with `then` or `else`. A `cd`, `pushd`, `popd`, or assignment-only command inside an `if` compound is kept together with the state from before that command. A later copy is checked against each of those states. An unconditional `cd`, `pushd`, `popd`, or assignment still replaces the state. That scan raises if its index does not advance. `command` followed by an option is left in place. A leading `NAME=value` is skipped. An assignment-only command expands a workspace prefix and a stored parameter in the value, then stores it when no `$` or backtick remains. A later copy word that is `$name`, `${name}`, `$n`, or `${n}` uses it, including a one-character name and more text in the same word. The assignment scan raises if its index does not advance. `cp` and `mv` contribute a `--target-directory=` or `--target=` value. `echo`, or `echo -n`, of one literal path is reduced when `$(...)` or backticks are the whole word. A trailing `/*` is removed. The check reads one step at a time.
+
+A step whose `uses` contains `gh-pages` or `github-pages` is checked. When that `uses` also contains `github-pages-deploy-action`, the step is held to `folder`, `target-folder`, `single-commit`, `branch`, and `force`. `folder` and `target-folder` use the same normalization as `publish_dir`, including a dropped leading slash. `folder` must stay off `docs/archive/benchmark_dashboard` and files under it. Ancestors are not that check. A missing `folder` does not raise. `target-folder` must be present. A missing value, a blank value, and a path that normalizes to empty are the worktree root, and that root raises. `.`, `/`, and `dashboard/benchmark_dashboard/../..` are that root. `target-folder` must not be `dashboard` or `dashboard/benchmark_dashboard`, or a path under that directory, and must not be `dashboard/benchmark_data` or a path under it. `single-commit` must be unset or a known false. `branch` must be unset, blank, or `gh-pages`. `force` must be YAML false or the false string. Unset `force` is not false. Other inputs on that step are not read. Otherwise the step is read as peaceiris: `keep_files` must stay true, and `force_orphan` must stay unset or a known false. Known false is YAML false, or a string that is `false` after surrounding space is removed and the letters are uppercased. `publish_dir` must stay off `docs/archive/benchmark_dashboard` and files under it. Ancestors such as `docs` and `docs/archive` are not that check. `destination_dir` must not be `dashboard` or `dashboard/benchmark_dashboard`, or a path under that directory. A quoted literal in `${{ }}` is reduced before those path checks. Another `destination_dir` stays allowed while `keep_files` is true.
+
+The alert publish step must use `publish_branch: gh-pages`, must leave `external_repository` unset or the empty string, and must leave `force_orphan` unset or a known false. A step whose `uses` contains `github-pages-deploy-action` is held to `folder`, `target-folder`, `single-commit`, `branch`, `repository-name`, and `force`. The peaceiris input names on that step are not read. `folder` must be `docs/benchmark_data` and `target-folder` must be `dashboard/benchmark_data`. A value whose first non-space character is `/` does not match. `./` and a trailing slash still match. `single-commit` must be unset or a known false. `branch` must be unset, blank, or `gh-pages`. `repository-name` must be unset or the empty string. A value that is only space does not pass. `force` must be YAML false or the false string above. Unset `force` is not false.
+
+Untested classes, also named on `assert_docs_no_archive_benchmark_dashboard_copy`: a copy split across multiple steps; a copy performed by a `uses:` action; a command word other than `cp`, `mv`, or `rsync`, with reserved words and subshells listed separately; the word `command` followed by an option; brace expansion; variable command words; escape splitting; a `|`, `&`, or `;` inside a command substitution; `actions/deploy-pages`; `actions/upload-pages-artifact`; a `destination_dir`, `publish_dir`, `folder`, or `target-folder` expression that is not a quoted literal; a command substitution other than `echo` or `echo -n` of one literal path; a `cd` whose directory is not the second word, including `cd --` and `cd -P`; a `pushd` directory that is not the second word; a glued `-t` destination; a copy word containing `*`, `?`, or `[` other than a trailing `/*`; a working-directory expression other than `github.workspace`; any input other than `folder`, `target-folder`, `single-commit`, `branch`, and `force` on a documentation step whose `uses` contains `github-pages-deploy-action`; a `folder` or `target-folder` that begins with a backslash; a `( ... )` subshell; `for`, `while`, `until`, `case` compound commands and a leading `!`; a copy run through `sudo`, `exec`, `time`, `env`, `xargs`, `nohup`, or another wrapper command; an assignment prefix in front of `command cd`; a parameter expansion other than `$name`, `${name}`, `$n`, and `${n}`; an `export` or `declare` assignment; a `cd` of `$RUNNER_TEMP`; a `typeset` or `readonly` assignment.
 
 **Result**:
 - mdBook docs at: `https://lazyxeon.github.io/AstraWeave/`
-- Benchmarks at: `https://lazyxeon.github.io/AstraWeave/benchmarks/`
+- Benchmark history JSONL file: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_data/benchmark_history.jsonl`
+- Interactive dashboard UI remains at: `https://lazyxeon.github.io/AstraWeave/dashboard/benchmark_dashboard/`
 
 **Effort**: 15 minutes
 

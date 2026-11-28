@@ -1,0 +1,19 @@
+name: Benchmark Regression Alerts
+
+on:
+  workflow_dispatch:
+
+jobs:
+  aggregate:
+    name: Aggregate and Check Regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Deploy dashboard to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/benchmark_data
+          publish_branch: gh-pages
+          destination_dir: dashboard/benchmark_data
+          force_orphan: "true"

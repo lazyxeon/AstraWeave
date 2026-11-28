@@ -372,9 +372,16 @@ cargo bench
 
 ### Issue: Dashboard shows data from wrong source
 
-**Explanation**: Dashboard tries multiple data sources in order:
-1. `target/benchmark-data/history.jsonl` (local development)
-2. `docs/benchmark_data/benchmark_history.jsonl` (production/GitHub Pages)
+**Explanation**: `dashboard.js` tries `DATA_SOURCES` in this order:
+1. `benchmark-data/history.jsonl`
+2. `static-data/history.jsonl`
+3. `./benchmark-data/history.jsonl`
+4. `./static-data/history.jsonl`
+5. `https://raw.githubusercontent.com/lazyxeon/AstraWeave/main/tools/benchmark-dashboard/benchmark-data/history.jsonl`
+6. `https://raw.githubusercontent.com/lazyxeon/AstraWeave/main/tools/benchmark-dashboard/static-data/history.jsonl`
+7. `../../target/benchmark-data/history.jsonl`
+
+Regression Alerts publishes the `scripts/export_benchmark_history.sh` export as `dashboard/benchmark_data/benchmark_history.jsonl`. The page does not fetch that file.
 
 Check browser console to see which source was used.
 
